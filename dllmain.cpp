@@ -3,6 +3,7 @@
 namespace {
 constexpr const char* LayerName = "XR_APILAYER_cooooked_verticaltangent";
 constexpr const wchar_t* ConfigFileName = L"openxr-verticaltangent.ini";
+constexpr double DefaultTotalTangent = 0.40;
 constexpr double DefaultTopTangent = 0.20;
 constexpr double DefaultBottomTangent = 0.20;
 constexpr double MinVerticalTangent = 0.0;
@@ -12,6 +13,8 @@ std::filesystem::path layerDirectory;
 std::ofstream logStream;
 
 bool enabled = true;
+bool splitMode = false;
+double totalTangent = DefaultTotalTangent;
 double topTangent = DefaultTopTangent;
 double bottomTangent = DefaultBottomTangent;
 
@@ -83,21 +86,33 @@ double ReadDoubleSetting(const wchar_t* key, double fallback) {
 
 void LoadConfig() {
     enabled = ReadBoolSetting(L"enabled", true);
-    const double legacyTotal = ReadDoubleSetting(L"vertical_tangent", DefaultTopTangent + DefaultBottomTangent);
-    topTangent = std::clamp(
-        ReadDoubleSetting(L"top_tangent", legacyTotal * 0.5),
-        MinVerticalTangent,
-        MaxVerticalTangent);
-    bottomTangent = std::clamp(
-        ReadDoubleSetting(L"bottom_tangent", legacyTotal * 0.5),
+    splitMode = ReadBoolSetting(L"split_mode", false);
+    totalTangent = std::clamp(
+        ReadDoubleSetting(L"vertical_tangent", DefaultTotalTangent),
         MinVerticalTangent,
         MaxVerticalTangent);
 
-    Log("config: enabled=%d top_screen_share=%.3f bottom_screen_share=%.3f total_screen_share=%.3f top_scale=%.3f bottom_scale=%.3f\n",
+    if (splitMode) {
+        topTangent = std::clamp(
+            ReadDoubleSetting(L"top_tangent", totalTangent * 0.5),
+            MinVerticalTangent,
+            MaxVerticalTangent);
+        bottomTangent = std::clamp(
+            ReadDoubleSetting(L"bottom_tangent", totalTangent * 0.5),
+            MinVerticalTangent,
+            MaxVerticalTangent);
+        totalTangent = std::clamp(topTangent + bottomTangent, MinVerticalTangent, MaxVerticalTangent);
+    } else {
+        topTangent = totalTangent * 0.5;
+        bottomTangent = totalTangent * 0.5;
+    }
+
+    Log("config: enabled=%d mode=%s total_screen_share=%.3f top_screen_share=%.3f bottom_screen_share=%.3f top_scale=%.3f bottom_scale=%.3f\n",
         enabled ? 1 : 0,
+        splitMode ? "split" : "total",
+        totalTangent,
         topTangent,
         bottomTangent,
-        topTangent + bottomTangent,
         std::clamp(topTangent * 2.0, 0.0, 1.0),
         std::clamp(bottomTangent * 2.0, 0.0, 1.0));
 }
