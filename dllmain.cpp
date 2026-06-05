@@ -3,8 +3,8 @@
 namespace {
 constexpr const char* LayerName = "XR_APILAYER_cooooked_verticaltangent";
 constexpr const wchar_t* ConfigFileName = L"openxr-verticaltangent.ini";
-constexpr double DefaultTopTangent = 0.09;
-constexpr double DefaultBottomTangent = 0.09;
+constexpr double DefaultTopTangent = 0.20;
+constexpr double DefaultBottomTangent = 0.20;
 constexpr double MinVerticalTangent = 0.0;
 constexpr double MaxVerticalTangent = 1.0;
 
@@ -93,11 +93,13 @@ void LoadConfig() {
         MinVerticalTangent,
         MaxVerticalTangent);
 
-    Log("config: enabled=%d top_tangent=%.3f bottom_tangent=%.3f total_tangent=%.3f\n",
+    Log("config: enabled=%d top_screen_share=%.3f bottom_screen_share=%.3f total_screen_share=%.3f top_scale=%.3f bottom_scale=%.3f\n",
         enabled ? 1 : 0,
         topTangent,
         bottomTangent,
-        topTangent + bottomTangent);
+        topTangent + bottomTangent,
+        std::clamp(topTangent * 2.0, 0.0, 1.0),
+        std::clamp(bottomTangent * 2.0, 0.0, 1.0));
 }
 
 void EnsureInitialized() {
@@ -113,8 +115,10 @@ void EnsureInitialized() {
 }
 
 void ApplyVerticalTangentSplit(XrFovf& fov) {
-    fov.angleUp = static_cast<float>(std::atan(topTangent));
-    fov.angleDown = -static_cast<float>(std::atan(bottomTangent));
+    const double topScale = std::clamp(topTangent * 2.0, 0.0, 1.0);
+    const double bottomScale = std::clamp(bottomTangent * 2.0, 0.0, 1.0);
+    fov.angleUp = static_cast<float>(std::atan(std::tan(static_cast<double>(fov.angleUp)) * topScale));
+    fov.angleDown = static_cast<float>(std::atan(std::tan(static_cast<double>(fov.angleDown)) * bottomScale));
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL VerticalTangent_xrLocateViews(
@@ -194,7 +198,7 @@ XRAPI_ATTR XrResult XRAPI_CALL VerticalTangent_xrEnumerateViewConfigurationViews
             1,
             static_cast<uint32_t>(std::lround(static_cast<double>(views[i].recommendedImageRectHeight) * renderHeightScale)));
         if (logCount < 10 || logCount % 100 == 0) {
-            Log("xrEnumerateViewConfigurationViews[%u]: recommended height %u -> %u total_tangent=%.3f\n",
+            Log("xrEnumerateViewConfigurationViews[%u]: recommended height %u -> %u total_screen_share=%.3f\n",
                 i,
                 beforeHeight,
                 views[i].recommendedImageRectHeight,

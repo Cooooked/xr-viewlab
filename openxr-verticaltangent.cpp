@@ -119,7 +119,7 @@ void SaveSettings() {
     double topTangent = 0.09;
     double bottomTangent = 0.09;
     if (!ReadScaleFromControl(topScaleEdit, topTangent) || !ReadScaleFromControl(bottomScaleEdit, bottomTangent)) {
-        MessageBoxW(nullptr, L"Enter tangent values from 0.000 to 1.000.", AppTitle, MB_ICONWARNING);
+        MessageBoxW(nullptr, L"Enter screen share values from 0.000 to 1.000.", AppTitle, MB_ICONWARNING);
         return;
     }
 
@@ -166,17 +166,17 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         };
 
         label(L"Vertical FOV tangent override", 18, 16, 360, 24);
-        label(L"Set the final top and bottom vertical tangent split.", 18, 44, 420, 24);
+        label(L"Set top and bottom screen share. 0.09 + 0.09 = 18%.", 18, 44, 420, 24);
 
         enabledCheck = CreateWindowExW(0, L"BUTTON", L"Enable OpenXR layer", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 18, 84, 220, 26, hwnd, ControlId(IdEnabled), nullptr, nullptr);
         SendMessageW(enabledCheck, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
 
-        label(L"Top tangent", 18, 130, 160, 24);
+        label(L"Top screen share", 18, 130, 160, 24);
         topScaleEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 190, 126, 82, 26, hwnd, ControlId(IdTopScale), nullptr, nullptr);
         SendMessageW(topScaleEdit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
         label(L"0.000 to 1.000", 288, 130, 130, 24);
 
-        label(L"Bottom tangent", 18, 168, 160, 24);
+        label(L"Bottom screen share", 18, 168, 160, 24);
         bottomScaleEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 190, 164, 82, 26, hwnd, ControlId(IdBottomScale), nullptr, nullptr);
         SendMessageW(bottomScaleEdit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
         label(L"0.000 to 1.000", 288, 168, 130, 24);
