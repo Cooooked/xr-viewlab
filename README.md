@@ -85,3 +85,13 @@ For example, split mode with `0.09 / 0.09` gives `0.18` total render height and 
 - Total render height is clamped to at least `0.010`.
 - A game must respect OpenXR recommended image sizes for the render-height saving to apply.
 - The MSI is unsigned, so Windows SmartScreen may warn until the download gains reputation or the installer is code-signed.
+
+## Lineage And Thanks
+
+XR ViewLab stands on work from the OpenXR community:
+
+- [fommil/openxr-widescreen](https://github.com/fommil/openxr-widescreen), which continued and adapted the OpenXR FOV modifier idea.
+- [mbucchia/_ARCHIVE_XR_APILAYER_NOVENDOR_fov_modifier](https://github.com/mbucchia/_ARCHIVE_XR_APILAYER_NOVENDOR_fov_modifier), the archived API-layer/FOV modifier foundation.
+- [mbucchia/OpenXR-Toolkit](https://github.com/mbucchia/OpenXR-Toolkit), used as a reference for the companion-app style and per-application enable/profile behaviour.
+
+XR ViewLab is its own tool, but it is very much part of that chain.
