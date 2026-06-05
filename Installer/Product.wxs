@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="*" Name="OpenXR Vertical Tangent"
-           Language="1033" Version="2.1.1"
+  <Product Id="*" Name="XR ViewLab"
+           Language="1033" Version="2.2.0"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
     <MediaTemplate EmbedCab="yes" />
     <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
-    <Property Id="ARPCOMMENTS" Value="Reduces OpenXR vertical render height with total or split top/bottom controls" />
+    <Property Id="ARPCOMMENTS" Value="Tunes OpenXR VR view/render height with total or split top/bottom controls" />
     <Property Id="REBOOT" Value="ReallySuppress" />
     <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 
-    <Feature Id="Main" Title="OpenXR Vertical Tangent" Level="1">
+    <Feature Id="Main" Title="XR ViewLab" Level="1">
       <ComponentRef Id="LayerFiles"/>
       <ComponentRef Id="AppFiles"/>
       <ComponentRef Id="RegEnable"/>
@@ -53,11 +53,11 @@
         </Directory>
       </Directory>
       <Directory Id="ProgramMenuFolder">
-        <Directory Id="ApplicationProgramsFolder" Name="OpenXR Vertical Tangent">
+        <Directory Id="ApplicationProgramsFolder" Name="XR ViewLab">
           <Component Id="StartMenuShortcut" Guid="3AE9AB79-5298-4921-B099-9F98E8383356" Win64="yes">
             <Shortcut Id="StartMenuShortcut"
-                      Name="OpenXR Vertical Tangent"
-                      Description="Configure OpenXR vertical render height"
+                      Name="XR ViewLab"
+                      Description="Configure OpenXR VR view/render height"
                       Target="[#SettingsApp]"
                       WorkingDirectory="InstallDir"/>
             <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>

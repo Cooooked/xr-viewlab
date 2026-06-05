@@ -3,6 +3,7 @@
 namespace {
 constexpr const char* LayerName = "XR_APILAYER_cooooked_verticaltangent";
 constexpr const wchar_t* ConfigFileName = L"openxr-verticaltangent.ini";
+constexpr const wchar_t* AppRegistryRoot = L"Software\\cooooked\\openxr-verticaltangent\\Apps";
 constexpr double DefaultTotalTangent = 0.40;
 constexpr double DefaultTopTangent = 0.20;
 constexpr double DefaultBottomTangent = 0.20;
@@ -17,6 +18,7 @@ bool splitMode = false;
 double totalTangent = DefaultTotalTangent;
 double topTangent = DefaultTopTangent;
 double bottomTangent = DefaultBottomTangent;
+std::wstring currentAppKey;
 
 PFN_xrGetInstanceProcAddr nextXrGetInstanceProcAddr = nullptr;
 PFN_xrLocateViews nextXrLocateViews = nullptr;
@@ -84,6 +86,100 @@ double ReadDoubleSetting(const wchar_t* key, double fallback) {
     return value;
 }
 
+std::wstring CurrentProcessPath() {
+    wchar_t path[MAX_PATH]{};
+    if (GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path))) == 0) {
+        return {};
+    }
+
+    return path;
+}
+
+std::wstring CurrentProcessFileName() {
+    const std::filesystem::path path(CurrentProcessPath());
+    const std::wstring name = path.filename().wstring();
+    return name.empty() ? L"Unknown.exe" : name;
+}
+
+std::wstring SanitizeRegistryKey(std::wstring value) {
+    if (value.empty()) {
+        return L"Unknown.exe";
+    }
+
+    for (wchar_t& ch : value) {
+        if (ch == L'\\' || ch == L'/' || ch == L':' || ch == L'*' || ch == L'?' || ch == L'"' || ch == L'<' || ch == L'>' || ch == L'|') {
+            ch = L'_';
+        }
+    }
+
+    return value;
+}
+
+std::wstring Utf8ToWide(const char* value) {
+    if (value == nullptr || value[0] == '\0') {
+        return {};
+    }
+
+    const int length = MultiByteToWideChar(CP_UTF8, 0, value, -1, nullptr, 0);
+    if (length <= 1) {
+        return {};
+    }
+
+    std::wstring result(static_cast<size_t>(length - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, value, -1, result.data(), length);
+    return result;
+}
+
+std::wstring AppRegistryPath(const std::wstring& appKey) {
+    return std::wstring(AppRegistryRoot) + L"\\" + appKey;
+}
+
+void RememberApplication(const char* openXrAppName) {
+    currentAppKey = SanitizeRegistryKey(CurrentProcessFileName());
+
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, AppRegistryPath(currentAppKey).c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
+        Log("app profile: failed to create registry key for %ls\n", currentAppKey.c_str());
+        return;
+    }
+
+    const std::wstring displayName = Utf8ToWide(openXrAppName);
+    const std::wstring modulePath = CurrentProcessPath();
+    if (!displayName.empty()) {
+        RegSetValueExW(key, L"display_name", 0, REG_SZ, reinterpret_cast<const BYTE*>(displayName.c_str()), static_cast<DWORD>((displayName.size() + 1) * sizeof(wchar_t)));
+    }
+    if (!modulePath.empty()) {
+        RegSetValueExW(key, L"module", 0, REG_SZ, reinterpret_cast<const BYTE*>(modulePath.c_str()), static_cast<DWORD>((modulePath.size() + 1) * sizeof(wchar_t)));
+    }
+    RegCloseKey(key);
+
+    Log("app profile: active app_key=%ls display=%ls module=%ls\n",
+        currentAppKey.c_str(),
+        displayName.empty() ? L"<unknown>" : displayName.c_str(),
+        modulePath.empty() ? L"<unknown>" : modulePath.c_str());
+}
+
+bool ReadProfileDword(const wchar_t* keyName, DWORD& value) {
+    if (currentAppKey.empty()) {
+        return false;
+    }
+
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, AppRegistryPath(currentAppKey).c_str(), 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS) {
+        return false;
+    }
+
+    DWORD type = 0;
+    DWORD size = sizeof(value);
+    const LONG result = RegQueryValueExW(key, keyName, nullptr, &type, reinterpret_cast<BYTE*>(&value), &size);
+    RegCloseKey(key);
+    return result == ERROR_SUCCESS && type == REG_DWORD;
+}
+
+double MillisToShare(DWORD value, double fallback) {
+    return std::clamp(static_cast<double>(value) / 1000.0, MinVerticalTangent, MaxVerticalTangent);
+}
+
 void LoadConfig() {
     enabled = ReadBoolSetting(L"enabled", true);
     splitMode = ReadBoolSetting(L"split_mode", false);
@@ -107,8 +203,37 @@ void LoadConfig() {
         bottomTangent = totalTangent * 0.5;
     }
 
-    Log("config: enabled=%d mode=%s total_screen_share=%.3f top_screen_share=%.3f bottom_screen_share=%.3f top_scale=%.3f bottom_scale=%.3f\n",
+    DWORD appEnabled = 1;
+    if (ReadProfileDword(L"app_enabled", appEnabled) && appEnabled == 0) {
+        enabled = false;
+    }
+
+    DWORD profileEnabled = 0;
+    if (ReadProfileDword(L"profile_enabled", profileEnabled) && profileEnabled != 0) {
+        DWORD profileSplitMode = splitMode ? 1u : 0u;
+        DWORD profileTotal = static_cast<DWORD>(std::lround(totalTangent * 1000.0));
+        DWORD profileTop = static_cast<DWORD>(std::lround(topTangent * 1000.0));
+        DWORD profileBottom = static_cast<DWORD>(std::lround(bottomTangent * 1000.0));
+        ReadProfileDword(L"split_mode", profileSplitMode);
+        ReadProfileDword(L"vertical_tangent", profileTotal);
+        ReadProfileDword(L"top_tangent", profileTop);
+        ReadProfileDword(L"bottom_tangent", profileBottom);
+
+        splitMode = profileSplitMode != 0;
+        totalTangent = MillisToShare(profileTotal, totalTangent);
+        if (splitMode) {
+            topTangent = MillisToShare(profileTop, topTangent);
+            bottomTangent = MillisToShare(profileBottom, bottomTangent);
+            totalTangent = std::clamp(topTangent + bottomTangent, MinVerticalTangent, MaxVerticalTangent);
+        } else {
+            topTangent = totalTangent * 0.5;
+            bottomTangent = totalTangent * 0.5;
+        }
+    }
+
+    Log("config: enabled=%d app=%ls mode=%s total_screen_share=%.3f top_screen_share=%.3f bottom_screen_share=%.3f top_scale=%.3f bottom_scale=%.3f\n",
         enabled ? 1 : 0,
+        currentAppKey.empty() ? L"<global>" : currentAppKey.c_str(),
         splitMode ? "split" : "total",
         totalTangent,
         topTangent,
@@ -272,6 +397,8 @@ XRAPI_ATTR XrResult XRAPI_CALL VerticalTangent_xrCreateApiLayerInstance(
 
     const XrResult result = apiLayerInfo->nextInfo->nextCreateApiLayerInstance(instanceCreateInfo, &chainedApiLayerInfo, instance);
     const char* appName = instanceCreateInfo ? instanceCreateInfo->applicationInfo.applicationName : "<unknown>";
+    RememberApplication(appName);
+    LoadConfig();
     Log("%s for %s\n", enabled ? "enabled" : "disabled", appName);
     return result;
 }

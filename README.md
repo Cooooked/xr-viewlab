@@ -1,8 +1,8 @@
-# OpenXR Vertical Tangent
+# XR ViewLab
 
-OpenXR Vertical Tangent is a small OpenXR API layer for reducing vertical render height.
+XR ViewLab is a small OpenXR API layer for tuning VR view/render behaviour.
 
-It changes the vertical FOV reported through OpenXR and reduces the recommended render height requested by the application. The goal is lower GPU render cost in VR, especially for sim racing where a narrow vertical view can still keep the useful driving area visible.
+The current build focuses on vertical render-height control. It changes the vertical FOV reported through OpenXR and reduces the recommended render height requested by the application. The goal is lower GPU render cost in VR, especially for sims where a narrower vertical view can still keep the useful cockpit/driving/flying area visible.
 
 This build is tangent-only. It does not modify OpenXR overlays, capture paths, quad-layer positions, or black-bar rendering.
 
@@ -10,11 +10,27 @@ This build is tangent-only. It does not modify OpenXR overlays, capture paths, q
 
 Download the latest MSI from the releases page:
 
-[OpenXR Vertical Tangent Releases](https://github.com/Cooooked/openxr-verticaltangent/releases)
+[XR ViewLab Releases](https://github.com/Cooooked/openxr-verticaltangent/releases)
 
 ## Settings
 
-The settings app has two modes.
+The settings app has global settings and optional per-application profiles.
+
+The layer is still registered globally with OpenXR, because that is how implicit API layers are discovered. Per-application enable/disable is handled inside the layer: if an app is unchecked in XR ViewLab, the layer bypasses itself for that app.
+
+### Application List
+
+Launch an OpenXR game once, then reopen XR ViewLab or press **Reload app list**.
+
+- Checked app: XR ViewLab is enabled for that application.
+- Unchecked app: XR ViewLab bypasses that application.
+- **Use custom values for selected app**: saves a per-game profile instead of using the global values.
+
+This is useful for keeping different view setups per game, for example a low narrow view for iRacing, a centered view for DCS/MSFS, or a taller view for SkyrimVR.
+
+### View Modes
+
+Global settings and app profiles both support the same two view modes.
 
 ### Total Mode
 
