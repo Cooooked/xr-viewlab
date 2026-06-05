@@ -1,0 +1,14 @@
+{
+  "file_format_version": "1.0.0",
+  "api_layer": {
+    "name": "XR_APILAYER_cooooked_verticaltangent",
+    "library_path": ".\\XR_APILAYER_cooooked_verticaltangent.dll",
+    "api_version": "1.0",
+    "implementation_version": "1",
+    "description": "OpenXR vertical FOV tangent override",
+    "functions": {
+      "xrNegotiateLoaderApiLayerInterface": "cooooked_verticaltangent_overlaytest_xrNegotiateLoaderApiLayerInterface"
+    },
+    "disable_environment": "DISABLE_XR_APILAYER_COOOOKED_VERTICALTANGENT"
+  }
+}
