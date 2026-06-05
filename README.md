@@ -1,12 +1,39 @@
 # OpenXR Vertical Tangent
 
-Small OpenXR API layer for reducing vertical FOV render cost with either one total screen-share value or independent top and bottom screen-share values.
+OpenXR Vertical Tangent is a small OpenXR API layer for reducing vertical render height.
 
-This build is tangent-only. The experimental overlay/black-bar work has been removed.
+It changes the vertical FOV reported through OpenXR and reduces the recommended render height requested by the application. The goal is lower GPU render cost in VR, especially for sim racing where a narrow vertical view can still keep the useful driving area visible.
+
+This build is tangent-only. It does not modify OpenXR overlays, capture paths, quad-layer positions, or black-bar rendering.
+
+## Download
+
+Download the latest MSI from the releases page:
+
+[OpenXR Vertical Tangent Releases](https://github.com/Cooooked/openxr-verticaltangent/releases)
 
 ## Settings
 
-Default config:
+The settings app has two modes.
+
+### Total Mode
+
+Use one value for the full vertical render share.
+
+- `0.40` means 40% total render height, centered.
+- `0.18` means 18% total render height, centered.
+
+This is the default mode.
+
+### Split Mode
+
+Use separate top and bottom values when you want to move the rendered slice up or down.
+
+- `0.20` top + `0.20` bottom = 40% total render height, centered.
+- `0.09` top + `0.09` bottom = 18% total render height, centered.
+- `0.00` top + `0.18` bottom = 18% total render height, shifted downward.
+
+Default config file:
 
 ```ini
 [Settings]
@@ -17,34 +44,28 @@ top_tangent=0.200
 bottom_tangent=0.200
 ```
 
-`split_mode=0` uses the single total value:
+## How It Works
 
-- `vertical_tangent=0.180` gives `18%` total render height, centered.
-- Default `vertical_tangent=0.400` gives `40%` total render height, centered.
-
-`split_mode=1` uses the separate top and bottom values:
-
-- `top_tangent=0.200` and `bottom_tangent=0.200` gives `40%` total render height, centered.
-- `top_tangent=0.090` and `bottom_tangent=0.090` gives `18%` total render height, centered.
-- `top_tangent=0.000` and `bottom_tangent=0.180` gives `18%` total render height, shifted downward.
-
-Internally the tool always converts to top and bottom values first:
+The tool converts the selected mode to final top and bottom screen-share values:
 
 - total mode: `top = vertical_tangent / 2`, `bottom = vertical_tangent / 2`
 - split mode: `top = top_tangent`, `bottom = bottom_tangent`
 
-Then it converts each side to a per-side FOV scale:
+It then scales the original OpenXR top and bottom FOV:
 
 - `top scale = top * 2`
 - `bottom scale = bottom * 2`
 
-So split `0.09 / 0.09` becomes `0.18 / 0.18` per-side scaling, while the requested render height is still `0.09 + 0.09 = 0.18`.
-
-## What It Does
-
 The layer hooks:
 
-- `xrLocateViews` and scales the original top/bottom FOV independently.
-- `xrEnumerateViewConfigurationViews` and scales requested render height by the final total screen share.
+- `xrLocateViews` to scale the reported vertical FOV.
+- `xrEnumerateViewConfigurationViews` to reduce `recommendedImageRectHeight` by the final total screen share.
 
-It does not touch OpenXR overlay layers, quad positions, capture paths, or black-bar rendering.
+For example, split mode with `0.09 / 0.09` gives `0.18` total render height and requests roughly 18% of the original recommended vertical image height.
+
+## Notes
+
+- Values are clamped between `0.000` and `1.000`.
+- Total render height is clamped to at least `0.010`.
+- A game must respect OpenXR recommended image sizes for the render-height saving to apply.
+- The MSI is unsigned, so Windows SmartScreen may warn until the download gains reputation or the installer is code-signed.
