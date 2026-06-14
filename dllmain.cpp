@@ -4,9 +4,9 @@ namespace {
 constexpr const char* LayerName = "XR_APILAYER_cooooked_xrviewlab";
 constexpr const wchar_t* ConfigFileName = L"xr-viewlab.ini";
 constexpr const wchar_t* AppRegistryRoot = L"Software\\cooooked\\xr-viewlab\\Apps";
-constexpr double DefaultTotalTangent = 0.40;
-constexpr double DefaultTopTangent = 0.20;
-constexpr double DefaultBottomTangent = 0.20;
+constexpr double DefaultTotalTangent = 0.18;
+constexpr double DefaultTopTangent = 0.09;
+constexpr double DefaultBottomTangent = 0.09;
 constexpr double MinVerticalTangent = 0.0;
 constexpr double MaxVerticalTangent = 1.0;
 
@@ -60,8 +60,28 @@ std::filesystem::path GetLayerDirectory() {
     return std::filesystem::path(path).parent_path();
 }
 
-std::filesystem::path ConfigPath() {
+std::filesystem::path LegacyConfigPath() {
     return layerDirectory / ConfigFileName;
+}
+
+std::filesystem::path UserConfigPath() {
+    wchar_t localAppData[MAX_PATH]{};
+    const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, static_cast<DWORD>(std::size(localAppData)));
+    if (length == 0 || length >= std::size(localAppData)) {
+        return LegacyConfigPath();
+    }
+
+    return std::filesystem::path(localAppData) / L"XR ViewLab" / ConfigFileName;
+}
+
+std::filesystem::path ConfigPath() {
+    const std::filesystem::path userConfig = UserConfigPath();
+    std::error_code ec;
+    if (std::filesystem::exists(userConfig, ec)) {
+        return userConfig;
+    }
+
+    return LegacyConfigPath();
 }
 
 bool ReadBoolSetting(const wchar_t* key, bool fallback) {

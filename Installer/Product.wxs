@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*" Name="XR ViewLab"
-           Language="1033" Version="3.2.5"
+           Language="1033" Version="3.2.6"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -14,9 +14,15 @@
     <Property Id="WIXUI_INSTALLDIR" Value="InstallDir" />
 
     <Binary Id="CreateDesktopShortcutVbs" SourceFile="CreateDesktopShortcut.vbs" />
+    <Binary Id="PreserveConfigVbs" SourceFile="PreserveConfig.vbs" />
     <CustomAction Id="PromptDesktopShortcut"
                   BinaryKey="CreateDesktopShortcutVbs"
                   VBScriptCall="PromptDesktopShortcut"
+                  Execute="immediate"
+                  Return="ignore" />
+    <CustomAction Id="BackupConfig"
+                  BinaryKey="PreserveConfigVbs"
+                  VBScriptCall="BackupConfig"
                   Execute="immediate"
                   Return="ignore" />
 
@@ -71,16 +77,18 @@
       <ComponentRef Id="StartMenuShortcut"/>
     </Feature>
 
+    <InstallExecuteSequence>
+      <Custom Action="BackupConfig" Before="RemoveFiles">1</Custom>
+    </InstallExecuteSequence>
+
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="InstallDir" Name="xr-viewlab">
           <Component Id="LayerFiles" Guid="A3E0E51C-45C2-45AA-B458-2F37F261C40A" Win64="yes">
             <File Id="LayerDll" Source="..\x64\Release\XR_APILAYER_cooooked_xrviewlab.dll" Name="XR_APILAYER_cooooked_xrviewlab.dll"/>
             <File Id="LayerJson" Source="..\XR_APILAYER_cooooked_xrviewlab.json" Name="XR_APILAYER_cooooked_xrviewlab.json"/>
-            <File Id="ConfigFile" Source="..\xr-viewlab.ini" Name="xr-viewlab.ini"/>
             <RemoveFile Id="RemoveLayerDll" Name="XR_APILAYER_cooooked_xrviewlab.dll" On="uninstall"/>
             <RemoveFile Id="RemoveLayerJson" Name="XR_APILAYER_cooooked_xrviewlab.json" On="uninstall"/>
-            <RemoveFile Id="RemoveConfigFile" Name="xr-viewlab.ini" On="uninstall"/>
             <RemoveFile Id="RemoveLogFile" Name="xr-viewlab.log" On="uninstall"/>
             <RemoveFile Id="RemoveOldLayerDll" Name="XR_APILAYER_cooooked_verticaltangent.dll" On="both"/>
             <RemoveFile Id="RemoveOldLayerJson" Name="XR_APILAYER_cooooked_verticaltangent.json" On="both"/>

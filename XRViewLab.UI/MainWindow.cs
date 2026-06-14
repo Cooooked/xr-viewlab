@@ -55,7 +55,11 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private static string ConfigPath => Path.Combine(AppContext.BaseDirectory, "xr-viewlab.ini");
+	private static string ConfigDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XR ViewLab");
+
+	private static string ConfigPath => Path.Combine(ConfigDirectory, "xr-viewlab.ini");
+
+	private static string LegacyConfigPath => Path.Combine(AppContext.BaseDirectory, "xr-viewlab.ini");
 
 	private static string ManifestPath => Path.Combine(AppContext.BaseDirectory, "XR_APILAYER_cooooked_xrviewlab.json");
 
@@ -64,6 +68,7 @@ public partial class MainWindow : Window
 	public MainWindow()
 	{
 		InitializeComponent();
+		EnsureConfigMigrated();
 		LoadWindowSize();
 		LoadColumnWidths();
 		RegisterColumnWidthPersistence();
@@ -78,6 +83,15 @@ public partial class MainWindow : Window
 		{
 			await CheckForUpdatesOnLaunchAsync();
 		};
+	}
+
+	private static void EnsureConfigMigrated()
+	{
+		Directory.CreateDirectory(ConfigDirectory);
+		if (!File.Exists(ConfigPath) && File.Exists(LegacyConfigPath))
+		{
+			File.Copy(LegacyConfigPath, ConfigPath, overwrite: false);
+		}
 	}
 
 	protected override void OnClosing(CancelEventArgs e)
@@ -756,7 +770,7 @@ public partial class MainWindow : Window
 
 	private void SaveExperimentalSettings()
 	{
-		Directory.CreateDirectory(AppContext.BaseDirectory);
+		Directory.CreateDirectory(ConfigDirectory);
 		WritePrivateProfileString("Settings", "foveated_center_compensation", (FoveatedCenterCheck.IsChecked == true) ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "visual_mask_only", (VisualMaskOnlyCheck.IsChecked == true) ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "horizontal_visual_mask_only", (HorizontalVisualMaskOnlyCheck.IsChecked == true) ? "1" : "0", ConfigPath);
@@ -784,7 +798,7 @@ public partial class MainWindow : Window
 		}
 		value4 = Math.Clamp(value4, 0.01, 1.0);
 		bool valueOrDefault2 = EnabledCheck.IsChecked == true;
-		Directory.CreateDirectory(AppContext.BaseDirectory);
+		Directory.CreateDirectory(ConfigDirectory);
 		WritePrivateProfileString("Settings", "enabled", valueOrDefault2 ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "split_mode", valueOrDefault ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "foveated_center_compensation", (FoveatedCenterCheck.IsChecked == true) ? "1" : "0", ConfigPath);
