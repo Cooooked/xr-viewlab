@@ -200,7 +200,7 @@ public partial class MainWindow : Window
 
 	private static async Task<UpdateRelease?> GetLatestReleaseAsync(HttpClient client)
 	{
-		using JsonDocument jsonDocument = JsonDocument.Parse(await client.GetStringAsync("https://api.github.com/repos/Cooooked/xr-viewlab/releases"));
+		using JsonDocument jsonDocument = JsonDocument.Parse(await client.GetStringAsync(ReleasesApiUrl));
 		foreach (JsonElement item in jsonDocument.RootElement.EnumerateArray())
 		{
 			JsonElement value;
@@ -436,9 +436,9 @@ public partial class MainWindow : Window
 			bool flag = base.ActualWidth > 0.0 && base.ActualWidth < 900.0;
 			bool flag2 = base.ActualWidth > 0.0 && base.ActualWidth < 460.0;
 			StatusText.Visibility = (flag ? Visibility.Collapsed : Visibility.Visible);
-			SupportFooterTextBlock.Text = (flag2 ? "Support" : "Support the broke loser who made this app");
+			SupportFooterTextBlock.Text = (flag2 ? "Support" : SupportFooterText);
 			UpdatesButton.Text = "Update";
-			SupportFooterTextBlock.ToolTip = "Support the broke loser who made this app";
+			SupportFooterTextBlock.ToolTip = SupportFooterText;
 			UpdatesButton.ToolTip = string.IsNullOrWhiteSpace(_availableUpdateTag) ? "Check for updates" : ("Update available: " + _availableUpdateTag);
 		}
 	}
@@ -811,7 +811,7 @@ public partial class MainWindow : Window
 
 	private static void WriteRegistryEnabled(bool enabled)
 	{
-		using RegistryKey registryKey = Registry.LocalMachine.CreateSubKey("Software\\Khronos\\OpenXR\\1\\ApiLayers\\Implicit", writable: true) ?? throw new InvalidOperationException("Could not open OpenXR registry key.");
+		using RegistryKey registryKey = Registry.LocalMachine.CreateSubKey(OpenXrRegistryRoot, writable: true) ?? throw new InvalidOperationException("Could not open OpenXR registry key.");
 		registryKey.SetValue(ManifestPath, (!enabled) ? 1 : 0, RegistryValueKind.DWord);
 	}
 
@@ -819,7 +819,7 @@ public partial class MainWindow : Window
 	{
 		_loading = true;
 		_apps.Clear();
-		using RegistryKey registryKey = Registry.CurrentUser.OpenSubKey("Software\\cooooked\\xr-viewlab\\Apps");
+		using RegistryKey registryKey = Registry.CurrentUser.OpenSubKey(AppRegistryRoot);
 		if (registryKey != null)
 		{
 			string[] subKeyNames = registryKey.GetSubKeyNames();
@@ -844,7 +844,7 @@ public partial class MainWindow : Window
 		double fallback2 = ReadScaleSetting("bottom_tangent", num * 0.5);
 		double fallback3 = ReadScaleSetting("horizontal_render_width", 0.8);
 		string text = Convert.ToString(appKey.GetValue("module", "")) ?? "";
-		string text2 = Convert.ToString(appKey.GetValue("display_name", keyName)) ?? keyName;
+		string text2 = CleanAppDisplayName(Convert.ToString(appKey.GetValue("display_name", keyName)) ?? keyName, keyName, text);
 		string text3 = (string.IsNullOrWhiteSpace(text) ? keyName : Path.GetFileName(text));
 		bool profileEnabled = Convert.ToInt32(appKey.GetValue("profile_enabled", 0), CultureInfo.InvariantCulture) != 0;
 		bool appEnabled = Convert.ToInt32(appKey.GetValue("app_enabled", 1), CultureInfo.InvariantCulture) != 0;
@@ -864,6 +864,29 @@ public partial class MainWindow : Window
 		};
 	}
 
+	private static string CleanAppDisplayName(string displayName, string keyName, string modulePath)
+	{
+		string text = string.IsNullOrWhiteSpace(displayName) ? keyName : displayName.Trim();
+		string moduleName = Path.GetFileNameWithoutExtension(modulePath);
+		if (string.IsNullOrWhiteSpace(moduleName))
+		{
+			moduleName = Path.GetFileNameWithoutExtension(keyName);
+		}
+		if (text.StartsWith("OpenComposite_", StringComparison.OrdinalIgnoreCase))
+		{
+			text = text.Substring("OpenComposite_".Length);
+		}
+		if (text.StartsWith("Unity Application", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(moduleName))
+		{
+			text = moduleName;
+		}
+		if (text.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+		{
+			text = Path.GetFileNameWithoutExtension(text);
+		}
+		return string.IsNullOrWhiteSpace(text) ? keyName : text;
+	}
+
 	private void RefreshEnabledProfiles()
 	{
 		_enabledProfiles.Clear();
@@ -880,7 +903,7 @@ public partial class MainWindow : Window
 		{
 			return;
 		}
-		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey("Software\\cooooked\\xr-viewlab\\Apps\\" + dataContext.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
+		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(AppRegistryRoot + "\\" + dataContext.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
 		registryKey.SetValue("app_enabled", dataContext.AppEnabled ? 1 : 0, RegistryValueKind.DWord);
 		RefreshEnabledProfiles();
 		StatusText.Text = (dataContext.AppEnabled ? ("Layer enabled for " + dataContext.DisplayName + ". Restart the OpenXR game.") : ("Layer disabled for " + dataContext.DisplayName + ". Restart the OpenXR game."));
@@ -938,7 +961,7 @@ public partial class MainWindow : Window
 
 	private static void WriteAppCustomProfile(AppProfile profile, double top, double bottom, double horizontal, bool profileEnabled)
 	{
-		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey("Software\\cooooked\\xr-viewlab\\Apps\\" + profile.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
+		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(AppRegistryRoot + "\\" + profile.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
 		registryKey.SetValue("profile_enabled", profileEnabled ? 1 : 0, RegistryValueKind.DWord);
 		registryKey.SetValue("split_mode", 1, RegistryValueKind.DWord);
 		registryKey.SetValue("total_render_height", ToMillis(Math.Clamp(top + bottom, 0.01, 1.0)), RegistryValueKind.DWord);
@@ -951,7 +974,7 @@ public partial class MainWindow : Window
 
 	private static void ResetAppCustomProfile(AppProfile profile)
 	{
-		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey("Software\\cooooked\\xr-viewlab\\Apps\\" + profile.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
+		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(AppRegistryRoot + "\\" + profile.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
 		registryKey.SetValue("profile_enabled", 0, RegistryValueKind.DWord);
 		registryKey.DeleteValue("split_mode", throwOnMissingValue: false);
 		registryKey.DeleteValue("total_render_height", throwOnMissingValue: false);
