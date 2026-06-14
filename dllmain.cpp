@@ -12,6 +12,8 @@ constexpr double MaxVerticalTangent = 1.0;
 
 std::filesystem::path layerDirectory;
 std::ofstream logStream;
+std::mutex logMutex;
+bool sessionLogged = false;
 
 bool enabled = true;
 bool splitMode = false;
@@ -27,6 +29,53 @@ PFN_xrEnumerateViewConfigurationViews nextXrEnumerateViewConfigurationViews = nu
 
 std::atomic<uint32_t> locateViewsLogCount{0};
 std::atomic<uint32_t> enumerateViewsLogCount{0};
+std::atomic<uint32_t> enumerateSkipLogCount{0};
+
+std::filesystem::path LocalAppDataPath() {
+    wchar_t localAppData[MAX_PATH]{};
+    const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, static_cast<DWORD>(std::size(localAppData)));
+    if (length == 0 || length >= std::size(localAppData)) {
+        return {};
+    }
+
+    return std::filesystem::path(localAppData);
+}
+
+std::filesystem::path UserDataDirectory() {
+    const std::filesystem::path localAppData = LocalAppDataPath();
+    if (localAppData.empty()) {
+        return layerDirectory;
+    }
+
+    return localAppData / L"XR ViewLab";
+}
+
+std::filesystem::path LogPath() {
+    return UserDataDirectory() / L"Logs" / L"ViewLab.log";
+}
+
+void RotateLogIfNeeded(const std::filesystem::path& logPath) {
+    std::error_code ec;
+    if (!std::filesystem::exists(logPath, ec) || std::filesystem::file_size(logPath, ec) < 2 * 1024 * 1024) {
+        return;
+    }
+
+    const std::filesystem::path oldPath = logPath.parent_path() / L"ViewLab.old.log";
+    std::filesystem::remove(oldPath, ec);
+    std::filesystem::rename(logPath, oldPath, ec);
+}
+
+void OpenLogIfNeeded() {
+    if (logStream.is_open()) {
+        return;
+    }
+
+    const std::filesystem::path logPath = LogPath();
+    std::error_code ec;
+    std::filesystem::create_directories(logPath.parent_path(), ec);
+    RotateLogIfNeeded(logPath);
+    logStream.open(logPath, std::ios_base::app);
+}
 
 void Log(const char* fmt, ...) {
     char buffer[1024]{};
@@ -36,9 +85,30 @@ void Log(const char* fmt, ...) {
     _vsnprintf_s(buffer, sizeof(buffer), _TRUNCATE, fmt, args);
     va_end(args);
 
+    SYSTEMTIME now{};
+    GetLocalTime(&now);
+
+    char line[1400]{};
+    _snprintf_s(
+        line,
+        sizeof(line),
+        _TRUNCATE,
+        "%02u:%02u:%02u:%03u [%lu] | INFO  | %s",
+        now.wHour,
+        now.wMinute,
+        now.wSecond,
+        now.wMilliseconds,
+        static_cast<unsigned long>(GetCurrentProcessId()),
+        buffer);
+
     OutputDebugStringA(buffer);
+    std::lock_guard<std::mutex> lock(logMutex);
+    OpenLogIfNeeded();
     if (logStream.is_open()) {
-        logStream << buffer;
+        logStream << line;
+        if (line[std::strlen(line) - 1] != '\n') {
+            logStream << '\n';
+        }
         logStream.flush();
     }
 }
@@ -65,13 +135,12 @@ std::filesystem::path LegacyConfigPath() {
 }
 
 std::filesystem::path UserConfigPath() {
-    wchar_t localAppData[MAX_PATH]{};
-    const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, static_cast<DWORD>(std::size(localAppData)));
-    if (length == 0 || length >= std::size(localAppData)) {
+    const std::filesystem::path userData = UserDataDirectory();
+    if (userData.empty()) {
         return LegacyConfigPath();
     }
 
-    return std::filesystem::path(localAppData) / L"XR ViewLab" / ConfigFileName;
+    return userData / ConfigFileName;
 }
 
 std::filesystem::path ConfigPath() {
@@ -301,8 +370,14 @@ void EnsureInitialized() {
         layerDirectory = GetLayerDirectory();
     }
 
-    if (!logStream.is_open() && !layerDirectory.empty()) {
-        logStream.open(layerDirectory / L"xr-viewlab.log", std::ios_base::app);
+    if (!sessionLogged) {
+        sessionLogged = true;
+        Log("------------------------------------------------------------\n");
+        Log("XR ViewLab layer starting\n");
+        Log("layer_dir=%ls\n", layerDirectory.empty() ? L"<unknown>" : layerDirectory.c_str());
+        Log("config_path=%ls\n", ConfigPath().c_str());
+        Log("log_path=%ls\n", LogPath().c_str());
+        Log("process=%ls\n", CurrentProcessPath().c_str());
     }
 
     LoadConfig();
@@ -399,12 +474,23 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
             "xrGetViewConfigurationProperties",
             reinterpret_cast<PFN_xrVoidFunction*>(&getProperties)) != XR_SUCCESS ||
         getProperties == nullptr) {
+        const uint32_t skipCount = enumerateSkipLogCount.fetch_add(1);
+        if (skipCount < 10 || skipCount % 100 == 0) {
+            Log("xrEnumerateViewConfigurationViews: skipped render-height change, xrGetViewConfigurationProperties unavailable\n");
+        }
         return result;
     }
 
     XrViewConfigurationProperties properties{XR_TYPE_VIEW_CONFIGURATION_PROPERTIES};
-    if (getProperties(instance, systemId, viewConfigurationType, &properties) != XR_SUCCESS ||
+    const XrResult propertiesResult = getProperties(instance, systemId, viewConfigurationType, &properties);
+    if (propertiesResult != XR_SUCCESS ||
         properties.fovMutable != XR_TRUE) {
+        const uint32_t skipCount = enumerateSkipLogCount.fetch_add(1);
+        if (skipCount < 10 || skipCount % 100 == 0) {
+            Log("xrEnumerateViewConfigurationViews: skipped render-height change, properties_result=%d fovMutable=%d\n",
+                propertiesResult,
+                properties.fovMutable == XR_TRUE ? 1 : 0);
+        }
         return result;
     }
 
@@ -440,9 +526,11 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetInstanceProcAddr(
     if (std::strcmp(name, "xrLocateViews") == 0) {
         nextXrLocateViews = reinterpret_cast<PFN_xrLocateViews>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrLocateViews);
+        Log("hook installed: xrLocateViews\n");
     } else if (std::strcmp(name, "xrEnumerateViewConfigurationViews") == 0) {
         nextXrEnumerateViewConfigurationViews = reinterpret_cast<PFN_xrEnumerateViewConfigurationViews>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrEnumerateViewConfigurationViews);
+        Log("hook installed: xrEnumerateViewConfigurationViews\n");
     }
 
     return result;
@@ -477,7 +565,36 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateApiLayerInstance(
     const char* appName = instanceCreateInfo ? instanceCreateInfo->applicationInfo.applicationName : "<unknown>";
     RememberApplication(appName);
     LoadConfig();
-    Log("%s for %s\n", enabled ? "enabled" : "disabled", appName);
+    if (result == XR_SUCCESS && instance != nullptr && *instance != XR_NULL_HANDLE) {
+        PFN_xrGetInstanceProperties getInstanceProperties = nullptr;
+        if (nextXrGetInstanceProcAddr(
+                *instance,
+                "xrGetInstanceProperties",
+                reinterpret_cast<PFN_xrVoidFunction*>(&getInstanceProperties)) == XR_SUCCESS &&
+            getInstanceProperties != nullptr) {
+            XrInstanceProperties properties{XR_TYPE_INSTANCE_PROPERTIES};
+            if (getInstanceProperties(*instance, &properties) == XR_SUCCESS) {
+                Log("runtime: name=%s version=%u.%u.%u\n",
+                    properties.runtimeName,
+                    XR_VERSION_MAJOR(properties.runtimeVersion),
+                    XR_VERSION_MINOR(properties.runtimeVersion),
+                    XR_VERSION_PATCH(properties.runtimeVersion));
+            }
+        }
+    }
+    if (instanceCreateInfo != nullptr) {
+        Log("application: name=%s engine=%s api=%u.%u.%u extensions=%u\n",
+            instanceCreateInfo->applicationInfo.applicationName,
+            instanceCreateInfo->applicationInfo.engineName,
+            XR_VERSION_MAJOR(instanceCreateInfo->applicationInfo.apiVersion),
+            XR_VERSION_MINOR(instanceCreateInfo->applicationInfo.apiVersion),
+            XR_VERSION_PATCH(instanceCreateInfo->applicationInfo.apiVersion),
+            instanceCreateInfo->enabledExtensionCount);
+        for (uint32_t i = 0; i < instanceCreateInfo->enabledExtensionCount; ++i) {
+            Log("application extension[%u]=%s\n", i, instanceCreateInfo->enabledExtensionNames[i]);
+        }
+    }
+    Log("xrCreateApiLayerInstance result=%d state=%s app=%s\n", result, enabled ? "enabled" : "bypassed", appName);
     return result;
 }
 }
