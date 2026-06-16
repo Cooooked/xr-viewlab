@@ -61,7 +61,18 @@ public partial class MainWindow : Window
 
 	private static string LegacyConfigPath => Path.Combine(AppContext.BaseDirectory, "xr-viewlab.ini");
 
-	private static string ManifestPath => Path.Combine(AppContext.BaseDirectory, "XR_APILAYER_cooooked_xrviewlab.json");
+	private static string ProgramFilesInstallDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "xr-viewlab");
+
+	private static string ProcessDirectory => Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
+
+	private static string ManifestPath
+	{
+		get
+		{
+			string installedManifest = Path.Combine(ProgramFilesInstallDirectory, "XR_APILAYER_cooooked_xrviewlab.json");
+			return File.Exists(installedManifest) ? installedManifest : Path.Combine(ProcessDirectory, "XR_APILAYER_cooooked_xrviewlab.json");
+		}
+	}
 
 	private static string CurrentVersion => NormalizeVersion(Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0");
 
@@ -826,6 +837,14 @@ public partial class MainWindow : Window
 	private static void WriteRegistryEnabled(bool enabled)
 	{
 		using RegistryKey registryKey = Registry.LocalMachine.CreateSubKey(OpenXrRegistryRoot, writable: true) ?? throw new InvalidOperationException("Could not open OpenXR registry key.");
+		foreach (string valueName in registryKey.GetValueNames())
+		{
+			if (valueName.Contains("XR_APILAYER_cooooked_xrviewlab.json", StringComparison.OrdinalIgnoreCase) &&
+				!valueName.Equals(ManifestPath, StringComparison.OrdinalIgnoreCase))
+			{
+				registryKey.DeleteValue(valueName, throwOnMissingValue: false);
+			}
+		}
 		registryKey.SetValue(ManifestPath, (!enabled) ? 1 : 0, RegistryValueKind.DWord);
 	}
 

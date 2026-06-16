@@ -7,8 +7,10 @@ constexpr const wchar_t* AppRegistryRoot = L"Software\\cooooked\\xr-viewlab\\App
 constexpr double DefaultTotalTangent = 0.18;
 constexpr double DefaultTopTangent = 0.09;
 constexpr double DefaultBottomTangent = 0.09;
+constexpr double DefaultHorizontalRenderWidth = 0.80;
 constexpr double MinVerticalTangent = 0.0;
 constexpr double MaxVerticalTangent = 1.0;
+constexpr double MinRenderScale = 0.01;
 
 std::filesystem::path layerDirectory;
 std::ofstream logStream;
@@ -21,6 +23,7 @@ bool foveatedCenterCompensation = false;
 double totalTangent = DefaultTotalTangent;
 double topTangent = DefaultTopTangent;
 double bottomTangent = DefaultBottomTangent;
+double horizontalRenderWidth = DefaultHorizontalRenderWidth;
 std::wstring currentAppKey;
 
 PFN_xrGetInstanceProcAddr nextXrGetInstanceProcAddr = nullptr;
@@ -270,6 +273,10 @@ double MillisToRenderHeight(DWORD value, double fallback) {
     return std::clamp(static_cast<double>(value) / 1000.0, MinVerticalTangent, MaxVerticalTangent);
 }
 
+double MillisToRenderScale(DWORD value, double fallback) {
+    return std::clamp(static_cast<double>(value) / 1000.0, MinRenderScale, 1.0);
+}
+
 XrQuaternionf NormalizeQuaternion(const XrQuaternionf& value) {
     const float length = std::sqrt(
         value.x * value.x +
@@ -309,6 +316,10 @@ void LoadConfig() {
         ReadDoubleSetting(L"total_render_height", ReadDoubleSetting(L"total_share", legacyTotal)),
         MinVerticalTangent,
         MaxVerticalTangent);
+    horizontalRenderWidth = std::clamp(
+        ReadDoubleSetting(L"horizontal_render_width", DefaultHorizontalRenderWidth),
+        MinRenderScale,
+        1.0);
 
     if (splitMode) {
         topTangent = std::clamp(
@@ -336,13 +347,16 @@ void LoadConfig() {
         DWORD profileTotal = static_cast<DWORD>(std::lround(totalTangent * 1000.0));
         DWORD profileTop = static_cast<DWORD>(std::lround(topTangent * 1000.0));
         DWORD profileBottom = static_cast<DWORD>(std::lround(bottomTangent * 1000.0));
+        DWORD profileHorizontal = static_cast<DWORD>(std::lround(horizontalRenderWidth * 1000.0));
         ReadProfileDword(L"split_mode", profileSplitMode);
         ReadProfileDword(L"total_render_height", profileTotal) || ReadProfileDword(L"total_share", profileTotal) || ReadProfileDword(L"vertical_tangent", profileTotal);
         ReadProfileDword(L"top_tangent", profileTop);
         ReadProfileDword(L"bottom_tangent", profileBottom);
+        ReadProfileDword(L"horizontal_render_width", profileHorizontal);
 
         splitMode = profileSplitMode != 0;
         totalTangent = MillisToRenderHeight(profileTotal, totalTangent);
+        horizontalRenderWidth = MillisToRenderScale(profileHorizontal, horizontalRenderWidth);
         if (splitMode) {
             topTangent = MillisToRenderHeight(profileTop, topTangent);
             bottomTangent = MillisToRenderHeight(profileBottom, bottomTangent);
@@ -353,13 +367,14 @@ void LoadConfig() {
         }
     }
 
-    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d\n",
+    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d\n",
         enabled ? 1 : 0,
         currentAppKey.empty() ? L"<global>" : currentAppKey.c_str(),
         splitMode ? "split" : "total",
         totalTangent,
         topTangent,
         bottomTangent,
+        horizontalRenderWidth,
         std::clamp(topTangent * 2.0, 0.0, 1.0),
         std::clamp(bottomTangent * 2.0, 0.0, 1.0),
         foveatedCenterCompensation ? 1 : 0);
@@ -386,10 +401,18 @@ void EnsureInitialized() {
 void ApplyXRViewLabFov(XrView& view, bool& compensated, float& pitchOffset) {
     const double topScale = std::clamp(topTangent * 2.0, 0.0, 1.0);
     const double bottomScale = std::clamp(bottomTangent * 2.0, 0.0, 1.0);
+    const double horizontalScale = std::clamp(horizontalRenderWidth, MinRenderScale, 1.0);
+    const double originalLeftTan = (std::max)(0.0, -std::tan(static_cast<double>(view.fov.angleLeft)));
+    const double originalRightTan = (std::max)(0.0, std::tan(static_cast<double>(view.fov.angleRight)));
+    const double desiredLeftTan = originalLeftTan * horizontalScale;
+    const double desiredRightTan = originalRightTan * horizontalScale;
     const double originalTopTan = (std::max)(0.0, std::tan(static_cast<double>(view.fov.angleUp)));
     const double originalBottomTan = (std::max)(0.0, -std::tan(static_cast<double>(view.fov.angleDown)));
     const double desiredTopTan = originalTopTan * topScale;
     const double desiredBottomTan = originalBottomTan * bottomScale;
+
+    view.fov.angleLeft = -static_cast<float>(std::atan(desiredLeftTan));
+    view.fov.angleRight = static_cast<float>(std::atan(desiredRightTan));
 
     compensated = false;
     pitchOffset = 0.0f;
@@ -435,14 +458,17 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrLocateViews(
         float pitchOffset = 0.0f;
         ApplyXRViewLabFov(views[i], compensated, pitchOffset);
         if (logCount < 20 || logCount % 300 == 0) {
-            Log("xrLocateViews[%u]: up %.5f -> %.5f down %.5f -> %.5f left %.5f right %.5f foveated_center=%d pitch_offset=%.5f\n",
+            Log("xrLocateViews[%u]: up %.5f -> %.5f down %.5f -> %.5f left %.5f -> %.5f right %.5f -> %.5f horizontal_render_width=%.3f foveated_center=%d pitch_offset=%.5f\n",
                 i,
                 before.angleUp,
                 views[i].fov.angleUp,
                 before.angleDown,
                 views[i].fov.angleDown,
+                before.angleLeft,
                 views[i].fov.angleLeft,
+                before.angleRight,
                 views[i].fov.angleRight,
+                horizontalRenderWidth,
                 compensated ? 1 : 0,
                 pitchOffset);
         }
@@ -496,14 +522,22 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
 
     const uint32_t logCount = enumerateViewsLogCount.fetch_add(1);
     const double renderHeightScale = std::clamp(topTangent + bottomTangent, 0.01, 1.0);
+    const double renderWidthScale = std::clamp(horizontalRenderWidth, MinRenderScale, 1.0);
     for (uint32_t i = 0; i < *viewCountOutput; ++i) {
+        const uint32_t beforeWidth = views[i].recommendedImageRectWidth;
         const uint32_t beforeHeight = views[i].recommendedImageRectHeight;
+        views[i].recommendedImageRectWidth = std::max<uint32_t>(
+            1,
+            static_cast<uint32_t>(std::lround(static_cast<double>(views[i].recommendedImageRectWidth) * renderWidthScale)));
         views[i].recommendedImageRectHeight = std::max<uint32_t>(
             1,
             static_cast<uint32_t>(std::lround(static_cast<double>(views[i].recommendedImageRectHeight) * renderHeightScale)));
         if (logCount < 10 || logCount % 100 == 0) {
-            Log("xrEnumerateViewConfigurationViews[%u]: recommended height %u -> %u total_render_height=%.3f\n",
+            Log("xrEnumerateViewConfigurationViews[%u]: recommended width %u -> %u horizontal_render_width=%.3f height %u -> %u total_render_height=%.3f\n",
                 i,
+                beforeWidth,
+                views[i].recommendedImageRectWidth,
+                renderWidthScale,
                 beforeHeight,
                 views[i].recommendedImageRectHeight,
                 renderHeightScale);
