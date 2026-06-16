@@ -20,6 +20,7 @@ bool sessionLogged = false;
 bool enabled = true;
 bool splitMode = false;
 bool foveatedCenterCompensation = false;
+bool outerEdgeVisibilityMaskOnly = true;
 double totalTangent = DefaultTotalTangent;
 double topTangent = DefaultTopTangent;
 double bottomTangent = DefaultBottomTangent;
@@ -29,10 +30,12 @@ std::wstring currentAppKey;
 PFN_xrGetInstanceProcAddr nextXrGetInstanceProcAddr = nullptr;
 PFN_xrLocateViews nextXrLocateViews = nullptr;
 PFN_xrEnumerateViewConfigurationViews nextXrEnumerateViewConfigurationViews = nullptr;
+PFN_xrGetVisibilityMaskKHR nextXrGetVisibilityMaskKHR = nullptr;
 
 std::atomic<uint32_t> locateViewsLogCount{0};
 std::atomic<uint32_t> enumerateViewsLogCount{0};
 std::atomic<uint32_t> enumerateSkipLogCount{0};
+std::atomic<uint32_t> visibilityMaskLogCount{0};
 
 std::filesystem::path LocalAppDataPath() {
     wchar_t localAppData[MAX_PATH]{};
@@ -311,6 +314,7 @@ void LoadConfig() {
     enabled = ReadBoolSetting(L"enabled", true);
     splitMode = ReadBoolSetting(L"split_mode", false);
     foveatedCenterCompensation = ReadBoolSetting(L"foveated_center_compensation", false);
+    outerEdgeVisibilityMaskOnly = ReadBoolSetting(L"outer_edge_visibility_mask_only", true);
     const double legacyTotal = ReadDoubleSetting(L"vertical_tangent", DefaultTotalTangent);
     totalTangent = std::clamp(
         ReadDoubleSetting(L"total_render_height", ReadDoubleSetting(L"total_share", legacyTotal)),
@@ -367,7 +371,7 @@ void LoadConfig() {
         }
     }
 
-    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d\n",
+    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d outer_edge_visibility_mask_only=%d\n",
         enabled ? 1 : 0,
         currentAppKey.empty() ? L"<global>" : currentAppKey.c_str(),
         splitMode ? "split" : "total",
@@ -377,7 +381,8 @@ void LoadConfig() {
         horizontalRenderWidth,
         std::clamp(topTangent * 2.0, 0.0, 1.0),
         std::clamp(bottomTangent * 2.0, 0.0, 1.0),
-        foveatedCenterCompensation ? 1 : 0);
+        foveatedCenterCompensation ? 1 : 0,
+        outerEdgeVisibilityMaskOnly ? 1 : 0);
 }
 
 void EnsureInitialized() {
@@ -547,6 +552,70 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
     return result;
 }
 
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
+    XrSession session,
+    XrViewConfigurationType viewConfigurationType,
+    uint32_t viewIndex,
+    XrVisibilityMaskTypeKHR visibilityMaskType,
+    XrVisibilityMaskKHR* visibilityMask) {
+    const XrResult result = nextXrGetVisibilityMaskKHR(session, viewConfigurationType, viewIndex, visibilityMaskType, visibilityMask);
+
+    if (!enabled ||
+        !outerEdgeVisibilityMaskOnly ||
+        result != XR_SUCCESS ||
+        viewConfigurationType != XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO ||
+        visibilityMaskType != XR_VISIBILITY_MASK_TYPE_HIDDEN_TRIANGLE_MESH_KHR ||
+        visibilityMask == nullptr ||
+        visibilityMask->vertices == nullptr ||
+        visibilityMask->indices == nullptr ||
+        visibilityMask->vertexCountOutput == 0 ||
+        visibilityMask->indexCountOutput < 3 ||
+        visibilityMask->indexCapacityInput < visibilityMask->indexCountOutput) {
+        return result;
+    }
+
+    const uint32_t beforeIndexCount = visibilityMask->indexCountOutput;
+    uint32_t writeIndex = 0;
+    for (uint32_t readIndex = 0; readIndex + 2 < beforeIndexCount; readIndex += 3) {
+        const uint32_t i0 = visibilityMask->indices[readIndex];
+        const uint32_t i1 = visibilityMask->indices[readIndex + 1];
+        const uint32_t i2 = visibilityMask->indices[readIndex + 2];
+        if (i0 >= visibilityMask->vertexCountOutput ||
+            i1 >= visibilityMask->vertexCountOutput ||
+            i2 >= visibilityMask->vertexCountOutput) {
+            continue;
+        }
+
+        const float centerX =
+            (visibilityMask->vertices[i0].x +
+             visibilityMask->vertices[i1].x +
+             visibilityMask->vertices[i2].x) / 3.0f;
+
+        const bool keepOuterEdge =
+            (viewIndex == 0 && centerX <= 0.0f) ||
+            (viewIndex == 1 && centerX >= 0.0f);
+        if (!keepOuterEdge) {
+            continue;
+        }
+
+        visibilityMask->indices[writeIndex++] = i0;
+        visibilityMask->indices[writeIndex++] = i1;
+        visibilityMask->indices[writeIndex++] = i2;
+    }
+
+    visibilityMask->indexCountOutput = writeIndex;
+
+    const uint32_t logCount = visibilityMaskLogCount.fetch_add(1);
+    if (logCount < 20 || logCount % 100 == 0) {
+        Log("xrGetVisibilityMaskKHR: view=%u hidden indices %u -> %u outer_edge_only=1\n",
+            viewIndex,
+            beforeIndexCount,
+            visibilityMask->indexCountOutput);
+    }
+
+    return result;
+}
+
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetInstanceProcAddr(
     XrInstance instance,
     const char* name,
@@ -565,6 +634,10 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetInstanceProcAddr(
         nextXrEnumerateViewConfigurationViews = reinterpret_cast<PFN_xrEnumerateViewConfigurationViews>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrEnumerateViewConfigurationViews);
         Log("hook installed: xrEnumerateViewConfigurationViews\n");
+    } else if (std::strcmp(name, "xrGetVisibilityMaskKHR") == 0) {
+        nextXrGetVisibilityMaskKHR = reinterpret_cast<PFN_xrGetVisibilityMaskKHR>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrGetVisibilityMaskKHR);
+        Log("hook installed: xrGetVisibilityMaskKHR\n");
     }
 
     return result;

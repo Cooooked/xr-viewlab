@@ -19,6 +19,14 @@ Sub BackupConfig()
     End If
   End If
 
+  CleanupApiLayerRegistry
+End Sub
+
+Sub CleanupApiLayerRegistry()
+  On Error Resume Next
+
+  Dim shell, reg, names, types, i, valueName, wanted
+  Set shell = CreateObject("WScript.Shell")
   wanted = shell.ExpandEnvironmentStrings("%ProgramFiles%") & "\xr-viewlab\XR_APILAYER_cooooked_xrviewlab.json"
   Set reg = GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\default:StdRegProv")
   reg.EnumValues &H80000002, "Software\Khronos\OpenXR\1\ApiLayers\Implicit", names, types

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*" Name="XR ViewLab"
-           Language="1033" Version="3.2.8"
+           Language="1033" Version="3.2.9"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -24,6 +24,12 @@
                   BinaryKey="PreserveConfigVbs"
                   VBScriptCall="BackupConfig"
                   Execute="immediate"
+                  Return="ignore" />
+    <CustomAction Id="CleanupApiLayerRegistry"
+                  BinaryKey="PreserveConfigVbs"
+                  VBScriptCall="CleanupApiLayerRegistry"
+                  Execute="deferred"
+                  Impersonate="no"
                   Return="ignore" />
 
     <UI>
@@ -79,6 +85,7 @@
 
     <InstallExecuteSequence>
       <Custom Action="BackupConfig" Before="RemoveFiles">1</Custom>
+      <Custom Action="CleanupApiLayerRegistry" Before="InstallFinalize">1</Custom>
     </InstallExecuteSequence>
 
     <Directory Id="TARGETDIR" Name="SourceDir">
