@@ -409,6 +409,14 @@ void EnsureInitialized() {
     LoadConfig();
 }
 
+double EffectiveOuterEdgeHorizontalScale() {
+    const double horizontalScale = std::clamp(horizontalRenderWidth, MinRenderScale, 1.0);
+    // Horizontal crop preserves the inner eye edges and scales only the outer edges.
+    // For the normal near-symmetric stereo frustum, the total per-eye FOV width is
+    // therefore half unchanged inner FOV plus half scaled outer FOV.
+    return std::clamp((1.0 + horizontalScale) * 0.5, MinRenderScale, 1.0);
+}
+
 void ApplyXRViewLabFov(uint32_t viewIndex, XrView& view, bool& compensated, float& pitchOffset) {
     const double topScale = std::clamp(topTangent * 2.0, 0.0, 1.0);
     const double bottomScale = std::clamp(bottomTangent * 2.0, 0.0, 1.0);
@@ -543,7 +551,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
 
     const uint32_t logCount = enumerateViewsLogCount.fetch_add(1);
     const double renderHeightScale = visualMaskOnly ? 1.0 : std::clamp(topTangent + bottomTangent, 0.01, 1.0);
-    const double renderWidthScale = horizontalVisualMaskOnly ? 1.0 : std::clamp(horizontalRenderWidth, MinRenderScale, 1.0);
+    const double renderWidthScale = horizontalVisualMaskOnly ? 1.0 : EffectiveOuterEdgeHorizontalScale();
     for (uint32_t i = 0; i < *viewCountOutput; ++i) {
         const uint32_t beforeWidth = views[i].recommendedImageRectWidth;
         const uint32_t beforeHeight = views[i].recommendedImageRectHeight;
@@ -554,10 +562,11 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
             1,
             static_cast<uint32_t>(std::lround(static_cast<double>(views[i].recommendedImageRectHeight) * renderHeightScale)));
         if (logCount < 10 || logCount % 100 == 0) {
-            Log("xrEnumerateViewConfigurationViews[%u]: recommended width %u -> %u horizontal_render_width=%.3f horizontal_visual_mask_only=%d height %u -> %u total_render_height=%.3f visual_mask_only=%d\n",
+            Log("xrEnumerateViewConfigurationViews[%u]: recommended width %u -> %u horizontal_render_width=%.3f effective_horizontal_width=%.3f horizontal_visual_mask_only=%d height %u -> %u total_render_height=%.3f visual_mask_only=%d\n",
                 i,
                 beforeWidth,
                 views[i].recommendedImageRectWidth,
+                horizontalRenderWidth,
                 renderWidthScale,
                 horizontalVisualMaskOnly ? 1 : 0,
                 beforeHeight,
