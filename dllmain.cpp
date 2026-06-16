@@ -20,6 +20,8 @@ bool sessionLogged = false;
 bool enabled = true;
 bool splitMode = false;
 bool foveatedCenterCompensation = false;
+bool visualMaskOnly = false;
+bool horizontalVisualMaskOnly = false;
 bool outerEdgeVisibilityMaskOnly = true;
 double totalTangent = DefaultTotalTangent;
 double topTangent = DefaultTopTangent;
@@ -314,6 +316,8 @@ void LoadConfig() {
     enabled = ReadBoolSetting(L"enabled", true);
     splitMode = ReadBoolSetting(L"split_mode", false);
     foveatedCenterCompensation = ReadBoolSetting(L"foveated_center_compensation", false);
+    visualMaskOnly = ReadBoolSetting(L"visual_mask_only", false);
+    horizontalVisualMaskOnly = ReadBoolSetting(L"horizontal_visual_mask_only", false);
     outerEdgeVisibilityMaskOnly = ReadBoolSetting(L"outer_edge_visibility_mask_only", true);
     const double legacyTotal = ReadDoubleSetting(L"vertical_tangent", DefaultTotalTangent);
     totalTangent = std::clamp(
@@ -371,7 +375,7 @@ void LoadConfig() {
         }
     }
 
-    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d outer_edge_visibility_mask_only=%d\n",
+    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d horizontal_outer_edges_only=1\n",
         enabled ? 1 : 0,
         currentAppKey.empty() ? L"<global>" : currentAppKey.c_str(),
         splitMode ? "split" : "total",
@@ -382,6 +386,8 @@ void LoadConfig() {
         std::clamp(topTangent * 2.0, 0.0, 1.0),
         std::clamp(bottomTangent * 2.0, 0.0, 1.0),
         foveatedCenterCompensation ? 1 : 0,
+        visualMaskOnly ? 1 : 0,
+        horizontalVisualMaskOnly ? 1 : 0,
         outerEdgeVisibilityMaskOnly ? 1 : 0);
 }
 
@@ -403,14 +409,24 @@ void EnsureInitialized() {
     LoadConfig();
 }
 
-void ApplyXRViewLabFov(XrView& view, bool& compensated, float& pitchOffset) {
+void ApplyXRViewLabFov(uint32_t viewIndex, XrView& view, bool& compensated, float& pitchOffset) {
     const double topScale = std::clamp(topTangent * 2.0, 0.0, 1.0);
     const double bottomScale = std::clamp(bottomTangent * 2.0, 0.0, 1.0);
     const double horizontalScale = std::clamp(horizontalRenderWidth, MinRenderScale, 1.0);
     const double originalLeftTan = (std::max)(0.0, -std::tan(static_cast<double>(view.fov.angleLeft)));
     const double originalRightTan = (std::max)(0.0, std::tan(static_cast<double>(view.fov.angleRight)));
-    const double desiredLeftTan = originalLeftTan * horizontalScale;
-    const double desiredRightTan = originalRightTan * horizontalScale;
+    double desiredLeftTan = originalLeftTan;
+    double desiredRightTan = originalRightTan;
+    if (viewIndex == 0) {
+        // Left eye: keep the inner/right edge stable and scale only the outer/left edge.
+        desiredLeftTan = originalLeftTan * horizontalScale;
+    } else if (viewIndex == 1) {
+        // Right eye: keep the inner/left edge stable and scale only the outer/right edge.
+        desiredRightTan = originalRightTan * horizontalScale;
+    } else {
+        desiredLeftTan = originalLeftTan * horizontalScale;
+        desiredRightTan = originalRightTan * horizontalScale;
+    }
     const double originalTopTan = (std::max)(0.0, std::tan(static_cast<double>(view.fov.angleUp)));
     const double originalBottomTan = (std::max)(0.0, -std::tan(static_cast<double>(view.fov.angleDown)));
     const double desiredTopTan = originalTopTan * topScale;
@@ -461,9 +477,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrLocateViews(
         const XrFovf before = views[i].fov;
         bool compensated = false;
         float pitchOffset = 0.0f;
-        ApplyXRViewLabFov(views[i], compensated, pitchOffset);
+        ApplyXRViewLabFov(i, views[i], compensated, pitchOffset);
         if (logCount < 20 || logCount % 300 == 0) {
-            Log("xrLocateViews[%u]: up %.5f -> %.5f down %.5f -> %.5f left %.5f -> %.5f right %.5f -> %.5f horizontal_render_width=%.3f foveated_center=%d pitch_offset=%.5f\n",
+            Log("xrLocateViews[%u]: up %.5f -> %.5f down %.5f -> %.5f left %.5f -> %.5f right %.5f -> %.5f horizontal_render_width=%.3f horizontal_outer_edges_only=1 foveated_center=%d pitch_offset=%.5f\n",
                 i,
                 before.angleUp,
                 views[i].fov.angleUp,
@@ -526,8 +542,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
     }
 
     const uint32_t logCount = enumerateViewsLogCount.fetch_add(1);
-    const double renderHeightScale = std::clamp(topTangent + bottomTangent, 0.01, 1.0);
-    const double renderWidthScale = std::clamp(horizontalRenderWidth, MinRenderScale, 1.0);
+    const double renderHeightScale = visualMaskOnly ? 1.0 : std::clamp(topTangent + bottomTangent, 0.01, 1.0);
+    const double renderWidthScale = horizontalVisualMaskOnly ? 1.0 : std::clamp(horizontalRenderWidth, MinRenderScale, 1.0);
     for (uint32_t i = 0; i < *viewCountOutput; ++i) {
         const uint32_t beforeWidth = views[i].recommendedImageRectWidth;
         const uint32_t beforeHeight = views[i].recommendedImageRectHeight;
@@ -538,14 +554,16 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
             1,
             static_cast<uint32_t>(std::lround(static_cast<double>(views[i].recommendedImageRectHeight) * renderHeightScale)));
         if (logCount < 10 || logCount % 100 == 0) {
-            Log("xrEnumerateViewConfigurationViews[%u]: recommended width %u -> %u horizontal_render_width=%.3f height %u -> %u total_render_height=%.3f\n",
+            Log("xrEnumerateViewConfigurationViews[%u]: recommended width %u -> %u horizontal_render_width=%.3f horizontal_visual_mask_only=%d height %u -> %u total_render_height=%.3f visual_mask_only=%d\n",
                 i,
                 beforeWidth,
                 views[i].recommendedImageRectWidth,
                 renderWidthScale,
+                horizontalVisualMaskOnly ? 1 : 0,
                 beforeHeight,
                 views[i].recommendedImageRectHeight,
-                renderHeightScale);
+                renderHeightScale,
+                visualMaskOnly ? 1 : 0);
         }
     }
 
