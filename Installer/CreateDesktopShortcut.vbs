@@ -12,7 +12,7 @@ Function PromptDesktopShortcut()
     Exit Function
   End If
 
-  installDir = Session.TargetPath("InstallDir")
+  installDir = Session.TargetPath("INSTALLFOLDER")
   exePath = installDir & "xr-viewlab.exe"
   iconPath = installDir & "xr-viewlab.ico"
 

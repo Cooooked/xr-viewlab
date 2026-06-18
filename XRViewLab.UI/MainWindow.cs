@@ -69,8 +69,13 @@ public partial class MainWindow : Window
 	{
 		get
 		{
+			string localManifest = Path.Combine(ProcessDirectory, "XR_APILAYER_cooooked_xrviewlab.json");
+			if (File.Exists(localManifest))
+			{
+				return localManifest;
+			}
 			string installedManifest = Path.Combine(ProgramFilesInstallDirectory, "XR_APILAYER_cooooked_xrviewlab.json");
-			return File.Exists(installedManifest) ? installedManifest : Path.Combine(ProcessDirectory, "XR_APILAYER_cooooked_xrviewlab.json");
+			return File.Exists(installedManifest) ? installedManifest : localManifest;
 		}
 	}
 

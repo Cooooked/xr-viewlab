@@ -11,6 +11,7 @@ constexpr double DefaultHorizontalRenderWidth = 0.80;
 constexpr double MinVerticalTangent = 0.0;
 constexpr double MaxVerticalTangent = 1.0;
 constexpr double MinRenderScale = 0.01;
+constexpr double MinUevrRecommendedScale = 0.50;
 
 std::filesystem::path layerDirectory;
 std::ofstream logStream;
@@ -23,6 +24,7 @@ bool foveatedCenterCompensation = false;
 bool visualMaskOnly = false;
 bool horizontalVisualMaskOnly = false;
 bool outerEdgeVisibilityMaskOnly = true;
+bool uevrLikeProcess = false;
 double totalTangent = DefaultTotalTangent;
 double topTangent = DefaultTopTangent;
 double bottomTangent = DefaultBottomTangent;
@@ -199,6 +201,32 @@ std::wstring CurrentProcessFileName() {
     return name.empty() ? L"Unknown.exe" : name;
 }
 
+bool EndsWithInsensitive(const std::wstring& value, const wchar_t* suffix) {
+    const size_t suffixLength = std::wcslen(suffix);
+    if (value.size() < suffixLength) {
+        return false;
+    }
+
+    return _wcsicmp(value.c_str() + value.size() - suffixLength, suffix) == 0;
+}
+
+bool ContainsInsensitive(const std::wstring& value, const wchar_t* pattern) {
+    std::wstring loweredValue = value;
+    std::wstring loweredPattern = pattern;
+    std::transform(loweredValue.begin(), loweredValue.end(), loweredValue.begin(), [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
+    std::transform(loweredPattern.begin(), loweredPattern.end(), loweredPattern.begin(), [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
+    return loweredValue.find(loweredPattern) != std::wstring::npos;
+}
+
+bool DetectUevrLikeProcess(const std::wstring& processPath, const std::wstring& processName, const std::wstring& openXrAppName) {
+    return EndsWithInsensitive(processName, L"-Win64-Shipping.exe") ||
+           EndsWithInsensitive(processName, L"-WinGDK-Shipping.exe") ||
+           EndsWithInsensitive(processName, L"-Windows-Shipping.exe") ||
+           ContainsInsensitive(processPath, L"\\Engine\\Binaries\\Win64\\") ||
+           ContainsInsensitive(openXrAppName, L"Unreal") ||
+           ContainsInsensitive(openXrAppName, L"UEVR");
+}
+
 std::wstring SanitizeRegistryKey(std::wstring value) {
     if (value.empty()) {
         return L"Unknown.exe";
@@ -234,6 +262,9 @@ std::wstring AppRegistryPath(const std::wstring& appKey) {
 
 void RememberApplication(const char* openXrAppName) {
     currentAppKey = SanitizeRegistryKey(CurrentProcessFileName());
+    const std::wstring displayName = Utf8ToWide(openXrAppName);
+    const std::wstring modulePath = CurrentProcessPath();
+    uevrLikeProcess = DetectUevrLikeProcess(modulePath, CurrentProcessFileName(), displayName);
 
     HKEY key = nullptr;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, AppRegistryPath(currentAppKey).c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
@@ -241,8 +272,6 @@ void RememberApplication(const char* openXrAppName) {
         return;
     }
 
-    const std::wstring displayName = Utf8ToWide(openXrAppName);
-    const std::wstring modulePath = CurrentProcessPath();
     if (!displayName.empty()) {
         RegSetValueExW(key, L"display_name", 0, REG_SZ, reinterpret_cast<const BYTE*>(displayName.c_str()), static_cast<DWORD>((displayName.size() + 1) * sizeof(wchar_t)));
     }
@@ -255,6 +284,9 @@ void RememberApplication(const char* openXrAppName) {
         currentAppKey.c_str(),
         displayName.empty() ? L"<unknown>" : displayName.c_str(),
         modulePath.empty() ? L"<unknown>" : modulePath.c_str());
+    if (uevrLikeProcess) {
+        Log("app profile: UEVR-like Unreal process detected, enabling conservative runtime guards\n");
+    }
 }
 
 bool ReadProfileDword(const wchar_t* keyName, DWORD& value) {
@@ -375,7 +407,7 @@ void LoadConfig() {
         }
     }
 
-    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d horizontal_outer_edges_only=1\n",
+    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d horizontal_outer_edges_only=1 uevr_like=%d\n",
         enabled ? 1 : 0,
         currentAppKey.empty() ? L"<global>" : currentAppKey.c_str(),
         splitMode ? "split" : "total",
@@ -388,7 +420,8 @@ void LoadConfig() {
         foveatedCenterCompensation ? 1 : 0,
         visualMaskOnly ? 1 : 0,
         horizontalVisualMaskOnly ? 1 : 0,
-        outerEdgeVisibilityMaskOnly ? 1 : 0);
+        outerEdgeVisibilityMaskOnly ? 1 : 0,
+        uevrLikeProcess ? 1 : 0);
 }
 
 void EnsureInitialized() {
@@ -415,6 +448,14 @@ double EffectiveOuterEdgeHorizontalScale() {
     // For the normal near-symmetric stereo frustum, the total per-eye FOV width is
     // therefore half unchanged inner FOV plus half scaled outer FOV.
     return std::clamp((1.0 + horizontalScale) * 0.5, MinRenderScale, 1.0);
+}
+
+double ConservativeRecommendedScale(double scale) {
+    if (!uevrLikeProcess) {
+        return scale;
+    }
+
+    return std::clamp(scale, MinUevrRecommendedScale, 1.0);
 }
 
 void ApplyXRViewLabFov(uint32_t viewIndex, XrView& view, bool& compensated, float& pitchOffset) {
@@ -550,8 +591,10 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
     }
 
     const uint32_t logCount = enumerateViewsLogCount.fetch_add(1);
-    const double renderHeightScale = visualMaskOnly ? 1.0 : std::clamp(topTangent + bottomTangent, 0.01, 1.0);
-    const double renderWidthScale = horizontalVisualMaskOnly ? 1.0 : EffectiveOuterEdgeHorizontalScale();
+    const double requestedHeightScale = std::clamp(topTangent + bottomTangent, 0.01, 1.0);
+    const double requestedWidthScale = EffectiveOuterEdgeHorizontalScale();
+    const double renderHeightScale = visualMaskOnly ? 1.0 : ConservativeRecommendedScale(requestedHeightScale);
+    const double renderWidthScale = horizontalVisualMaskOnly ? 1.0 : ConservativeRecommendedScale(requestedWidthScale);
     for (uint32_t i = 0; i < *viewCountOutput; ++i) {
         const uint32_t beforeWidth = views[i].recommendedImageRectWidth;
         const uint32_t beforeHeight = views[i].recommendedImageRectHeight;
@@ -562,7 +605,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
             1,
             static_cast<uint32_t>(std::lround(static_cast<double>(views[i].recommendedImageRectHeight) * renderHeightScale)));
         if (logCount < 10 || logCount % 100 == 0) {
-            Log("xrEnumerateViewConfigurationViews[%u]: recommended width %u -> %u horizontal_render_width=%.3f effective_horizontal_width=%.3f horizontal_visual_mask_only=%d height %u -> %u total_render_height=%.3f visual_mask_only=%d\n",
+            Log("xrEnumerateViewConfigurationViews[%u]: recommended width %u -> %u horizontal_render_width=%.3f effective_horizontal_width=%.3f horizontal_visual_mask_only=%d height %u -> %u total_render_height=%.3f visual_mask_only=%d uevr_like=%d\n",
                 i,
                 beforeWidth,
                 views[i].recommendedImageRectWidth,
@@ -572,7 +615,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
                 beforeHeight,
                 views[i].recommendedImageRectHeight,
                 renderHeightScale,
-                visualMaskOnly ? 1 : 0);
+                visualMaskOnly ? 1 : 0,
+                uevrLikeProcess ? 1 : 0);
         }
     }
 
@@ -589,14 +633,17 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
 
     if (!enabled ||
         !outerEdgeVisibilityMaskOnly ||
+        uevrLikeProcess ||
         result != XR_SUCCESS ||
         viewConfigurationType != XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO ||
+        viewIndex > 1 ||
         visibilityMaskType != XR_VISIBILITY_MASK_TYPE_HIDDEN_TRIANGLE_MESH_KHR ||
         visibilityMask == nullptr ||
         visibilityMask->vertices == nullptr ||
         visibilityMask->indices == nullptr ||
         visibilityMask->vertexCountOutput == 0 ||
         visibilityMask->indexCountOutput < 3 ||
+        visibilityMask->vertexCapacityInput < visibilityMask->vertexCountOutput ||
         visibilityMask->indexCapacityInput < visibilityMask->indexCountOutput) {
         return result;
     }

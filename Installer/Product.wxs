@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product Id="*" Name="XR ViewLab"
-           Language="1033" Version="3.2.12"
+           Language="1033" Version="3.2.13"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -12,7 +12,7 @@
     <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
     <Property Id="REBOOT" Value="ReallySuppress" />
     <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
-    <Property Id="WIXUI_INSTALLDIR" Value="InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
     <util:CloseApplication Id="CloseXRViewLab"
                            Target="xr-viewlab.exe"
@@ -104,7 +104,7 @@
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
-        <Directory Id="InstallDir" Name="xr-viewlab">
+        <Directory Id="INSTALLFOLDER" Name="xr-viewlab">
           <Component Id="LayerFiles" Guid="A3E0E51C-45C2-45AA-B458-2F37F261C40A" Win64="yes">
             <File Id="LayerDll" Source="..\x64\Release\XR_APILAYER_cooooked_xrviewlab.dll" Name="XR_APILAYER_cooooked_xrviewlab.dll"/>
             <File Id="LayerJson" Source="..\XR_APILAYER_cooooked_xrviewlab.json" Name="XR_APILAYER_cooooked_xrviewlab.json"/>
@@ -152,7 +152,7 @@
                       Description="Configure OpenXR VR render height and width"
                       Target="[#SettingsApp]"
                       Icon="ProductIcon"
-                      WorkingDirectory="InstallDir"/>
+                      WorkingDirectory="INSTALLFOLDER"/>
             <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
             <RegistryValue Root="HKCU" Key="Software\cooooked\xr-viewlab" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
           </Component>

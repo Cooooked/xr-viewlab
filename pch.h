@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cwctype>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
