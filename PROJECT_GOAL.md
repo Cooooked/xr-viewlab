@@ -44,7 +44,13 @@ Known-good ReShade reference payload:
   - Added handoff docs requested by Claude: `AGENTS.md`, `build.ps1`, and `dllmain_features.md`.
   - Moved compiled reference binaries out of source to `F:\ViewLab_REFERENCE`.
   - Bumped version to `4.0.2`.
-  - Built `F:\VR Tools\dist\XR-ViewLab-4.0.2.msi`.
+  - Built `F:\ViewLab\dist\XR-ViewLab-4.0.2.msi`.
+
+### 2026-06-22 Correction
+
+- Stop using `F:\VR Tools\dist` for current builds.
+- Current installer output belongs under `F:\ViewLab\dist`.
+- Updated `build.ps1`, `BUILD.md`, and `AGENTS.md` to point to `F:\ViewLab\dist`.
 
 ## Rules For Future Agents
 

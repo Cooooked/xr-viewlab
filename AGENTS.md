@@ -65,7 +65,7 @@ Split the project into `F:\ViewLab`, removed the unfinished ReShade sync backend
 ## Known Gotchas
 
 - The exact build command that produced the extracted 4.0.0 binary is not recoverable. Use `build.ps1` from now on.
-- Current verified MSI: `F:\VR Tools\dist\XR-ViewLab-4.0.2.msi`.
+- Current verified MSI: `F:\ViewLab\dist\XR-ViewLab-4.0.2.msi`.
 - `F:\ViewLab_REFERENCE` contains compiled reference binaries; source repo should not.
 - The WPF app and DLL both use `xr-viewlab.ini`, but only the WPF app knows about the ReShade MENU keys right now.
 - The DLL reads render/app keys only; see `dllmain_features.md`.
@@ -82,4 +82,4 @@ F:\ViewLab\build.ps1
 
 The MSI is copied to:
 
-`F:\VR Tools\dist`
+`F:\ViewLab\dist`

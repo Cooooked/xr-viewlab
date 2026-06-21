@@ -24,4 +24,4 @@ dotnet publish "F:\ViewLab\xr-viewlab.csproj" -c Release -r win-x64 --self-conta
 
 Copy final MSI builds to:
 
-`F:\VR Tools\dist`
+`F:\ViewLab\dist`

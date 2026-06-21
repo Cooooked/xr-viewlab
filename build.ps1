@@ -1,7 +1,7 @@
 param(
     [string]$Configuration = "Release",
     [string]$Platform = "x64",
-    [string]$DistDir = "F:\VR Tools\dist"
+    [string]$DistDir = "F:\ViewLab\dist"
 )
 
 $ErrorActionPreference = "Stop"
