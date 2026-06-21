@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product Id="*" Name="XR ViewLab"
-           Language="1033" Version="4.0.2"
+           Language="1033" Version="4.0.3"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -87,6 +87,7 @@
     <Feature Id="Main" Title="XR ViewLab" Level="1">
       <ComponentRef Id="LayerFiles"/>
       <ComponentRef Id="AppFiles"/>
+      <ComponentRef Id="ReShadePayloadFiles"/>
       <ComponentRef Id="RegEnable"/>
       <ComponentRef Id="StartMenuShortcut"/>
     </Feature>
@@ -107,8 +108,6 @@
             <RemoveFile Id="RemoveLogFile" Name="xr-viewlab.log" On="uninstall"/>
             <RemoveFile Id="RemoveOldLayerDll" Name="XR_APILAYER_cooooked_verticaltangent.dll" On="both"/>
             <RemoveFile Id="RemoveOldLayerJson" Name="XR_APILAYER_cooooked_verticaltangent.json" On="both"/>
-            <RemoveFile Id="RemoveOldConfigFile" Name="openxr-verticaltangent.ini" On="both"/>
-            <RemoveFile Id="RemoveOldLogFile" Name="openxr-verticaltangent.log" On="both"/>
             <RemoveFolder Id="RemoveInstallDirFromLayerFiles" On="uninstall"/>
           </Component>
           <Component Id="AppFiles" Guid="B5EC7B3F-8094-43B8-A6B4-9E4D48B8281A" Win64="yes">
@@ -118,8 +117,18 @@
             <RemoveFile Id="RemoveReShadeMenuMirrorApp" Name="reshade-vr-menu.exe" On="both"/>
             <RemoveFile Id="RemoveReShadePackageZip" Name="reshade-package.zip" On="both"/>
             <RemoveFile Id="RemoveAppIconFile" Name="xr-viewlab.ico" On="uninstall"/>
-            <RemoveFile Id="RemoveOldSettingsApp" Name="openxr-verticaltangent.exe" On="both"/>
           </Component>
+          <Directory Id="ReShadePayloadFolder" Name="ReShadePayload">
+            <Component Id="ReShadePayloadFiles" Guid="D73B2F3B-0F6A-4EB5-A9B6-78F0E51F37E5" Win64="yes">
+              <File Id="ReShadePayloadDxgi" Source="..\ReShadePayload\dxgi.dll" Name="dxgi.dll"/>
+              <File Id="ReShadePayloadIni" Source="..\ReShadePayload\ReShade.ini" Name="ReShade.ini"/>
+              <File Id="ReShadePayloadAsciiIni" Source="..\ReShadePayload\ASCII.ini" Name="ASCII.ini"/>
+              <RemoveFile Id="RemoveReShadePayloadDxgi" Name="dxgi.dll" On="uninstall"/>
+              <RemoveFile Id="RemoveReShadePayloadIni" Name="ReShade.ini" On="uninstall"/>
+              <RemoveFile Id="RemoveReShadePayloadAsciiIni" Name="ASCII.ini" On="uninstall"/>
+              <RemoveFolder Id="RemoveReShadePayloadFolder" On="uninstall"/>
+            </Component>
+          </Directory>
           <Component Id="RegEnable" Guid="7CFF3A28-702B-49EB-BD2C-CFD2B2A7FA77" Win64="yes">
             <RegistryValue Root="HKLM"
                            Key="Software\Khronos\OpenXR\1\ApiLayers\Implicit"
@@ -128,15 +137,6 @@
                            Value="0"
                            Action="write"
                            KeyPath="yes"/>
-            <RemoveRegistryValue Root="HKLM"
-                                 Key="Software\Khronos\OpenXR\1\ApiLayers\Implicit"
-                                 Name="C:\Program Files\xr-viewlab\XR_APILAYER_cooooked_xrviewlab.json"/>
-            <RemoveRegistryValue Root="HKLM"
-                                 Key="Software\Khronos\OpenXR\1\ApiLayers\Implicit"
-                                 Name="C:\Program Files\openxr-verticaltangent\XR_APILAYER_cooooked_verticaltangent.json"/>
-            <RemoveRegistryValue Root="HKLM"
-                                 Key="Software\Khronos\OpenXR\1\ApiLayers\Implicit"
-                                 Name="C:\Program Files\openxr-verticaltangent-overlaytest\XR_APILAYER_cooooked_verticaltangent_overlaytest.json"/>
           </Component>
         </Directory>
       </Directory>

@@ -10,4 +10,4 @@ The goal file is:
 
 Read that first, update it as you work, then build from `F:\ViewLab`.
 
-Old folders under `F:\VR Tools\_extracted_*`, `_publish_*`, `_review_*`, and recovered source folders are reference/archive only. They are not the active source.
+Do not reference or depend on files outside `F:\ViewLab`.

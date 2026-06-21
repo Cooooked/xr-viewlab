@@ -45,6 +45,11 @@
                 <Trigger Property="IsPressed" Value="True">
                   <Setter TargetName="Root" Property="Border.Background" Value="#C90012" />
                 </Trigger>
+                <Trigger Property="UIElement.IsEnabled" Value="False">
+                  <Setter TargetName="Root" Property="Border.Background" Value="#303236" />
+                  <Setter TargetName="Root" Property="Border.BorderBrush" Value="#45474B" />
+                  <Setter Property="Foreground" Value="#8A8C90" />
+                </Trigger>
               </ControlTemplate.Triggers>
             </ControlTemplate>
           </Setter.Value>
@@ -427,7 +432,27 @@
                             <DataTemplate>
                               <DockPanel LastChildFill="True" Margin="6,0,2,0">
                                 <Border DockPanel.Dock="Right" Style="{StaticResource ReShadePill}" Visibility="{Binding ReShadeTagVisibility}">
-                                  <TextBlock Text="ReShade Available!" Foreground="#5FBF5F" FontSize="11" FontWeight="SemiBold" />
+                                  <TextBlock Text="ReShade Available!" FontSize="11" FontWeight="SemiBold">
+                                    <TextBlock.Foreground>
+                                      <SolidColorBrush Color="#FF4C4C" />
+                                    </TextBlock.Foreground>
+                                    <FrameworkElement.Triggers>
+                                      <EventTrigger RoutedEvent="Loaded">
+                                        <BeginStoryboard>
+                                          <Storyboard RepeatBehavior="Forever">
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextBlock.Foreground).(SolidColorBrush.Color)">
+                                              <LinearColorKeyFrame Value="#FF4C4C" KeyTime="0:0:0" />
+                                              <LinearColorKeyFrame Value="#F4C542" KeyTime="0:0:1.5" />
+                                              <LinearColorKeyFrame Value="#4DFF88" KeyTime="0:0:3" />
+                                              <LinearColorKeyFrame Value="#4DA3FF" KeyTime="0:0:4.5" />
+                                              <LinearColorKeyFrame Value="#D34DFF" KeyTime="0:0:6" />
+                                              <LinearColorKeyFrame Value="#FF4C4C" KeyTime="0:0:7.5" />
+                                            </ColorAnimationUsingKeyFrames>
+                                          </Storyboard>
+                                        </BeginStoryboard>
+                                      </EventTrigger>
+                                    </FrameworkElement.Triggers>
+                                  </TextBlock>
                                 </Border>
                                 <TextBlock Text="{Binding Display}" Style="{StaticResource GridTextCell}" Margin="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                               </DockPanel>

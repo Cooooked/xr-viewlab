@@ -8,11 +8,7 @@ Active source directory:
 
 `F:\ViewLab`
 
-Reference binaries are outside the repo:
-
-`F:\ViewLab_REFERENCE`
-
-Do not continue from `_publish_*`, `_extracted_*`, `_review_*`, or recovered folders under `F:\VR Tools`.
+Do not reference or depend on files outside `F:\ViewLab`.
 
 ## Current State
 
@@ -20,11 +16,12 @@ Do not continue from `_publish_*`, `_extracted_*`, `_review_*`, or recovered fol
 - Per-app enable/disable: done, DLL reads HKCU app registry keys.
 - Per-app custom render values: done, WPF writes HKCU app registry keys.
 - Merged Applications table: done.
-- ReShade Available tag: done in WPF based on known app names/paths.
+- ReShade Available tag: done in WPF for Assetto Corsa only, with RGB/glowing text.
 - Double-click app profile editor: done; double-click edits custom values.
-- Install ReShade button: done; explicit button, disabled unless selected app has ReShade tag.
+- Install ReShade button: done; explicit button, grey/disabled unless selected app has ReShade tag, red/enabled when selected.
 - ReShade MENU UI: done; WPF writes INI toggles listed below.
 - ReShade runtime-sync backend experiments: removed from clean source.
+- `ReShadePayload`: bundled install payload copied by the app to Assetto Corsa game folders. This is the one intentional binary-payload exception in the repo.
 - `reshade-vr-menu.exe`: removed from clean source and explicitly removed by installer if found from older builds.
 
 ## File Map
@@ -44,6 +41,7 @@ Do not continue from `_publish_*`, `_extracted_*`, `_review_*`, or recovered fol
 - `Installer/CreateDesktopShortcut.vbs` - installer prompt helpers.
 - `Installer/PreserveConfig.vbs` - installer config/registry cleanup helpers.
 - `app.ico` - app/installer icon.
+- `ReShadePayload/` - bundled ReShade files installed by the WPF app for Assetto Corsa.
 - `PROJECT_GOAL.md` - running project journal; update before/after meaningful work.
 - `dllmain_features.md` - DLL INI/registry key reference.
 - `build.ps1` - single build entry point.
@@ -66,7 +64,8 @@ Split the project into `F:\ViewLab`, removed the unfinished ReShade sync backend
 
 - The exact build command that produced the extracted 4.0.0 binary is not recoverable. Use `build.ps1` from now on.
 - Current verified MSI: `F:\ViewLab\dist\XR-ViewLab-4.0.2.msi`.
-- `F:\ViewLab_REFERENCE` contains compiled reference binaries; source repo should not.
+- Source must not depend on files outside `F:\ViewLab`.
+- The repo normally ignores binaries, except `ReShadePayload`, which must stay in-tree so the installer is self-contained.
 - The WPF app and DLL both use `xr-viewlab.ini`, but only the WPF app knows about the ReShade MENU keys right now.
 - The DLL reads render/app keys only; see `dllmain_features.md`.
 - Do not edit `ReShadeApps.ini` or stock ReShade global state from ViewLab unless the user explicitly reopens that feature.
@@ -77,7 +76,7 @@ Run:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
-F:\ViewLab\build.ps1
+.\build.ps1
 ```
 
 The MSI is copied to:

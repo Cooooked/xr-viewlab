@@ -22,6 +22,8 @@ Release/
 *.msi
 *.exe
 *.dll
+!ReShadePayload/
+!ReShadePayload/**
 *.lib
 *.exp
 *.iobj

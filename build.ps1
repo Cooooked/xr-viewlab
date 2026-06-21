@@ -1,18 +1,34 @@
 param(
     [string]$Configuration = "Release",
     [string]$Platform = "x64",
-    [string]$DistDir = "F:\ViewLab\dist"
+    [string]$DistDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ([string]::IsNullOrWhiteSpace($DistDir)) {
+    $DistDir = Join-Path $Root "dist"
+}
 $DotnetProject = Join-Path $Root "xr-viewlab.csproj"
 $LayerProject = Join-Path $Root "XRViewLabLayer.vcxproj"
 $InstallerProject = Join-Path $Root "Installer\Installer.wixproj"
 $MsiSource = Join-Path $Root "Installer\bin\$Configuration\xr-viewlab-setup.msi"
 
 function Find-MSBuild {
+    $vswhereCandidates = @(
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe",
+        "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"
+    )
+    foreach ($vswhere in $vswhereCandidates) {
+        if (Test-Path $vswhere) {
+            $path = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+            if ($path -and (Test-Path $path)) {
+                return $path
+            }
+        }
+    }
+
     $candidates = @(
         "D:\VSBuildTools\MSBuild\Current\Bin\MSBuild.exe",
         "${env:ProgramFiles}\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe",

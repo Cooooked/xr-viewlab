@@ -33,7 +33,6 @@ Function CloseRunningXRViewLab()
 
   Set shell = CreateObject("WScript.Shell")
   shell.Run "taskkill /IM xr-viewlab.exe /T /F", 0, True
-  shell.Run "taskkill /IM openxr-verticaltangent.exe /T /F", 0, True
 
   CloseRunningXRViewLab = 0
 End Function

@@ -38,15 +38,13 @@ public partial class MainWindow : Window
 
 	private readonly ObservableCollection<AppProfile> _apps = new ObservableCollection<AppProfile>();
 
-	private static readonly string ReShadeSourceDir = @"F:\SteamLibrary\steamapps\common\assettocorsa\AssettoReshade";
-	private static readonly string[] ReShadeFiles = { "dxgi.dll", "ReShade.ini", "ASCII.ini" };
+	private static string ReShadeSourceDir => Path.Combine(ProcessDirectory, "ReShadePayload");
 
 	private static bool IsReShadeAvailable(string keyName, string modulePath)
 	{
 		string name = Path.GetFileNameWithoutExtension(keyName).ToLowerInvariant();
 		string module = modulePath.ToLowerInvariant();
-		return name == "acs" || module.Contains("assettocorsa") ||
-		       name.StartsWith("iracingsim") || module.Contains("iracing");
+		return name == "acs" || module.Contains("assettocorsa");
 	}
 
 	private static bool IsAcsApp(string keyName, string modulePath)
@@ -1016,6 +1014,7 @@ public partial class MainWindow : Window
 		}
 		bool available = AppsGrid?.SelectedItem is AppProfile app && app.ReShadeAvailable;
 		InstallReShadeButton.IsEnabled = available;
+		InstallReShadeButton.Opacity = available ? 1.0 : 0.65;
 		InstallReShadeButton.ToolTip = available ? "Install the ViewLab ReShade files to the selected game folder." : "Select an app with the ReShade Available tag.";
 	}
 
@@ -1078,25 +1077,22 @@ public partial class MainWindow : Window
 			MessageBox.Show(this, "ReShade source files not found at:\n" + ReShadeSourceDir, "ReShade Install", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 			return;
 		}
-		var missing = ReShadeFiles.Where(f => !File.Exists(Path.Combine(ReShadeSourceDir, f))).ToList();
-		if (missing.Any())
+		string[] payloadFiles = Directory.GetFiles(ReShadeSourceDir, "*", SearchOption.AllDirectories);
+		if (payloadFiles.Length == 0)
 		{
-			MessageBox.Show(this, "Missing ReShade files: " + string.Join(", ", missing), "ReShade Install", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+			MessageBox.Show(this, "ReShade payload is empty:\n" + ReShadeSourceDir, "ReShade Install", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 			return;
 		}
 		if (MessageBox.Show(this,
-			$"Install ReShade to:\n{appProfile.GameDirectory}\n\nFiles: {string.Join(", ", ReShadeFiles)}\n\nProceed?",
-			"Install ReShade for Assetto Corsa",
+			$"Install bundled ViewLab ReShade files to:\n{appProfile.GameDirectory}\n\nExisting matching files will be backed up once with .viewlab.bak.\n\nProceed?",
+			"Install ReShade",
 			MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
 		{
 			return;
 		}
 		try
 		{
-			foreach (string file in ReShadeFiles)
-			{
-				File.Copy(Path.Combine(ReShadeSourceDir, file), Path.Combine(appProfile.GameDirectory, file), overwrite: true);
-			}
+			CopyDirectoryWithBackups(ReShadeSourceDir, appProfile.GameDirectory);
 			StatusText.Text = "ReShade installed to " + appProfile.DisplayName + ". Launch the game.";
 			MessageBox.Show(this, "ReShade installed successfully.", "ReShade Install", MessageBoxButton.OK, MessageBoxImage.Information);
 		}
@@ -1104,6 +1100,29 @@ public partial class MainWindow : Window
 		{
 			StatusText.Text = "ReShade install failed: " + ex.Message;
 			MessageBox.Show(this, "Install failed:\n" + ex.Message, "ReShade Install", MessageBoxButton.OK, MessageBoxImage.Error);
+		}
+	}
+
+	private static void CopyDirectoryWithBackups(string sourceDirectory, string destinationDirectory)
+	{
+		foreach (string sourceFile in Directory.GetFiles(sourceDirectory, "*", SearchOption.AllDirectories))
+		{
+			string relativePath = Path.GetRelativePath(sourceDirectory, sourceFile);
+			string destinationFile = Path.Combine(destinationDirectory, relativePath);
+			string? destinationFolder = Path.GetDirectoryName(destinationFile);
+			if (!string.IsNullOrWhiteSpace(destinationFolder))
+			{
+				Directory.CreateDirectory(destinationFolder);
+			}
+			if (File.Exists(destinationFile))
+			{
+				string backup = destinationFile + ".viewlab.bak";
+				if (!File.Exists(backup))
+				{
+					File.Copy(destinationFile, backup, overwrite: false);
+				}
+			}
+			File.Copy(sourceFile, destinationFile, overwrite: true);
 		}
 	}
 
