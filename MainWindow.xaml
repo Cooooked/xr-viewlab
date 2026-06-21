@@ -1,0 +1,497 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Window x:Class="XRViewLab.UI.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title="XR ViewLab" Width="330" Height="390" MinWidth="190" MinHeight="280" WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="True" Background="#00FFFFFF" Foreground="#E8E8E8" FontFamily="Segoe UI" FontSize="14" xmlns:ui="clr-namespace:XRViewLab.UI;assembly=xr-viewlab">
+  <shell:WindowChrome.WindowChrome>
+    <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="7" GlassFrameThickness="0" CornerRadius="10" />
+  </shell:WindowChrome.WindowChrome>
+  <FrameworkElement.Resources>
+    <ResourceDictionary>
+      <SolidColorBrush x:Key="ShellBrush" Color="#171819" />
+      <SolidColorBrush x:Key="PanelBrush" Color="#101112" />
+      <SolidColorBrush x:Key="PanelRaisedBrush" Color="#161719" />
+      <SolidColorBrush x:Key="InputBrush" Color="#080909" />
+      <SolidColorBrush x:Key="BorderBrush" Color="#2B2D31" />
+      <SolidColorBrush x:Key="MutedBrush" Color="#9A9A9A" />
+      <SolidColorBrush x:Key="RedBrush" Color="#C90012" />
+      <SolidColorBrush x:Key="BlueButtonBrush" Color="#1A2637" />
+      <Style x:Key="{x:Type TextBlock}" TargetType="{x:Type TextBlock}">
+        <Setter Property="Foreground" Value="#E8E8E8" />
+      </Style>
+      <Style x:Key="{x:Type TextBox}" TargetType="{x:Type TextBox}">
+        <Setter Property="Background" Value="{StaticResource InputBrush}" />
+        <Setter Property="Foreground" Value="#E8E8E8" />
+        <Setter Property="BorderBrush" Value="#3A3D42" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="TextBoxBase.CaretBrush" Value="#E8E8E8" />
+        <Setter Property="MinWidth" Value="60" />
+      </Style>
+      <Style x:Key="{x:Type Button}" TargetType="{x:Type Button}">
+        <Setter Property="Background" Value="{StaticResource BlueButtonBrush}" />
+        <Setter Property="Foreground" Value="#E8E8E8" />
+        <Setter Property="BorderBrush" Value="#29364A" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="16,7" />
+        <Setter Property="FrameworkElement.Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type Button}">
+              <Border Name="Root" Background="{TemplateBinding Control.Background}" BorderBrush="{TemplateBinding Control.BorderBrush}" BorderThickness="{TemplateBinding Control.BorderThickness}" CornerRadius="3">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="UIElement.IsMouseOver" Value="True">
+                  <Setter TargetName="Root" Property="Border.Background" Value="#253A55" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                  <Setter TargetName="Root" Property="Border.Background" Value="#C90012" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="RedButton" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="{StaticResource RedBrush}" />
+        <Setter Property="BorderBrush" Value="#EC3038" />
+        <Setter Property="MinWidth" Value="112" />
+      </Style>
+      <Style x:Key="TitleButton" TargetType="{x:Type Button}">
+        <Setter Property="Background" Value="#00FFFFFF" />
+        <Setter Property="Foreground" Value="#B8B8B8" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FrameworkElement.Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type Button}">
+              <Border Name="Root" Background="{TemplateBinding Control.Background}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="UIElement.IsMouseOver" Value="True">
+                  <Setter TargetName="Root" Property="Border.Background" Value="#24262A" />
+                  <Setter Property="Foreground" Value="#E8E8E8" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                  <Setter TargetName="Root" Property="Border.Background" Value="#C90012" />
+                  <Setter Property="Foreground" Value="#E8E8E8" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="FooterLink" TargetType="{x:Type Button}">
+        <Setter Property="Background" Value="#00FFFFFF" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="6,0" />
+        <Setter Property="Foreground" Value="#8F8F8F" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="FrameworkElement.Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type Button}">
+              <Border Padding="{TemplateBinding Control.Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="UIElement.IsMouseOver" Value="True">
+                  <Setter Property="Foreground" Value="#F4C542" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                  <Setter Property="Foreground" Value="#FFE17A" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="{x:Type CheckBox}" TargetType="{x:Type CheckBox}">
+        <Setter Property="Foreground" Value="#D8D8D8" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+      </Style>
+      <Style x:Key="TableCheckBox" TargetType="{x:Type CheckBox}">
+        <Setter Property="Width" Value="14" />
+        <Setter Property="Height" Value="14" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type CheckBox}">
+              <Grid Width="14" Height="14" Background="#00FFFFFF">
+                <Border Width="12" Height="12" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#F1F1F1" BorderBrush="#F1F1F1" BorderThickness="1" />
+                <Path Name="CheckMark" Data="M3,6 L5.4,8.5 L10,3.5" Stroke="#111111" StrokeThickness="2" StrokeStartLineCap="Square" StrokeEndLineCap="Square" Visibility="Collapsed" />
+              </Grid>
+              <ControlTemplate.Triggers>
+                <Trigger Property="ToggleButton.IsChecked" Value="True">
+                  <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="SliderTrackButton" TargetType="{x:Type RepeatButton}">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type RepeatButton}">
+              <Border Background="{TemplateBinding Control.Background}" Height="4" CornerRadius="2" />
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="{x:Type DataGrid}" TargetType="{x:Type DataGrid}">
+        <Setter Property="Background" Value="#090A0B" />
+        <Setter Property="Foreground" Value="#E8E8E8" />
+        <Setter Property="BorderBrush" Value="#2B2D31" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="DataGrid.AutoGenerateColumns" Value="False" />
+        <Setter Property="DataGrid.CanUserAddRows" Value="False" />
+        <Setter Property="DataGrid.CanUserDeleteRows" Value="False" />
+        <Setter Property="DataGrid.CanUserResizeColumns" Value="True" />
+        <Setter Property="DataGrid.GridLinesVisibility" Value="None" />
+        <Setter Property="DataGrid.HeadersVisibility" Value="Column" />
+        <Setter Property="DataGrid.HorizontalGridLinesBrush" Value="#00FFFFFF" />
+        <Setter Property="DataGrid.VerticalGridLinesBrush" Value="#00FFFFFF" />
+        <Setter Property="DataGrid.RowHeaderWidth" Value="0" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="DataGrid.SelectionMode" Value="Single" />
+        <Setter Property="DataGrid.SelectionUnit" Value="FullRow" />
+      </Style>
+      <Style x:Key="{x:Type DataGridColumnHeader}" TargetType="{x:Type DataGridColumnHeader}">
+        <Setter Property="Background" Value="#161719" />
+        <Setter Property="Foreground" Value="#D8D8D8" />
+        <Setter Property="BorderBrush" Value="#2B2D31" />
+        <Setter Property="BorderThickness" Value="0,0,1,1" />
+        <Setter Property="Padding" Value="6,3" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+      </Style>
+      <Style x:Key="{x:Type DataGridRow}" TargetType="{x:Type DataGridRow}">
+        <Setter Property="Background" Value="#00FFFFFF" />
+        <Setter Property="Foreground" Value="#E8E8E8" />
+        <Setter Property="Height" Value="28" />
+        <Style.Triggers>
+          <Trigger Property="UIElement.IsMouseOver" Value="True">
+            <Setter Property="Background" Value="#202226" />
+          </Trigger>
+          <Trigger Property="DataGridRow.IsSelected" Value="True">
+            <Setter Property="Background" Value="#35383D" />
+            <Setter Property="Foreground" Value="#E8E8E8" />
+          </Trigger>
+        </Style.Triggers>
+      </Style>
+      <Style x:Key="{x:Type DataGridCell}" TargetType="{x:Type DataGridCell}">
+        <Setter Property="Background" Value="#00FFFFFF" />
+        <Setter Property="BorderBrush" Value="#00FFFFFF" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Foreground" Value="#E8E8E8" />
+        <Setter Property="FrameworkElement.FocusVisualStyle" Value="{x:Null}" />
+      </Style>
+      <Style x:Key="GridTextCell" TargetType="{x:Type TextBlock}">
+        <Setter Property="Foreground" Value="#E8E8E8" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="6,0,0,0" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      </Style>
+      <Style x:Key="ReShadePill" TargetType="{x:Type Border}">
+        <Setter Property="Background" Value="#1A3A1A" />
+        <Setter Property="BorderBrush" Value="#2A6A2A" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="Padding" Value="5,1" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="6,0,4,0" />
+      </Style>
+      <Style x:Key="GridValueCell" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource GridTextCell}">
+        <Setter Property="Margin" Value="4,0,0,0" />
+      </Style>
+      <Style x:Key="{x:Type Slider}" TargetType="{x:Type Slider}">
+        <Setter Property="RangeBase.Minimum" Value="0" />
+        <Setter Property="RangeBase.Maximum" Value="1" />
+        <Setter Property="RangeBase.LargeChange" Value="0.05" />
+        <Setter Property="RangeBase.SmallChange" Value="0.01" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type Slider}">
+              <Grid Height="18">
+                <Track Name="PART_Track">
+                  <Track.DecreaseRepeatButton>
+                    <RepeatButton Name="DecreaseTrackButton" Background="#C90012" Command="{x:Static Slider.DecreaseLarge}" Style="{StaticResource SliderTrackButton}" />
+                  </Track.DecreaseRepeatButton>
+                  <Track.IncreaseRepeatButton>
+                    <RepeatButton Name="IncreaseTrackButton" Background="#2B2D31" Command="{x:Static Slider.IncreaseLarge}" Style="{StaticResource SliderTrackButton}" />
+                  </Track.IncreaseRepeatButton>
+                  <Track.Thumb>
+                    <Thumb Width="12" Height="12">
+                      <Control.Template>
+                        <ControlTemplate TargetType="{x:Type Thumb}">
+                          <Border Name="ThumbBorder" Background="#E02A35" BorderBrush="#FF5960" BorderThickness="1" CornerRadius="7" />
+                          <ControlTemplate.Triggers>
+                            <Trigger Property="UIElement.IsEnabled" Value="False">
+                              <Setter TargetName="ThumbBorder" Property="Background" Value="#6A6C70" />
+                              <Setter TargetName="ThumbBorder" Property="BorderBrush" Value="#8A8C90" />
+                            </Trigger>
+                          </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                      </Control.Template>
+                    </Thumb>
+                  </Track.Thumb>
+                </Track>
+              </Grid>
+              <ControlTemplate.Triggers>
+                <Trigger Property="UIElement.IsEnabled" Value="False">
+                  <Setter TargetName="DecreaseTrackButton" Property="Control.Background" Value="#45474B" />
+                  <Setter TargetName="IncreaseTrackButton" Property="Control.Background" Value="#25272A" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="{x:Type Thumb}" TargetType="{x:Type Thumb}">
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type Thumb}">
+              <Border Width="6" Margin="0,3" HorizontalAlignment="Center" Background="#80A7A7A7" CornerRadius="4" />
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="DarkScrollBar" TargetType="{x:Type ScrollBar}">
+        <Setter Property="Background" Value="#00FFFFFF" />
+        <Setter Property="Width" Value="6" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type ScrollBar}">
+              <Grid Background="#00FFFFFF">
+                <Track Name="PART_Track" IsDirectionReversed="True" Margin="0,10">
+                  <Track.Thumb>
+                    <Thumb />
+                  </Track.Thumb>
+                </Track>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="{x:Type ScrollBar}" TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource DarkScrollBar}" />
+      <Style x:Key="DarkScrollViewer" TargetType="{x:Type ScrollViewer}">
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type ScrollViewer}">
+              <Grid>
+                <ScrollContentPresenter Name="PART_ScrollContentPresenter" Content="{TemplateBinding ContentControl.Content}" ContentTemplate="{TemplateBinding ContentControl.ContentTemplate}" CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}" />
+                <ScrollBar Name="PART_VerticalScrollBar" HorizontalAlignment="Right" Orientation="Vertical" Visibility="{TemplateBinding ScrollViewer.ComputedVerticalScrollBarVisibility}" Maximum="{TemplateBinding ScrollViewer.ScrollableHeight}" ViewportSize="{TemplateBinding ScrollViewer.ViewportHeight}" Value="{TemplateBinding ScrollViewer.VerticalOffset}" Style="{StaticResource DarkScrollBar}" />
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+    </ResourceDictionary>
+  </FrameworkElement.Resources>
+  <Border Background="{StaticResource ShellBrush}" BorderBrush="#303236" BorderThickness="1" CornerRadius="10">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="42" />
+        <RowDefinition Height="*" />
+        <RowDefinition Height="30" />
+      </Grid.RowDefinitions>
+      <Border Grid.Row="0" Background="#101112" CornerRadius="10,10,0,0" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+        <Grid>
+          <TextBlock Text="XR VIEWLAB" Margin="18,0,0,0" VerticalAlignment="Center" Foreground="#9C9EA4" FontWeight="SemiBold" FontSize="16" />
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+            <Button Content="-" Width="34" Style="{StaticResource TitleButton}" Click="Minimize_Click" />
+            <Button Content="X" Width="38" Style="{StaticResource TitleButton}" Click="Close_Click" />
+          </StackPanel>
+        </Grid>
+      </Border>
+      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Style="{StaticResource DarkScrollViewer}">
+        <StackPanel Margin="12,10,12,10">
+          <Grid Name="ContentGrid">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Name="MainColumn" Width="*" />
+              <ColumnDefinition Name="WideGapColumn" Width="0" />
+              <ColumnDefinition Name="SideColumn" Width="0" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="10" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="10" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="10" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="10" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Border Name="EnabledCard" Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,0">
+              <CheckBox Name="EnabledCheck" Content="Enable XR ViewLab" Checked="EnabledCheck_Changed" Unchecked="EnabledCheck_Changed" />
+            </Border>
+            <TextBlock Name="RenderHeader" Grid.Row="2" Text="RENDER" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
+            <Border Name="RenderCard" Grid.Row="3" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Name="RenderLabelColumn" Width="76" />
+                  <ColumnDefinition Name="RenderValueColumn" Width="100" />
+                  <ColumnDefinition Name="RenderHintGapColumn" Width="10" />
+                  <ColumnDefinition Name="RenderHintColumn" Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="2" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="6" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="6" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="2" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="6" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="2" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="6" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="2" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="6" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="5" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="8" />
+                  <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Vertical" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <TextBox Name="TotalBox" Grid.Row="0" Grid.Column="1" TextChanged="RenderValue_Changed" />
+                <TextBlock Name="TotalHint" Grid.Row="0" Grid.Column="3" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+                <Slider Name="TotalSlider" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Minimum="0.01" Maximum="1" ValueChanged="RenderSlider_Changed" />
+                <TextBlock Grid.Row="4" Text="Horizontal" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <TextBox Name="HorizontalBox" Grid.Row="4" Grid.Column="1" TextChanged="RenderValue_Changed" />
+                <TextBlock Name="HorizontalHint" Grid.Row="4" Grid.Column="3" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+                <Slider Name="HorizontalSlider" Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="3" Minimum="0.01" Maximum="1" ValueChanged="RenderSlider_Changed" />
+                <CheckBox Name="SplitCheck" Grid.Row="8" Grid.ColumnSpan="3" Content="Split top and bottom" ToolTip="Use separate top and bottom render height values to move the rendered slice up or down." Checked="SplitCheck_Changed" Unchecked="SplitCheck_Changed" />
+                <TextBlock Grid.Row="10" Text="Top" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <TextBox Name="TopBox" Grid.Row="10" Grid.Column="1" TextChanged="RenderValue_Changed" />
+                <TextBlock Name="TopHint" Grid.Row="10" Grid.Column="3" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+                <Slider Name="TopSlider" Grid.Row="12" Grid.Column="1" Grid.ColumnSpan="3" Minimum="0" Maximum="1" ValueChanged="RenderSlider_Changed" />
+                <TextBlock Grid.Row="14" Text="Bottom" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <TextBox Name="BottomBox" Grid.Row="14" Grid.Column="1" TextChanged="RenderValue_Changed" />
+                <TextBlock Name="BottomHint" Grid.Row="14" Grid.Column="3" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+                <Slider Name="BottomSlider" Grid.Row="16" Grid.Column="1" Grid.ColumnSpan="3" Minimum="0" Maximum="1" ValueChanged="RenderSlider_Changed" />
+                <TextBlock Name="CombinedHint" Grid.Row="18" Grid.ColumnSpan="4" Foreground="{StaticResource MutedBrush}" />
+                <Button Grid.Row="20" Grid.ColumnSpan="3" Content="Save" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Click="Save_Click" />
+              </Grid>
+            </Border>
+            <TextBlock Name="ReShadeMenuHeader" Grid.Row="5" Text="ReShade MENU" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
+            <Border Name="ReShadeMenuCard" Grid.Row="6" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,0">
+              <StackPanel>
+                <CheckBox Name="ReShadeHmdMenuCheck" Content="In-HMD ReShade Menu" Checked="ReShadeMenuSetting_Changed" Unchecked="ReShadeMenuSetting_Changed" />
+                <CheckBox Name="ReShadeDesktopDuplicateCheck" Content="Desktop Duplicate" Checked="ReShadeMenuSetting_Changed" Unchecked="ReShadeMenuSetting_Changed" />
+                <CheckBox Name="ReShade3DMenuCheck" Content="3D ReShade Menu" Checked="ReShadeMenuSetting_Changed" Unchecked="ReShadeMenuSetting_Changed" />
+              </StackPanel>
+            </Border>
+            <StackPanel Name="SidePanel" Grid.Row="8">
+              <TextBlock Name="AppsHeader" Text="APPLICATIONS" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
+              <Border Name="AppsCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,0">
+                <Grid>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="5" />
+                    <RowDefinition x:Name="AppsGridRow" Height="180" />
+                    <RowDefinition Height="7" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Text="Checked apps use XR ViewLab. Double-click to set custom values or install ReShade." Foreground="{StaticResource MutedBrush}" />
+                  <Grid Grid.Row="2">
+                    <DataGrid Name="AppsGrid" IsReadOnly="False" MouseDoubleClick="AppsGrid_DoubleClick" SelectionChanged="AppsGrid_SelectionChanged">
+                      <DataGrid.Columns>
+                        <DataGridTemplateColumn x:Name="AppsCheckColumn" Header="" Width="28" MinWidth="24" MaxWidth="52" CanUserResize="True">
+                          <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                              <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                <CheckBox HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource TableCheckBox}" IsChecked="{Binding AppEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Checked="AppEnabled_Changed" Unchecked="AppEnabled_Changed" />
+                              </Grid>
+                            </DataTemplate>
+                          </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn x:Name="AppsNameColumn" Header="Application" Width="*" MinWidth="60" CanUserResize="False">
+                          <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                              <DockPanel LastChildFill="True" Margin="6,0,2,0">
+                                <Border DockPanel.Dock="Right" Style="{StaticResource ReShadePill}" Visibility="{Binding ReShadeTagVisibility}">
+                                  <TextBlock Text="ReShade Available!" Foreground="#5FBF5F" FontSize="11" FontWeight="SemiBold" />
+                                </Border>
+                                <TextBlock Text="{Binding Display}" Style="{StaticResource GridTextCell}" Margin="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                              </DockPanel>
+                            </DataTemplate>
+                          </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn x:Name="AppsValueColumn" Header="Values" ElementStyle="{StaticResource GridValueCell}" Width="84" MinWidth="72" CanUserResize="True" Binding="{Binding Summary}" IsReadOnly="True" />
+                      </DataGrid.Columns>
+                    </DataGrid>
+                    <TextBlock Name="AppsEmptyText" Text="No apps detected yet.&#x0a;Launch an OpenXR game, then click Reload apps." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
+                  </Grid>
+                  <StackPanel Grid.Row="4" Orientation="Horizontal">
+                    <Button Content="Reload apps" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ReloadApps_Click" />
+                    <Button Content="Reset profile" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ResetApp_Click" />
+                    <Button Name="InstallReShadeButton" Content="Install ReShade" Style="{StaticResource RedButton}" Click="InstallReShade_Click" IsEnabled="False" />
+                  </StackPanel>
+                </Grid>
+              </Border>
+              <TextBlock Name="ThanksText" Text="Thanks to Beta Testers: Kinder, hkguy6" HorizontalAlignment="Right" Foreground="#5F6064" FontSize="12" Margin="0,6,4,4" />
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </ScrollViewer>
+      <Border Grid.Row="2" Background="#0A0B0C" BorderBrush="#222428" BorderThickness="0,1,0,0" CornerRadius="0,0,10,10">
+        <Grid Margin="6,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="6" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="6" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="6" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="6" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Name="StatusText" Grid.Column="2" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+          <TextBlock Name="VersionText" VerticalAlignment="Center" Foreground="#6F7074" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+          <TextBlock Name="OpenLogButton" Grid.Column="4" Text="Log" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="4,0" Cursor="Hand" ToolTip="Open ViewLab.log" MouseLeftButtonUp="OpenLog_Click">
+            <TextBlock.Foreground>
+              <SolidColorBrush Color="#8F8F8F" />
+            </TextBlock.Foreground>
+          </TextBlock>
+          <TextBlock Name="SupportFooterTextBlock" Grid.Column="6" Text="Support" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="6,0" Cursor="Hand" ToolTip="Support the broke loser who made this app" MouseLeftButtonUp="Support_Click">
+            <TextBlock.Foreground>
+              <SolidColorBrush Color="#8F8F8F" />
+            </TextBlock.Foreground>
+            <FrameworkElement.Triggers>
+              <EventTrigger RoutedEvent="Loaded">
+                <BeginStoryboard>
+                  <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                    <ColorAnimation Storyboard.TargetProperty="(TextBlock.Foreground).(SolidColorBrush.Color)" To="#F4C542" Duration="0:0:5" />
+                  </Storyboard>
+                </BeginStoryboard>
+              </EventTrigger>
+            </FrameworkElement.Triggers>
+          </TextBlock>
+          <TextBlock Name="UpdatesButton" Grid.Column="8" Text="Update" VerticalAlignment="Center" HorizontalAlignment="Right" Padding="4,0" Cursor="Hand" ToolTip="Check for updates" MouseLeftButtonUp="CheckUpdates_Click">
+            <TextBlock.Foreground>
+              <SolidColorBrush Color="#8F8F8F" />
+            </TextBlock.Foreground>
+          </TextBlock>
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>
