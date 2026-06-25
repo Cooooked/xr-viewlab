@@ -38,8 +38,8 @@ If a binary reference or ReShade payload is needed again, copy it into `F:\ViewL
   - Kept Applications table double-click for custom render profile editing.
   - Added handoff docs requested by Claude: `AGENTS.md`, `build.ps1`, and `dllmain_features.md`.
   - Removed compiled reference binaries from the active source tree.
-  - Bumped version to `4.0.2`.
-  - Built `F:\ViewLab\dist\XR-ViewLab-4.0.2.msi`.
+  - Bumped version to `4.0.60`.
+  - Built `F:\ViewLab\dist\XR-ViewLab-4.0.60.msi`.
 
 ### 2026-06-22 Correction
 

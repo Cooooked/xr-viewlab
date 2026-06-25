@@ -21,6 +21,17 @@
   </PropertyGroup>
   <ItemGroup />
   <ItemGroup />
+  <ItemGroup>
+    <Compile Remove="temp_repo\**" />
+    <Compile Remove="ReShadeSource\**" />
+    <Compile Remove="backups\**" />
+    <Page Remove="temp_repo\**" />
+    <Page Remove="ReShadeSource\**" />
+    <Page Remove="backups\**" />
+    <None Remove="temp_repo\**" />
+    <None Remove="ReShadeSource\**" />
+    <None Remove="backups\**" />
+  </ItemGroup>
   <Target Name="RemoveLegacyReShadeMenuHelper" AfterTargets="Build;Publish">
     <Delete Files="$(TargetDir)reshade-vr-menu.exe" TreatErrorsAsWarnings="true" />
     <Delete Files="$(PublishDir)reshade-vr-menu.exe" TreatErrorsAsWarnings="true" />

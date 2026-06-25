@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Windows;
 
 namespace XRViewLab.UI;
 
@@ -21,13 +20,7 @@ public sealed class AppProfile : INotifyPropertyChanged
 
 	public string Display { get; init; } = "";
 
-	public string GameDirectory { get; init; } = "";
-
-	public bool ReShadeAvailable { get; init; }
-
-	public Visibility ReShadeTagVisibility => ReShadeAvailable ? Visibility.Visible : Visibility.Collapsed;
-
-	public bool IsAcs { get; init; }
+	public string XrType { get; init; } = "";
 
 	public bool AppEnabled
 	{

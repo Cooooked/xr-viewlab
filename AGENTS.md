@@ -58,7 +58,7 @@ Current clean source only persists these options. Any actual ReShade binary/menu
 
 ## Last Change
 
-Split the project into `F:\ViewLab`, removed the unfinished ReShade sync backend, restored the planned 4.0.0-style ReShade MENU controls, added the explicit `Install ReShade` button path, bumped to 4.0.2, and built the MSI.
+Split the project into `F:\ViewLab`, removed the unfinished ReShade sync backend, restored the planned 4.0.0-style ReShade MENU controls, added the explicit `Install ReShade` button path, bumped to 4.0.60, and built the MSI.
 
 ## Known Gotchas
 

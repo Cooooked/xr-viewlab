@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -32,27 +33,34 @@ public partial class MainWindow : Window
 	private const string OpenXrRegistryRoot = "Software\\Khronos\\OpenXR\\1\\ApiLayers\\Implicit";
 
 	private const string SupportFooterText = "Support the broke loser who made this app";
-	private const string ReShadeHmdMenuKey = "reshade_hmd_menu";
-	private const string ReShadeDesktopDuplicateKey = "reshade_desktop_duplicate";
-	private const string ReShade3DMenuKey = "reshade_3d_menu";
+
+	// Render options
+	private const string FoveatedCenterKey = "foveated_center_compensation";
+	private const string StencilOuterEdgesKey = "stencil_outer_edges_only";
+	private const string CropOuterEdgesKey = "crop_outer_edges_only";
+	private const string HorizVisualMaskBothKey = "horizontal_visual_mask_both";
+	private const string HorizOuterEyeMaskKey = "horizontal_outer_eye_mask";
+	private const string HorizInnerEyeMaskKey = "horizontal_inner_eye_mask";
+	private const string VertVisualMaskBothKey = "vertical_visual_mask_both";
+	private const string VertTopMaskKey = "vertical_top_mask_only";
+	private const string VertBottomMaskKey = "vertical_bottom_mask_only";
+
+	// ReShade MENU — OpenXR
+	private const string XrHmdMenuKey = "reshade_xr_hmd_menu";
+	private const string Xr3dMenuKey = "reshade_xr_3d_menu";
+	private const string XrHeadLockedKey = "reshade_xr_head_locked";
+	private const string Xr3dCursorKey = "reshade_xr_3d_cursor";
+	private const string XrOxrtkColorsKey = "reshade_xr_oxrtk_colors";
+
+	// ReShade MENU — OpenVR
+	private const string VrDesktopDupKey = "reshade_vr_desktop_dup";
+	private const string VrAlwaysOnTopKey = "reshade_vr_always_on_top";
+	private const string VrLockPositionKey = "reshade_vr_lock_position";
+	private const string Vr3dMenuKey = "reshade_vr_3d_menu";
+	private const string VrHeadLockedKey = "reshade_vr_head_locked";
 
 	private readonly ObservableCollection<AppProfile> _apps = new ObservableCollection<AppProfile>();
 
-	private static string ReShadeSourceDir => Path.Combine(ProcessDirectory, "ReShadePayload");
-
-	private static bool IsReShadeAvailable(string keyName, string modulePath)
-	{
-		string name = Path.GetFileNameWithoutExtension(keyName).ToLowerInvariant();
-		string module = modulePath.ToLowerInvariant();
-		return name == "acs" || module.Contains("assettocorsa");
-	}
-
-	private static bool IsAcsApp(string keyName, string modulePath)
-	{
-		string name = Path.GetFileNameWithoutExtension(keyName).ToLowerInvariant();
-		string module = modulePath.ToLowerInvariant();
-		return name == "acs" || module.Contains("assettocorsa");
-	}
 
 	private bool _loading = true;
 
@@ -107,6 +115,7 @@ public partial class MainWindow : Window
 		RegisterColumnWidthPersistence();
 		AppsGrid.ItemsSource = _apps;
 		LoadSettings();
+		UpdateEnabledBadge();
 		LoadAppProfiles();
 		VersionText.Text = CurrentVersion;
 		UpdateResponsiveLayout();
@@ -116,6 +125,13 @@ public partial class MainWindow : Window
 			await CheckForUpdatesOnLaunchAsync();
 			CheckManifestHealth();
 		};
+	}
+
+	private void VisualMasksButton_Click(object sender, RoutedEventArgs e)
+	{
+		VisualMasksPopup.PlacementTarget = (UIElement)sender;
+		VisualMasksPopup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+		VisualMasksPopup.IsOpen = !VisualMasksPopup.IsOpen;
 	}
 
 	private static void EnsureConfigMigrated()
@@ -459,7 +475,7 @@ public partial class MainWindow : Window
 	protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
 	{
 		base.OnRenderSizeChanged(sizeInfo);
-		UpdateResponsiveLayout();
+		UpdateResponsiveLayout(sizeInfo.NewSize.Width);
 		UpdateFooterLayout();
 		if (!_loading)
 		{
@@ -467,57 +483,80 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private void UpdateResponsiveLayout()
+	private void UpdateResponsiveLayout(double w = -1)
 	{
-		if (MainColumn != null && SideColumn != null && WideGapColumn != null && EnabledCard != null && SidePanel != null && RenderLabelColumn != null && RenderValueColumn != null && RenderHintColumn != null && RenderHintGapColumn != null)
+		if (MainColumn != null && SideColumn != null && WideGapColumn != null && WideGapColumn2 != null && RightColumn != null && EnabledCard != null && SidePanel != null && RightColumnPanel != null && RenderLabelColumn != null && RenderValueColumn != null && RenderHintColumn != null && RenderHintGapColumn != null && OptionsGapRow != null)
 		{
-			bool flag = base.ActualWidth >= 640.0;
-			bool flag2 = base.ActualWidth > 0.0 && base.ActualWidth < 360.0;
-			MainColumn.Width = new GridLength(1.0, GridUnitType.Star);
-			WideGapColumn.Width = (flag ? new GridLength(14.0) : new GridLength(0.0));
-			SideColumn.Width = (flag ? new GridLength(1.0, GridUnitType.Star) : new GridLength(0.0));
+			if (w < 0) w = base.ActualWidth;
+			bool compact  = w > 0.0 && w < 360.0;  // min: sliders collapse
+			bool twoCol   = w >= 600.0;             // medium: two columns
+			bool threeCol = w >= 900.0;             // large: three columns
+
+			MainColumn.Width     = new GridLength(1.0, GridUnitType.Star);
+			WideGapColumn.Width  = twoCol    ? new GridLength(14.0) : new GridLength(0.0);
+			SideColumn.Width     = twoCol    ? new GridLength(1.0, GridUnitType.Star) : new GridLength(0.0);
+			WideGapColumn2.Width = threeCol  ? new GridLength(14.0) : new GridLength(0.0);
+			RightColumn.Width    = threeCol  ? new GridLength(1.0, GridUnitType.Star) : new GridLength(0.0);
+
+			// EnabledCard and RenderCard always in left col
 			Grid.SetColumn(EnabledCard, 0);
 			Grid.SetColumnSpan(EnabledCard, 1);
 			Grid.SetRow(EnabledCard, 0);
-			Grid.SetColumn(RenderHeader, 0);
 			Grid.SetColumn(RenderCard, 0);
-			Grid.SetRow(RenderHeader, 2);
-			Grid.SetRow(RenderCard, 3);
-			Grid.SetColumn(ReShadeMenuHeader, 0);
-			Grid.SetColumn(ReShadeMenuCard, 0);
-			Grid.SetRow(ReShadeMenuHeader, 5);
-			Grid.SetRow(ReShadeMenuCard, 6);
-			Grid.SetColumn(SidePanel, flag ? 2 : 0);
-			Grid.SetRow(SidePanel, flag ? 0 : 8);
-			Grid.SetRowSpan(SidePanel, flag ? 9 : 1);
-			AppsGridRow.Height = new GridLength(flag ? 260.0 : 180.0);
-			RenderLabelColumn.Width = (flag2 ? new GridLength(64.0) : new GridLength(76.0));
-			RenderValueColumn.Width = (flag2 ? new GridLength(1.0, GridUnitType.Star) : new GridLength(100.0));
-			RenderHintGapColumn.Width = (flag2 ? new GridLength(0.0) : new GridLength(10.0));
-			RenderHintColumn.Width = (flag2 ? new GridLength(0.0) : new GridLength(1.0, GridUnitType.Star));
-			TotalHint.Visibility = (flag2 ? Visibility.Collapsed : Visibility.Visible);
-			TopHint.Visibility = (flag2 ? Visibility.Collapsed : Visibility.Visible);
-			BottomHint.Visibility = (flag2 ? Visibility.Collapsed : Visibility.Visible);
-			HorizontalHint.Visibility = (flag2 ? Visibility.Collapsed : Visibility.Visible);
-			SetSliderCompact(TotalSlider, flag2);
-			SetSliderCompact(HorizontalSlider, flag2);
-			SetSliderCompact(TopSlider, flag2);
-			SetSliderCompact(BottomSlider, flag2);
+			Grid.SetRow(RenderCard, 2);
+
+			// RightColumnPanel: shown in three-col only, spans all rows so not sized by left-col row heights.
+			// Standalone OptionsHeader/OptionsCard (Grid rows 5/6) shown in single/two-col only.
+			RightColumnPanel.Visibility = threeCol ? Visibility.Visible   : Visibility.Collapsed;
+			OptionsHeader.Visibility    = threeCol ? Visibility.Collapsed : Visibility.Visible;
+			OptionsCard.Visibility      = threeCol ? Visibility.Collapsed : Visibility.Visible;
+			OptionsGapRow.Height        = threeCol ? new GridLength(0)    : new GridLength(10);
+
+			// SidePanel (apps): col 2 in two/three-col, col 0 row 8 in single
+			Grid.SetColumn(SidePanel, twoCol ? 2 : 0);
+			Grid.SetRow(SidePanel, twoCol ? 0 : 8);
+			Grid.SetRowSpan(SidePanel, twoCol ? 9 : 1);
+
+			// ReShade cards in SidePanel: visible in single/two-col only
+			ReShadeOpenXRHeader.Visibility = threeCol ? Visibility.Collapsed : Visibility.Visible;
+			ReShadeOpenXRCard.Visibility   = threeCol ? Visibility.Collapsed : Visibility.Visible;
+			ReShadeOpenVRHeader.Visibility = threeCol ? Visibility.Collapsed : Visibility.Visible;
+			ReShadeOpenVRCard.Visibility   = threeCol ? Visibility.Collapsed : Visibility.Visible;
+			ThanksText.Visibility          = threeCol ? Visibility.Collapsed : Visibility.Visible;
+
+			AppsGridRow.Height = new GridLength(twoCol ? 260.0 : 180.0);
+
+			// Compact render card: value box fills, hints hidden, sliders span full width
+			RenderValueColumn.Width   = compact ? new GridLength(1.0, GridUnitType.Star) : new GridLength(100.0);
+			RenderHintGapColumn.Width = compact ? new GridLength(0.0) : new GridLength(10.0);
+			RenderHintColumn.Width    = compact ? new GridLength(0.0) : new GridLength(1.0, GridUnitType.Star);
+			TotalHint.Visibility      = compact ? Visibility.Collapsed : Visibility.Visible;
+			TopHint.Visibility        = compact ? Visibility.Collapsed : Visibility.Visible;
+			BottomHint.Visibility     = compact ? Visibility.Collapsed : Visibility.Visible;
+			HorizontalHint.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+			SetSliderCompact(TotalSlider,      compact);
+			SetSliderCompact(HorizontalSlider, compact);
+			SetSliderCompact(TopSlider,        compact);
+			SetSliderCompact(BottomSlider,     compact);
 		}
 	}
 
 	private static void SetSliderCompact(Slider slider, bool compact)
 	{
-		Grid.SetColumn(slider, compact ? 0 : 1);
-		Grid.SetColumnSpan(slider, compact ? 2 : 3);
+		// RenderCard grid columns: 0=label, 1=gap(8px), 2=value, 3=hint-gap, 4=hint
+		// Normal: slider under col 2+3+4 (start=2, span=3)
+		// Compact: slider under col 0+1+2 (start=0, span=3), hints hidden
+		Grid.SetColumn(slider, compact ? 0 : 2);
+		Grid.SetColumnSpan(slider, compact ? 3 : 3);
 	}
 
 	private void UpdateFooterLayout()
 	{
 		if (StatusText != null && SupportFooterTextBlock != null && UpdatesButton != null)
 		{
-			bool flag = base.ActualWidth > 0.0 && base.ActualWidth < 900.0;
-			bool flag2 = base.ActualWidth > 0.0 && base.ActualWidth < 460.0;
+			double fw = base.ActualWidth;
+			bool flag = fw > 0.0 && fw < 900.0;
+			bool flag2 = fw > 0.0 && fw < 460.0;
 			StatusText.Visibility = (flag ? Visibility.Collapsed : Visibility.Visible);
 			SupportFooterTextBlock.Text = (flag2 ? "Support" : SupportFooterText);
 			UpdatesButton.Text = "Update";
@@ -655,15 +694,22 @@ public partial class MainWindow : Window
 		double num = ReadScaleSetting("total_render_height", ReadScaleSetting("total_share", ReadScaleSetting("vertical_tangent", 0.18)));
 		double value = ReadScaleSetting("horizontal_render_width", 0.8);
 		bool value2 = ReadBoolSetting("split_mode", fallback: false);
-		EnabledCheck.IsChecked = ReadBoolSetting("enabled", fallback: true);
+		_viewlabEnabled = ReadBoolSetting("enabled", fallback: true);
 		SplitCheck.IsChecked = value2;
 		TotalBox.Text = FormatScale(num);
 		TopBox.Text = FormatScale(ReadScaleSetting("top_tangent", num * 0.5));
 		BottomBox.Text = FormatScale(ReadScaleSetting("bottom_tangent", num * 0.5));
 		HorizontalBox.Text = FormatScale(value);
-		ReShadeHmdMenuCheck.IsChecked = ReadBoolSetting(ReShadeHmdMenuKey, fallback: true);
-		ReShadeDesktopDuplicateCheck.IsChecked = ReadBoolSetting(ReShadeDesktopDuplicateKey, fallback: false);
-		ReShade3DMenuCheck.IsChecked = ReadBoolSetting(ReShade3DMenuKey, fallback: false);
+		// Render options
+		FoveatedCenterCheck.IsChecked = ReadBoolSetting(FoveatedCenterKey, fallback: false);
+		StencilOuterEdgesCheck.IsChecked = ReadBoolSetting(StencilOuterEdgesKey, fallback: true);
+		CropOuterEdgesCheck.IsChecked = ReadBoolSetting(CropOuterEdgesKey, fallback: true);
+		HorizVisualMaskBothCheck.IsChecked = ReadBoolSetting(HorizVisualMaskBothKey, fallback: false);
+		HorizOuterEyeMaskCheck.IsChecked = ReadBoolSetting(HorizOuterEyeMaskKey, fallback: false);
+		HorizInnerEyeMaskCheck.IsChecked = ReadBoolSetting(HorizInnerEyeMaskKey, fallback: false);
+		VertVisualMaskBothCheck.IsChecked = ReadBoolSetting(VertVisualMaskBothKey, fallback: false);
+		VertTopMaskCheck.IsChecked = ReadBoolSetting(VertTopMaskKey, fallback: false);
+		VertBottomMaskCheck.IsChecked = ReadBoolSetting(VertBottomMaskKey, fallback: false);
 		SyncSlidersFromText();
 		_loading = false;
 		UpdateModeControls();
@@ -779,6 +825,7 @@ public partial class MainWindow : Window
 		if (!_loading && !_syncingControls)
 		{
 			UpdateHints();
+			SaveGlobalSettings();
 		}
 	}
 
@@ -802,6 +849,7 @@ public partial class MainWindow : Window
 			{
 				SyncTextFromSlider(HorizontalBox, HorizontalSlider);
 			}
+			SaveGlobalSettings();
 		}
 	}
 
@@ -814,37 +862,68 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private void EnabledCheck_Changed(object sender, RoutedEventArgs e)
+	private bool _viewlabEnabled;
+
+	private void EnabledCard_Click(object sender, MouseButtonEventArgs e)
 	{
+		_viewlabEnabled = !_viewlabEnabled;
 		if (!_loading)
 		{
 			SaveGlobalSettings();
 		}
+		UpdateEnabledBadge();
 	}
 
-	private void ReShadeMenuSetting_Changed(object sender, RoutedEventArgs e)
+	private void UpdateEnabledBadge()
 	{
-		if (_loading)
-		{
-			return;
-		}
-		SaveReShadeMenuSettings();
-		StatusText.Text = "ReShade menu settings saved. Restart the OpenXR game.";
+		Color border = _viewlabEnabled ? Color.FromRgb(0x2A, 0x6A, 0x2A) : Color.FromRgb(0xC9, 0x00, 0x12);
+		Color bg     = _viewlabEnabled ? Color.FromRgb(0x0A, 0x1A, 0x0A) : Color.FromRgb(0x2A, 0x00, 0x08);
+		Color fg     = _viewlabEnabled ? Color.FromRgb(0x4D, 0xFF, 0x88) : Color.FromRgb(0xC9, 0x00, 0x12);
+		EnabledBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(border, TimeSpan.FromSeconds(0.25)));
+		EnabledBgBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(bg, TimeSpan.FromSeconds(0.25)));
+		EnabledStatusFg.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(fg, TimeSpan.FromSeconds(0.25)));
+		EnabledStatusText.Text = _viewlabEnabled ? "VIEWLAB ENABLED" : "VIEWLAB DISABLED";
 	}
 
-	private void SaveReShadeMenuSettings()
+private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		SaveExperimentalSettings();
+		StatusText.Text = "Render options saved. Restart the OpenXR game.";
+	}
+
+	private void SaveExperimentalSettings()
 	{
 		Directory.CreateDirectory(ConfigDirectory);
-		WritePrivateProfileString("Settings", ReShadeHmdMenuKey, ReShadeHmdMenuCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", ReShadeDesktopDuplicateKey, ReShadeDesktopDuplicateCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", ReShade3DMenuKey, ReShade3DMenuCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", FoveatedCenterKey, FoveatedCenterCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", StencilOuterEdgesKey, StencilOuterEdgesCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CropOuterEdgesKey, CropOuterEdgesCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", HorizVisualMaskBothKey, HorizVisualMaskBothCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", HorizOuterEyeMaskKey, HorizOuterEyeMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", HorizInnerEyeMaskKey, HorizInnerEyeMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", VertVisualMaskBothKey, VertVisualMaskBothCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", VertTopMaskKey, VertTopMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", VertBottomMaskKey, VertBottomMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
 	}
 
-	private void Save_Click(object sender, RoutedEventArgs e)
+	private void ReShadeMenuSetting_Changed(object sender, RoutedEventArgs e) { }
+
+	private void SaveReShadeMenuSettings() { }
+
+	private void XrHmdMenuReposition_Click(object sender, RoutedEventArgs e)
 	{
-		SaveGlobalSettings();
+		StatusText.Text = "Reposition: not yet implemented.";
 	}
 
+	private void Xr3dMenuReposition_Click(object sender, RoutedEventArgs e)
+	{
+		StatusText.Text = "Reposition: not yet implemented.";
+	}
+
+	private void VrDesktopDupReposition_Click(object sender, RoutedEventArgs e)
+	{
+		StatusText.Text = "Reposition: not yet implemented.";
+	}
 
 	private void SaveGlobalSettings()
 	{
@@ -865,7 +944,7 @@ public partial class MainWindow : Window
 			value3 = value * 0.5;
 		}
 		value4 = Math.Clamp(value4, 0.01, 1.0);
-		bool valueOrDefault2 = EnabledCheck.IsChecked == true;
+		bool valueOrDefault2 = _viewlabEnabled;
 		Directory.CreateDirectory(ConfigDirectory);
 		WritePrivateProfileString("Settings", "enabled", valueOrDefault2 ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "split_mode", valueOrDefault ? "1" : "0", ConfigPath);
@@ -876,6 +955,7 @@ public partial class MainWindow : Window
 		WritePrivateProfileString("Settings", "bottom_tangent", FormatScale(value3), ConfigPath);
 		WritePrivateProfileString("Settings", "horizontal_render_width", FormatScale(value4), ConfigPath);
 		SaveReShadeMenuSettings();
+		SaveExperimentalSettings();
 		WriteRegistryEnabled(valueOrDefault2);
 		_loading = true;
 		TotalBox.Text = FormatScale(value);
@@ -902,6 +982,15 @@ public partial class MainWindow : Window
 		registryKey.SetValue(ManifestPath, (!enabled) ? 1 : 0, RegistryValueKind.DWord);
 	}
 
+	private static readonly HashSet<string> AppKeyBlacklist = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+	{
+		"steam", "steam.exe", "steamvr", "steamtours", "steamtours.exe",
+		"racelab_vr", "racelab_vr.exe", "racelab", "vrmonitor", "vrmonitor.exe",
+		"vrserver", "vrserver.exe", "vrdashboard", "vrdashboard.exe",
+		"openvr_overlay", "xr_composition_layer_override",
+		"pivotpoint", "pivotpoint.exe",
+	};
+
 	private void LoadAppProfiles()
 	{
 		_loading = true;
@@ -912,6 +1001,11 @@ public partial class MainWindow : Window
 			string[] subKeyNames = registryKey.GetSubKeyNames();
 			foreach (string text in subKeyNames)
 			{
+				string exeName = Path.GetFileNameWithoutExtension(text);
+				if (AppKeyBlacklist.Contains(text) || AppKeyBlacklist.Contains(exeName))
+				{
+					continue;
+				}
 				using RegistryKey registryKey2 = registryKey.OpenSubKey(text);
 				if (registryKey2 != null)
 				{
@@ -925,7 +1019,6 @@ public partial class MainWindow : Window
 		{
 			AppsEmptyText.Visibility = _apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 		}
-		UpdateInstallReShadeButton();
 	}
 
 	private AppProfile ReadAppProfile(string keyName, RegistryKey appKey)
@@ -934,25 +1027,23 @@ public partial class MainWindow : Window
 		double fallback = ReadScaleSetting("top_tangent", num * 0.5);
 		double fallback2 = ReadScaleSetting("bottom_tangent", num * 0.5);
 		double fallback3 = ReadScaleSetting("horizontal_render_width", 0.8);
+		string rawDisplayName = Convert.ToString(appKey.GetValue("display_name", keyName)) ?? keyName;
 		string text = Convert.ToString(appKey.GetValue("module", "")) ?? "";
-		string text2 = CleanAppDisplayName(Convert.ToString(appKey.GetValue("display_name", keyName)) ?? keyName, keyName, text);
+		bool isOpenComposite = rawDisplayName.StartsWith("OpenComposite_", StringComparison.OrdinalIgnoreCase);
+		string xrType = isOpenComposite ? "OpenVR" : "OpenXR";
+		string text2 = CleanAppDisplayName(rawDisplayName, keyName, text);
 		string text3 = (string.IsNullOrWhiteSpace(text) ? keyName : Path.GetFileName(text));
 		bool profileEnabled = Convert.ToInt32(appKey.GetValue("profile_enabled", 0), CultureInfo.InvariantCulture) != 0;
 		bool appEnabled = Convert.ToInt32(appKey.GetValue("app_enabled", 1), CultureInfo.InvariantCulture) != 0;
 		double top = FromMillis(appKey.GetValue("top_tangent"), fallback);
 		double bottom = FromMillis(appKey.GetValue("bottom_tangent"), fallback2);
 		double horizontal = FromMillis(appKey.GetValue("horizontal_render_width"), fallback3);
-		string gameDir = string.IsNullOrWhiteSpace(text) ? "" : (Path.GetDirectoryName(text) ?? "");
-		bool reShadeAvail = IsReShadeAvailable(keyName, text);
-		bool isAcs = IsAcsApp(keyName, text);
 		return new AppProfile
 		{
 			Key = keyName,
 			DisplayName = text2,
 			Display = text2 + " (" + text3 + ")",
-			GameDirectory = gameDir,
-			ReShadeAvailable = reShadeAvail,
-			IsAcs = isAcs,
+			XrType = xrType,
 			AppEnabled = appEnabled,
 			ProfileEnabled = profileEnabled,
 			Top = top,
@@ -1001,22 +1092,6 @@ public partial class MainWindow : Window
 		StatusText.Text = "App list reloaded.";
 	}
 
-	private void AppsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
-	{
-		UpdateInstallReShadeButton();
-	}
-
-	private void UpdateInstallReShadeButton()
-	{
-		if (InstallReShadeButton == null)
-		{
-			return;
-		}
-		bool available = AppsGrid?.SelectedItem is AppProfile app && app.ReShadeAvailable;
-		InstallReShadeButton.IsEnabled = available;
-		InstallReShadeButton.Opacity = available ? 1.0 : 0.65;
-		InstallReShadeButton.ToolTip = available ? "Install the ViewLab ReShade files to the selected game folder." : "Select an app with the ReShade Available tag.";
-	}
 
 	private void AppsGrid_DoubleClick(object sender, MouseButtonEventArgs e)
 	{
@@ -1055,76 +1130,6 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private void InstallReShade_Click(object sender, RoutedEventArgs e)
-	{
-		if (AppsGrid.SelectedItem is not AppProfile appProfile || !appProfile.ReShadeAvailable)
-		{
-			StatusText.Text = "Select a ReShade-ready app first.";
-			return;
-		}
-		InstallReShade(appProfile);
-	}
-
-	private void InstallReShade(AppProfile appProfile)
-	{
-		if (string.IsNullOrWhiteSpace(appProfile.GameDirectory))
-		{
-			MessageBox.Show(this, "Could not determine the game directory. Launch the game once first.", "ReShade Install", MessageBoxButton.OK, MessageBoxImage.Exclamation);
-			return;
-		}
-		if (!Directory.Exists(ReShadeSourceDir))
-		{
-			MessageBox.Show(this, "ReShade source files not found at:\n" + ReShadeSourceDir, "ReShade Install", MessageBoxButton.OK, MessageBoxImage.Exclamation);
-			return;
-		}
-		string[] payloadFiles = Directory.GetFiles(ReShadeSourceDir, "*", SearchOption.AllDirectories);
-		if (payloadFiles.Length == 0)
-		{
-			MessageBox.Show(this, "ReShade payload is empty:\n" + ReShadeSourceDir, "ReShade Install", MessageBoxButton.OK, MessageBoxImage.Exclamation);
-			return;
-		}
-		if (MessageBox.Show(this,
-			$"Install bundled ViewLab ReShade files to:\n{appProfile.GameDirectory}\n\nExisting matching files will be backed up once with .viewlab.bak.\n\nProceed?",
-			"Install ReShade",
-			MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
-		{
-			return;
-		}
-		try
-		{
-			CopyDirectoryWithBackups(ReShadeSourceDir, appProfile.GameDirectory);
-			StatusText.Text = "ReShade installed to " + appProfile.DisplayName + ". Launch the game.";
-			MessageBox.Show(this, "ReShade installed successfully.", "ReShade Install", MessageBoxButton.OK, MessageBoxImage.Information);
-		}
-		catch (Exception ex)
-		{
-			StatusText.Text = "ReShade install failed: " + ex.Message;
-			MessageBox.Show(this, "Install failed:\n" + ex.Message, "ReShade Install", MessageBoxButton.OK, MessageBoxImage.Error);
-		}
-	}
-
-	private static void CopyDirectoryWithBackups(string sourceDirectory, string destinationDirectory)
-	{
-		foreach (string sourceFile in Directory.GetFiles(sourceDirectory, "*", SearchOption.AllDirectories))
-		{
-			string relativePath = Path.GetRelativePath(sourceDirectory, sourceFile);
-			string destinationFile = Path.Combine(destinationDirectory, relativePath);
-			string? destinationFolder = Path.GetDirectoryName(destinationFile);
-			if (!string.IsNullOrWhiteSpace(destinationFolder))
-			{
-				Directory.CreateDirectory(destinationFolder);
-			}
-			if (File.Exists(destinationFile))
-			{
-				string backup = destinationFile + ".viewlab.bak";
-				if (!File.Exists(backup))
-				{
-					File.Copy(destinationFile, backup, overwrite: false);
-				}
-			}
-			File.Copy(sourceFile, destinationFile, overwrite: true);
-		}
-	}
 
 	private void ResetApp_Click(object sender, RoutedEventArgs e)
 	{

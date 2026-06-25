@@ -8,9 +8,13 @@ This is different from a simple visible FOV crop. In compatible games, XR ViewLa
 
 ## Download
 
-Download the latest MSI from the releases page:
+Download the latest installer from the releases page:
 
 [XR ViewLab Releases](https://github.com/Cooooked/xr-viewlab/releases)
+
+## Current Version
+
+**4.1.0** — Responsive layout (compact / single / dual / triple column), Visual Masks flyout, app type column (OpenXR / OpenVR), auto-save settings, junk-app filtering, VIEWLAB ENABLED/DISABLED badge with animated colour transition.
 
 ## Settings
 
