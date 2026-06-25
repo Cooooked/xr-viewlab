@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product Id="*" Name="XR ViewLab"
-           Language="1033" Version="4.1.6"
+           Language="1033" Version="4.1.7"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -87,7 +87,6 @@
     <Feature Id="Main" Title="XR ViewLab" Level="1">
       <ComponentRef Id="LayerFiles"/>
       <ComponentRef Id="AppFiles"/>
-      <ComponentRef Id="ReShadePayloadFiles"/>
       <ComponentRef Id="RegEnable"/>
       <ComponentRef Id="StartMenuShortcut"/>
     </Feature>
@@ -120,12 +119,6 @@
           </Component>
           <Directory Id="ReShadePayloadFolder" Name="ReShadePayload">
             <Component Id="ReShadePayloadFiles" Guid="D73B2F3B-0F6A-4EB5-A9B6-78F0E51F37E5" Win64="yes">
-              <File Id="ReShadePayloadDxgi" Source="..\ReShadePayload\dxgi.dll" Name="dxgi.dll"/>
-              <File Id="ReShadePayloadIni" Source="..\ReShadePayload\ReShade.ini" Name="ReShade.ini"/>
-              <File Id="ReShadePayloadAsciiIni" Source="..\ReShadePayload\ASCII.ini" Name="ASCII.ini"/>
-              <RemoveFile Id="RemoveReShadePayloadDxgi" Name="dxgi.dll" On="uninstall"/>
-              <RemoveFile Id="RemoveReShadePayloadIni" Name="ReShade.ini" On="uninstall"/>
-              <RemoveFile Id="RemoveReShadePayloadAsciiIni" Name="ASCII.ini" On="uninstall"/>
               <RemoveFolder Id="RemoveReShadePayloadFolder" On="uninstall"/>
             </Component>
           </Directory>
