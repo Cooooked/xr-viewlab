@@ -6,7 +6,7 @@ Function PromptDesktopShortcut()
     Exit Function
   End If
 
-  answer = MsgBox("Create a desktop shortcut for XR ViewLab?", vbQuestion + vbYesNo, "XR ViewLab Setup")
+  answer = MsgBox("Create a desktop shortcut for XR ViewLab?", vbQuestion + vbYesNo + vbDefaultButton2, "XR ViewLab Setup")
   If answer <> vbYes Then
     PromptDesktopShortcut = 0
     Exit Function

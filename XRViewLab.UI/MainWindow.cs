@@ -120,6 +120,7 @@ public partial class MainWindow : Window
 		VersionText.Text = CurrentVersion;
 		UpdateResponsiveLayout();
 		UpdateFooterLayout();
+		VisualMasksPopup.Closed += (_, _) => _visualMasksPopupClosedAt = DateTime.UtcNow;
 		base.Loaded += async delegate
 		{
 			await CheckForUpdatesOnLaunchAsync();
@@ -127,11 +128,17 @@ public partial class MainWindow : Window
 		};
 	}
 
+	private DateTime _visualMasksPopupClosedAt = DateTime.MinValue;
+
 	private void VisualMasksButton_Click(object sender, RoutedEventArgs e)
 	{
+		// StaysOpen=False closes the popup on MouseDown before this Click fires.
+		// If it closed within the last 200ms the click was the close — don't reopen.
+		if ((DateTime.UtcNow - _visualMasksPopupClosedAt).TotalMilliseconds < 200)
+			return;
 		VisualMasksPopup.PlacementTarget = (UIElement)sender;
 		VisualMasksPopup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
-		VisualMasksPopup.IsOpen = !VisualMasksPopup.IsOpen;
+		VisualMasksPopup.IsOpen = true;
 	}
 
 	private static void EnsureConfigMigrated()
@@ -552,17 +559,51 @@ public partial class MainWindow : Window
 
 	private void UpdateFooterLayout()
 	{
-		if (StatusText != null && SupportFooterTextBlock != null && UpdatesButton != null)
+		if (StatusText == null || SupportFooterTextBlock == null || UpdatesButton == null) return;
+		double fw = base.ActualWidth;
+		bool mini = fw > 0.0 && fw < 360.0;
+
+		if (mini)
 		{
-			double fw = base.ActualWidth;
-			bool flag = fw > 0.0 && fw < 900.0;
-			bool flag2 = fw > 0.0 && fw < 460.0;
-			StatusText.Visibility = (flag ? Visibility.Collapsed : Visibility.Visible);
-			SupportFooterTextBlock.Text = (flag2 ? "Support" : SupportFooterText);
-			UpdatesButton.Text = "Update";
-			SupportFooterTextBlock.ToolTip = SupportFooterText;
-			UpdatesButton.ToolTip = string.IsNullOrWhiteSpace(_availableUpdateTag) ? "Check for updates" : ("Update available: " + _availableUpdateTag);
+			// Mini mode: items Auto-sized, star gaps distribute remaining space evenly
+			FooterVersionCol.Width  = new GridLength(1, GridUnitType.Auto);
+			FooterGap1.Width        = new GridLength(1, GridUnitType.Star);
+			FooterStatusCol.Width   = new GridLength(0);
+			FooterGap2.Width        = new GridLength(0);
+			FooterLogCol.Width      = new GridLength(1, GridUnitType.Auto);
+			FooterGap3.Width        = new GridLength(1, GridUnitType.Star);
+			FooterSupportCol.Width  = new GridLength(1, GridUnitType.Auto);
+			FooterGap4.Width        = new GridLength(1, GridUnitType.Star);
+			FooterUpdCol.Width      = new GridLength(1, GridUnitType.Auto);
+			VersionText.HorizontalAlignment  = HorizontalAlignment.Left;
+			OpenLogButton.HorizontalAlignment   = HorizontalAlignment.Center;
+			SupportFooterTextBlock.HorizontalAlignment = HorizontalAlignment.Center;
+			UpdatesButton.HorizontalAlignment   = HorizontalAlignment.Right;
+			StatusText.Visibility = Visibility.Collapsed;
 		}
+		else
+		{
+			// Normal: auto columns with status text filling the middle
+			FooterVersionCol.Width  = new GridLength(1, GridUnitType.Auto);
+			FooterGap1.Width        = new GridLength(6);
+			FooterStatusCol.Width   = new GridLength(1, GridUnitType.Star);
+			FooterGap2.Width        = new GridLength(6);
+			FooterLogCol.Width      = new GridLength(1, GridUnitType.Auto);
+			FooterGap3.Width        = new GridLength(6);
+			FooterSupportCol.Width  = new GridLength(1, GridUnitType.Auto);
+			FooterGap4.Width        = new GridLength(6);
+			FooterUpdCol.Width      = new GridLength(1, GridUnitType.Auto);
+			VersionText.HorizontalAlignment  = HorizontalAlignment.Left;
+			OpenLogButton.HorizontalAlignment   = HorizontalAlignment.Right;
+			SupportFooterTextBlock.HorizontalAlignment = HorizontalAlignment.Right;
+			UpdatesButton.HorizontalAlignment   = HorizontalAlignment.Right;
+			StatusText.Visibility = fw >= 900.0 ? Visibility.Visible : Visibility.Collapsed;
+		}
+
+		SupportFooterTextBlock.Text = mini ? "Support" : SupportFooterText;
+		SupportFooterTextBlock.ToolTip = SupportFooterText;
+		UpdatesButton.Text = mini ? "Upd" : "Update";
+		UpdatesButton.ToolTip = string.IsNullOrWhiteSpace(_availableUpdateTag) ? "Check for updates" : ("Update available: " + _availableUpdateTag);
 	}
 
 	private void MarkUpdateAvailable()

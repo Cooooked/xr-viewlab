@@ -4,7 +4,7 @@
 
 ### UI
 
-- Responsive layout: compact (<360 px), single (360–599 px), dual (≥600 px), triple (≥900 px) column modes.
+- Responsive layout: four window-width scale modes — see Layout Modes below.
 - Triple-column mode: left = render sliders, middle = applications table, right = Render Options + ReShade MENU sections.
 - Right column uses an independent StackPanel (not shared Grid rows), eliminating the ghost height gap that previously appeared below Render Options.
 - VIEWLAB ENABLED / VIEWLAB DISABLED badge replaces the checkbox. Animated red/green border, background, and text colour transition (0.25 s).
@@ -23,6 +23,15 @@
 
 - Sliders and value boxes auto-save on change; Save button removed.
 - Settings write via `WritePrivateProfileString` unchanged; INI path unchanged.
+
+### Layout Modes
+
+| Mode | Width | Content |
+|------|-------|---------|
+| **Mini** | < 360 px | Single column, sliders compress to full width, footer items equally spaced |
+| **Small** | 360–599 px | Single column, sliders full width with labels and hints |
+| **Medium** | 600–899 px | Two columns — left: render sliders + options; right: applications table + ReShade menus |
+| **Large** | ≥ 900 px | Three columns — left: render sliders; middle: applications table; right: Render Options + ReShade menus |
 
 ### Build
 

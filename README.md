@@ -14,7 +14,16 @@ Download the latest installer from the releases page:
 
 ## Current Version
 
-**4.1.0** — Responsive layout (compact / single / dual / triple column), Visual Masks flyout, app type column (OpenXR / OpenVR), auto-save settings, junk-app filtering, VIEWLAB ENABLED/DISABLED badge with animated colour transition.
+**4.1.0** — Four-scale responsive layout, Visual Masks flyout, app type column (OpenXR / OpenVR), auto-save settings, junk-app filtering, VIEWLAB ENABLED/DISABLED badge with animated colour transition.
+
+### Layout Modes
+
+| Mode | Width | Description |
+|------|-------|-------------|
+| **Mini** | < 360 px | Single column, sliders compress, footer items equally spaced |
+| **Small** | 360–599 px | Single column, sliders full width with labels and hints |
+| **Medium** | 600–899 px | Two columns — sliders + options left, apps table + ReShade menus right |
+| **Large** | ≥ 900 px | Three columns — sliders left, apps table centre, options + ReShade menus right |
 
 ## Settings
 
