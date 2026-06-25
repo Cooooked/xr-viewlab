@@ -1,0 +1,126 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+        <DirectoryRef Id="TARGETDIR">
+            <Component Id="cmpA7A24EC0754CB29831B284E92EE72859" Guid="*">
+                <File Id="fil8E50057F6B21D783A3E5E316C15A0456" KeyPath="yes" Source="$(var.PublishPath)\xr-viewlab.deps.json" />
+            </Component>
+            <Component Id="cmp6874D688FADD59CC7F47B076952BD123" Guid="*">
+                <File Id="fil9ABC9EA48034D113A43786BE8CF71C95" KeyPath="yes" Source="$(var.PublishPath)\xr-viewlab.dll" />
+            </Component>
+            <Component Id="cmp252A981E443ADE0B38B4FD42FE20265D" Guid="*">
+                <File Id="filE9DF625F06D0D54D7DDA21B22BC25852" KeyPath="yes" Source="$(var.PublishPath)\xr-viewlab.exe" />
+            </Component>
+            <Component Id="cmp13A3874DE24B06C875FD16D1473FD034" Guid="*">
+                <File Id="fil910355265C9D9DDB8328FB0B5D0CFDAF" KeyPath="yes" Source="$(var.PublishPath)\xr-viewlab.ini" />
+            </Component>
+            <Component Id="cmp96A9A5ECF5F9B7DFE947BF4E2FA3538C" Guid="*">
+                <File Id="fil60F219C9EB2E0AF287729D96A568E3AB" KeyPath="yes" Source="$(var.PublishPath)\xr-viewlab.pdb" />
+            </Component>
+            <Component Id="cmp9AD7C2F51EA9FEF5C818DDA7F1466269" Guid="*">
+                <File Id="filE0BA31D922822E3105C939E5384B8548" KeyPath="yes" Source="$(var.PublishPath)\xr-viewlab.runtimeconfig.json" />
+            </Component>
+            <Directory Id="dir8751EF7716499D205790CAA2AD23A890" Name="RecoveredBackend" />
+            <Directory Id="dir0FD8E491797931458781BFD603B3ECB2" Name="ReShadePayload" />
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir7BD5A3DD229047962C8A99A7F909371D">
+            <Component Id="cmp01B10DB14DAF4135D1F32B9C05BD387D" Guid="*">
+                <File Id="fil2832D5AF7A67941964CC1CB43EB3A36B" KeyPath="yes" Source="$(var.PublishPath)\ReShadePayload\reshade-shaders\Shaders\ReShadeUI.fxh" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir4B097EFDB8560C0676A1A6F7AE04F3F8">
+            <Component Id="cmp032FA20E71D3637D9FFC8F85749899A6" Guid="*">
+                <File Id="filCADD3A35F0657AD3A2A82017FFCC2C83" KeyPath="yes" Source="$(var.PublishPath)\ReShadePayload\iRacing\ReShade64.dll" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir4B097EFDB8560C0676A1A6F7AE04F3F8">
+            <Component Id="cmp34FD92562277525119622F1A7C2E3584" Guid="*">
+                <File Id="filAD6450B96F879EC10EE29330BB9229C1" KeyPath="yes" Source="$(var.PublishPath)\ReShadePayload\iRacing\openxr_loader.dll" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir0FD8E491797931458781BFD603B3ECB2">
+            <Component Id="cmp391E6168870D18DBC781A951E9C317AA" Guid="*">
+                <File Id="fil67BFD0445915FADEABB8581ECB26A3AA" KeyPath="yes" Source="$(var.PublishPath)\ReShadePayload\dxgi.dll" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir0FD8E491797931458781BFD603B3ECB2">
+            <Component Id="cmp508183A70AE3FF2493692D0AB542662E" Guid="*">
+                <File Id="fil3A7D9CDCBBF29265BF4414084B0130AE" KeyPath="yes" Source="$(var.PublishPath)\ReShadePayload\ASCII.ini" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir4B097EFDB8560C0676A1A6F7AE04F3F8">
+            <Component Id="cmp5B35036BE229FE4CCED3FE24E4BED8FB" Guid="*">
+                <File Id="filB5B0D0B37DB7E104BEEC9206C88D2DEF" KeyPath="yes" Source="$(var.PublishPath)\ReShadePayload\iRacing\ReShade64_XR.json" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir0FD8E491797931458781BFD603B3ECB2">
+            <Component Id="cmp812F53E1F6580BE41CE25BAD0A0E70FF" Guid="*">
+                <File Id="fil71E1105890DF2048C699328618ACD6B6" KeyPath="yes" Source="$(var.PublishPath)\ReShadePayload\ReShadeVR.ini" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir0FD8E491797931458781BFD603B3ECB2">
+            <Component Id="cmp86927F1EFBCEAC3C45282863A6232EFE" Guid="*">
+                <File Id="fil2633F3B9DC4EBB92C77B53B0CB80337A" KeyPath="yes" Source="$(var.PublishPath)\ReShadePayload\ReShade.ini" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir7BD5A3DD229047962C8A99A7F909371D">
+            <Component Id="cmp9212D0C88BD06703A9EA6A9D44B46381" Guid="*">
+                <File Id="fil4FB682802226799F50CBF7765758EC45" KeyPath="yes" Source="$(var.PublishPath)\ReShadePayload\reshade-shaders\Shaders\ReShade.fxh" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir8751EF7716499D205790CAA2AD23A890">
+            <Component Id="cmpA279B7B65D1013B40E7320671C03C3EA" Guid="*">
+                <File Id="filD98661E266C4A4458805160AE0A19FF0" KeyPath="yes" Source="$(var.PublishPath)\RecoveredBackend\openvr-reshade-bridge.dll" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir4B097EFDB8560C0676A1A6F7AE04F3F8">
+            <Component Id="cmpC00A5F7ADBE1FB5AFE88D9CB5151D227" Guid="*">
+                <File Id="fil067BC12C1435DCE27563EF59272D6A7A" KeyPath="yes" Source="$(var.PublishPath)\ReShadePayload\iRacing\dxgi.dll" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir7BD5A3DD229047962C8A99A7F909371D">
+            <Component Id="cmpF936DCD5E19A103C6DB465C4A6302874" Guid="*">
+                <File Id="filE5C18FCE4BF44DCD7DD82E7381CECAA8" KeyPath="yes" Source="$(var.PublishPath)\ReShadePayload\reshade-shaders\Shaders\ASCII.fx" />
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir0FD8E491797931458781BFD603B3ECB2">
+            <Directory Id="dir2C2A62026B2395ECE70062CC0FFA4940" Name="reshade-shaders" />
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir0FD8E491797931458781BFD603B3ECB2">
+            <Directory Id="dir4B097EFDB8560C0676A1A6F7AE04F3F8" Name="iRacing" />
+        </DirectoryRef>
+    </Fragment>
+    <Fragment>
+        <DirectoryRef Id="dir2C2A62026B2395ECE70062CC0FFA4940">
+            <Directory Id="dir7BD5A3DD229047962C8A99A7F909371D" Name="Shaders" />
+        </DirectoryRef>
+    </Fragment>
+</Wix>

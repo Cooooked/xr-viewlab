@@ -65,6 +65,21 @@ If a binary reference or ReShade payload is needed again, copy it into `F:\ViewL
 - Fixed `build.ps1` MSBuild discovery to use Visual Studio `vswhere` first, with local fallback paths only for tool discovery.
 - Note: `ReShadePayload` is the one intentional binary-payload exception so the installer/app can install ReShade without depending on files outside `F:\ViewLab`.
 
+### 2026-06-25 — OpenXR ReShade shared memory controls + fixes
+
+- Added `ReShadeControlService.cs` — P/Invoke shared memory wrapper for `Local\ReShadeXRControl` (`XRControlBlock`, 80 bytes).
+- Added OpenXR ReShade cards in both columns (left + right) with:
+  - **GAMEPLAY MODE** toggle — writes `xr_mode` (0=gameplay/dormant, 1=tuning/active). DLL gates `update_effects()` + desktop hotkeys.
+  - **Desktop VR Menu** toggle — writes `menu_visible` (maps to `win_reserved` in old DLL, no-op there; new DLL uses it to gate overlay + ShowWindow on preview). Direct `FindWindowW`/`ShowWindow` toggles the "ReShade VR Overlay" preview window.
+  - **Headless** / **Always on top** checkboxes — write `win_headless`, `win_always_on_top`.
+  - **Reposition** / **Transform** buttons — write `quad_edit_mode` (1=blue border drag, 2=orange border transform).
+- Fixed heartbeat staleness bug: old DLL never increments `quad_reserved` (= heartbeat field), so stale check disconnected every 5s. Removed staleness entirely — poll timer is now flat: `if (!connected) try connect else sync UI`.
+- Removed status text ("mini log") from both OpenXR cards.
+- Removed unused `BlockUpdated` event from `ReShadeControlService`.
+- Added `FindWindowW`/`ShowWindow` P/Invoke to `MainWindow.cs` for preview window control.
+- Struct layout uses backward-compatible offsets (`win_reserved`→`menu_visible`, `quad_reserved`→`heartbeat`) — 80 bytes, works with old build2 DLL.
+- Bumped to 4.1.6. MSI at `F:\ViewLab\dist\XR-ViewLab-4.1.6.msi`.
+
 ## Rules For Future Agents
 
 - Update this file before and after meaningful code changes.

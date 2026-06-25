@@ -68,6 +68,9 @@ public partial class MainWindow : Window
 
 	private string? _availableUpdateTag;
 
+	private readonly ReShadeControlService _xrControl = new();
+	private System.Windows.Threading.DispatcherTimer _xrPollTimer;
+
 	private bool CompactLayout
 	{
 		get
@@ -121,6 +124,9 @@ public partial class MainWindow : Window
 		UpdateResponsiveLayout();
 		UpdateFooterLayout();
 		VisualMasksPopup.Closed += (_, _) => _visualMasksPopupClosedAt = DateTime.UtcNow;
+		_xrPollTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+		_xrPollTimer.Tick += XrPollTimer_Tick;
+		_xrPollTimer.Start();
 		base.Loaded += async delegate
 		{
 			await CheckForUpdatesOnLaunchAsync();
@@ -633,6 +639,12 @@ public partial class MainWindow : Window
 	[DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
 	private static extern bool WritePrivateProfileString(string section, string key, string? value, string filePath);
 
+	[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+	private static extern IntPtr FindWindowW(string? lpClassName, string? lpWindowName);
+
+	[DllImport("user32.dll", SetLastError = true)]
+	private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
 	private static string ReadSetting(string key, string fallback)
 	{
 		StringBuilder stringBuilder = new StringBuilder(256);
@@ -964,6 +976,135 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void VrDesktopDupReposition_Click(object sender, RoutedEventArgs e)
 	{
 		StatusText.Text = "Reposition: not yet implemented.";
+	}
+
+	private void XrPollTimer_Tick(object sender, EventArgs e)
+	{
+		if (!_xrControl.Connected)
+		{
+			if (_xrControl.TryConnect())
+			{
+				StatusText.Text = "Connected";
+				XrSyncToUI();
+			}
+			else
+			{
+				StatusText.Text = "Not connected — launch an OpenXR game first";
+			}
+		}
+		else
+		{
+			XrSyncToUI();
+		}
+	}
+
+	private void XrGameplayMode_Changed(object sender, RoutedEventArgs e)
+	{
+		if (!_xrControl.Connected) return;
+		var block = _xrControl.ReadBlock();
+		block.xr_mode = GetXrGameplayMode() ? 0u : 1u;
+		_xrControl.WriteBlock(ref block);
+	}
+
+	private void XrMenuEnabled_Changed(object sender, RoutedEventArgs e)
+	{
+		if (!_xrControl.Connected) return;
+		var block = _xrControl.ReadBlock();
+		var on = GetXrMenuVisible();
+		block.menu_visible = on ? 1u : 0u;
+		_xrControl.WriteBlock(ref block);
+
+		var hwnd = FindWindowW("ReShadeVRPreview", null);
+		if (hwnd != IntPtr.Zero)
+			ShowWindow(hwnd, on ? 1 : 0);
+	}
+
+	private void XrControl_Changed(object sender, RoutedEventArgs e)
+	{
+		if (!_xrControl.Connected) return;
+		var block = _xrControl.ReadBlock();
+		block.win_headless      = GetXrHeadless()      ? 1u : 0u;
+		block.win_always_on_top = GetXrTopmost()       ? 1u : 0u;
+		_xrControl.WriteBlock(ref block);
+	}
+
+
+	private void XrReposition_Click(object sender, RoutedEventArgs e)
+	{
+		if (!_xrControl.Connected) return;
+		var block = _xrControl.ReadBlock();
+		block.quad_edit_mode = block.quad_edit_mode == 1 ? 0u : 1u;
+		_xrControl.WriteBlock(ref block);
+		StatusText.Text = block.quad_edit_mode == 1 ? "Reposition mode active — drag preview window" : "Reposition saved";
+	}
+
+	private void XrTransform_Click(object sender, RoutedEventArgs e)
+	{
+		if (!_xrControl.Connected) return;
+		var block = _xrControl.ReadBlock();
+		block.quad_edit_mode = block.quad_edit_mode == 2 ? 0u : 2u;
+		_xrControl.WriteBlock(ref block);
+		StatusText.Text = block.quad_edit_mode == 2 ? "Transform mode active — drag/scroll preview window" : "Transform saved";
+	}
+
+	private bool GetXrGameplayMode()
+	{
+		if (ReShadeOpenXRCard.Visibility == Visibility.Visible && XrGameplayModeCheck != null)
+			return XrGameplayModeCheck.IsChecked == true;
+		if (ReShadeOpenXRCard2.Visibility == Visibility.Visible && XrGameplayModeCheck2 != null)
+			return XrGameplayModeCheck2.IsChecked == true;
+		return false;
+	}
+
+	private bool GetXrMenuVisible()
+	{
+		if (ReShadeOpenXRCard.Visibility == Visibility.Visible && XrMenuEnabledCheck != null)
+			return XrMenuEnabledCheck.IsChecked == true;
+		if (ReShadeOpenXRCard2.Visibility == Visibility.Visible && XrMenuEnabledCheck2 != null)
+			return XrMenuEnabledCheck2.IsChecked == true;
+		return false;
+	}
+
+	private bool GetXrHeadless()
+	{
+		if (ReShadeOpenXRCard.Visibility == Visibility.Visible && XrWinHeadlessCheck != null)
+			return XrWinHeadlessCheck.IsChecked == true;
+		if (ReShadeOpenXRCard2.Visibility == Visibility.Visible && XrWinHeadlessCheck2 != null)
+			return XrWinHeadlessCheck2.IsChecked == true;
+		return false;
+	}
+
+	private bool GetXrTopmost()
+	{
+		if (ReShadeOpenXRCard.Visibility == Visibility.Visible && XrWinTopmostCheck != null)
+			return XrWinTopmostCheck.IsChecked == true;
+		if (ReShadeOpenXRCard2.Visibility == Visibility.Visible && XrWinTopmostCheck2 != null)
+			return XrWinTopmostCheck2.IsChecked == true;
+		return false;
+	}
+
+	private void XrSyncToUI()
+	{
+		if (!_xrControl.Connected) return;
+		var block = _xrControl.ReadBlock();
+		if (ReShadeOpenXRCard.Visibility == Visibility.Visible)
+		{
+			if (XrGameplayModeCheck != null)  XrGameplayModeCheck.IsChecked    = block.xr_mode == 0;
+			if (XrMenuEnabledCheck != null)   XrMenuEnabledCheck.IsChecked     = block.menu_visible == 1;
+			if (XrWinHeadlessCheck != null)   XrWinHeadlessCheck.IsChecked     = block.win_headless == 1;
+			if (XrWinTopmostCheck != null)    XrWinTopmostCheck.IsChecked      = block.win_always_on_top == 1;
+		}
+		if (ReShadeOpenXRCard2.Visibility == Visibility.Visible)
+		{
+			if (XrGameplayModeCheck2 != null) XrGameplayModeCheck2.IsChecked   = block.xr_mode == 0;
+			if (XrMenuEnabledCheck2 != null)  XrMenuEnabledCheck2.IsChecked    = block.menu_visible == 1;
+			if (XrWinHeadlessCheck2 != null)  XrWinHeadlessCheck2.IsChecked    = block.win_headless == 1;
+			if (XrWinTopmostCheck2 != null)   XrWinTopmostCheck2.IsChecked     = block.win_always_on_top == 1;
+		}
+
+		var hwnd = FindWindowW("ReShadeVRPreview", null);
+		if (hwnd != IntPtr.Zero)
+			ShowWindow(hwnd, block.menu_visible == 1 ? 1 : 0);
 	}
 
 	private void SaveGlobalSettings()

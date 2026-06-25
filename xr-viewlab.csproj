@@ -25,12 +25,18 @@
     <Compile Remove="temp_repo\**" />
     <Compile Remove="ReShadeSource\**" />
     <Compile Remove="backups\**" />
+    <Compile Remove="ReshadeAI\**" />
+    <Compile Remove="OpenVRBridge\**" />
     <Page Remove="temp_repo\**" />
     <Page Remove="ReShadeSource\**" />
     <Page Remove="backups\**" />
+    <Page Remove="ReshadeAI\**" />
+    <Page Remove="OpenVRBridge\**" />
     <None Remove="temp_repo\**" />
     <None Remove="ReShadeSource\**" />
     <None Remove="backups\**" />
+    <None Remove="ReshadeAI\**" />
+    <None Remove="OpenVRBridge\**" />
   </ItemGroup>
   <Target Name="RemoveLegacyReShadeMenuHelper" AfterTargets="Build;Publish">
     <Delete Files="$(TargetDir)reshade-vr-menu.exe" TreatErrorsAsWarnings="true" />

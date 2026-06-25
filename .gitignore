@@ -17,6 +17,16 @@ Release/
 *.tlog
 *.lastbuildstate
 *.wixpdb
+backups/
+OpenVRBridge/
+ReshadeAI/
+ReShadeSource/
+Installer/*.wixobj
+Installer/*.wixpdb
+reference/
+UpgradeLog.htm
+HANDOFF.md
+SETTINGS_REFERENCE.md
 *.bak*
 *.log
 *.msi

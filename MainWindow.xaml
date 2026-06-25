@@ -427,7 +427,18 @@
               </Border>
               <TextBlock Name="ReShadeOpenXRHeader2" Text="ReShade MENU — OpenXR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenXRCard2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
-                <TextBlock Text="Coming soon" Foreground="{StaticResource MutedBrush}" FontSize="12" />
+                <StackPanel>
+                  <TextBlock Text="GAMEPLAY MODE" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                  <CheckBox Name="XrGameplayModeCheck2" Content="Gameplay mode" Foreground="#A8A8A8" Margin="0,0,0,6" Checked="XrGameplayMode_Changed" Unchecked="XrGameplayMode_Changed" />
+                  <CheckBox Name="XrMenuEnabledCheck2" Content="Desktop VR Menu" Foreground="#A8A8A8" Margin="0,0,0,8" Checked="XrMenuEnabled_Changed" Unchecked="XrMenuEnabled_Changed" />
+                  <CheckBox Name="XrWinHeadlessCheck2" Content="Headless (no title bar / border)" Foreground="#A8A8A8" Margin="20,0,0,3" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
+                  <CheckBox Name="XrWinTopmostCheck2" Content="Always on top" Foreground="#A8A8A8" Margin="20,0,0,3" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
+                  <TextBlock Text="HMD menu" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <Button Content="Reposition" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,6,0" Click="XrReposition_Click" />
+                    <Button Content="Transform" Style="{StaticResource RedButton}" Padding="10,4" Click="XrTransform_Click" />
+                  </StackPanel>
+                 </StackPanel>
               </Border>
               <TextBlock Name="ReShadeOpenVRHeader2" Text="ReShade MENU — OpenVR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenVRCard2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
@@ -490,7 +501,18 @@
               </Border>
               <TextBlock Name="ReShadeOpenXRHeader" Text="ReShade MENU — OpenXR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenXRCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
-                <TextBlock Text="Coming soon" Foreground="{StaticResource MutedBrush}" FontSize="12" />
+                <StackPanel>
+                  <TextBlock Text="GAMEPLAY MODE" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                  <CheckBox Name="XrGameplayModeCheck" Content="Gameplay mode" Foreground="#A8A8A8" Margin="0,0,0,6" Checked="XrGameplayMode_Changed" Unchecked="XrGameplayMode_Changed" />
+                  <CheckBox Name="XrMenuEnabledCheck" Content="Desktop VR Menu" Foreground="#A8A8A8" Margin="0,0,0,8" Checked="XrMenuEnabled_Changed" Unchecked="XrMenuEnabled_Changed" />
+                  <CheckBox Name="XrWinHeadlessCheck" Content="Headless (no title bar / border)" Foreground="#A8A8A8" Margin="20,0,0,3" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
+                  <CheckBox Name="XrWinTopmostCheck" Content="Always on top" Foreground="#A8A8A8" Margin="20,0,0,3" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
+                  <TextBlock Text="HMD menu" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <Button Content="Reposition" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,6,0" Click="XrReposition_Click" />
+                    <Button Content="Transform" Style="{StaticResource RedButton}" Padding="10,4" Click="XrTransform_Click" />
+                  </StackPanel>
+                 </StackPanel>
               </Border>
               <TextBlock Name="ReShadeOpenVRHeader" Text="ReShade MENU — OpenVR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenVRCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
