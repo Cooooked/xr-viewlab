@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.7 — 2026-06-25
+
+- Removed stale `OpenVRBridge/`, `ReShadePayload/` binaries, and `ReshadeAI/` agent files from repo.
+- Fixed installer `Product.wxs` to not reference deleted ReShadePayload files.
+- Created `SOURCE_BACKUP.md` consolidating all backup sources and rebuild instructions.
+- Published GitHub release v4.1.7 with MSI.
+
 ## 4.1.0 — 2026-06-25
 
 ### UI

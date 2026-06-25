@@ -14,7 +14,7 @@ Download the latest installer from the releases page:
 
 ## Current Version
 
-**4.1.0** — Four-scale responsive layout, Visual Masks flyout, app type column (OpenXR / OpenVR), auto-save settings, junk-app filtering, VIEWLAB ENABLED/DISABLED badge with animated colour transition.
+**4.1.7** — OpenXR ReShade shared memory controls (gameplay mode, desktop VR menu, headless, always-on-top, reposition/transform), heartbeat staleness fix, four-scale responsive layout, Visual Masks flyout, app type column (OpenXR / OpenVR), auto-save settings, junk-app filtering, VIEWLAB ENABLED/DISABLED badge with animated colour transition.
 
 ### Layout Modes
 

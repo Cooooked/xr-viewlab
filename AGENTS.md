@@ -60,15 +60,17 @@ Current clean source only persists these options. Any actual ReShade binary/menu
 
 Split the project into `F:\ViewLab`, removed the unfinished ReShade sync backend, restored the planned 4.0.0-style ReShade MENU controls, added the explicit `Install ReShade` button path, bumped to 4.0.60, and built the MSI.
 
+## Source Backup Reference
+
+See `SOURCE_BACKUP.md` for the complete inventory of all backup sources, build versions, ReShade mod source backups, and rebuild instructions.
+
 ## Known Gotchas
 
 - The exact build command that produced the extracted 4.0.0 binary is not recoverable. Use `build.ps1` from now on.
-- Current verified MSI: `F:\ViewLab\dist\XR-ViewLab-4.0.2.msi`.
-- Source must not depend on files outside `F:\ViewLab`.
-- The repo normally ignores binaries, except `ReShadePayload`, which must stay in-tree so the installer is self-contained.
+- Current verified MSI: `F:\AI-Projects\ViewLab\dist\XR-ViewLab-4.1.7.msi`.
+- Source must not depend on files outside `F:\ViewLab` or `F:\AI-Projects\ViewLab`.
 - The WPF app and DLL both use `xr-viewlab.ini`, but only the WPF app knows about the ReShade MENU keys right now.
 - The DLL reads render/app keys only; see `dllmain_features.md`.
-- Do not edit `ReShadeApps.ini` or stock ReShade global state from ViewLab unless the user explicitly reopens that feature.
 
 ## Build
 

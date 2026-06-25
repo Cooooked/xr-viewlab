@@ -80,6 +80,14 @@ If a binary reference or ReShade payload is needed again, copy it into `F:\ViewL
 - Struct layout uses backward-compatible offsets (`win_reserved`→`menu_visible`, `quad_reserved`→`heartbeat`) — 80 bytes, works with old build2 DLL.
 - Bumped to 4.1.6. MSI at `F:\ViewLab\dist\XR-ViewLab-4.1.6.msi`.
 
+### 2026-06-25 — v4.1.7: Cleanup stale files, installer fix, GitHub release
+
+- Removed stale `OpenVRBridge/`, `ReShadePayload/` binaries, and `ReshadeAI/` agent files from git.
+- Fixed installer `Product.wxs` to not reference deleted `ReShadePayload/` files.
+- Bumped version to 4.1.7 in `AssemblyInfo.cs` and `Product.wxs`.
+- Tagged and pushed `v4.1.7` to GitHub. Release created with MSI asset.
+- Created `SOURCE_BACKUP.md` consolidating all backup sources, ReShade mod backups, build versions, and rebuild instructions.
+
 ## Rules For Future Agents
 
 - Update this file before and after meaningful code changes.
