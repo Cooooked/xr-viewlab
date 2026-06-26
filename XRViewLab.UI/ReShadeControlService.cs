@@ -47,7 +47,10 @@ public sealed class ReShadeControlService : IDisposable
     {
         Disconnect();
 
-        _hMap = OpenFileMappingW(0x000F001F, false, MappingName);
+        // Create (or open existing) shared memory — ViewLab creates it so its settings
+        // survive the DLL creating defaults when a game launches later.
+        _hMap = CreateFileMappingW(new IntPtr(-1), IntPtr.Zero,
+            0x04 /* PAGE_READWRITE */, 0, ExpectedSize, MappingName);
         if (_hMap == IntPtr.Zero)
             return false;
 
@@ -62,8 +65,24 @@ public sealed class ReShadeControlService : IDisposable
         var block = ReadBlock();
         if (block.version != 1 || block.size != ExpectedSize)
         {
-            Disconnect();
-            return false;
+            // Fresh mapping — init with ViewLab defaults
+            block = new XRControlBlock
+            {
+                version = 1,
+                size = ExpectedSize,
+                xr_mode = 0,
+                revision = 0,
+                win_headless = 1,
+                win_always_on_top = 1,
+                win_snap_cursor = 0,
+                menu_visible = 1,
+                quad_edit_mode = 0,
+                heartbeat = 0,
+                quad_pos_x = 0, quad_pos_y = 0, quad_pos_z = float.NaN,
+                quad_quat_x = 0, quad_quat_y = 0, quad_quat_z = 0, quad_quat_w = 1,
+                quad_width = 0.32f, quad_height = 0.30f, quad_alpha = 1
+            };
+            WriteBlock(ref block);
         }
 
         _connected = true;
@@ -93,10 +112,24 @@ public sealed class ReShadeControlService : IDisposable
         Marshal.StructureToPtr(block, _view, false);
     }
 
-    public void Dispose()
-    {
-        Disconnect();
-    }
+	public bool CheckMappingExists()
+	{
+		IntPtr h = OpenFileMappingW(0x000F001F, false, MappingName);
+		if (h != IntPtr.Zero)
+		{
+			CloseHandle(h);
+			return true;
+		}
+		return false;
+	}
+
+	public void Dispose()
+	{
+		Disconnect();
+	}
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr CreateFileMappingW(IntPtr hFile, IntPtr lpAttributes, uint flProtect, uint dwMaximumSizeHigh, uint dwMaximumSizeLow, string lpName);
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern IntPtr OpenFileMappingW(uint dwDesiredAccess, bool bInheritHandle, string lpName);

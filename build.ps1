@@ -15,6 +15,26 @@ $LayerProject = Join-Path $Root "XRViewLabLayer.vcxproj"
 $InstallerProject = Join-Path $Root "Installer\Installer.wixproj"
 $MsiSource = Join-Path $Root "Installer\bin\$Configuration\xr-viewlab-setup.msi"
 
+# --- Auto-increment version (major.minor.build) ---
+$assemblyInfo = Join-Path $Root "Properties\AssemblyInfo.cs"
+$productWxs   = Join-Path $Root "Installer\Product.wxs"
+
+$currentVersion = Select-String -Path $assemblyInfo -Pattern 'AssemblyInformationalVersion\("(\d+)\.(\d+)\.(\d+)"\)' | Select-Object -First 1
+if ($currentVersion -and $currentVersion.Matches[0].Groups.Count -ge 4) {
+    $major = $currentVersion.Matches[0].Groups[1].Value
+    $minor = $currentVersion.Matches[0].Groups[2].Value
+    $build = [int]$currentVersion.Matches[0].Groups[3].Value + 1
+    $newVersion = "$major.$minor.$build"
+    $newVersion4 = "$newVersion.0"
+
+    Write-Host "Bumping version to $newVersion"
+    (Get-Content $assemblyInfo) -replace "$major\.\d+\.\d+\.0", $newVersion4 -replace "$major\.\d+\.\d+", $newVersion | Set-Content $assemblyInfo -Encoding UTF8
+    (Get-Content $productWxs)   -replace "Version=`"$major\.\d+\.\d+`"", "Version=`"$newVersion`"" | Set-Content $productWxs -Encoding UTF8
+}
+
+# --- Build ---
+Write-Host "XR ViewLab build root: $Root"
+
 function Find-MSBuild {
     $vswhereCandidates = @(
         "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe",
@@ -50,7 +70,6 @@ function Find-MSBuild {
     throw "MSBuild.exe not found. Install Visual Studio Build Tools."
 }
 
-Write-Host "XR ViewLab build root: $Root"
 Write-Host "Building WPF app..."
 dotnet publish $DotnetProject -c $Configuration -r win-x64 --self-contained true /p:PublishSingleFile=true
 
@@ -61,6 +80,8 @@ Write-Host "Building OpenXR API layer..."
 & $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=$Platform /m
 
 Write-Host "Building MSI..."
+$WixObjDir = Join-Path $Root "Installer\obj\$Configuration"
+if (Test-Path $WixObjDir) { Remove-Item -Recurse -Force $WixObjDir }
 & $MSBuild $InstallerProject /p:Configuration=$Configuration /p:Platform=$Platform /m
 
 if (!(Test-Path $MsiSource)) {
@@ -68,7 +89,7 @@ if (!(Test-Path $MsiSource)) {
 }
 
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
-$versionLine = Select-String -Path (Join-Path $Root "Properties\AssemblyInfo.cs") -Pattern 'AssemblyInformationalVersion\("([^"]+)"\)' | Select-Object -First 1
+$versionLine = Select-String -Path $assemblyInfo -Pattern 'AssemblyInformationalVersion\("([^"]+)"\)' | Select-Object -First 1
 $version = if ($versionLine -and $versionLine.Matches.Count -gt 0) { $versionLine.Matches[0].Groups[1].Value } else { "unknown" }
 $MsiDest = Join-Path $DistDir "XR-ViewLab-$version.msi"
 Copy-Item -Path $MsiSource -Destination $MsiDest -Force

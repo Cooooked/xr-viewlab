@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -63,6 +63,8 @@ public partial class MainWindow : Window
 
 
 	private bool _loading = true;
+
+	private bool _xrLaunchModeApplied;
 
 	private bool _syncingControls;
 
@@ -763,6 +765,10 @@ public partial class MainWindow : Window
 		VertVisualMaskBothCheck.IsChecked = ReadBoolSetting(VertVisualMaskBothKey, fallback: false);
 		VertTopMaskCheck.IsChecked = ReadBoolSetting(VertTopMaskKey, fallback: false);
 		VertBottomMaskCheck.IsChecked = ReadBoolSetting(VertBottomMaskKey, fallback: false);
+		// Gameplay Mode (config-only, not live runtime toggle)
+		bool gp = ReadBoolSetting("gameplay_mode", fallback: true);
+		if (XrGameplayModeCheck != null)  XrGameplayModeCheck.IsChecked  = gp;
+		if (XrGameplayModeCheck2 != null) XrGameplayModeCheck2.IsChecked = gp;
 		SyncSlidersFromText();
 		_loading = false;
 		UpdateModeControls();
@@ -978,42 +984,73 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		StatusText.Text = "Reposition: not yet implemented.";
 	}
 
+	private void LogToFile(string msg)
+	{
+		try
+		{
+			var logDir = Path.Combine(ConfigDirectory, "Logs");
+			Directory.CreateDirectory(logDir);
+			File.AppendAllText(Path.Combine(logDir, "ViewLab.log"),
+				$"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {msg}{Environment.NewLine}");
+		}
+		catch { }
+	}
+
 	private void XrPollTimer_Tick(object sender, EventArgs e)
 	{
 		if (!_xrControl.Connected)
 		{
 			if (_xrControl.TryConnect())
 			{
-				StatusText.Text = "Connected";
+				LogToFile("XR control connected");
+				ApplySavedXrLaunchMode();
 				XrSyncToUI();
-			}
-			else
-			{
-				StatusText.Text = "Not connected — launch an OpenXR game first";
 			}
 		}
 		else
 		{
-			XrSyncToUI();
+			if (!_xrControl.CheckMappingExists())
+			{
+				_xrLaunchModeApplied = false;
+				_xrControl.Disconnect();
+			}
+			else
+			{
+				ApplySavedXrLaunchMode();
+				XrSyncToUI();
+			}
 		}
+	}
+
+	private void ApplySavedXrLaunchMode()
+	{
+		if (_xrLaunchModeApplied || !_xrControl.Connected) return;
+		bool gameplay = ReadBoolSetting("gameplay_mode", fallback: true);
+		var block = _xrControl.ReadBlock();
+		block.xr_mode = gameplay ? 0u : 1u;
+		_xrControl.WriteBlock(ref block);
+		_xrLaunchModeApplied = true;
+		LogToFile($"Applied launch xr_mode={(gameplay ? 0 : 1)}");
 	}
 
 	private void XrGameplayMode_Changed(object sender, RoutedEventArgs e)
 	{
-		if (!_xrControl.Connected) return;
-		var block = _xrControl.ReadBlock();
-		block.xr_mode = GetXrGameplayMode() ? 0u : 1u;
-		_xrControl.WriteBlock(ref block);
+		if (_loading) return;
+		bool gameplay = GetXrGameplayMode();
+		WritePrivateProfileString("Settings", "gameplay_mode", gameplay ? "1" : "0", ConfigPath);
+		LogToFile($"Gameplay mode checkbox changed → saved gameplay_mode={(gameplay ? 1 : 0)}");
+		_xrLaunchModeApplied = false;
 	}
 
 	private void XrMenuEnabled_Changed(object sender, RoutedEventArgs e)
 	{
-		if (!_xrControl.Connected) return;
-		var block = _xrControl.ReadBlock();
 		var on = GetXrMenuVisible();
-		block.menu_visible = on ? 1u : 0u;
-		_xrControl.WriteBlock(ref block);
-
+		if (_xrControl.Connected)
+		{
+			var block = _xrControl.ReadBlock();
+			block.menu_visible = on ? 1u : 0u;
+			_xrControl.WriteBlock(ref block);
+		}
 		var hwnd = FindWindowW("ReShadeVRPreview", null);
 		if (hwnd != IntPtr.Zero)
 			ShowWindow(hwnd, on ? 1 : 0);
@@ -1029,22 +1066,125 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	}
 
 
-	private void XrReposition_Click(object sender, RoutedEventArgs e)
+	private DateTime _vrQuadPopupClosedAt = DateTime.MinValue;
+	private static readonly string QuadTransformIni =
+		Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ReShade", "openxr_quad_transform.ini");
+
+	private void VrQuadButton_Click(object sender, RoutedEventArgs e)
 	{
-		if (!_xrControl.Connected) return;
-		var block = _xrControl.ReadBlock();
-		block.quad_edit_mode = block.quad_edit_mode == 1 ? 0u : 1u;
-		_xrControl.WriteBlock(ref block);
-		StatusText.Text = block.quad_edit_mode == 1 ? "Reposition mode active — drag preview window" : "Reposition saved";
+		if ((DateTime.UtcNow - _vrQuadPopupClosedAt).TotalMilliseconds < 200)
+			return;
+
+		// Load current values from block into sliders
+		if (_xrControl.Connected)
+		{
+			var b = _xrControl.ReadBlock();
+			double rot = 2.0 * Math.Atan2(b.quad_quat_y, b.quad_quat_w) * 180.0 / Math.PI;
+			VrDistSlider.Value   = float.IsNaN(b.quad_pos_z) ? 1.5 : b.quad_pos_z;
+			VrWidthSlider.Value  = b.quad_width;
+			VrHeightSlider.Value = b.quad_height;
+			VrRotSlider.Value    = rot;
+			VrAlphaSlider.Value  = b.quad_alpha;
+		}
+
+		VrQuadPopup.PlacementTarget = (UIElement)sender;
+		VrQuadPopup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+		VrQuadPopup.IsOpen = true;
 	}
 
-	private void XrTransform_Click(object sender, RoutedEventArgs e)
+	private void VrQuadDir_Click(object sender, RoutedEventArgs e)
+	{
+		if (!_xrControl.Connected || sender is not Button btn || btn.Tag is not string tag)
+			return;
+		var parts = tag.Split(',');
+		if (parts.Length != 2) return;
+		float dx = float.Parse(parts[0]) * 0.02f;
+		float dy = float.Parse(parts[1]) * 0.02f;
+		var block = _xrControl.ReadBlock();
+		if (float.IsNaN(block.quad_pos_z)) { block.quad_pos_z = 1.5f; block.quad_pos_x = 0; block.quad_pos_y = 0; }
+		if (dx == 0 && dy == 0) { block.quad_pos_x = 0; block.quad_pos_y = 0; }
+		else { block.quad_pos_x += dx; block.quad_pos_y += dy; }
+		_xrControl.WriteBlock(ref block);
+	}
+
+	private void VrQuadSlider_Changed(object sender, RoutedEventArgs e)
 	{
 		if (!_xrControl.Connected) return;
 		var block = _xrControl.ReadBlock();
-		block.quad_edit_mode = block.quad_edit_mode == 2 ? 0u : 2u;
+		if (float.IsNaN(block.quad_pos_z)) { block.quad_pos_z = 1.5f; block.quad_pos_x = 0; block.quad_pos_y = 0; }
+		double scale = VrScaleSlider.Value;
+		block.quad_pos_z   = (float)VrDistSlider.Value;
+		block.quad_width   = (float)(VrWidthSlider.Value * scale);
+		block.quad_height  = (float)(VrHeightSlider.Value * scale);
+		block.quad_alpha   = (float)VrAlphaSlider.Value;
+		double rad = VrRotSlider.Value * Math.PI / 180.0;
+		block.quad_quat_y  = (float)Math.Sin(rad * 0.5);
+		block.quad_quat_w  = (float)Math.Cos(rad * 0.5);
 		_xrControl.WriteBlock(ref block);
-		StatusText.Text = block.quad_edit_mode == 2 ? "Transform mode active — drag/scroll preview window" : "Transform saved";
+		VrDistVal.Text    = VrDistSlider.Value.ToString("F2");
+		VrWidthVal.Text   = VrWidthSlider.Value.ToString("F2");
+		VrHeightVal.Text  = VrHeightSlider.Value.ToString("F2");
+		VrScaleVal.Text   = VrScaleSlider.Value.ToString("F2");
+		VrRotVal.Text     = VrRotSlider.Value.ToString("F1");
+		VrAlphaVal.Text   = VrAlphaSlider.Value.ToString("F2");
+	}
+
+	private void VrQuadReset_Click(object sender, RoutedEventArgs e)
+	{
+		// Restore saved defaults from INI file (or in-memory fallback)
+		var sb = new StringBuilder(32);
+		float ReadIniFloat(string key, float def)
+		{
+			sb.Clear();
+			GetPrivateProfileString("QuadTransform", key, "", sb, 32, QuadTransformIni);
+			return sb.Length > 0 ? float.Parse(sb.ToString(), CultureInfo.InvariantCulture) : def;
+		}
+		float rx = ReadIniFloat("pos_x", 0), ry = ReadIniFloat("pos_y", 0), rz = ReadIniFloat("pos_z", 1.5f);
+		float rw = ReadIniFloat("width", 0.5f), rh = ReadIniFloat("height", 0.5f);
+		float rr = 2.0f * (float)Math.Atan2(ReadIniFloat("quat_y", 0), ReadIniFloat("quat_w", 1)) * 180.0f / (float)Math.PI;
+		float ra = ReadIniFloat("alpha", 1);
+
+		VrDistSlider.Value   = rz;
+		VrWidthSlider.Value  = rw;
+		VrHeightSlider.Value = rh;
+		VrScaleSlider.Value  = 1;
+		VrRotSlider.Value    = rr;
+		VrAlphaSlider.Value  = ra;
+
+		if (_xrControl.Connected)
+		{
+			var block = _xrControl.ReadBlock();
+			block.quad_pos_x = rx; block.quad_pos_y = ry; block.quad_pos_z = rz;
+			block.quad_width = rw; block.quad_height = rh;
+			double rad = rr * Math.PI / 180.0;
+			block.quad_quat_y = (float)Math.Sin(rad * 0.5); block.quad_quat_w = (float)Math.Cos(rad * 0.5);
+			block.quad_alpha = ra;
+			_xrControl.WriteBlock(ref block);
+		}
+	}
+
+	private void VrQuadSaveDefault_Click(object sender, RoutedEventArgs e)
+	{
+		if (!_xrControl.Connected) return;
+		var block = _xrControl.ReadBlock();
+		WritePrivateProfileString("QuadTransform", "pos_x",  block.quad_pos_x.ToString("F6", CultureInfo.InvariantCulture), QuadTransformIni);
+		WritePrivateProfileString("QuadTransform", "pos_y",  block.quad_pos_y.ToString("F6", CultureInfo.InvariantCulture), QuadTransformIni);
+		WritePrivateProfileString("QuadTransform", "pos_z",  block.quad_pos_z.ToString("F6", CultureInfo.InvariantCulture), QuadTransformIni);
+		WritePrivateProfileString("QuadTransform", "width",  block.quad_width.ToString("F6", CultureInfo.InvariantCulture), QuadTransformIni);
+		WritePrivateProfileString("QuadTransform", "height", block.quad_height.ToString("F6", CultureInfo.InvariantCulture), QuadTransformIni);
+		WritePrivateProfileString("QuadTransform", "quat_y", block.quad_quat_y.ToString("F6", CultureInfo.InvariantCulture), QuadTransformIni);
+		WritePrivateProfileString("QuadTransform", "quat_w", block.quad_quat_w.ToString("F6", CultureInfo.InvariantCulture), QuadTransformIni);
+		WritePrivateProfileString("QuadTransform", "alpha",  block.quad_alpha.ToString("F6", CultureInfo.InvariantCulture), QuadTransformIni);
+	}
+
+	private void VrQuadClose_Click(object sender, RoutedEventArgs e)
+	{
+		VrQuadPopup.IsOpen = false;
+	}
+
+	private void VrQuadPopup_Closed(object sender, EventArgs e)
+	{
+		_vrQuadPopupClosedAt = DateTime.UtcNow;
 	}
 
 	private bool GetXrGameplayMode()
@@ -1089,17 +1229,26 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		var block = _xrControl.ReadBlock();
 		if (ReShadeOpenXRCard.Visibility == Visibility.Visible)
 		{
-			if (XrGameplayModeCheck != null)  XrGameplayModeCheck.IsChecked    = block.xr_mode == 0;
 			if (XrMenuEnabledCheck != null)   XrMenuEnabledCheck.IsChecked     = block.menu_visible == 1;
 			if (XrWinHeadlessCheck != null)   XrWinHeadlessCheck.IsChecked     = block.win_headless == 1;
 			if (XrWinTopmostCheck != null)    XrWinTopmostCheck.IsChecked      = block.win_always_on_top == 1;
 		}
 		if (ReShadeOpenXRCard2.Visibility == Visibility.Visible)
 		{
-			if (XrGameplayModeCheck2 != null) XrGameplayModeCheck2.IsChecked   = block.xr_mode == 0;
 			if (XrMenuEnabledCheck2 != null)  XrMenuEnabledCheck2.IsChecked    = block.menu_visible == 1;
 			if (XrWinHeadlessCheck2 != null)  XrWinHeadlessCheck2.IsChecked    = block.win_headless == 1;
 			if (XrWinTopmostCheck2 != null)   XrWinTopmostCheck2.IsChecked     = block.win_always_on_top == 1;
+		}
+
+		// Popup sliders sync when open
+		if (VrQuadPopup.IsOpen)
+		{
+			double rot = 2.0 * Math.Atan2(block.quad_quat_y, block.quad_quat_w) * 180.0 / Math.PI;
+			VrDistSlider.Value   = float.IsNaN(block.quad_pos_z) ? 1.5 : block.quad_pos_z;
+			VrWidthSlider.Value  = block.quad_width;
+			VrHeightSlider.Value = block.quad_height;
+			VrRotSlider.Value    = rot;
+			VrAlphaSlider.Value  = block.quad_alpha;
 		}
 
 		var hwnd = FindWindowW("ReShadeVRPreview", null);

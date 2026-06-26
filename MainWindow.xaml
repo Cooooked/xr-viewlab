@@ -428,17 +428,13 @@
               <TextBlock Name="ReShadeOpenXRHeader2" Text="ReShade MENU — OpenXR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenXRCard2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
                 <StackPanel>
-                  <TextBlock Text="GAMEPLAY MODE" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
-                  <CheckBox Name="XrGameplayModeCheck2" Content="Gameplay mode" Foreground="#A8A8A8" Margin="0,0,0,6" Checked="XrGameplayMode_Changed" Unchecked="XrGameplayMode_Changed" />
-                  <CheckBox Name="XrMenuEnabledCheck2" Content="Desktop VR Menu" Foreground="#A8A8A8" Margin="0,0,0,8" Checked="XrMenuEnabled_Changed" Unchecked="XrMenuEnabled_Changed" />
-                  <CheckBox Name="XrWinHeadlessCheck2" Content="Headless (no title bar / border)" Foreground="#A8A8A8" Margin="20,0,0,3" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
-                  <CheckBox Name="XrWinTopmostCheck2" Content="Always on top" Foreground="#A8A8A8" Margin="20,0,0,3" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
-                  <TextBlock Text="HMD menu" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
-                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <Button Content="Reposition" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,6,0" Click="XrReposition_Click" />
-                    <Button Content="Transform" Style="{StaticResource RedButton}" Padding="10,4" Click="XrTransform_Click" />
-                  </StackPanel>
-                 </StackPanel>
+                  <CheckBox Name="XrGameplayModeCheck2" Content="Gameplay mode" ToolTip="Enables game-aware menu behaviour" Checked="XrGameplayMode_Changed" Unchecked="XrGameplayMode_Changed" />
+                  <CheckBox Name="XrMenuEnabledCheck2" Content="Desktop VR Menu" Margin="0,4,0,0" ToolTip="Enables the mirrored desktop preview window" Checked="XrMenuEnabled_Changed" Unchecked="XrMenuEnabled_Changed" />
+                  <CheckBox Name="XrWinHeadlessCheck2" Content="  Headless (no title bar)" Margin="16,2,0,0" ToolTip="Removes window title bar and borders" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
+                  <CheckBox Name="XrWinTopmostCheck2" Content="  Always on top" Margin="16,0,0,0" ToolTip="Keeps the desktop window above others" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
+                  <Separator Margin="0,6,0,4" Background="{StaticResource BorderBrush}" Height="1" />
+                  <Button Name="VrQuadButton2" Content="VR Quad ▾" Padding="10,4" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Click="VrQuadButton_Click" />
+                </StackPanel>
               </Border>
               <TextBlock Name="ReShadeOpenVRHeader2" Text="ReShade MENU — OpenVR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenVRCard2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
@@ -459,6 +455,76 @@
                     <CheckBox Name="VertTopMaskCheck" Content="Top mask only" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Masks only the top edge of the vertical render area." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                     <CheckBox Name="VertBottomMaskCheck" Content="Bottom mask only" Foreground="#A8A8A8" ToolTip="Masks only the bottom edge of the vertical render area." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                   </StackPanel>
+                </Border>
+              </Popup>
+              <Popup Name="VrQuadPopup" StaysOpen="False" AllowsTransparency="True" Closed="VrQuadPopup_Closed">
+                <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12" MaxHeight="500">
+                  <ScrollViewer>
+                    <StackPanel>
+                      <TextBlock Text="VR QUAD" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                      <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,0,0,6" />
+                      <TextBlock Text="POSITION" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4" />
+                      <Grid HorizontalAlignment="Center" Margin="0,0,0,6">
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Button Grid.Row="0" Grid.Column="0" Content="↖" Width="32" Height="32" Margin="1" Style="{StaticResource RedButton}" FontSize="14" Click="VrQuadDir_Click" Tag="-1,-1"/>
+                        <Button Grid.Row="0" Grid.Column="1" Content="↑" Width="32" Height="32" Margin="1" Style="{StaticResource RedButton}" FontSize="14" Click="VrQuadDir_Click" Tag="0,-1"/>
+                        <Button Grid.Row="0" Grid.Column="2" Content="↗" Width="32" Height="32" Margin="1" Style="{StaticResource RedButton}" FontSize="14" Click="VrQuadDir_Click" Tag="1,-1"/>
+                        <Button Grid.Row="1" Grid.Column="0" Content="←" Width="32" Height="32" Margin="1" Style="{StaticResource RedButton}" FontSize="14" Click="VrQuadDir_Click" Tag="-1,0"/>
+                        <Button Grid.Row="1" Grid.Column="1" Content="●" Width="32" Height="32" Margin="1" Style="{StaticResource RedButton}" FontSize="11" Click="VrQuadDir_Click" Tag="0,0"/>
+                        <Button Grid.Row="1" Grid.Column="2" Content="→" Width="32" Height="32" Margin="1" Style="{StaticResource RedButton}" FontSize="14" Click="VrQuadDir_Click" Tag="1,0"/>
+                        <Button Grid.Row="2" Grid.Column="0" Content="↙" Width="32" Height="32" Margin="1" Style="{StaticResource RedButton}" FontSize="14" Click="VrQuadDir_Click" Tag="-1,1"/>
+                        <Button Grid.Row="2" Grid.Column="1" Content="↓" Width="32" Height="32" Margin="1" Style="{StaticResource RedButton}" FontSize="14" Click="VrQuadDir_Click" Tag="0,1"/>
+                        <Button Grid.Row="2" Grid.Column="2" Content="↘" Width="32" Height="32" Margin="1" Style="{StaticResource RedButton}" FontSize="14" Click="VrQuadDir_Click" Tag="1,1"/>
+                      </Grid>
+                      <Grid Margin="0,0,0,3">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Near" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,6,0"/>
+                        <Slider Grid.Column="1" Name="VrDistSlider" Minimum="0.3" Maximum="5" SmallChange="0.01" LargeChange="0.1" ValueChanged="VrQuadSlider_Changed"/>
+                        <TextBlock Grid.Column="2" Name="VrDistVal" Text="1.50" TextAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" MinWidth="30" Margin="6,0,0,0"/>
+                      </Grid>
+                      <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,0,0,6" />
+                      <TextBlock Text="SIZE" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4" />
+                      <Grid Margin="0,0,0,3">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Width" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,6,0"/>
+                        <Slider Grid.Column="1" Name="VrWidthSlider" Minimum="0.1" Maximum="3" SmallChange="0.01" LargeChange="0.1" ValueChanged="VrQuadSlider_Changed"/>
+                        <TextBlock Grid.Column="2" Name="VrWidthVal" Text="0.50" TextAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" MinWidth="30" Margin="6,0,0,0"/>
+                      </Grid>
+                      <Grid Margin="0,0,0,3">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Height" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,6,0"/>
+                        <Slider Grid.Column="1" Name="VrHeightSlider" Minimum="0.1" Maximum="2" SmallChange="0.01" LargeChange="0.1" ValueChanged="VrQuadSlider_Changed"/>
+                        <TextBlock Grid.Column="2" Name="VrHeightVal" Text="0.50" TextAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" MinWidth="30" Margin="6,0,0,0"/>
+                      </Grid>
+                      <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Scale" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,6,0"/>
+                        <Slider Grid.Column="1" Name="VrScaleSlider" Minimum="0.1" Maximum="3" SmallChange="0.01" LargeChange="0.1" Value="1" ValueChanged="VrQuadSlider_Changed"/>
+                        <TextBlock Grid.Column="2" Name="VrScaleVal" Text="1.00" TextAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" MinWidth="30" Margin="6,0,0,0"/>
+                      </Grid>
+                      <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,0,0,6" />
+                      <TextBlock Text="APPEARANCE" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4" />
+                      <Grid Margin="0,0,0,3">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Rotate" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,6,0"/>
+                        <Slider Grid.Column="1" Name="VrRotSlider" Minimum="-180" Maximum="180" SmallChange="0.5" LargeChange="5" ValueChanged="VrQuadSlider_Changed"/>
+                        <TextBlock Grid.Column="2" Name="VrRotVal" Text="0.0" TextAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" MinWidth="30" Margin="6,0,0,0"/>
+                      </Grid>
+                      <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Alpha" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,6,0"/>
+                        <Slider Grid.Column="1" Name="VrAlphaSlider" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1" ValueChanged="VrQuadSlider_Changed"/>
+                        <TextBlock Grid.Column="2" Name="VrAlphaVal" Text="1.00" TextAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" FontSize="11" MinWidth="30" Margin="6,0,0,0"/>
+                      </Grid>
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Content="Reset" Padding="6,3" Style="{StaticResource RedButton}" Margin="2" Click="VrQuadReset_Click" />
+                        <Button Grid.Column="1" Content="Default" Padding="6,3" Style="{StaticResource RedButton}" Margin="2" Click="VrQuadSaveDefault_Click" />
+                        <Button Grid.Column="2" Content="Close" Padding="6,3" Style="{StaticResource RedButton}" Margin="2" Click="VrQuadClose_Click" />
+                      </Grid>
+                    </StackPanel>
+                  </ScrollViewer>
                 </Border>
               </Popup>
             </Canvas>
@@ -502,17 +568,13 @@
               <TextBlock Name="ReShadeOpenXRHeader" Text="ReShade MENU — OpenXR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenXRCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
                 <StackPanel>
-                  <TextBlock Text="GAMEPLAY MODE" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
-                  <CheckBox Name="XrGameplayModeCheck" Content="Gameplay mode" Foreground="#A8A8A8" Margin="0,0,0,6" Checked="XrGameplayMode_Changed" Unchecked="XrGameplayMode_Changed" />
-                  <CheckBox Name="XrMenuEnabledCheck" Content="Desktop VR Menu" Foreground="#A8A8A8" Margin="0,0,0,8" Checked="XrMenuEnabled_Changed" Unchecked="XrMenuEnabled_Changed" />
-                  <CheckBox Name="XrWinHeadlessCheck" Content="Headless (no title bar / border)" Foreground="#A8A8A8" Margin="20,0,0,3" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
-                  <CheckBox Name="XrWinTopmostCheck" Content="Always on top" Foreground="#A8A8A8" Margin="20,0,0,3" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
-                  <TextBlock Text="HMD menu" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
-                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <Button Content="Reposition" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,6,0" Click="XrReposition_Click" />
-                    <Button Content="Transform" Style="{StaticResource RedButton}" Padding="10,4" Click="XrTransform_Click" />
-                  </StackPanel>
-                 </StackPanel>
+                  <CheckBox Name="XrGameplayModeCheck" Content="Gameplay mode" ToolTip="Enables game-aware menu behaviour" Checked="XrGameplayMode_Changed" Unchecked="XrGameplayMode_Changed" />
+                  <CheckBox Name="XrMenuEnabledCheck" Content="Desktop VR Menu" Margin="0,4,0,0" ToolTip="Enables the mirrored desktop preview window" Checked="XrMenuEnabled_Changed" Unchecked="XrMenuEnabled_Changed" />
+                  <CheckBox Name="XrWinHeadlessCheck" Content="  Headless (no title bar)" Margin="16,2,0,0" ToolTip="Removes window title bar and borders" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
+                  <CheckBox Name="XrWinTopmostCheck" Content="  Always on top" Margin="16,0,0,0" ToolTip="Keeps the desktop window above others" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
+                  <Separator Margin="0,6,0,4" Background="{StaticResource BorderBrush}" Height="1" />
+                  <Button Name="VrQuadButton" Content="VR Quad ▾" Padding="10,4" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Click="VrQuadButton_Click" />
+                </StackPanel>
               </Border>
               <TextBlock Name="ReShadeOpenVRHeader" Text="ReShade MENU — OpenVR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenVRCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
