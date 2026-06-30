@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Window x:Class="XRViewLab.UI.ProfileWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="XR ViewLab App Profile" Width="460" Height="410" ResizeMode="NoResize" WindowStyle="None" AllowsTransparency="True" WindowStartupLocation="CenterOwner" Background="#00FFFFFF" Foreground="#E8E8E8" FontFamily="Segoe UI" FontSize="14" xmlns:ui="clr-namespace:XRViewLab.UI;assembly=xr-viewlab">
+<Window x:Class="XRViewLab.UI.ProfileWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="ViewLab App Profile" Width="560" Height="720" ResizeMode="NoResize" WindowStyle="None" AllowsTransparency="True" WindowStartupLocation="CenterOwner" Background="#00FFFFFF" Foreground="#E8E8E8" FontFamily="Segoe UI" FontSize="14" xmlns:ui="clr-namespace:XRViewLab.UI">
   <FrameworkElement.Resources>
     <ResourceDictionary>
       <SolidColorBrush x:Key="PanelBrush" Color="#101112" />
@@ -39,6 +39,46 @@
         <Setter Property="Background" Value="{StaticResource RedBrush}" />
         <Setter Property="BorderBrush" Value="#EC3038" />
       </Style>
+      <Style x:Key="SliderTrackButton" TargetType="{x:Type RepeatButton}">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type RepeatButton}">
+              <Border Background="{TemplateBinding Control.Background}" Height="4" CornerRadius="2" />
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="{x:Type Slider}" TargetType="{x:Type Slider}">
+        <Setter Property="LargeChange" Value="0.05" />
+        <Setter Property="SmallChange" Value="0.01" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type Slider}">
+              <Grid Height="18">
+                <Track Name="PART_Track">
+                  <Track.DecreaseRepeatButton>
+                    <RepeatButton Name="DecreaseTrackButton" Background="#C90012" Command="{x:Static Slider.DecreaseLarge}" Style="{StaticResource SliderTrackButton}" />
+                  </Track.DecreaseRepeatButton>
+                  <Track.IncreaseRepeatButton>
+                    <RepeatButton Name="IncreaseTrackButton" Background="#2B2D31" Command="{x:Static Slider.IncreaseLarge}" Style="{StaticResource SliderTrackButton}" />
+                  </Track.IncreaseRepeatButton>
+                  <Track.Thumb>
+                    <Thumb Width="12" Height="12">
+                      <Control.Template>
+                        <ControlTemplate TargetType="{x:Type Thumb}">
+                          <Border Background="#E02A35" BorderBrush="#FF5960" BorderThickness="1" CornerRadius="7" />
+                        </ControlTemplate>
+                      </Control.Template>
+                    </Thumb>
+                  </Track.Thumb>
+                </Track>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
     </ResourceDictionary>
   </FrameworkElement.Resources>
   <Border Background="#171819" BorderBrush="#303236" BorderThickness="1" CornerRadius="10">
@@ -54,6 +94,7 @@
         </Grid>
       </Border>
       <Border Grid.Row="1" Margin="16" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="18">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="90" />
@@ -62,34 +103,90 @@
           </Grid.ColumnDefinitions>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="18" />
+            <RowDefinition Height="8" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="12" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="12" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="18" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="10" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="22" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
-          <TextBlock Name="AppNameText" Grid.ColumnSpan="3" FontSize="16" FontWeight="SemiBold" />
-          <TextBlock Grid.Row="2" Text="Top" VerticalAlignment="Center" />
-          <TextBox Name="TopBox" Grid.Row="2" Grid.Column="1" TextChanged="Values_Changed" />
-          <TextBlock Name="TopHint" Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
-          <TextBlock Grid.Row="4" Text="Bottom" VerticalAlignment="Center" />
-          <TextBox Name="BottomBox" Grid.Row="4" Grid.Column="1" TextChanged="Values_Changed" />
-          <TextBlock Name="BottomHint" Grid.Row="4" Grid.Column="2" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
-          <TextBlock Grid.Row="6" Text="Horizontal" VerticalAlignment="Center" />
-          <TextBox Name="HorizontalBox" Grid.Row="6" Grid.Column="1" TextChanged="Values_Changed" />
-          <TextBlock Name="HorizontalHint" Grid.Row="6" Grid.Column="2" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
-          <TextBlock Name="CombinedHint" Grid.Row="8" Grid.ColumnSpan="3" Foreground="{StaticResource MutedBrush}" />
-          <StackPanel Grid.Row="10" Grid.ColumnSpan="3" Orientation="Horizontal">
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" VerticalAlignment="Center" FontWeight="SemiBold" />
+          <TextBox Name="NameBox" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" ToolTip="Rename this app as it appears in the ViewLab list (saved as custom_name; survives game relaunches)." />
+          <TextBlock Grid.Row="2" Grid.Column="0" Text="Exe" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+          <TextBlock Name="ExeNameText" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+          <TextBlock Grid.Row="4" Text="Top" VerticalAlignment="Center" />
+          <TextBox Name="TopBox" Grid.Row="4" Grid.Column="1" TextChanged="Values_Changed" />
+          <TextBlock Name="TopHint" Grid.Row="4" Grid.Column="2" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+          <TextBlock Grid.Row="6" Text="Bottom" VerticalAlignment="Center" />
+          <TextBox Name="BottomBox" Grid.Row="6" Grid.Column="1" TextChanged="Values_Changed" />
+          <TextBlock Name="BottomHint" Grid.Row="6" Grid.Column="2" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+          <TextBlock Grid.Row="8" Text="Horizontal" VerticalAlignment="Center" />
+          <TextBox Name="HorizontalBox" Grid.Row="8" Grid.Column="1" TextChanged="Values_Changed" />
+          <TextBlock Name="HorizontalHint" Grid.Row="8" Grid.Column="2" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+          <TextBlock Grid.Row="10" Grid.Column="0" Text="Render %" VerticalAlignment="Center" ToolTip="Per-game render-resolution multiplier. 135.8362 = exact 4.00x pixel-count target from Quest 3 native/Godlike baseline." />
+          <TextBox Name="RenderBox" Grid.Row="10" Grid.Column="1" TextChanged="Values_Changed" />
+          <TextBlock Name="RenderHint" Grid.Row="10" Grid.Column="2" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+          <StackPanel Grid.Row="12" Grid.ColumnSpan="3" Margin="0,0,0,8">
+            <Rectangle Height="1" Fill="{StaticResource BorderBrush}" Margin="0,8,0,8" />
+            <TextBlock Text="VISOR MASK" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
+            <CheckBox Name="UseGlobalVisorCheck" Content="Use global visor settings" Margin="0,0,0,4" Checked="UseGlobalVisor_Changed" Unchecked="UseGlobalVisor_Changed" />
+            <CheckBox Name="VisorEnabledCheck" Content="Enable visor mask" Margin="0,0,0,6" />
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="60" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="4" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="4" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="4" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="4" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="4" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Size" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorSizeSlider" Grid.Row="0" Grid.Column="1" Minimum="0.05" Maximum="1" ValueChanged="MaskOpeningSlider_Changed" />
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="Width" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorWidthSlider" Grid.Row="2" Grid.Column="1" Minimum="0.5" Maximum="1.5" ValueChanged="MaskShapeSlider_Changed" />
+              <TextBlock Grid.Row="4" Grid.Column="0" Text="Height" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorHeightSlider" Grid.Row="4" Grid.Column="1" Minimum="0.5" Maximum="1.5" ValueChanged="MaskShapeSlider_Changed" />
+              <TextBlock Grid.Row="6" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorCurveSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" />
+              <TextBlock Grid.Row="8" Grid.Column="0" Text="X" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorOffsetXSlider" Grid.Row="8" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
+              <TextBlock Grid.Row="10" Grid.Column="0" Text="Y" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorOffsetYSlider" Grid.Row="10" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
+            </Grid>
+            <ui:BeanMaskEditor x:Name="MaskBeanEditor" Height="120" Margin="0,8,0,0" ShapeChanged="MaskBeanEditor_ShapeChanged" />
+          </StackPanel>
+          <TextBlock Name="CombinedHint" Grid.Row="18" Grid.ColumnSpan="3" Foreground="{StaticResource MutedBrush}" />
+          <StackPanel Grid.Row="20" Grid.ColumnSpan="3" Orientation="Horizontal">
             <Button Content="Save" Style="{StaticResource RedButton}" MinWidth="86" Click="Save_Click" />
-            <Button Content="Use global" MinWidth="104" Margin="10,0,0,0" Click="UseGlobal_Click" />
+            <Button Content="Use Global Values" MinWidth="132" Margin="10,0,0,0" Click="UseGlobal_Click" />
+            <Button Name="HideShowButton" Content="Hide Selected" MinWidth="112" Margin="10,0,0,0" Click="HideShow_Click" />
             <Button Content="Cancel" MinWidth="86" Margin="10,0,0,0" Click="Cancel_Click" />
           </StackPanel>
         </Grid>
+        </ScrollViewer>
       </Border>
     </Grid>
   </Border>

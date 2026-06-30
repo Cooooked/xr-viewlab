@@ -8,17 +8,72 @@ public sealed class AppProfile : INotifyPropertyChanged
 
 	private bool _profileEnabled;
 
+	private bool _hidden;
+
 	private double _top = 0.2;
 
 	private double _bottom = 0.2;
 
 	private double _horizontal = 1.0;
 
+	private double _renderScale = 1.0;
+
+	private bool _maskEnabled;
+
+	private double _maskVertical = 1.0;
+
+	private double _maskHorizontal = 1.0;
+
+	private bool _maskRounded;
+
+	private double _maskCorner = 1.0;
+
+	private double _maskTopBias;
+
+	private double _maskBottomBias;
+
+	private double _maskLeftBias;
+
+	private double _maskRightBias;
+
+	private double _maskTopCurve;
+
+	private double _maskBottomCurve;
+
+	private string _displayName = "";
+
+	private string _display = "";
+
 	public string Key { get; init; } = "";
 
-	public string DisplayName { get; init; } = "";
+	// The executable file name (e.g. "dirtrally2.exe"), used to recompute Display on rename.
+	public string ExeName { get; init; } = "";
 
-	public string Display { get; init; } = "";
+	public string DisplayName
+	{
+		get => _displayName;
+		set
+		{
+			if (_displayName != value)
+			{
+				_displayName = value;
+				OnPropertyChanged("DisplayName");
+			}
+		}
+	}
+
+	public string Display
+	{
+		get => _display;
+		set
+		{
+			if (_display != value)
+			{
+				_display = value;
+				OnPropertyChanged("Display");
+			}
+		}
+	}
 
 	public string XrType { get; init; } = "";
 
@@ -93,6 +148,171 @@ public sealed class AppProfile : INotifyPropertyChanged
 		}
 	}
 
+	public bool Hidden
+	{
+		get
+		{
+			return _hidden;
+		}
+		set
+		{
+			if (_hidden != value)
+			{
+				_hidden = value;
+				OnPropertyChanged("Hidden");
+			}
+		}
+	}
+
+	public double RenderScale
+	{
+		get
+		{
+			return _renderScale;
+		}
+		set
+		{
+			_renderScale = value;
+			RefreshSummary();
+		}
+	}
+
+	public bool MaskEnabled
+	{
+		get
+		{
+			return _maskEnabled;
+		}
+		set
+		{
+			_maskEnabled = value;
+			RefreshSummary();
+		}
+	}
+
+	public double MaskVertical
+	{
+		get
+		{
+			return _maskVertical;
+		}
+		set
+		{
+			_maskVertical = value;
+			RefreshSummary();
+		}
+	}
+
+	public double MaskHorizontal
+	{
+		get
+		{
+			return _maskHorizontal;
+		}
+		set
+		{
+			_maskHorizontal = value;
+			RefreshSummary();
+		}
+	}
+
+	public bool MaskRounded
+	{
+		get
+		{
+			return _maskRounded;
+		}
+		set
+		{
+			_maskRounded = value;
+			RefreshSummary();
+		}
+	}
+
+	public double MaskCorner
+	{
+		get
+		{
+			return _maskCorner;
+		}
+		set
+		{
+			_maskCorner = value;
+			RefreshSummary();
+		}
+	}
+
+	public double MaskTopBias
+	{
+		get
+		{
+			return _maskTopBias;
+		}
+		set
+		{
+			_maskTopBias = value;
+			RefreshSummary();
+		}
+	}
+
+	public double MaskBottomBias
+	{
+		get
+		{
+			return _maskBottomBias;
+		}
+		set
+		{
+			_maskBottomBias = value;
+			RefreshSummary();
+		}
+	}
+
+	public double MaskLeftBias
+	{
+		get => _maskLeftBias;
+		set
+		{
+			_maskLeftBias = value;
+			RefreshSummary();
+		}
+	}
+
+	public double MaskRightBias
+	{
+		get => _maskRightBias;
+		set
+		{
+			_maskRightBias = value;
+			RefreshSummary();
+		}
+	}
+
+	public double MaskTopCurve
+	{
+		get => _maskTopCurve;
+		set
+		{
+			_maskTopCurve = value;
+			RefreshSummary();
+		}
+	}
+
+	public double MaskBottomCurve
+	{
+		get => _maskBottomCurve;
+		set
+		{
+			_maskBottomCurve = value;
+			RefreshSummary();
+		}
+	}
+
+	// 0 = use global (no per-app override stored)
+	public double VisorSize { get; set; }
+	public double VisorWidth { get; set; }
+	public double VisorHeight { get; set; }
+
 	public string Summary
 	{
 		get
@@ -101,7 +321,8 @@ public sealed class AppProfile : INotifyPropertyChanged
 			{
 				return "Global";
 			}
-			return $"{Top:0.00};{Bottom:0.00};{Horizontal:0.00}";
+			string mask = MaskEnabled ? $";M {MaskVertical:0.###}/{MaskHorizontal:0.###}" : "";
+			return $"{Top:0.###};{Bottom:0.###};{Horizontal:0.###};{RenderScale * 100.0:0.####}%{mask}";
 		}
 	}
 

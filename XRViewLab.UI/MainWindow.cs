@@ -35,6 +35,19 @@ public partial class MainWindow : Window
 	private const string SupportFooterText = "Support the broke loser who made this app";
 
 	// Render options
+	private const string MaskEnabledKey = "mask_enabled";
+	private const string MaskRoundedKey = "mask_rounded";
+	private const string MaskCornerKey = "mask_corner";
+	private const string MaskOffsetYKey = "mask_offset_y";
+	private const string MaskTopBiasKey = "mask_top_bias";
+	private const string MaskBottomBiasKey = "mask_bottom_bias";
+	private const string MaskLeftBiasKey = "mask_left_bias";
+	private const string MaskRightBiasKey = "mask_right_bias";
+	private const string MaskTopCurveKey = "mask_top_curve";
+	private const string MaskBottomCurveKey = "mask_bottom_curve";
+	private const string MaskSizeKey = "mask_size";
+	private const string MaskWidthScaleKey = "mask_width_scale";
+	private const string MaskHeightScaleKey = "mask_height_scale";
 	private const string FoveatedCenterKey = "foveated_center_compensation";
 	private const string StencilOuterEdgesKey = "stencil_outer_edges_only";
 	private const string CropOuterEdgesKey = "crop_outer_edges_only";
@@ -61,12 +74,13 @@ public partial class MainWindow : Window
 
 	private readonly ObservableCollection<AppProfile> _apps = new ObservableCollection<AppProfile>();
 
-
 	private bool _loading = true;
 
 	private bool _xrLaunchModeApplied;
 
 	private bool _syncingControls;
+
+	private bool _optionsInRightPanel;
 
 	private string? _availableUpdateTag;
 
@@ -205,7 +219,7 @@ public partial class MainWindow : Window
 		string logPath = Path.Combine(ConfigDirectory, "Logs", "ViewLab.log");
 		if (!File.Exists(logPath))
 		{
-			StatusText.Text = "No log file found yet. Launch an OpenXR game first.";
+			StatusText.Text = "No log file found yet. Launch a VR game first.";
 			return;
 		}
 		Process.Start(new ProcessStartInfo { FileName = logPath, UseShellExecute = true });
@@ -226,7 +240,7 @@ public partial class MainWindow : Window
 				v.Contains("XR_APILAYER_cooooked_xrviewlab.json", StringComparison.OrdinalIgnoreCase));
 			if (!found)
 			{
-				StatusText.Text = "Warning: layer not registered. Try reinstalling XR ViewLab.";
+				StatusText.Text = "Warning: layer not registered. Try reinstalling ViewLab.";
 			}
 			else if (!File.Exists(manifest))
 			{
@@ -266,25 +280,25 @@ public partial class MainWindow : Window
 			if (latest == null)
 			{
 				StatusText.Text = "No update release found.";
-				MessageBox.Show(this, "No XR ViewLab update release was found.", "XR ViewLab Updates", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+				MessageBox.Show(this, "No ViewLab update release was found.", "ViewLab Updates", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 				return;
 			}
 			int comparison = CompareReleaseVersions(latest.TagName, CurrentVersion);
 			if (comparison < 0)
 			{
 				StatusText.Text = "Running newer build than published release (" + CurrentVersion + ").";
-				MessageBox.Show(this, "You are running a newer build than the latest published release.\n\nInstalled: " + CurrentVersion + "\nLatest: " + latest.TagName, "XR ViewLab Updates", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+				MessageBox.Show(this, "You are running a newer build than the latest published release.\n\nInstalled: " + CurrentVersion + "\nLatest: " + latest.TagName, "ViewLab Updates", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 				return;
 			}
 			if (comparison == 0)
 			{
-				StatusText.Text = "XR ViewLab is up to date (" + CurrentVersion + ").";
-				MessageBox.Show(this, "You are up to date.\n\nInstalled: " + CurrentVersion + "\nLatest: " + latest.TagName, "XR ViewLab Updates", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+				StatusText.Text = "ViewLab is up to date (" + CurrentVersion + ").";
+				MessageBox.Show(this, "You are up to date.\n\nInstalled: " + CurrentVersion + "\nLatest: " + latest.TagName, "ViewLab Updates", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 				return;
 			}
 			_availableUpdateTag = latest.TagName;
 			MarkUpdateAvailable();
-			if (MessageBox.Show(this, "Update detected: " + latest.TagName + "\n\nInstalled: " + CurrentVersion + "\n\nDownload and install now?\n\nXR ViewLab will close after the installer starts.", "XR ViewLab Update", MessageBoxButton.YesNo, MessageBoxImage.Asterisk) != MessageBoxResult.Yes)
+			if (MessageBox.Show(this, "Update detected: " + latest.TagName + "\n\nInstalled: " + CurrentVersion + "\n\nDownload and install now?\n\nViewLab will close after the installer starts.", "ViewLab Update", MessageBoxButton.YesNo, MessageBoxImage.Asterisk) != MessageBoxResult.Yes)
 			{
 				StatusText.Text = "Update available: " + latest.TagName + ".";
 				return;
@@ -303,7 +317,7 @@ public partial class MainWindow : Window
 		catch (Exception ex)
 		{
 			StatusText.Text = "Update check failed: " + ex.Message;
-			MessageBox.Show(this, "Update check failed.\n\n" + ex.Message, "XR ViewLab Updates", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+			MessageBox.Show(this, "Update check failed.\n\n" + ex.Message, "ViewLab Updates", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 		}
 	}
 
@@ -359,7 +373,7 @@ public partial class MainWindow : Window
 
 	private async Task<string> DownloadUpdateAsync(HttpClient client, UpdateRelease release)
 	{
-		string text = Path.Combine(Path.GetTempPath(), "XR ViewLab Updates");
+		string text = Path.Combine(Path.GetTempPath(), "ViewLab Updates");
 		Directory.CreateDirectory(text);
 		string installerPath = Path.Combine(text, release.AssetName);
 		StatusText.Text = "Downloading " + release.TagName + "...";
@@ -452,14 +466,17 @@ public partial class MainWindow : Window
 	private void LoadColumnWidths()
 	{
 		SetColumnWidth(AppsCheckColumn, ReadColumnWidth("apps_check_column_width", 28.0, 24.0, 52.0));
-		AppsNameColumn.Width = new DataGridLength(1.0, DataGridLengthUnitType.Star);
-		SetColumnWidth(AppsValueColumn, ReadColumnWidth("apps_value_column_width", 84.0, 72.0, 220.0));
+		SetColumnWidth(AppsNameColumn, ReadColumnWidth("apps_name_column_width", 180.0, 80.0, 500.0));
+		SetColumnWidth(AppsValueColumn, ReadColumnWidth("apps_value_column_width", 62.0, 36.0, 260.0));
+		SetColumnWidth(AppsXrTypeColumn, ReadColumnWidth("apps_xr_column_width", 42.0, 28.0, 160.0));
 	}
 
 	private void RegisterColumnWidthPersistence()
 	{
 		RegisterColumnWidthPersistence(AppsCheckColumn, "apps_check_column_width");
+		RegisterColumnWidthPersistence(AppsNameColumn, "apps_name_column_width");
 		RegisterColumnWidthPersistence(AppsValueColumn, "apps_value_column_width");
+		RegisterColumnWidthPersistence(AppsXrTypeColumn, "apps_xr_column_width");
 	}
 
 	private static void SetColumnWidth(DataGridColumn column, double width)
@@ -500,7 +517,7 @@ public partial class MainWindow : Window
 
 	private void UpdateResponsiveLayout(double w = -1)
 	{
-		if (MainColumn != null && SideColumn != null && WideGapColumn != null && WideGapColumn2 != null && RightColumn != null && EnabledCard != null && SidePanel != null && RightColumnPanel != null && RenderLabelColumn != null && RenderValueColumn != null && RenderHintColumn != null && RenderHintGapColumn != null && OptionsGapRow != null)
+		if (MainColumn != null && SideColumn != null && WideGapColumn != null && WideGapColumn2 != null && RightColumn != null && EnabledCard != null && SidePanel != null && RightColumnPanel != null && LeftColumnPanel != null && RenderLabelColumn != null && RenderValueColumn != null && RenderHintColumn != null && RenderHintGapColumn != null && OptionsGapRow != null)
 		{
 			if (w < 0) w = base.ActualWidth;
 			bool compact  = w > 0.0 && w < 360.0;  // min: sliders collapse
@@ -513,19 +530,35 @@ public partial class MainWindow : Window
 			WideGapColumn2.Width = threeCol  ? new GridLength(14.0) : new GridLength(0.0);
 			RightColumn.Width    = threeCol  ? new GridLength(1.0, GridUnitType.Star) : new GridLength(0.0);
 
-			// EnabledCard and RenderCard always in left col
-			Grid.SetColumn(EnabledCard, 0);
-			Grid.SetColumnSpan(EnabledCard, 1);
-			Grid.SetRow(EnabledCard, 0);
-			Grid.SetColumn(RenderCard, 0);
-			Grid.SetRow(RenderCard, 2);
+			// EnabledCard and RenderCard live in LeftColumnPanel (always left col) — see XAML.
+			// LeftColumnPanel is a single top-aligned StackPanel spanning the grid rows, so the
+			// tall RowSpan side panels (cols 2/4) cannot inject blank space between the left cards.
 
-			// RightColumnPanel: shown in three-col only, spans all rows so not sized by left-col row heights.
-			// Standalone OptionsHeader/OptionsCard (Grid rows 5/6) shown in single/two-col only.
+			// In 3-col mode, move OptionsHeader/OptionsCard into RightColumnPanel.
+			// In 1/2-col mode they live in LeftColumnPanel under RenderCard.
+			if (threeCol && !_optionsInRightPanel)
+			{
+				LeftColumnPanel.Children.Remove(OptionsHeader);
+				LeftColumnPanel.Children.Remove(OptionsCard);
+				RightColumnPanel.Children.Insert(0, OptionsCard);
+				RightColumnPanel.Children.Insert(0, OptionsHeader);
+				_optionsInRightPanel = true;
+			}
+			else if (!threeCol && _optionsInRightPanel)
+			{
+				RightColumnPanel.Children.Remove(OptionsHeader);
+				RightColumnPanel.Children.Remove(OptionsCard);
+				LeftColumnPanel.Children.Add(OptionsHeader);
+				LeftColumnPanel.Children.Add(OptionsCard);
+				_optionsInRightPanel = false;
+			}
 			RightColumnPanel.Visibility = threeCol ? Visibility.Visible   : Visibility.Collapsed;
-			OptionsHeader.Visibility    = threeCol ? Visibility.Collapsed : Visibility.Visible;
-			OptionsCard.Visibility      = threeCol ? Visibility.Collapsed : Visibility.Visible;
-			OptionsGapRow.Height        = threeCol ? new GridLength(0)    : new GridLength(10);
+			Grid.SetColumn(RightColumnPanel, 4);
+			Grid.SetRow(RightColumnPanel, 0);
+			Grid.SetRowSpan(RightColumnPanel, 9);
+			OptionsHeader.Visibility    = Visibility.Visible;
+			OptionsCard.Visibility      = Visibility.Visible;
+			OptionsGapRow.Height        = threeCol ? new GridLength(0) : new GridLength(10);
 
 			// SidePanel (apps): col 2 in two/three-col, col 0 row 8 in single
 			Grid.SetColumn(SidePanel, twoCol ? 2 : 0);
@@ -535,8 +568,6 @@ public partial class MainWindow : Window
 			// ReShade cards in SidePanel: visible in single/two-col only
 			ReShadeOpenXRHeader.Visibility = threeCol ? Visibility.Collapsed : Visibility.Visible;
 			ReShadeOpenXRCard.Visibility   = threeCol ? Visibility.Collapsed : Visibility.Visible;
-			ReShadeOpenVRHeader.Visibility = threeCol ? Visibility.Collapsed : Visibility.Visible;
-			ReShadeOpenVRCard.Visibility   = threeCol ? Visibility.Collapsed : Visibility.Visible;
 			ThanksText.Visibility          = threeCol ? Visibility.Collapsed : Visibility.Visible;
 
 			AppsGridRow.Height = new GridLength(twoCol ? 260.0 : 180.0);
@@ -673,19 +704,58 @@ public partial class MainWindow : Window
 		return Math.Clamp(result, 0.0, 1.0);
 	}
 
+	private static double ReadRangeSetting(string key, double fallback, double min, double max)
+	{
+		if (!double.TryParse(ReadSetting(key, ""), NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
+		{
+			return fallback;
+		}
+		return Math.Clamp(result, min, max);
+	}
+
+	private static double ReadSignedScaleSetting(string key, double fallback)
+	{
+		if (!double.TryParse(ReadSetting(key, ""), NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
+		{
+			return fallback;
+		}
+		return Math.Clamp(result, -1.0, 1.0);
+	}
+
 	private static string FormatScale(double value)
 	{
-		return value.ToString("0.00", CultureInfo.InvariantCulture);
+		return value.ToString("0.###", CultureInfo.InvariantCulture);
+	}
+
+	private static string FormatStorageScale(double value)
+	{
+		return value.ToString("0.########", CultureInfo.InvariantCulture);
 	}
 
 	private static string FormatPercent(double value)
 	{
-		return $"{Math.Clamp(value, 0.0, 1.0) * 100.0:0}%";
+		double pct = Math.Clamp(value, 0.0, 1.0) * 100.0;
+		return pct.ToString("0.#####", CultureInfo.InvariantCulture) + "%";
 	}
 
 	private static uint ToMillis(double value)
 	{
 		return (uint)Math.Round(Math.Clamp(value, 0.0, 1.0) * 1000.0);
+	}
+
+	private static uint ToMillis(double value, double max)
+	{
+		return (uint)Math.Round(Math.Clamp(value, 0.0, max) * 1000.0);
+	}
+
+	private static uint ToRenderScaleUnits(double value)
+	{
+		return (uint)Math.Round(Math.Clamp(value, 0.1, 3.0) * 1000000.0);
+	}
+
+	private static uint ToSignedMillis(double value)
+	{
+		return (uint)Math.Round((Math.Clamp(value, -1.0, 1.0) + 1.0) * 1000.0);
 	}
 
 	private static double ReadWindowSizeSetting(string key, double fallback)
@@ -727,6 +797,49 @@ public partial class MainWindow : Window
 		return fallback;
 	}
 
+	private static double FromMillis(object? value, double fallback, double max)
+	{
+		if (value is int num && num >= 0 && num <= max * 1000.0)
+		{
+			return (double)num / 1000.0;
+		}
+		if (value is uint num2 && num2 <= max * 1000.0)
+		{
+			return (double)num2 / 1000.0;
+		}
+		return fallback;
+	}
+
+	private static double FromRenderScaleUnits(object? value, double fallback)
+	{
+		if (value is string text && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+		{
+			return Math.Clamp(parsed, 0.1, 3.0);
+		}
+		if (value is int num && num > 0)
+		{
+			return Math.Clamp(num > 3000 ? num / 1000000.0 : num / 1000.0, 0.1, 3.0);
+		}
+		if (value is uint num2 && num2 > 0)
+		{
+			return Math.Clamp(num2 > 3000 ? num2 / 1000000.0 : num2 / 1000.0, 0.1, 3.0);
+		}
+		return fallback;
+	}
+
+	private static double FromSignedMillis(object? value, double fallback)
+	{
+		if (value is int num && num >= 0 && num <= 2000)
+		{
+			return ((double)num / 1000.0) - 1.0;
+		}
+		if (value is uint num2 && num2 <= 2000)
+		{
+			return ((double)num2 / 1000.0) - 1.0;
+		}
+		return fallback;
+	}
+
 	private static bool TryReadTextBox(TextBox box, out double value)
 	{
 		if (box == null)
@@ -743,6 +856,55 @@ public partial class MainWindow : Window
 		return true;
 	}
 
+	private double CurrentVerticalCrop()
+	{
+		if (SplitCheck?.IsChecked == true &&
+			TryReadTextBox(TopBox, out var top) &&
+			TryReadTextBox(BottomBox, out var bottom))
+		{
+			return Math.Clamp(top + bottom, 0.01, 1.0);
+		}
+		return TryReadTextBox(TotalBox, out var total) ? Math.Clamp(total, 0.01, 1.0) : 1.0;
+	}
+
+	private double CurrentHorizontalCrop()
+	{
+		return TryReadTextBox(HorizontalBox, out var horizontal) ? Math.Clamp(horizontal, 0.01, 1.0) : 1.0;
+	}
+
+	private static double OpeningFromMask(double maskVertical, double maskHorizontal, double cropVertical, double cropHorizontal)
+	{
+		double verticalOpening = cropVertical > 0.0 ? maskVertical / cropVertical : maskVertical;
+		double horizontalOpening = cropHorizontal > 0.0 ? maskHorizontal / cropHorizontal : maskHorizontal;
+		return Math.Clamp((verticalOpening + horizontalOpening) * 0.5, 0.05, 1.0);
+	}
+
+	private void ApplyMaskOpening(double opening)
+	{
+		double clamped = Math.Clamp(opening, 0.05, 1.0);
+		MaskBeanEditor.Opening = clamped;
+		double width = MaskWidthSlider?.Value ?? 1.0;
+		double height = MaskHeightSlider?.Value ?? 1.0;
+		MaskVerticalBox.Text = FormatScale(CurrentVerticalCrop() * Math.Clamp(clamped * height, 0.01, 1.0));
+		MaskHorizontalBox.Text = FormatScale(CurrentHorizontalCrop() * Math.Clamp(clamped * width, 0.01, 1.0));
+		MaskBeanEditor.WidthScale = width;
+		MaskBeanEditor.HeightScale = height;
+	}
+
+	private void SyncMaskEditorFromSliders()
+	{
+		if (MaskBeanEditor == null)
+		{
+			return;
+		}
+		MaskBeanEditor.Opening = MaskOpeningSlider?.Value ?? 1.0;
+		MaskBeanEditor.WidthScale = MaskWidthSlider?.Value ?? 1.0;
+		MaskBeanEditor.HeightScale = MaskHeightSlider?.Value ?? 1.0;
+		MaskBeanEditor.Curve = MaskRoundnessSlider?.Value ?? 0.5;
+		MaskBeanEditor.OffsetX = MaskOffsetXSlider?.Value ?? 0.0;
+		MaskBeanEditor.OffsetY = MaskOffsetYSlider?.Value ?? 0.0;
+	}
+
 	private void LoadSettings()
 	{
 		_loading = true;
@@ -755,6 +917,19 @@ public partial class MainWindow : Window
 		TopBox.Text = FormatScale(ReadScaleSetting("top_tangent", num * 0.5));
 		BottomBox.Text = FormatScale(ReadScaleSetting("bottom_tangent", num * 0.5));
 		HorizontalBox.Text = FormatScale(value);
+		// Mask (visor): absolute bounds, default 1.0 = no mask on that axis.
+		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
+		MaskRoundedCheck.IsChecked = true;
+		MaskVerticalBox.Text = FormatScale(ReadScaleSetting("mask_vertical", 1.0));
+		MaskHorizontalBox.Text = FormatScale(ReadScaleSetting("mask_horizontal", 1.0));
+		double oldOffset = ReadSignedScaleSetting(MaskOffsetYKey, 0.0);
+		MaskRoundnessSlider.Value = 1.0 - ReadScaleSetting(MaskCornerKey, 0.5);
+		MaskOpeningSlider.Value = ReadScaleSetting(MaskSizeKey, OpeningFromMask(ReadScaleSetting("mask_vertical", 1.0), ReadScaleSetting("mask_horizontal", 1.0), num, value));
+		MaskWidthSlider.Value = ReadRangeSetting(MaskWidthScaleKey, 1.0, 0.5, 1.5);
+		MaskHeightSlider.Value = ReadRangeSetting(MaskHeightScaleKey, 1.0, 0.5, 1.5);
+		MaskOffsetXSlider.Value = ReadSignedScaleSetting(MaskLeftBiasKey, 0.0);
+		MaskOffsetYSlider.Value = ReadSignedScaleSetting(MaskTopBiasKey, oldOffset);
+		SyncMaskEditorFromSliders();
 		// Render options
 		FoveatedCenterCheck.IsChecked = ReadBoolSetting(FoveatedCenterKey, fallback: false);
 		StencilOuterEdgesCheck.IsChecked = ReadBoolSetting(StencilOuterEdgesKey, fallback: true);
@@ -765,10 +940,7 @@ public partial class MainWindow : Window
 		VertVisualMaskBothCheck.IsChecked = ReadBoolSetting(VertVisualMaskBothKey, fallback: false);
 		VertTopMaskCheck.IsChecked = ReadBoolSetting(VertTopMaskKey, fallback: false);
 		VertBottomMaskCheck.IsChecked = ReadBoolSetting(VertBottomMaskKey, fallback: false);
-		// Gameplay Mode (config-only, not live runtime toggle)
-		bool gp = ReadBoolSetting("gameplay_mode", fallback: true);
-		if (XrGameplayModeCheck != null)  XrGameplayModeCheck.IsChecked  = gp;
-		if (XrGameplayModeCheck2 != null) XrGameplayModeCheck2.IsChecked = gp;
+		// Gameplay/Tuning + menu/window controls now live in the ReShade Remote pop-out (ReShadeRemoteWindow).
 		SyncSlidersFromText();
 		_loading = false;
 		UpdateModeControls();
@@ -864,6 +1036,20 @@ public partial class MainWindow : Window
 			{
 				SetSliderValue(HorizontalSlider, value4);
 			}
+			if (TryReadTextBox(MaskVerticalBox, out var maskV))
+			{
+				SetSliderValue(MaskVerticalSlider, maskV);
+			}
+			if (TryReadTextBox(MaskHorizontalBox, out var maskH))
+			{
+				SetSliderValue(MaskHorizontalSlider, maskH);
+			}
+			if (MaskBeanEditor != null && MaskRoundnessSlider != null)
+			{
+				SyncMaskEditorFromSliders();
+				MaskBeanEditor.Opening = OpeningFromMask(maskV, maskH, CurrentVerticalCrop(), CurrentHorizontalCrop());
+				SetSliderValue(MaskOpeningSlider, MaskBeanEditor.Opening);
+			}
 			_syncingControls = false;
 		}
 	}
@@ -884,8 +1070,73 @@ public partial class MainWindow : Window
 		if (!_loading && !_syncingControls)
 		{
 			UpdateHints();
+			if (MaskOpeningSlider != null && MaskVerticalBox != null && MaskHorizontalBox != null)
+			{
+				_syncingControls = true;
+				ApplyMaskOpening(MaskOpeningSlider.Value);
+				_syncingControls = false;
+			}
 			SaveGlobalSettings();
 		}
+	}
+
+	private void MaskRoundnessSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (!_loading && !_syncingControls && MaskBeanEditor != null)
+		{
+			SyncMaskEditorFromSliders();
+			MaskRoundedCheck.IsChecked = true;
+			SaveGlobalSettings();
+		}
+	}
+
+	private void MaskShapeSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (!_loading && !_syncingControls && MaskBeanEditor != null)
+		{
+			_syncingControls = true;
+			SyncMaskEditorFromSliders();
+			ApplyMaskOpening(MaskOpeningSlider.Value);
+			_syncingControls = false;
+			SaveGlobalSettings();
+		}
+	}
+
+	private void MaskOpeningSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (!_loading && !_syncingControls && MaskBeanEditor != null && MaskVerticalBox != null && MaskHorizontalBox != null)
+		{
+			_syncingControls = true;
+			double opening = Math.Clamp(MaskOpeningSlider.Value, 0.05, 1.0);
+			ApplyMaskOpening(opening);
+			_syncingControls = false;
+			SaveGlobalSettings();
+		}
+	}
+
+	private void MaskBeanEditor_ShapeChanged(object sender, EventArgs e)
+	{
+		if (!_loading && !_syncingControls)
+		{
+			SaveGlobalSettings();
+		}
+	}
+
+	private void MaskSliderReset_RightClick(object sender, MouseButtonEventArgs e)
+	{
+		if (_loading) return;
+		e.Handled = true;
+		_syncingControls = true;
+		if (sender == MaskOpeningSlider)   MaskOpeningSlider.Value   = 0.82;
+		else if (sender == MaskWidthSlider)    MaskWidthSlider.Value    = 1.0;
+		else if (sender == MaskHeightSlider)   MaskHeightSlider.Value   = 1.0;
+		else if (sender == MaskRoundnessSlider) MaskRoundnessSlider.Value = 0.75;
+		else if (sender == MaskOffsetXSlider)  MaskOffsetXSlider.Value  = 0.0;
+		else if (sender == MaskOffsetYSlider)  MaskOffsetYSlider.Value  = 0.0;
+		SyncMaskEditorFromSliders();
+		ApplyMaskOpening(MaskOpeningSlider.Value);
+		_syncingControls = false;
+		SaveGlobalSettings();
 	}
 
 	private void RenderSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -907,6 +1158,39 @@ public partial class MainWindow : Window
 			else if (sender == HorizontalSlider)
 			{
 				SyncTextFromSlider(HorizontalBox, HorizontalSlider);
+			}
+			SaveGlobalSettings();
+		}
+	}
+
+	private void MaskValue_Changed(object sender, TextChangedEventArgs e)
+	{
+		if (!_loading && !_syncingControls)
+		{
+			SyncSlidersFromText();
+			SaveGlobalSettings();
+		}
+	}
+
+	private void MaskSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (!_loading && !_syncingControls && MaskVerticalBox != null && MaskHorizontalBox != null)
+		{
+			if (sender == MaskVerticalSlider)
+			{
+				SyncTextFromSlider(MaskVerticalBox, MaskVerticalSlider);
+			}
+			else if (sender == MaskHorizontalSlider)
+			{
+				SyncTextFromSlider(MaskHorizontalBox, MaskHorizontalSlider);
+			}
+			if (MaskOpeningSlider != null && TryReadTextBox(MaskVerticalBox, out var maskV) && TryReadTextBox(MaskHorizontalBox, out var maskH))
+			{
+				SetSliderValue(MaskOpeningSlider, OpeningFromMask(maskV, maskH, CurrentVerticalCrop(), CurrentHorizontalCrop()));
+				if (MaskBeanEditor != null)
+				{
+					SyncMaskEditorFromSliders();
+				}
 			}
 			SaveGlobalSettings();
 		}
@@ -948,12 +1232,14 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading) return;
 		SaveExperimentalSettings();
-		StatusText.Text = "Render options saved. Restart the OpenXR game.";
+		StatusText.Text = "Render options saved. Restart the VR game.";
 	}
 
 	private void SaveExperimentalSettings()
 	{
 		Directory.CreateDirectory(ConfigDirectory);
+		WritePrivateProfileString("Settings", MaskEnabledKey, MaskEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", MaskRoundedKey, MaskEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", FoveatedCenterKey, FoveatedCenterCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", StencilOuterEdgesKey, StencilOuterEdgesCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CropOuterEdgesKey, CropOuterEdgesCheck.IsChecked == true ? "1" : "0", ConfigPath);
@@ -969,19 +1255,20 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private void SaveReShadeMenuSettings() { }
 
-	private void XrHmdMenuReposition_Click(object sender, RoutedEventArgs e)
+	private ReShadeRemoteWindow? _reshadeRemote;
+	private void OpenReShadeRemote_Click(object sender, RoutedEventArgs e)
 	{
-		StatusText.Text = "Reposition: not yet implemented.";
-	}
-
-	private void Xr3dMenuReposition_Click(object sender, RoutedEventArgs e)
-	{
-		StatusText.Text = "Reposition: not yet implemented.";
-	}
-
-	private void VrDesktopDupReposition_Click(object sender, RoutedEventArgs e)
-	{
-		StatusText.Text = "Reposition: not yet implemented.";
+		if (_reshadeRemote == null)
+		{
+			_reshadeRemote = new ReShadeRemoteWindow { Owner = this };
+			_reshadeRemote.Closed += (_, _) => _reshadeRemote = null;
+			_reshadeRemote.Show();
+		}
+		else
+		{
+			// Re-clicking the dropdown button closes the popout (toggle).
+			_reshadeRemote.Close();
+		}
 	}
 
 	private void LogToFile(string msg)
@@ -1033,37 +1320,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		LogToFile($"Applied launch xr_mode={(gameplay ? 0 : 1)}");
 	}
 
-	private void XrGameplayMode_Changed(object sender, RoutedEventArgs e)
-	{
-		if (_loading) return;
-		bool gameplay = GetXrGameplayMode();
-		WritePrivateProfileString("Settings", "gameplay_mode", gameplay ? "1" : "0", ConfigPath);
-		LogToFile($"Gameplay mode checkbox changed → saved gameplay_mode={(gameplay ? 1 : 0)}");
-		_xrLaunchModeApplied = false;
-	}
-
-	private void XrMenuEnabled_Changed(object sender, RoutedEventArgs e)
-	{
-		var on = GetXrMenuVisible();
-		if (_xrControl.Connected)
-		{
-			var block = _xrControl.ReadBlock();
-			block.menu_visible = on ? 1u : 0u;
-			_xrControl.WriteBlock(ref block);
-		}
-		var hwnd = FindWindowW("ReShadeVRPreview", null);
-		if (hwnd != IntPtr.Zero)
-			ShowWindow(hwnd, on ? 1 : 0);
-	}
-
-	private void XrControl_Changed(object sender, RoutedEventArgs e)
-	{
-		if (!_xrControl.Connected) return;
-		var block = _xrControl.ReadBlock();
-		block.win_headless      = GetXrHeadless()      ? 1u : 0u;
-		block.win_always_on_top = GetXrTopmost()       ? 1u : 0u;
-		_xrControl.WriteBlock(ref block);
-	}
+	// Old ReShade checkbox handlers removed — these controls now live in ReShadeRemoteWindow.
 
 
 	private DateTime _vrQuadPopupClosedAt = DateTime.MinValue;
@@ -1187,81 +1444,15 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		_vrQuadPopupClosedAt = DateTime.UtcNow;
 	}
 
-	private bool GetXrGameplayMode()
-	{
-		if (ReShadeOpenXRCard.Visibility == Visibility.Visible && XrGameplayModeCheck != null)
-			return XrGameplayModeCheck.IsChecked == true;
-		if (ReShadeOpenXRCard2.Visibility == Visibility.Visible && XrGameplayModeCheck2 != null)
-			return XrGameplayModeCheck2.IsChecked == true;
-		return false;
-	}
-
-	private bool GetXrMenuVisible()
-	{
-		if (ReShadeOpenXRCard.Visibility == Visibility.Visible && XrMenuEnabledCheck != null)
-			return XrMenuEnabledCheck.IsChecked == true;
-		if (ReShadeOpenXRCard2.Visibility == Visibility.Visible && XrMenuEnabledCheck2 != null)
-			return XrMenuEnabledCheck2.IsChecked == true;
-		return false;
-	}
-
-	private bool GetXrHeadless()
-	{
-		if (ReShadeOpenXRCard.Visibility == Visibility.Visible && XrWinHeadlessCheck != null)
-			return XrWinHeadlessCheck.IsChecked == true;
-		if (ReShadeOpenXRCard2.Visibility == Visibility.Visible && XrWinHeadlessCheck2 != null)
-			return XrWinHeadlessCheck2.IsChecked == true;
-		return false;
-	}
-
-	private bool GetXrTopmost()
-	{
-		if (ReShadeOpenXRCard.Visibility == Visibility.Visible && XrWinTopmostCheck != null)
-			return XrWinTopmostCheck.IsChecked == true;
-		if (ReShadeOpenXRCard2.Visibility == Visibility.Visible && XrWinTopmostCheck2 != null)
-			return XrWinTopmostCheck2.IsChecked == true;
-		return false;
-	}
-
-	private void XrSyncToUI()
-	{
-		if (!_xrControl.Connected) return;
-		var block = _xrControl.ReadBlock();
-		if (ReShadeOpenXRCard.Visibility == Visibility.Visible)
-		{
-			if (XrMenuEnabledCheck != null)   XrMenuEnabledCheck.IsChecked     = block.menu_visible == 1;
-			if (XrWinHeadlessCheck != null)   XrWinHeadlessCheck.IsChecked     = block.win_headless == 1;
-			if (XrWinTopmostCheck != null)    XrWinTopmostCheck.IsChecked      = block.win_always_on_top == 1;
-		}
-		if (ReShadeOpenXRCard2.Visibility == Visibility.Visible)
-		{
-			if (XrMenuEnabledCheck2 != null)  XrMenuEnabledCheck2.IsChecked    = block.menu_visible == 1;
-			if (XrWinHeadlessCheck2 != null)  XrWinHeadlessCheck2.IsChecked    = block.win_headless == 1;
-			if (XrWinTopmostCheck2 != null)   XrWinTopmostCheck2.IsChecked     = block.win_always_on_top == 1;
-		}
-
-		// Popup sliders sync when open
-		if (VrQuadPopup.IsOpen)
-		{
-			double rot = 2.0 * Math.Atan2(block.quad_quat_y, block.quad_quat_w) * 180.0 / Math.PI;
-			VrDistSlider.Value   = float.IsNaN(block.quad_pos_z) ? 1.5 : block.quad_pos_z;
-			VrWidthSlider.Value  = block.quad_width;
-			VrHeightSlider.Value = block.quad_height;
-			VrRotSlider.Value    = rot;
-			VrAlphaSlider.Value  = block.quad_alpha;
-		}
-
-		var hwnd = FindWindowW("ReShadeVRPreview", null);
-		if (hwnd != IntPtr.Zero)
-			ShowWindow(hwnd, block.menu_visible == 1 ? 1 : 0);
-	}
+	// ReShade menu/window/quad controls moved to the ReShade Remote pop-out (ReShadeRemoteWindow).
+	private void XrSyncToUI() { }
 
 	private void SaveGlobalSettings()
 	{
 		bool valueOrDefault = SplitCheck.IsChecked == true;
 		if (!TryReadTextBox(TotalBox, out var value) || !TryReadTextBox(TopBox, out var value2) || !TryReadTextBox(BottomBox, out var value3) || !TryReadTextBox(HorizontalBox, out var value4))
 		{
-			MessageBox.Show(this, "Enter render values from 0.00 to 1.00. Total and horizontal must be at least 0.01.", "XR ViewLab", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+			MessageBox.Show(this, "Enter render values from 0.00 to 1.00. Total and horizontal must be at least 0.01.", "ViewLab", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 			return;
 		}
 		if (valueOrDefault)
@@ -1279,12 +1470,27 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		Directory.CreateDirectory(ConfigDirectory);
 		WritePrivateProfileString("Settings", "enabled", valueOrDefault2 ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "split_mode", valueOrDefault ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", "total_render_height", FormatScale(value), ConfigPath);
+		WritePrivateProfileString("Settings", "total_render_height", FormatStorageScale(value), ConfigPath);
 		WritePrivateProfileString("Settings", "total_share", null, ConfigPath);
 		WritePrivateProfileString("Settings", "vertical_tangent", null, ConfigPath);
-		WritePrivateProfileString("Settings", "top_tangent", FormatScale(value2), ConfigPath);
-		WritePrivateProfileString("Settings", "bottom_tangent", FormatScale(value3), ConfigPath);
-		WritePrivateProfileString("Settings", "horizontal_render_width", FormatScale(value4), ConfigPath);
+		WritePrivateProfileString("Settings", "top_tangent", FormatStorageScale(value2), ConfigPath);
+		WritePrivateProfileString("Settings", "bottom_tangent", FormatStorageScale(value3), ConfigPath);
+		WritePrivateProfileString("Settings", "horizontal_render_width", FormatStorageScale(value4), ConfigPath);
+		double maskV = TryReadTextBox(MaskVerticalBox, out var mv) ? Math.Clamp(mv, 0.01, 1.0) : 1.0;
+		double maskH = TryReadTextBox(MaskHorizontalBox, out var mh) ? Math.Clamp(mh, 0.01, 1.0) : 1.0;
+		WritePrivateProfileString("Settings", "mask_vertical", FormatStorageScale(maskV), ConfigPath);
+		WritePrivateProfileString("Settings", "mask_horizontal", FormatStorageScale(maskH), ConfigPath);
+		WritePrivateProfileString("Settings", MaskSizeKey, FormatStorageScale(MaskOpeningSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskWidthScaleKey, FormatStorageScale(MaskWidthSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskHeightScaleKey, FormatStorageScale(MaskHeightSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskCornerKey, FormatStorageScale(1.0 - MaskRoundnessSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskOffsetYKey, FormatStorageScale(MaskOffsetYSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskTopBiasKey, FormatStorageScale(MaskOffsetYSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskBottomBiasKey, FormatStorageScale(MaskOffsetYSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskLeftBiasKey, FormatStorageScale(MaskOffsetXSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskRightBiasKey, FormatStorageScale(MaskOffsetXSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskTopCurveKey, "0", ConfigPath);
+		WritePrivateProfileString("Settings", MaskBottomCurveKey, "0", ConfigPath);
 		SaveReShadeMenuSettings();
 		SaveExperimentalSettings();
 		WriteRegistryEnabled(valueOrDefault2);
@@ -1293,10 +1499,12 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		TopBox.Text = FormatScale(value2);
 		BottomBox.Text = FormatScale(value3);
 		HorizontalBox.Text = FormatScale(value4);
+		MaskVerticalBox.Text = FormatScale(maskV);
+		MaskHorizontalBox.Text = FormatScale(maskH);
 		SyncSlidersFromText();
 		_loading = false;
 		UpdateHints();
-		StatusText.Text = (valueOrDefault2 ? "Saved. Restart the OpenXR game." : "Layer disabled.");
+		StatusText.Text = (valueOrDefault2 ? "Saved. Restart the VR game." : "Layer disabled.");
 	}
 
 	private static void WriteRegistryEnabled(bool enabled)
@@ -1341,6 +1549,10 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 				if (registryKey2 != null)
 				{
 					AppProfile item = ReadAppProfile(text, registryKey2);
+					if (item.Hidden && ShowHiddenAppsCheck?.IsChecked != true)
+					{
+						continue;
+					}
 					_apps.Add(item);
 				}
 			}
@@ -1358,28 +1570,79 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		double fallback = ReadScaleSetting("top_tangent", num * 0.5);
 		double fallback2 = ReadScaleSetting("bottom_tangent", num * 0.5);
 		double fallback3 = ReadScaleSetting("horizontal_render_width", 0.8);
+		bool fallbackMaskEnabled = ReadBoolSetting(MaskEnabledKey, fallback: false);
+		double fallbackMaskVertical = ReadScaleSetting("mask_vertical", 1.0);
+		double fallbackMaskHorizontal = ReadScaleSetting("mask_horizontal", 1.0);
+		bool fallbackMaskRounded = ReadBoolSetting(MaskRoundedKey, fallback: false);
+		double fallbackMaskCorner = ReadScaleSetting(MaskCornerKey, 0.0);
+		double fallbackMaskOffsetY = ReadSignedScaleSetting(MaskOffsetYKey, 0.0);
+		double fallbackMaskTopBias = ReadSignedScaleSetting(MaskTopBiasKey, fallbackMaskOffsetY);
+		double fallbackMaskBottomBias = ReadSignedScaleSetting(MaskBottomBiasKey, fallbackMaskOffsetY);
+		double fallbackMaskLeftBias = ReadSignedScaleSetting(MaskLeftBiasKey, 0.0);
+		double fallbackMaskRightBias = ReadSignedScaleSetting(MaskRightBiasKey, 0.0);
+		double fallbackMaskTopCurve = ReadSignedScaleSetting(MaskTopCurveKey, 0.0);
+		double fallbackMaskBottomCurve = ReadSignedScaleSetting(MaskBottomCurveKey, 0.0);
 		string rawDisplayName = Convert.ToString(appKey.GetValue("display_name", keyName)) ?? keyName;
 		string text = Convert.ToString(appKey.GetValue("module", "")) ?? "";
 		bool isOpenComposite = rawDisplayName.StartsWith("OpenComposite_", StringComparison.OrdinalIgnoreCase);
 		string xrType = isOpenComposite ? "OpenVR" : "OpenXR";
-		string text2 = CleanAppDisplayName(rawDisplayName, keyName, text);
+		// User-set custom_name wins over the layer-written display_name (the layer
+		// overwrites display_name every launch, so renames must live in custom_name).
+		string customName = Convert.ToString(appKey.GetValue("custom_name", null)) ?? "";
+		string text2 = string.IsNullOrWhiteSpace(customName)
+			? CleanAppDisplayName(rawDisplayName, keyName, text)
+			: customName.Trim();
 		string text3 = (string.IsNullOrWhiteSpace(text) ? keyName : Path.GetFileName(text));
 		bool profileEnabled = Convert.ToInt32(appKey.GetValue("profile_enabled", 0), CultureInfo.InvariantCulture) != 0;
 		bool appEnabled = Convert.ToInt32(appKey.GetValue("app_enabled", 1), CultureInfo.InvariantCulture) != 0;
+		bool hidden = Convert.ToInt32(appKey.GetValue("hidden", 0), CultureInfo.InvariantCulture) != 0;
 		double top = FromMillis(appKey.GetValue("top_tangent"), fallback);
 		double bottom = FromMillis(appKey.GetValue("bottom_tangent"), fallback2);
 		double horizontal = FromMillis(appKey.GetValue("horizontal_render_width"), fallback3);
+		double renderScale = FromRenderScaleUnits(appKey.GetValue("render_scale"), 1.0);
+		bool maskEnabled = Convert.ToInt32(appKey.GetValue("mask_enabled", fallbackMaskEnabled ? 1 : 0), CultureInfo.InvariantCulture) != 0;
+		double maskVertical = FromMillis(appKey.GetValue("mask_vertical"), fallbackMaskVertical);
+		double maskHorizontal = FromMillis(appKey.GetValue("mask_horizontal"), fallbackMaskHorizontal);
+		bool maskRounded = Convert.ToInt32(appKey.GetValue("mask_rounded", fallbackMaskRounded ? 1 : 0), CultureInfo.InvariantCulture) != 0;
+		double maskCorner = FromMillis(appKey.GetValue("mask_corner"), fallbackMaskCorner);
+		double maskOffsetY = FromSignedMillis(appKey.GetValue("mask_offset_y"), fallbackMaskOffsetY);
+		double maskTopBias = FromSignedMillis(appKey.GetValue("mask_top_bias"), maskOffsetY == 0.0 ? fallbackMaskTopBias : maskOffsetY);
+		double maskBottomBias = FromSignedMillis(appKey.GetValue("mask_bottom_bias"), maskOffsetY == 0.0 ? fallbackMaskBottomBias : maskOffsetY);
+		double maskLeftBias = FromSignedMillis(appKey.GetValue("mask_left_bias"), fallbackMaskLeftBias);
+		double maskRightBias = FromSignedMillis(appKey.GetValue("mask_right_bias"), fallbackMaskRightBias);
+		double maskTopCurve = FromSignedMillis(appKey.GetValue("mask_top_curve"), fallbackMaskTopCurve);
+		double maskBottomCurve = FromSignedMillis(appKey.GetValue("mask_bottom_curve"), fallbackMaskBottomCurve);
+		double visorSize = FromMillis(appKey.GetValue("visor_size"), 0.0);
+		double visorWidth = FromMillis(appKey.GetValue("visor_width"), 0.0);
+		double visorHeight = FromMillis(appKey.GetValue("visor_height"), 0.0);
 		return new AppProfile
 		{
 			Key = keyName,
+			ExeName = text3,
 			DisplayName = text2,
-			Display = text2 + " (" + text3 + ")",
+			Display = text2,
 			XrType = xrType,
 			AppEnabled = appEnabled,
+			Hidden = hidden,
 			ProfileEnabled = profileEnabled,
 			Top = top,
 			Bottom = bottom,
-			Horizontal = horizontal
+			Horizontal = horizontal,
+			RenderScale = renderScale,
+			MaskEnabled = maskEnabled,
+			MaskVertical = maskVertical,
+			MaskHorizontal = maskHorizontal,
+			MaskRounded = maskRounded,
+			MaskCorner = maskCorner,
+			MaskTopBias = maskTopBias,
+			MaskBottomBias = maskBottomBias,
+			MaskLeftBias = maskLeftBias,
+			MaskRightBias = maskRightBias,
+			MaskTopCurve = maskTopCurve,
+			MaskBottomCurve = maskBottomCurve,
+			VisorSize = visorSize,
+			VisorWidth = visorWidth,
+			VisorHeight = visorHeight
 		};
 	}
 
@@ -1406,7 +1669,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		return string.IsNullOrWhiteSpace(text) ? keyName : text;
 	}
 
-	private void AppEnabled_Changed(object sender, RoutedEventArgs e)
+	private void AppEnabled_Click(object sender, RoutedEventArgs e)
 	{
 		if (_loading || !(sender is CheckBox { DataContext: AppProfile dataContext }))
 		{
@@ -1414,13 +1677,113 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(AppRegistryRoot + "\\" + dataContext.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
 		registryKey.SetValue("app_enabled", dataContext.AppEnabled ? 1 : 0, RegistryValueKind.DWord);
-		StatusText.Text = (dataContext.AppEnabled ? ("Layer enabled for " + dataContext.DisplayName + ". Restart the OpenXR game.") : ("Layer disabled for " + dataContext.DisplayName + ". Restart the OpenXR game."));
+		StatusText.Text = (dataContext.AppEnabled ? ("Layer enabled for " + dataContext.DisplayName + ". Restart the VR game.") : ("Layer disabled for " + dataContext.DisplayName + ". Restart the VR game."));
 	}
 
 	private void ReloadApps_Click(object sender, RoutedEventArgs e)
 	{
 		LoadAppProfiles();
 		StatusText.Text = "App list reloaded.";
+	}
+
+	private void AppsGrid_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+	{
+		if (e.Key == System.Windows.Input.Key.Delete) { ToggleSelectedAppHidden(); e.Handled = true; }
+	}
+
+	private void HideApp_Click(object sender, RoutedEventArgs e) => ToggleSelectedAppHidden();
+
+	private void ShowHiddenApps_Changed(object sender, RoutedEventArgs e)
+	{
+		if (!_loading)
+		{
+			LoadAppProfiles();
+			StatusText.Text = ShowHiddenAppsCheck.IsChecked == true ? "Showing hidden apps." : "Hidden apps are hidden.";
+		}
+	}
+
+	private void ToggleSelectedAppHidden()
+	{
+		if (AppsGrid.SelectedItem is not AppProfile app)
+		{
+			if (ShowHiddenAppsCheck.IsChecked != true)
+			{
+				ShowHiddenAppsCheck.IsChecked = true;
+				LoadAppProfiles();
+				StatusText.Text = "Showing hidden apps. Select one to unhide it.";
+				return;
+			}
+			StatusText.Text = "Select an app row first.";
+			return;
+		}
+		bool newHidden = !app.Hidden;
+		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(AppRegistryRoot + "\\" + app.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
+		registryKey.SetValue("hidden", newHidden ? 1 : 0, RegistryValueKind.DWord);
+		app.Hidden = newHidden;
+		if (newHidden && ShowHiddenAppsCheck.IsChecked != true)
+		{
+			_apps.Remove(app);
+			if (AppsEmptyText != null)
+			{
+				AppsEmptyText.Visibility = _apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+			}
+		}
+		StatusText.Text = newHidden ? ("Hidden " + app.DisplayName + ".") : ("Unhidden " + app.DisplayName + ".");
+	}
+
+	private void SetAppHidden(AppProfile app, bool hidden)
+	{
+		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(AppRegistryRoot + "\\" + app.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
+		registryKey.SetValue("hidden", hidden ? 1 : 0, RegistryValueKind.DWord);
+		app.Hidden = hidden;
+		if (hidden && ShowHiddenAppsCheck?.IsChecked != true)
+		{
+			_apps.Remove(app);
+		}
+		if (AppsEmptyText != null)
+		{
+			AppsEmptyText.Visibility = _apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+		}
+	}
+
+	private (bool enabled, double vertical, double horizontal, bool rounded, double corner, double topBias, double bottomBias, double leftBias, double rightBias, double topCurve, double bottomCurve, double visorSize, double visorWidth, double visorHeight) CurrentGlobalMaskValues()
+	{
+		TryReadTextBox(MaskVerticalBox, out var maskVertical);
+		TryReadTextBox(MaskHorizontalBox, out var maskHorizontal);
+		return (
+			MaskEnabledCheck?.IsChecked == true,
+			maskVertical,
+			maskHorizontal,
+			true,
+			1.0 - (MaskRoundnessSlider?.Value ?? 0.5),
+			MaskOffsetYSlider?.Value ?? 0.0,
+			MaskOffsetYSlider?.Value ?? 0.0,
+			MaskOffsetXSlider?.Value ?? 0.0,
+			MaskOffsetXSlider?.Value ?? 0.0,
+			0.0,
+			0.0,
+			MaskOpeningSlider?.Value ?? 0.82,
+			MaskWidthSlider?.Value ?? 1.0,
+			MaskHeightSlider?.Value ?? 1.0);
+	}
+
+	private void ApplyGlobalMaskValuesToProfile(AppProfile appProfile)
+	{
+		var global = CurrentGlobalMaskValues();
+		appProfile.MaskEnabled = global.enabled;
+		appProfile.MaskVertical = global.vertical;
+		appProfile.MaskHorizontal = global.horizontal;
+		appProfile.MaskRounded = global.rounded;
+		appProfile.MaskCorner = global.corner;
+		appProfile.MaskTopBias = global.topBias;
+		appProfile.MaskBottomBias = global.bottomBias;
+		appProfile.MaskLeftBias = global.leftBias;
+		appProfile.MaskRightBias = global.rightBias;
+		appProfile.MaskTopCurve = global.topCurve;
+		appProfile.MaskBottomCurve = global.bottomCurve;
+		appProfile.VisorSize = 0;
+		appProfile.VisorWidth = 0;
+		appProfile.VisorHeight = 0;
 	}
 
 
@@ -1431,33 +1794,61 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			return;
 		}
 
-		if (!appProfile.AppEnabled)
+		if (!appProfile.AppEnabled && !appProfile.Hidden)
 		{
 			StatusText.Text = "Enable the app first, then double-click to set custom values.";
 			return;
 		}
 
-		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.Top, appProfile.Bottom, appProfile.Horizontal)
+		var globalMask = CurrentGlobalMaskValues();
+		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, appProfile.VisorSize, appProfile.VisorWidth, appProfile.VisorHeight, globalMask.visorSize, globalMask.visorWidth, globalMask.visorHeight)
 		{
 			Owner = this
 		};
 		if (profileWindow.ShowDialog() == true)
 		{
+			if (profileWindow.HiddenChanged)
+			{
+				SetAppHidden(appProfile, profileWindow.HiddenValue);
+			}
+			string newName = profileWindow.DisplayName;
+			if (!string.IsNullOrWhiteSpace(newName) && newName != appProfile.DisplayName)
+			{
+				WriteAppDisplayName(appProfile, newName);
+				appProfile.DisplayName = newName;
+				appProfile.Display = newName;
+			}
 			if (profileWindow.UseGlobal)
 			{
-				WriteAppCustomProfile(appProfile, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, profileEnabled: false);
+				ResetAppCustomProfile(appProfile);
+				ApplyGlobalMaskValuesToProfile(appProfile);
 				appProfile.ProfileEnabled = false;
 			}
 			else
 			{
-				WriteAppCustomProfile(appProfile, profileWindow.TopValue, profileWindow.BottomValue, profileWindow.HorizontalValue, profileEnabled: true);
+				WriteAppCustomProfile(appProfile, profileWindow.TopValue, profileWindow.BottomValue, profileWindow.HorizontalValue, profileWindow.RenderScaleValue, profileWindow.MaskEnabledValue, profileWindow.MaskVerticalValue, profileWindow.MaskHorizontalValue, profileWindow.MaskRoundedValue, profileWindow.MaskCornerValue, profileWindow.MaskTopBiasValue, profileWindow.MaskBottomBiasValue, profileWindow.MaskLeftBiasValue, profileWindow.MaskRightBiasValue, profileWindow.MaskTopCurveValue, profileWindow.MaskBottomCurveValue, profileWindow.VisorSizeValue, profileWindow.VisorWidthValue, profileWindow.VisorHeightValue, profileEnabled: true);
 				appProfile.Top = profileWindow.TopValue;
 				appProfile.Bottom = profileWindow.BottomValue;
 				appProfile.Horizontal = profileWindow.HorizontalValue;
+				appProfile.RenderScale = profileWindow.RenderScaleValue;
+				appProfile.MaskEnabled = profileWindow.MaskEnabledValue;
+				appProfile.MaskVertical = profileWindow.MaskVerticalValue;
+				appProfile.MaskHorizontal = profileWindow.MaskHorizontalValue;
+				appProfile.MaskRounded = profileWindow.MaskRoundedValue;
+				appProfile.MaskCorner = profileWindow.MaskCornerValue;
+				appProfile.MaskTopBias = profileWindow.MaskTopBiasValue;
+				appProfile.MaskBottomBias = profileWindow.MaskBottomBiasValue;
+				appProfile.MaskLeftBias = profileWindow.MaskLeftBiasValue;
+				appProfile.MaskRightBias = profileWindow.MaskRightBiasValue;
+				appProfile.MaskTopCurve = profileWindow.MaskTopCurveValue;
+				appProfile.MaskBottomCurve = profileWindow.MaskBottomCurveValue;
+				appProfile.VisorSize = profileWindow.VisorSizeValue;
+				appProfile.VisorWidth = profileWindow.VisorWidthValue;
+				appProfile.VisorHeight = profileWindow.VisorHeightValue;
 				appProfile.ProfileEnabled = true;
 			}
 			appProfile.RefreshSummary();
-			StatusText.Text = "Saved app profile. Restart the OpenXR game.";
+			StatusText.Text = "Saved app profile. Restart the VR game.";
 		}
 	}
 
@@ -1470,11 +1861,18 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			return;
 		}
 		ResetAppCustomProfile(appProfile);
+		ApplyGlobalMaskValuesToProfile(appProfile);
 		appProfile.ProfileEnabled = false;
-		StatusText.Text = "Reset " + appProfile.DisplayName + " to global values. Restart the OpenXR game.";
+		StatusText.Text = "Reset " + appProfile.DisplayName + " to global values. Restart the VR game.";
 	}
 
-	private static void WriteAppCustomProfile(AppProfile profile, double top, double bottom, double horizontal, bool profileEnabled)
+	private static void WriteAppDisplayName(AppProfile profile, string name)
+	{
+		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(AppRegistryRoot + "\\" + profile.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
+		registryKey.SetValue("custom_name", name, RegistryValueKind.String);
+	}
+
+	private static void WriteAppCustomProfile(AppProfile profile, double top, double bottom, double horizontal, double renderScale, bool maskEnabled, double maskVertical, double maskHorizontal, bool maskRounded, double maskCorner, double maskTopBias, double maskBottomBias, double maskLeftBias, double maskRightBias, double maskTopCurve, double maskBottomCurve, double visorSize, double visorWidth, double visorHeight, bool profileEnabled)
 	{
 		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(AppRegistryRoot + "\\" + profile.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
 		registryKey.SetValue("profile_enabled", profileEnabled ? 1 : 0, RegistryValueKind.DWord);
@@ -1485,6 +1883,21 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		registryKey.SetValue("top_tangent", ToMillis(top), RegistryValueKind.DWord);
 		registryKey.SetValue("bottom_tangent", ToMillis(bottom), RegistryValueKind.DWord);
 		registryKey.SetValue("horizontal_render_width", ToMillis(horizontal), RegistryValueKind.DWord);
+		registryKey.SetValue("render_scale", renderScale.ToString("0.###############", CultureInfo.InvariantCulture), RegistryValueKind.String);
+		registryKey.SetValue("mask_enabled", maskEnabled ? 1 : 0, RegistryValueKind.DWord);
+		registryKey.SetValue("mask_vertical", ToMillis(maskVertical), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_horizontal", ToMillis(maskHorizontal), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_rounded", maskRounded ? 1 : 0, RegistryValueKind.DWord);
+		registryKey.SetValue("mask_corner", ToMillis(maskCorner), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_top_bias", ToSignedMillis(maskTopBias), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_bottom_bias", ToSignedMillis(maskBottomBias), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_left_bias", ToSignedMillis(maskLeftBias), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_right_bias", ToSignedMillis(maskRightBias), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_top_curve", ToSignedMillis(maskTopCurve), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_bottom_curve", ToSignedMillis(maskBottomCurve), RegistryValueKind.DWord);
+		registryKey.SetValue("visor_size", ToMillis(visorSize), RegistryValueKind.DWord);
+		registryKey.SetValue("visor_width", ToMillis(visorWidth), RegistryValueKind.DWord);
+		registryKey.SetValue("visor_height", ToMillis(visorHeight), RegistryValueKind.DWord);
 	}
 
 	private static void ResetAppCustomProfile(AppProfile profile)
@@ -1498,5 +1911,19 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		registryKey.DeleteValue("top_tangent", throwOnMissingValue: false);
 		registryKey.DeleteValue("bottom_tangent", throwOnMissingValue: false);
 		registryKey.DeleteValue("horizontal_render_width", throwOnMissingValue: false);
+		registryKey.DeleteValue("render_scale", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_enabled", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_vertical", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_horizontal", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_rounded", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_corner", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_offset_x", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_offset_y", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_top_bias", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_bottom_bias", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_left_bias", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_right_bias", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_top_curve", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_bottom_curve", throwOnMissingValue: false);
 	}
 }

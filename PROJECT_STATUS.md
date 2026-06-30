@@ -1,116 +1,117 @@
-# XR ViewLab — Project Status
+# ViewLab - Project Status
 
-**Version:** 4.1.7  
-**Date:** 2026-06-25
+**Updated:** 2026-07-01 07:30 Brisbane
+**Current version:** 4.1.42
+**Latest installer:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.42.msi`
+**Source state:** builds clean (x64 layer, Win32 layer, WPF UI, MSI). NOT visually confirmed in-headset.
 
----
+## Read First (current reality, not the old design)
 
-## Overall Architecture
+The visor mask has been redesigned twice. Ignore any older doc text about a ViewLab-owned
+`XrCompositionLayerProjection` "orb" renderer — that approach was removed.
 
-XR ViewLab is a two-part system:
+The **current native visor implementation** is a **D3D11 direct-write** into the game's own finished
+eye textures, performed at **`xrReleaseSwapchainImage`** (the last point the app legitimately owns the
+image, before the runtime composites it). It draws a black border outside a kidney/superellipse opening.
+No extra projection layer, no reprojection, no pose/FOV/crop changes.
 
-| Component | Location | Role |
-|-----------|----------|------|
-| **OpenXR API Layer** (C++ DLL) | Separate repo / `ReshadeAI/reshade/` | Intercepts OpenXR calls, applies FOV/render-height overrides, renders the ReShade HMD menu overlay |
-| **ViewLab companion app** (this project, C# WPF) | `ViewLab/` | Settings UI + remote control for the layer and the ReShade DLL |
+**As of 4.1.42 the visor has never been confirmed visible in-headset.** Do not claim it works.
 
-The C# app has no knowledge of game processes. It communicates with the running ReShade DLL via:
-1. **INI file** (`%LocalAppData%\XR ViewLab\xr-viewlab.ini`) — persistent settings the layer reads on each session start.
-2. **Windows named shared memory** (`Local\ReShadeXRControl`, struct `XRControlBlock`) — live per-session controls (gameplay mode, headless window, reposition/transform).
+### The decisive open finding (from reading ViewLab.log + registry, 2026-07-01)
 
----
+The mask never drew in Pistol Whip/DiRT because **`mask_enabled=0`** everywhere:
+- Global `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini` → `mask_enabled=0`
+- Every per-app profile in `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>` → `mask_enabled=0`
+- Pistol Whip live DIAG line: `xrEndFrame hook called (... maskEnabled=0 ...)`
 
-## Main Systems
+The D3D11 draw is correctly gated on `maskEnabled`, so with it off nothing draws — by design. **The UI
+"enable visor mask" toggle is not persisting / not reaching the config the DLL reads.** That is the #1
+functional bug to chase once drawing is proven.
 
-### OpenXR Layer (DLL)
-- Hooks `xrEndFrame`, injects an `XrCompositionLayerQuad` carrying the ReShade ImGui menu.
-- Reads `XRControlBlock` each frame; applies headless/topmost/edit-mode flags to the preview window.
-- Loads/saves quad transform to `C:\ProgramData\ReShade\openxr_quad_transform.ini`.
-- Two modes: **Gameplay** (desktop dormant, VR-only) and **Tuning** (full desktop effects active).
+## Where We Are (4.1.39 → 4.1.42)
 
-### ViewLab UI (this project)
-- **Render card** — vertical/horizontal render-height sliders that write directly to the INI.
-- **Enabled badge** — toggles the OpenXR registry entry that enables/disables the layer globally.
-- **App profiles** — per-game overrides stored in `HKCU\Software\cooooked\xr-viewlab\Apps\`.
-- **ReShade OpenXR card** — live controls written to `XRControlBlock` via `ReShadeControlService`.
-- **Update checker** — polls GitHub releases API, downloads and launches the MSI installer.
+- 4.1.39: Ripped out the projection-layer orb renderer. Added native D3D11 direct-write into eye
+  textures + swapchain tracking hooks (`xrCreateSwapchain`/`EnumerateSwapchainImages`/`AcquireSwapchainImage`/
+  `DestroySwapchain`). Restored ProfileWindow bean editor + interactive sliders.
+- 4.1.40: UI fixes (verified on desktop):
+  - Main window: removed the large blank gap below VIEWLAB ENABLED. Cause was the tall RowSpan side
+    panels (cols 2/4) injecting overflow into col 0's empty grid rows. Fix: col 0 is now a single
+    top-aligned `LeftColumnPanel` StackPanel mirroring cols 2/4. (`MainWindow.xaml` + `UpdateResponsiveLayout`)
+  - App Profile popup: wrapped content in a vertical `ScrollViewer`, bean editor in the visual tree,
+    sliders interactive when "Use global" is unchecked, opens without crashing.
+  - Added typeless-safe RTV format (use app-requested swapchain format mapped to non-SRGB).
+- 4.1.41: **Removed the gate** that disabled D3D11 when the game called `xrGetVisibilityMaskKHR` (this was
+  why Pistol Whip/Unity never drew). **Moved the draw to `xrReleaseSwapchainImage`** (lifecycle-correct).
+  Per-eye layout (imageRect + array slice) is captured in `xrEndFrame` and applied at the next frame's
+  release (layout is stable frame-to-frame). Made the visibility-mask mesh-reshape **optional**
+  (`visibility_mask_visor`, default off); it never suppresses the D3D11 path. Outer-edge filtering kept.
+- 4.1.42: Added a **DEBUG head-locked blue test quad** (`test_quad`, default off) — our OWN
+  `XrCompositionLayerQuad` in a `VIEW` reference space at position (0,0,−1), 0.4 m square, cleared solid
+  blue. Independent of the game textures and of `mask_enabled`. This is the "can we draw ANYTHING in VR"
+  probe. `test_quad=1` is currently set in the live ini for the next test.
 
-### ReShadeControlService
-Wraps `OpenFileMappingW`/`MapViewOfFile`. Polled at 1 Hz. Writes `XRControlBlock` fields and increments `revision` on every write so the DLL detects changes cheaply.
+## Immediate Next Work (in order)
 
----
+1. **Test the blue quad** (4.1.42, `test_quad=1`) in Pistol Whip / DiRT.
+   - Blue box visible 1 m in front, head-locked → layer submission works. The texture-write path is then
+     the thing to fix/replace (likely rebuild the mask as a layer).
+   - No blue box → layer submission itself is not reaching the compositor in the VDXR/OpenComposite path.
+     That is the real root cause; investigate before any more mask work.
+   - Either way, cross-check `ViewLab.log` for `test quad DIAG: initialized` and
+     `test quad: submitting head-locked blue quad layer`.
+2. **Fix `mask_enabled` persistence.** UI "enable visor mask" must land in the config the DLL reads:
+   global `mask_enabled` in the ini and/or per-app `mask_enabled` in the registry. All are currently 0.
+3. Decide the final mask mechanism based on (1), then confirm the kidney mask in-headset before any
+   "it works" claim.
 
-## Startup Flow
+## How To Build (manual, avoids build.ps1 double version-bump)
 
-1. `App.Main()` → `Application.Run()` → `MainWindow()`.
-2. Config migration: if `%LocalAppData%\XR ViewLab\xr-viewlab.ini` absent but legacy INI present in EXE dir, copy it.
-3. Load window size and column widths from INI.
-4. `LoadSettings()` — reads all render values and checkbox states from INI.
-5. `LoadAppProfiles()` — enumerates registry app subkeys, filters junk apps.
-6. `CheckManifestHealth()` — warns if the layer is not registered in `HKLM\...\OpenXR\1\ApiLayers\Implicit`.
-7. `CheckForUpdatesOnLaunchAsync()` — background GitHub release check.
-8. `_xrPollTimer` starts (1 Hz) — attempts `OpenFileMappingW` until the game is running.
+MSBuild used: `C:\Program Files\Microsoft Visual Studio\18\Insiders\MSBuild\Current\Bin\amd64\MSBuild.exe`
 
----
+```
+# x64 layer
+MSBuild XRViewLabLayer.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+# Win32 layer (32-bit games)
+MSBuild XRViewLabLayer.vcxproj /p:Configuration=Release /p:Platform=Win32 /m
+# WPF UI (self-contained single file)
+dotnet publish xr-viewlab.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
+# Installer
+MSBuild Installer\Installer.wixproj /p:Configuration=Release /p:Platform=x64 /m
+```
 
-## Configuration
+Version lives in `Properties\AssemblyInfo.cs` and `Installer\Product.wxs` (bump both; bump per build so
+the MSI upgrades over the installed one — equal versions do not trigger MajorUpgrade).
 
-| File | Purpose |
-|------|---------|
-| `%LocalAppData%\XR ViewLab\xr-viewlab.ini` | All global settings (render values, enabled flag, window size, column widths, ReShade menu prefs) |
-| `HKCU\Software\cooooked\xr-viewlab\Apps\<name>` | Per-app profile registry keys |
-| `HKLM\Software\Khronos\OpenXR\1\ApiLayers\Implicit` | Layer registration (value = manifest path, data = 0 enabled / 1 disabled) |
-| `C:\ProgramData\ReShade\openxr_quad_transform.ini` | HMD menu quad position (owned by ReShade DLL, not ViewLab) |
+## Key Paths
 
----
+- Log: `%LOCALAPPDATA%\XR ViewLab\Logs\ViewLab.log` (human) and `ViewLab.verbose.log` (per-frame).
+- Global config: `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini` `[Settings]`.
+- Per-app profiles: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe-name>` (registry).
+- Runtime source: `dllmain.cpp`. UI: `XRViewLab.UI\*.cs`, `MainWindow.xaml`, `ProfileWindow.xaml`.
 
-## Dependencies
+## Important Runtime Symbols (dllmain.cpp)
 
-- **.NET 8, WPF** — UI framework.
-- **kernel32.dll** — `GetPrivateProfileString`, `WritePrivateProfileString` (INI), `OpenFileMappingW`, `MapViewOfFile` (shared memory).
-- **user32.dll** — `FindWindowW`, `ShowWindow` (preview window control).
-- **advapi32 / Microsoft.Win32** — Registry access for app profiles and layer registration.
-- **System.Net.Http** — GitHub releases API for update check.
-- No NuGet package dependencies.
+- `DrawVisorBorderToTexture(...)` — pure D3D11 border draw (no lookup/lock); called from the release hook.
+- `XRViewLab_xrReleaseSwapchainImage` — draws the visor border, then forwards release. **Primary path.**
+- `XRViewLab_xrEndFrame` — captures per-eye layout into `TrackedSwapchain.eyeViews`; appends the test quad.
+- `BuildVisorBorderVerts` / `ApplyVisorMask` — shared superellipse math (matches `BeanMaskEditor`).
+- `InitTestQuad` / `RenderTestQuadLayer` — debug blue quad.
+- Config flags: `mask_enabled`, `visibility_mask_visor` (default off), `test_quad` (default off).
+- DIAG one-shot log flags: `g_diag*` — each stage logs once per session (success or failure).
 
----
+## Safety Rules
 
-## Current Working Features
+- Back up source/diff before significant changes; the user wants source-level restore points.
+- Do not spam VR game launches. Prefer reading `ViewLab.log` over relaunching.
+- `XR_ERROR_FORM_FACTOR_UNAVAILABLE` = headset not streaming; stop and report.
+- Do not claim the mask works from logs or a clean build. In-headset confirmation only.
+- Every render/mask feature must be toggleable and fail back to the plain crop path.
+- Do not resurrect: the projection-layer orb renderer; the hidden-mesh visor as the main feature;
+  visibility-mask dependency as the primary path; preview-only UI controls; universal-support claims.
 
-- Global render-height control (total mode and split top/bottom mode).
-- Horizontal render-width control.
-- Per-app enable/disable via registry.
-- Per-app custom render profiles (double-click in app list).
-- OpenXR layer enable/disable (registry toggle with animated badge).
-- Four responsive layout modes (Mini / Small / Medium / Large).
-- Visual Masks popup (horizontal + vertical edge masks).
-- Render options: foveated-center compensation, stencil/crop outer-edges-only flags.
-- ReShade OpenXR live controls: gameplay mode, desktop VR menu visibility, headless, always-on-top, reposition, transform (via `XRControlBlock`).
-- Auto-save settings on every slider/checkbox change.
-- Config migration from legacy EXE-dir INI to `%LocalAppData%`.
-- Column width persistence.
-- GitHub release update checker with in-app MSI download and launch.
-- Manifest health check on startup.
+## Product Direction
 
----
-
-## Pending / Known Limitations
-
-- **`SaveReShadeMenuSettings()`** — stub that will persist ReShade menu UI state (headless, always-on-top, etc.) to the INI so settings survive between sessions. Currently the controls take effect live but are not saved.
-- **OpenVR ReShade menu section** — UI card exists ("Coming soon"). OpenVR control not yet implemented.
-- **Quad alpha** — `XRControlBlock.quad_alpha` field is tracked but the ImGui render pipeline in ReShade does not yet apply it.
-- **Preview window cursor passthrough** — clicking in the ReShade preview window does not interact with the ImGui menu (read-only).
-- **Nullable warnings** — CS8632 throughout; `#nullable enable` not yet added to the project.
-- **NETSDK1137** — project uses `Microsoft.NET.Sdk.WindowsDesktop` SDK alias; harmless but could be simplified to `Microsoft.NET.Sdk`.
-- **`xr-viewlab.sln`** — references three non-existent C++ projects from an earlier version of the solution. The C# project is not in it. Build is done via `dotnet build xr-viewlab.csproj` directly.
-
----
-
-## Future Roadmap
-
-1. Implement `SaveReShadeMenuSettings()` — write the 10 ReShade INI keys from the live UI state.
-2. Implement `LoadReShadeMenuSettings()` — restore those settings on startup and re-apply to `XRControlBlock` when a game connects.
-3. OpenVR ReShade menu section — if/when OpenVR support is added to the layer.
-4. Quad position display — read `XRControlBlock.quad_pos_*` during edit mode and show live coordinates in the UI.
-5. Replace `xr-viewlab.sln` with a correct solution containing only the C# project.
-6. Add `#nullable enable` project-wide and resolve all CS8632 warnings.
+ViewLab is a practical VR tuning tool for sim racers and VR players:
+1. Pick a game. 2. Set generous render crop so LOD/culling stay sane. 3. Apply a separate visor mask for
+comfort/performance/immersion. 4. Save per game. 5. Optionally use ReShade Remote.
+UI stays plain, fast, reversible.

@@ -6,23 +6,23 @@ Tone note from the user: dry, direct, no fluff. Good engineering, fewer ceremoni
 
 Active source directory:
 
-`F:\ViewLab`
+`F:\AI-Projects\ViewLab`
 
-Do not reference or depend on files outside `F:\ViewLab`.
+Do not reference or depend on files outside `F:\AI-Projects\ViewLab`.
 
-## Current State
+## Current State (2026-07-01, v4.1.42)
 
-- Render height/width OpenXR layer: done, active in `dllmain.cpp`.
-- Per-app enable/disable: done, DLL reads HKCU app registry keys.
-- Per-app custom render values: done, WPF writes HKCU app registry keys.
-- Merged Applications table: done.
-- ReShade Available tag: done in WPF for Assetto Corsa only, with RGB/glowing text.
-- Double-click app profile editor: done; double-click edits custom values.
-- Install ReShade button: done; explicit button, grey/disabled unless selected app has ReShade tag, red/enabled when selected.
-- ReShade MENU UI: done; WPF writes INI toggles listed below.
-- ReShade runtime-sync backend experiments: removed from clean source.
-- `ReShadePayload`: bundled install payload copied by the app to Assetto Corsa game folders. This is the one intentional binary-payload exception in the repo.
-- `reshade-vr-menu.exe`: removed from clean source and explicitly removed by installer if found from older builds.
+For the live, detailed state always read `PROJECT_STATUS.md` and `HANDOFF.md` first — they supersede
+this section. Summary:
+
+- Render crop OpenXR layer (FOV + recommended resolution): done, active in `dllmain.cpp`.
+- Per-app enable/disable + custom render values: done (WPF writes / DLL reads HKCU app registry keys).
+- Merged Applications table, double-click app profile editor, ReShade Remote popout: done.
+- Visor mask (in progress, NOT confirmed in-headset): native D3D11 direct-write of a kidney/superellipse
+  border into the game's eye textures at `xrReleaseSwapchainImage`. Visibility-mask path is optional
+  (`visibility_mask_visor`). A debug head-locked blue test quad (`test_quad`) probes VR layer submission.
+- Key open bug: the visor "enable" toggle is not persisting — `mask_enabled=0` everywhere despite the UI;
+  the D3D11 draw is gated on it, so nothing draws. See `PROJECT_STATUS.md`.
 
 ## File Map
 
@@ -58,7 +58,9 @@ Current clean source only persists these options. Any actual ReShade binary/menu
 
 ## Last Change
 
-Split the project into `F:\ViewLab`, removed the unfinished ReShade sync backend, restored the planned 4.0.0-style ReShade MENU controls, added the explicit `Install ReShade` button path, bumped to 4.0.60, and built the MSI.
+v4.1.42: added the debug head-locked blue test quad (`test_quad`) to prove OpenXR layer submission in
+Pistol Whip/DiRT. Preceded by the visor-mask redesign (4.1.39–4.1.41): native D3D11 direct-write at
+`xrReleaseSwapchainImage`, gate removed, visibility-mask made optional. See `CHANGELOG.md`.
 
 ## Source Backup Reference
 
@@ -66,9 +68,11 @@ See `SOURCE_BACKUP.md` for the complete inventory of all backup sources, build v
 
 ## Known Gotchas
 
-- The exact build command that produced the extracted 4.0.0 binary is not recoverable. Use `build.ps1` from now on.
-- Current verified MSI: `F:\AI-Projects\ViewLab\dist\XR-ViewLab-4.1.7.msi`.
-- Source must not depend on files outside `F:\ViewLab` or `F:\AI-Projects\ViewLab`.
+- `build.ps1` auto-increments the version. When building components manually (to avoid a double bump),
+  bump `Properties\AssemblyInfo.cs` + `Installer\Product.wxs` yourself and build each project directly.
+- Latest installer: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.42.msi` (builds clean; visor not yet
+  confirmed in-headset).
+- Source must not depend on files outside `F:\AI-Projects\ViewLab`.
 - The WPF app and DLL both use `xr-viewlab.ini`, but only the WPF app knows about the ReShade MENU keys right now.
 - The DLL reads render/app keys only; see `dllmain_features.md`.
 

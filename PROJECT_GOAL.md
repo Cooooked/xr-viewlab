@@ -1,8 +1,10 @@
 # XR ViewLab Project Journal
 
-This is the active source tree. Use `F:\ViewLab` for all future work.
+This is the active source tree. Use `F:\AI-Projects\ViewLab` for all future work.
 
-Do not reference or depend on files outside `F:\ViewLab`.
+Do not reference or depend on files outside `F:\AI-Projects\ViewLab`.
+
+> Live state lives in `PROJECT_STATUS.md` and `HANDOFF.md`; this journal is historical context.
 
 ## Current Goal
 
@@ -25,6 +27,18 @@ Known-good UI target is documented by the 4.0.0 control list in this journal and
 If a binary reference or ReShade payload is needed again, copy it into `F:\ViewLab` first and document it here.
 
 ## Latest Work Log
+
+### 2026-07-01 (v4.1.39 → 4.1.42, visor-mask debugging)
+
+- Replaced the projection-layer "orb" visor with a native D3D11 direct-write into the game's eye textures.
+- 4.1.41: removed the gate that disabled D3D11 when the game used `xrGetVisibilityMaskKHR`; moved the draw
+  to `xrReleaseSwapchainImage` (lifecycle-correct); made the visibility-mask reshape optional.
+- 4.1.40: fixed main-window blank gap (LeftColumnPanel) and App Profile popup clipping (ScrollViewer);
+  added typeless-safe RTV; added one-shot DIAG logging.
+- 4.1.42: added debug head-locked blue test quad (`test_quad`) to prove VR layer submission.
+- Read `ViewLab.log` + registry: proved `mask_enabled=0` everywhere → the visor was never enabled, so the
+  draw never ran. Top open bug: the enable toggle isn't persisting to the config the DLL reads.
+- Visor mask still NOT confirmed in-headset. Awaiting blue-quad test result.
 
 ### 2026-06-22
 

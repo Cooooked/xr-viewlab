@@ -6,7 +6,7 @@ Function PromptDesktopShortcut()
     Exit Function
   End If
 
-  answer = MsgBox("Create a desktop shortcut for XR ViewLab?", 292, "XR ViewLab Setup")
+  answer = MsgBox("Create a desktop shortcut for ViewLab?", 292, "ViewLab Setup")
   If answer <> vbYes Then
     PromptDesktopShortcut = 0
     Exit Function
@@ -18,7 +18,7 @@ Function PromptDesktopShortcut()
 
   Set shell = CreateObject("WScript.Shell")
   desktop = shell.SpecialFolders("Desktop")
-  Set shortcut = shell.CreateShortcut(desktop & "\XR ViewLab.lnk")
+  Set shortcut = shell.CreateShortcut(desktop & "\ViewLab.lnk")
   shortcut.TargetPath = exePath
   shortcut.WorkingDirectory = installDir
   shortcut.Description = "Configure OpenXR VR render height and width"
@@ -45,7 +45,7 @@ Function PromptLaunchXRViewLab()
     Exit Function
   End If
 
-  answer = MsgBox("Open XR ViewLab now?", vbQuestion + vbYesNo, "XR ViewLab Setup")
+  answer = MsgBox("Open ViewLab now?", vbQuestion + vbYesNo, "ViewLab Setup")
   If answer <> vbYes Then
     PromptLaunchXRViewLab = 0
     Exit Function

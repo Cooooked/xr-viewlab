@@ -1,3 +1,4 @@
+# ViewLab .gitignore
 .vs/
 .vscode/
 bin/
@@ -45,3 +46,4 @@ XR_APILAYER_cooooked_verticaltangent_overlaytest/
 openxr-verticaltangent-overlaytest/
 XR_APILAYER_cooooked_verticaltangent_overlaytest.json
 openxr-verticaltangent-overlaytest.ini
+.tools/

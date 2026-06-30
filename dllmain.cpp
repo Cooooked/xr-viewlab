@@ -15,10 +15,54 @@ constexpr double MinUevrRecommendedScale = 0.50;
 
 std::filesystem::path layerDirectory;
 std::ofstream logStream;
+std::ofstream verboseLogStream;
 std::mutex logMutex;
 bool sessionLogged = false;
 
 bool enabled = true;
+// CROP (total_render_height / horizontal_render_width) controls how much the game
+// actually RENDERS (FOV + recommended resolution) — keep generous to avoid LOD
+// pop-in. MASK is a separate black visor border drawn via the OpenXR visibility
+// mesh: it bounds the VISIBLE area (black beyond) without changing what is rendered,
+// and costs no extra GPU (fewer pixels shaded). mask_* values are ABSOLUTE in the
+// same units as CROP; the layer converts them to a fraction of the cropped view.
+bool maskEnabled = false;
+double maskVertical = 1.0;    // legacy absolute vtangent bound
+double maskHorizontal = 1.0;  // legacy absolute hwidth bound
+bool maskRounded = false;     // round the visible-area corners (pill/bean look)
+double maskCorner = 1.0;      // corner radius as a fraction of the shorter half-extent
+double maskTopBias = 0.0;     // -1..1, moves the top lip of the visor opening vertically
+double maskBottomBias = 0.0;  // -1..1, moves the bottom lip of the visor opening vertically
+double maskLeftBias = 0.0;    // -1..1, moves the left lip of the visor opening horizontally
+double maskRightBias = 0.0;   // -1..1, moves the right lip of the visor opening horizontally
+double maskTopCurve = 0.0;    // -1..1, bends the top lip for bridge/nose-like shapes
+double maskBottomCurve = 0.0; // -1..1, bends the bottom lip
+// Per-game render-resolution multiplier (supersampling). 1.0 = unchanged; e.g. 1.37 = 137%.
+// Lets the user set quality per game instead of changing VD/VDXR resolution between games.
+double renderScale = 1.0;
+double visorSize = 1.0;
+double visorWidth = 1.0;
+double visorHeight = 1.0;
+double visorCurve = 0.75;
+double visorOffsetX = 0.0;
+double visorOffsetY = 0.0;
+// OPTIONAL, default OFF. The native visor is the D3D11 direct-write path (drawn at
+// xrReleaseSwapchainImage). This flag enables the SEPARATE legacy approach that
+// reshapes the runtime hidden-area mesh into the visor via xrGetVisibilityMaskKHR.
+// It never gates or suppresses the D3D11 path; it is purely additive for runtimes
+// where someone explicitly wants it (config key: visibility_mask_visor).
+bool visibilityMaskVisor = false;
+
+// DEBUG, default OFF (config key: test_quad). Draws a solid head-locked quad 1m in
+// front of the face as its OWN composition layer — independent of the game's
+// rendering. This is the "can we draw anything in VR at all" probe: if it appears
+// in-headset, our layer submission works and the mask can be rebuilt as a layer.
+bool testQuad = false;
+// Per-frame hook detail (xrLocateViews / xrEnumerateViewConfigurationViews /
+// xrGetVisibilityMaskKHR) is gated behind this flag and, when on, routed to a
+// SEPARATE ViewLab.verbose.log so the human-facing ViewLab.log (and the in-UI
+// Log button) only ever shows meaningful init/config/error events. OFF by default.
+bool verboseLogging = false;
 bool splitMode = false;
 bool foveatedCenterCompensation = false;
 bool visualMaskOnly = false;
@@ -32,20 +76,110 @@ double horizontalRenderWidth = DefaultHorizontalRenderWidth;
 std::wstring currentAppKey;
 
 PFN_xrGetInstanceProcAddr nextXrGetInstanceProcAddr = nullptr;
+PFN_xrCreateSession nextXrCreateSession = nullptr;
+PFN_xrDestroySession nextXrDestroySession = nullptr;
 PFN_xrLocateViews nextXrLocateViews = nullptr;
 PFN_xrEnumerateViewConfigurationViews nextXrEnumerateViewConfigurationViews = nullptr;
 PFN_xrGetVisibilityMaskKHR nextXrGetVisibilityMaskKHR = nullptr;
+PFN_xrEndFrame nextXrEndFrame = nullptr;
+PFN_xrEnumerateSwapchainFormats nextXrEnumerateSwapchainFormats = nullptr;
+PFN_xrCreateSwapchain nextXrCreateSwapchain = nullptr;
+PFN_xrDestroySwapchain nextXrDestroySwapchain = nullptr;
+PFN_xrEnumerateSwapchainImages nextXrEnumerateSwapchainImages = nullptr;
+PFN_xrAcquireSwapchainImage nextXrAcquireSwapchainImage = nullptr;
+PFN_xrWaitSwapchainImage nextXrWaitSwapchainImage = nullptr;
+PFN_xrReleaseSwapchainImage nextXrReleaseSwapchainImage = nullptr;
+PFN_xrCreateReferenceSpace nextXrCreateReferenceSpace = nullptr;
 
 std::atomic<uint32_t> locateViewsLogCount{0};
 std::atomic<uint32_t> enumerateViewsLogCount{0};
 std::atomic<uint32_t> enumerateSkipLogCount{0};
 std::atomic<uint32_t> visibilityMaskLogCount{0};
+std::atomic<uint32_t> visorMaskNoHookLogCount{0};
+std::atomic<uint32_t> visorRendererLogCount{0};
+std::atomic<bool> g_visibilityMaskEverCalled{false};
+
+// One-shot diagnostic flags for the D3D11 direct-write path. Each stage logs the
+// first time it is hit (success or failure) so a single in-headset run reveals the
+// first failing stage without spamming the log.
+std::atomic<bool> g_diagEndFrameCalled{false};
+std::atomic<bool> g_diagEndFrameGated{false};
+std::atomic<bool> g_diagProjFound{false};
+std::atomic<bool> g_diagNoProjLayer{false};
+std::atomic<bool> g_diagDrawScNotTracked{false};
+std::atomic<bool> g_diagDrawBadIndex{false};
+std::atomic<bool> g_diagDrawNullTex{false};
+std::atomic<bool> g_diagDrawNoVerts{false};
+std::atomic<bool> g_diagDrawMapFailed{false};
+std::atomic<bool> g_diagDrawRtvFailed{false};
+std::atomic<bool> g_diagDrawOk{false};
 
 // Hot-reload: re-read config when the file changes.
 // Checked every kConfigReloadInterval frames in xrLocateViews.
 constexpr uint32_t kConfigReloadInterval = 240;
 std::atomic<uint32_t> hotReloadFrameCounter{0};
 std::filesystem::file_time_type lastConfigMtime{};
+
+// Per-game swapchain tracking for D3D11 direct-write masking.
+struct EyeView {
+    XrRect2Di rect{};       // sub-image rect within the texture for this eye
+    uint32_t arraySlice = 0; // texture-array slice for this eye
+};
+struct TrackedSwapchain {
+    XrSession session = XR_NULL_HANDLE;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t arraySize = 1;
+    int64_t format = 0;
+    std::vector<ID3D11Texture2D*> textures;  // not AddRef'd; runtime owns them
+    uint32_t lastAcquiredIndex = UINT32_MAX;
+    // Per-eye layout captured from the projection layer in xrEndFrame. Stable
+    // across frames, so the previous frame's layout is used at release time.
+    std::vector<EyeView> eyeViews;
+};
+
+std::mutex g_swapchainMutex;
+std::unordered_map<XrSwapchain, TrackedSwapchain> g_swapchains;
+
+// D3D11 shader-based mask renderer — draws the visor border directly into the
+// game's own eye textures when the visibility-mask path is unavailable.
+struct D3D11MaskState {
+    XrSession session = XR_NULL_HANDLE;
+    ID3D11Device* device = nullptr;
+    ID3D11DeviceContext* context = nullptr;
+    ID3D11VertexShader* vs = nullptr;
+    ID3D11PixelShader* ps = nullptr;
+    ID3D11InputLayout* layout = nullptr;
+    ID3D11Buffer* vb = nullptr;
+    ID3D11RasterizerState* rs = nullptr;
+    ID3D11BlendState* bs = nullptr;
+    ID3D11DepthStencilState* dss = nullptr;
+    bool initialized = false;
+    bool failed = false;
+    // Latest eye views from xrLocateViews (for future per-eye FOV use).
+    XrSpace locateSpace = XR_NULL_HANDLE;
+    XrTime locateTime = 0;
+    std::array<XrView, 2> latestViews{};
+    uint32_t latestViewCount = 0;
+};
+
+D3D11MaskState g_d3d11Mask;
+
+// DEBUG test quad: our own head-locked composition layer (solid color), used to
+// prove that layer submission reaches the headset at all.
+struct TestQuadState {
+    XrSpace viewSpace = XR_NULL_HANDLE;
+    XrSwapchain swapchain = XR_NULL_HANDLE;
+    std::vector<ID3D11Texture2D*> textures; // runtime-owned
+    int32_t width = 256;
+    int32_t height = 256;
+    bool initialized = false;
+    bool failed = false;
+};
+TestQuadState g_testQuad;
+std::atomic<bool> g_diagTestQuadInit{false};
+std::atomic<bool> g_diagTestQuadFail{false};
+std::atomic<uint32_t> g_testQuadLogCount{0};
 
 std::filesystem::path LocalAppDataPath() {
     wchar_t localAppData[MAX_PATH]{};
@@ -68,6 +202,10 @@ std::filesystem::path UserDataDirectory() {
 
 std::filesystem::path LogPath() {
     return UserDataDirectory() / L"Logs" / L"ViewLab.log";
+}
+
+std::filesystem::path VerboseLogPath() {
+    return UserDataDirectory() / L"Logs" / L"ViewLab.verbose.log";
 }
 
 void RotateLogIfNeeded(const std::filesystem::path& logPath) {
@@ -126,6 +264,59 @@ void Log(const char* fmt, ...) {
             logStream << '\n';
         }
         logStream.flush();
+    }
+}
+
+void OpenVerboseLogIfNeeded() {
+    if (verboseLogStream.is_open()) {
+        return;
+    }
+
+    const std::filesystem::path logPath = VerboseLogPath();
+    std::error_code ec;
+    std::filesystem::create_directories(logPath.parent_path(), ec);
+    RotateLogIfNeeded(logPath);
+    verboseLogStream.open(logPath, std::ios_base::app);
+}
+
+// Per-frame / high-frequency hook detail. No-op unless verbose_logging=1 in the
+// INI. Writes to ViewLab.verbose.log only — never the human-facing ViewLab.log.
+void LogVerbose(const char* fmt, ...) {
+    if (!verboseLogging) {
+        return;
+    }
+
+    char buffer[1024]{};
+
+    va_list args;
+    va_start(args, fmt);
+    _vsnprintf_s(buffer, sizeof(buffer), _TRUNCATE, fmt, args);
+    va_end(args);
+
+    SYSTEMTIME now{};
+    GetLocalTime(&now);
+
+    char line[1400]{};
+    _snprintf_s(
+        line,
+        sizeof(line),
+        _TRUNCATE,
+        "%02u:%02u:%02u:%03u [%lu] | VERB  | %s",
+        now.wHour,
+        now.wMinute,
+        now.wSecond,
+        now.wMilliseconds,
+        static_cast<unsigned long>(GetCurrentProcessId()),
+        buffer);
+
+    std::lock_guard<std::mutex> lock(logMutex);
+    OpenVerboseLogIfNeeded();
+    if (verboseLogStream.is_open()) {
+        verboseLogStream << line;
+        if (line[std::strlen(line) - 1] != '\n') {
+            verboseLogStream << '\n';
+        }
+        verboseLogStream.flush();
     }
 }
 
@@ -312,12 +503,61 @@ bool ReadProfileDword(const wchar_t* keyName, DWORD& value) {
     return result == ERROR_SUCCESS && type == REG_DWORD;
 }
 
+bool ReadProfileDouble(const wchar_t* keyName, double& value) {
+    if (currentAppKey.empty()) {
+        return false;
+    }
+
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, AppRegistryPath(currentAppKey).c_str(), 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS) {
+        return false;
+    }
+
+    wchar_t buffer[64]{};
+    DWORD type = 0;
+    DWORD size = sizeof(buffer);
+    const LONG result = RegQueryValueExW(key, keyName, nullptr, &type, reinterpret_cast<BYTE*>(buffer), &size);
+    RegCloseKey(key);
+    if (result != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ)) {
+        return false;
+    }
+
+    wchar_t* end = nullptr;
+    const double parsed = std::wcstod(buffer, &end);
+    if (end == buffer || !std::isfinite(parsed)) {
+        return false;
+    }
+    value = parsed;
+    return true;
+}
+
 double MillisToRenderHeight(DWORD value, double fallback) {
     return std::clamp(static_cast<double>(value) / 1000.0, MinVerticalTangent, MaxVerticalTangent);
 }
 
 double MillisToRenderScale(DWORD value, double fallback) {
     return std::clamp(static_cast<double>(value) / 1000.0, MinRenderScale, 1.0);
+}
+
+double DwordToRenderScale(DWORD value, double fallback) {
+    if (value == 0u) {
+        return fallback;
+    }
+    const double divisor = value > 3000u ? 1000000.0 : 1000.0;
+    return std::clamp(static_cast<double>(value) / divisor, 0.1, 3.0);
+}
+
+double SignedMillisToUnit(DWORD value, double fallback) {
+    if (value > 2000u) {
+        return fallback;
+    }
+    return std::clamp((static_cast<double>(value) / 1000.0) - 1.0, -1.0, 1.0);
+}
+
+double OpeningFromMask(double vertical, double horizontal, double cropVertical, double cropHorizontal) {
+    const double v = std::clamp(vertical / std::clamp(cropVertical, 0.01, 1.0), 0.05, 1.0);
+    const double h = std::clamp(horizontal / std::clamp(cropHorizontal, 0.01, 1.0), 0.05, 1.0);
+    return std::clamp((v + h) * 0.5, 0.05, 1.0);
 }
 
 XrQuaternionf NormalizeQuaternion(const XrQuaternionf& value) {
@@ -350,15 +590,613 @@ XrQuaternionf PitchQuaternion(float radians) {
     return XrQuaternionf{std::sin(halfAngle), 0.0f, 0.0f, std::cos(halfAngle)};
 }
 
+void ReleaseD3D11MaskRenderer() {
+    {
+        std::lock_guard<std::mutex> lk(g_swapchainMutex);
+        g_swapchains.clear();
+    }
+    if (g_d3d11Mask.vb)      { g_d3d11Mask.vb->Release();      g_d3d11Mask.vb = nullptr; }
+    if (g_d3d11Mask.dss)     { g_d3d11Mask.dss->Release();     g_d3d11Mask.dss = nullptr; }
+    if (g_d3d11Mask.bs)      { g_d3d11Mask.bs->Release();      g_d3d11Mask.bs = nullptr; }
+    if (g_d3d11Mask.rs)      { g_d3d11Mask.rs->Release();      g_d3d11Mask.rs = nullptr; }
+    if (g_d3d11Mask.layout)  { g_d3d11Mask.layout->Release();  g_d3d11Mask.layout = nullptr; }
+    if (g_d3d11Mask.ps)      { g_d3d11Mask.ps->Release();      g_d3d11Mask.ps = nullptr; }
+    if (g_d3d11Mask.vs)      { g_d3d11Mask.vs->Release();      g_d3d11Mask.vs = nullptr; }
+    if (g_d3d11Mask.context) { g_d3d11Mask.context->Release(); g_d3d11Mask.context = nullptr; }
+    if (g_d3d11Mask.device)  { g_d3d11Mask.device->Release();  g_d3d11Mask.device = nullptr; }
+    g_d3d11Mask = D3D11MaskState{};
+    g_visibilityMaskEverCalled.store(false);
+    // Test quad swapchain/space are owned by the runtime and freed with the session.
+    g_testQuad = TestQuadState{};
+    g_diagTestQuadInit.store(false);
+    g_diagTestQuadFail.store(false);
+}
+
+const XrBaseInStructure* FindStructInChain(const void* next, XrStructureType type) {
+    const XrBaseInStructure* cursor = reinterpret_cast<const XrBaseInStructure*>(next);
+    while (cursor != nullptr) {
+        if (cursor->type == type) {
+            return cursor;
+        }
+        cursor = cursor->next;
+    }
+    return nullptr;
+}
+
+DXGI_FORMAT GetNonSRGBFormat(DXGI_FORMAT fmt) {
+    switch (fmt) {
+        case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:  return DXGI_FORMAT_B8G8R8A8_UNORM;
+        case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:  return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case DXGI_FORMAT_BC1_UNORM_SRGB:       return DXGI_FORMAT_BC1_UNORM;
+        case DXGI_FORMAT_BC2_UNORM_SRGB:       return DXGI_FORMAT_BC2_UNORM;
+        case DXGI_FORMAT_BC3_UNORM_SRGB:       return DXGI_FORMAT_BC3_UNORM;
+        // TYPELESS swapchain allocations cannot back an RTV directly; resolve to a
+        // concrete UNORM view. Black writes are identical regardless of SRGB encoding.
+        case DXGI_FORMAT_R8G8B8A8_TYPELESS:    return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case DXGI_FORMAT_B8G8R8A8_TYPELESS:    return DXGI_FORMAT_B8G8R8A8_UNORM;
+        case DXGI_FORMAT_R10G10B10A2_TYPELESS: return DXGI_FORMAT_R10G10B10A2_UNORM;
+        case DXGI_FORMAT_R16G16B16A16_TYPELESS:return DXGI_FORMAT_R16G16B16A16_UNORM;
+        default: return fmt;
+    }
+}
+
+static const char kVisorVS[] =
+    "float4 main(float2 pos : POSITION) : SV_POSITION {"
+    " return float4(pos.x, pos.y, 0.0f, 1.0f); }";
+
+static const char kVisorPS[] =
+    "float4 main() : SV_TARGET { return float4(0.0f, 0.0f, 0.0f, 1.0f); }";
+
+bool InitD3D11MaskRenderer() {
+    if (g_d3d11Mask.initialized) return true;
+    if (g_d3d11Mask.failed)      return false;
+    if (!g_d3d11Mask.device || !g_d3d11Mask.context) return false;
+
+    typedef HRESULT(WINAPI* PFN_D3DCompile)(
+        LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*,
+        LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**);
+
+    HMODULE dxcLib = LoadLibraryA("d3dcompiler_47.dll");
+    if (!dxcLib) dxcLib = LoadLibraryA("d3dcompiler_46.dll");
+    if (!dxcLib) {
+        Log("d3d11 mask: d3dcompiler not found; direct-write fallback unavailable\n");
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+    auto D3DCompile = reinterpret_cast<PFN_D3DCompile>(GetProcAddress(dxcLib, "D3DCompile"));
+    if (!D3DCompile) {
+        Log("d3d11 mask: D3DCompile entry point missing\n");
+        FreeLibrary(dxcLib);
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+
+    ID3DBlob* vsBlob = nullptr;
+    ID3DBlob* psBlob = nullptr;
+    ID3DBlob* errBlob = nullptr;
+
+    HRESULT hr = D3DCompile(kVisorVS, std::strlen(kVisorVS), "VS", nullptr, nullptr,
+                            "main", "vs_4_0", 0, 0, &vsBlob, &errBlob);
+    if (FAILED(hr)) {
+        const char* msg = errBlob ? static_cast<const char*>(errBlob->GetBufferPointer()) : "?";
+        Log("d3d11 mask: VS compile failed hr=0x%08X %s\n", static_cast<unsigned>(hr), msg);
+        if (errBlob) errBlob->Release();
+        FreeLibrary(dxcLib);
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+    if (errBlob) { errBlob->Release(); errBlob = nullptr; }
+
+    hr = D3DCompile(kVisorPS, std::strlen(kVisorPS), "PS", nullptr, nullptr,
+                    "main", "ps_4_0", 0, 0, &psBlob, &errBlob);
+    if (FAILED(hr)) {
+        const char* msg = errBlob ? static_cast<const char*>(errBlob->GetBufferPointer()) : "?";
+        Log("d3d11 mask: PS compile failed hr=0x%08X %s\n", static_cast<unsigned>(hr), msg);
+        if (errBlob) errBlob->Release();
+        vsBlob->Release();
+        FreeLibrary(dxcLib);
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+    if (errBlob) { errBlob->Release(); errBlob = nullptr; }
+    FreeLibrary(dxcLib);
+
+    hr = g_d3d11Mask.device->CreateVertexShader(
+        vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &g_d3d11Mask.vs);
+    if (FAILED(hr)) {
+        Log("d3d11 mask: CreateVertexShader hr=0x%08X\n", static_cast<unsigned>(hr));
+        vsBlob->Release(); psBlob->Release();
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+
+    hr = g_d3d11Mask.device->CreatePixelShader(
+        psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &g_d3d11Mask.ps);
+    psBlob->Release();
+    if (FAILED(hr)) {
+        Log("d3d11 mask: CreatePixelShader hr=0x%08X\n", static_cast<unsigned>(hr));
+        vsBlob->Release();
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+
+    D3D11_INPUT_ELEMENT_DESC elems[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    hr = g_d3d11Mask.device->CreateInputLayout(
+        elems, 1, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &g_d3d11Mask.layout);
+    vsBlob->Release();
+    if (FAILED(hr)) {
+        Log("d3d11 mask: CreateInputLayout hr=0x%08X\n", static_cast<unsigned>(hr));
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+
+    // 32 segments × 6 verts per quad (2 triangles) = 192 float2 vertices max.
+    D3D11_BUFFER_DESC vbd{};
+    vbd.ByteWidth      = 192 * sizeof(float) * 2;
+    vbd.Usage          = D3D11_USAGE_DYNAMIC;
+    vbd.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
+    vbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    if (FAILED(g_d3d11Mask.device->CreateBuffer(&vbd, nullptr, &g_d3d11Mask.vb))) {
+        Log("d3d11 mask: vertex buffer create failed\n");
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+
+    D3D11_RASTERIZER_DESC rsd{};
+    rsd.FillMode        = D3D11_FILL_SOLID;
+    rsd.CullMode        = D3D11_CULL_NONE;
+    rsd.DepthClipEnable = TRUE;
+    g_d3d11Mask.device->CreateRasterizerState(&rsd, &g_d3d11Mask.rs);
+
+    D3D11_BLEND_DESC bld{};
+    bld.RenderTarget[0].BlendEnable           = FALSE;
+    bld.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    g_d3d11Mask.device->CreateBlendState(&bld, &g_d3d11Mask.bs);
+
+    D3D11_DEPTH_STENCIL_DESC dsd{};
+    dsd.DepthEnable   = FALSE;
+    dsd.StencilEnable = FALSE;
+    g_d3d11Mask.device->CreateDepthStencilState(&dsd, &g_d3d11Mask.dss);
+
+    g_d3d11Mask.initialized = true;
+    Log("d3d11 mask: initialized (direct-write into eye textures, active when visibility mask unavailable)\n");
+    return true;
+}
+
+// Builds visor border as a flat triangle list (unindexed) in the given NDC bbox.
+// Output: float2 pairs. Returns vertex count (= triangle count * 3).
+// Shape math identical to BeanMaskEditor.BuildGeometry.
+uint32_t BuildVisorBorderVerts(
+    float bboxMinX, float bboxMaxX, float bboxMinY, float bboxMaxY,
+    float* vertsOut, uint32_t vertCapacity) {
+    const float bboxW = bboxMaxX - bboxMinX;
+    const float bboxH = bboxMaxY - bboxMinY;
+    if (bboxW < 0.001f || bboxH < 0.001f || vertCapacity < 6) return 0;
+
+    const float sw  = std::clamp(static_cast<float>(visorSize * visorWidth),  0.01f, 1.0f);
+    const float sh  = std::clamp(static_cast<float>(visorSize * visorHeight), 0.01f, 1.0f);
+    const float hw  = bboxW * 0.5f * sw;
+    const float hh  = bboxH * 0.5f * sh;
+    const float cx  = (bboxMinX + bboxMaxX) * 0.5f
+                    + (bboxW * 0.5f - hw) * static_cast<float>(visorOffsetX);
+    const float cy  = (bboxMinY + bboxMaxY) * 0.5f
+                    + (bboxH * 0.5f - hh) * static_cast<float>(visorOffsetY);
+    const float exp = 32.0f - std::clamp(static_cast<float>(visorCurve), 0.0f, 1.0f) * 30.0f;
+
+    const uint32_t segCount = (std::min)(32u, vertCapacity / 6u);
+    if (segCount < 4u) return 0;
+
+    constexpr float kTwoPi = 6.28318530717958647692f;
+    std::vector<std::pair<float, float>> inner(segCount);
+    for (uint32_t i = 0; i < segCount; ++i) {
+        const float angle = kTwoPi * static_cast<float>(i) / static_cast<float>(segCount);
+        const float c  = std::cos(angle);
+        const float s  = std::sin(angle);
+        const float sc = (c < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(c), 2.0f / exp);
+        const float ss = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp);
+        inner[i] = {
+            std::clamp(cx + sc * hw, bboxMinX + 0.001f, bboxMaxX - 0.001f),
+            std::clamp(cy + ss * hh, bboxMinY + 0.001f, bboxMaxY - 0.001f)};
+    }
+
+    uint32_t v = 0;
+    auto tri = [&](float ax, float ay, float bx, float by, float cx2, float cy2) {
+        vertsOut[v*2] = ax; vertsOut[v*2+1] = ay; ++v;
+        vertsOut[v*2] = bx; vertsOut[v*2+1] = by; ++v;
+        vertsOut[v*2] = cx2; vertsOut[v*2+1] = cy2; ++v;
+    };
+    for (uint32_t i = 0; i < segCount; ++i) {
+        const auto [px, py] = inner[i];
+        const auto [qx, qy] = inner[(i + 1) % segCount];
+        const float mid = kTwoPi * (static_cast<float>(i) + 0.5f) / static_cast<float>(segCount);
+        if (std::abs(std::cos(mid)) > std::abs(std::sin(mid))) {
+            const float ex = std::cos(mid) < 0.0f ? bboxMinX : bboxMaxX;
+            tri(ex,py, ex,qy, qx,qy);
+            tri(ex,py, qx,qy, px,py);
+        } else {
+            const float ey = std::sin(mid) < 0.0f ? bboxMinY : bboxMaxY;
+            tri(px,ey, qx,ey, qx,qy);
+            tri(px,ey, qx,qy, px,py);
+        }
+    }
+    return v;
+}
+
+// Draws the visor border directly into the given eye texture/slice/rect.
+// Pure draw: no swapchain lookup, no locking — the caller resolves these and must
+// call this on the render thread that owns the D3D11 immediate context. Called from
+// XRViewLab_xrReleaseSwapchainImage, i.e. while the app still owns the image and
+// immediately before the runtime takes it for composition (last legal write point).
+void DrawVisorBorderToTexture(
+    ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
+    uint32_t arrayIndex, const XrRect2Di& rect) {
+    if (!g_d3d11Mask.initialized || !tex) return;
+
+    constexpr uint32_t kMaxVerts = 192;
+    float verts[kMaxVerts * 2]{};
+    const uint32_t vertCount = BuildVisorBorderVerts(-1.0f, 1.0f, -1.0f, 1.0f, verts, kMaxVerts);
+    if (vertCount == 0) {
+        if (!g_diagDrawNoVerts.exchange(true))
+            Log("d3d11 mask DIAG: FAIL border geometry produced 0 vertices\n");
+        return;
+    }
+
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(g_d3d11Mask.context->Map(g_d3d11Mask.vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+        if (!g_diagDrawMapFailed.exchange(true))
+            Log("d3d11 mask DIAG: FAIL vertex buffer Map failed\n");
+        return;
+    }
+    memcpy(mapped.pData, verts, vertCount * sizeof(float) * 2);
+    g_d3d11Mask.context->Unmap(g_d3d11Mask.vb, 0);
+
+    D3D11_TEXTURE2D_DESC texDesc{};
+    tex->GetDesc(&texDesc);
+
+    // Pick a concrete RTV format. Runtimes frequently allocate swapchain textures as
+    // TYPELESS so they can be viewed as SRGB or UNORM; an RTV cannot use a TYPELESS
+    // format. Prefer the app-requested swapchain format (mapped to non-SRGB) which is
+    // always concrete and view-compatible with the underlying texture. Black writes are
+    // identical under SRGB/UNORM so the non-SRGB view is safe.
+    DXGI_FORMAT rtvFormat = GetNonSRGBFormat(static_cast<DXGI_FORMAT>(scFormat));
+    if (rtvFormat == DXGI_FORMAT_UNKNOWN) {
+        rtvFormat = GetNonSRGBFormat(texDesc.Format);
+    }
+
+    D3D11_RENDER_TARGET_VIEW_DESC rtvDesc{};
+    rtvDesc.Format = rtvFormat;
+    if (arrSize > 1) {
+        rtvDesc.ViewDimension                  = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+        rtvDesc.Texture2DArray.MipSlice        = 0;
+        rtvDesc.Texture2DArray.FirstArraySlice = arrayIndex;
+        rtvDesc.Texture2DArray.ArraySize       = 1;
+    } else {
+        rtvDesc.ViewDimension      = D3D11_RTV_DIMENSION_TEXTURE2D;
+        rtvDesc.Texture2D.MipSlice = 0;
+    }
+    ID3D11RenderTargetView* rtv = nullptr;
+    const HRESULT rtvHr = g_d3d11Mask.device->CreateRenderTargetView(tex, &rtvDesc, &rtv);
+    if (FAILED(rtvHr) || !rtv) {
+        if (!g_diagDrawRtvFailed.exchange(true))
+            Log("d3d11 mask DIAG: FAIL CreateRenderTargetView hr=0x%08X rtvFormat=%d texFormat=%d arrSize=%u slice=%u\n",
+                static_cast<unsigned>(rtvHr), static_cast<int>(rtvFormat),
+                static_cast<int>(texDesc.Format), arrSize, arrayIndex);
+        return;
+    }
+
+    D3D11_VIEWPORT vp{};
+    vp.TopLeftX = static_cast<float>(rect.offset.x);
+    vp.TopLeftY = static_cast<float>(rect.offset.y);
+    vp.Width    = static_cast<float>(rect.extent.width);
+    vp.Height   = static_cast<float>(rect.extent.height);
+    vp.MaxDepth = 1.0f;
+
+    // Save D3D11 state.
+    ID3D11RenderTargetView* sRTV = nullptr; ID3D11DepthStencilView* sDSV = nullptr;
+    g_d3d11Mask.context->OMGetRenderTargets(1, &sRTV, &sDSV);
+    UINT sVPCount = 1; D3D11_VIEWPORT sVP{};
+    g_d3d11Mask.context->RSGetViewports(&sVPCount, &sVP);
+    ID3D11RasterizerState* sRS = nullptr;
+    g_d3d11Mask.context->RSGetState(&sRS);
+    ID3D11BlendState* sBS = nullptr; FLOAT sBF[4]{}; UINT sSM = 0;
+    g_d3d11Mask.context->OMGetBlendState(&sBS, sBF, &sSM);
+    ID3D11DepthStencilState* sDSS = nullptr; UINT sSRef = 0;
+    g_d3d11Mask.context->OMGetDepthStencilState(&sDSS, &sSRef);
+    ID3D11VertexShader* sVS = nullptr;
+    g_d3d11Mask.context->VSGetShader(&sVS, nullptr, nullptr);
+    ID3D11PixelShader* sPS = nullptr;
+    g_d3d11Mask.context->PSGetShader(&sPS, nullptr, nullptr);
+    ID3D11InputLayout* sLayout = nullptr;
+    g_d3d11Mask.context->IAGetInputLayout(&sLayout);
+    D3D11_PRIMITIVE_TOPOLOGY sTopo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+    g_d3d11Mask.context->IAGetPrimitiveTopology(&sTopo);
+    ID3D11Buffer* sVB = nullptr; UINT sStride = 0, sOff = 0;
+    g_d3d11Mask.context->IAGetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
+
+    // Draw visor border.
+    static const FLOAT kBF[] = {0.f, 0.f, 0.f, 0.f};
+    UINT stride = sizeof(float) * 2, offset = 0;
+    g_d3d11Mask.context->OMSetRenderTargets(1, &rtv, nullptr);
+    g_d3d11Mask.context->RSSetViewports(1, &vp);
+    g_d3d11Mask.context->RSSetState(g_d3d11Mask.rs);
+    g_d3d11Mask.context->OMSetBlendState(g_d3d11Mask.bs, kBF, 0xFFFFFFFF);
+    g_d3d11Mask.context->OMSetDepthStencilState(g_d3d11Mask.dss, 0);
+    g_d3d11Mask.context->VSSetShader(g_d3d11Mask.vs, nullptr, 0);
+    g_d3d11Mask.context->PSSetShader(g_d3d11Mask.ps, nullptr, 0);
+    g_d3d11Mask.context->IASetInputLayout(g_d3d11Mask.layout);
+    g_d3d11Mask.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_d3d11Mask.context->IASetVertexBuffers(0, 1, &g_d3d11Mask.vb, &stride, &offset);
+    g_d3d11Mask.context->Draw(vertCount, 0);
+
+    if (!g_diagDrawOk.exchange(true))
+        Log("d3d11 mask DIAG: OK draw executed verts=%u rtvFormat=%d texFormat=%d arrSize=%u slice=%u "
+            "rect=(%d,%d %dx%d) tex=%ux%u\n",
+            vertCount, static_cast<int>(rtvFormat), static_cast<int>(texDesc.Format),
+            arrSize, arrayIndex, rect.offset.x, rect.offset.y, rect.extent.width, rect.extent.height,
+            texDesc.Width, texDesc.Height);
+
+    // Restore D3D11 state.
+    g_d3d11Mask.context->OMSetRenderTargets(1, &sRTV, sDSV);
+    if (sVPCount > 0) g_d3d11Mask.context->RSSetViewports(sVPCount, &sVP);
+    g_d3d11Mask.context->RSSetState(sRS);
+    g_d3d11Mask.context->OMSetBlendState(sBS, sBF, sSM);
+    g_d3d11Mask.context->OMSetDepthStencilState(sDSS, sSRef);
+    g_d3d11Mask.context->VSSetShader(sVS, nullptr, 0);
+    g_d3d11Mask.context->PSSetShader(sPS, nullptr, 0);
+    g_d3d11Mask.context->IASetInputLayout(sLayout);
+    g_d3d11Mask.context->IASetPrimitiveTopology(sTopo);
+    g_d3d11Mask.context->IASetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
+
+    rtv->Release();
+    if (sRTV) sRTV->Release(); if (sDSV) sDSV->Release();
+    if (sRS)  sRS->Release();  if (sBS)  sBS->Release();
+    if (sDSS) sDSS->Release(); if (sVS)  sVS->Release();
+    if (sPS)  sPS->Release();  if (sLayout) sLayout->Release();
+    if (sVB)  sVB->Release();
+}
+
+// ---- Swapchain interception for D3D11 fallback tracking ----
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSwapchain(
+    XrSession session, const XrSwapchainCreateInfo* info, XrSwapchain* swapchain) {
+    const XrResult r = nextXrCreateSwapchain(session, info, swapchain);
+    if (r == XR_SUCCESS && swapchain && *swapchain != XR_NULL_HANDLE && info) {
+        std::lock_guard<std::mutex> lk(g_swapchainMutex);
+        TrackedSwapchain& ts = g_swapchains[*swapchain];
+        ts.session   = session;
+        ts.width     = info->width;
+        ts.height    = info->height;
+        ts.arraySize = info->arraySize;
+        ts.format    = info->format;
+    }
+    return r;
+}
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateSwapchainImages(
+    XrSwapchain swapchain, uint32_t capacity, uint32_t* count, XrSwapchainImageBaseHeader* images) {
+    const XrResult r = nextXrEnumerateSwapchainImages(swapchain, capacity, count, images);
+    if (r == XR_SUCCESS && images && count && *count > 0 &&
+        images->type == XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR) {
+        auto* d3d = reinterpret_cast<XrSwapchainImageD3D11KHR*>(images);
+        std::lock_guard<std::mutex> lk(g_swapchainMutex);
+        auto it = g_swapchains.find(swapchain);
+        if (it != g_swapchains.end()) {
+            it->second.textures.resize(*count, nullptr);
+            for (uint32_t i = 0; i < *count; ++i) it->second.textures[i] = d3d[i].texture;
+        }
+    }
+    return r;
+}
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrAcquireSwapchainImage(
+    XrSwapchain swapchain, const XrSwapchainImageAcquireInfo* info, uint32_t* imageIndex) {
+    const XrResult r = nextXrAcquireSwapchainImage(swapchain, info, imageIndex);
+    if (r == XR_SUCCESS && imageIndex) {
+        std::lock_guard<std::mutex> lk(g_swapchainMutex);
+        auto it = g_swapchains.find(swapchain);
+        if (it != g_swapchains.end()) it->second.lastAcquiredIndex = *imageIndex;
+    }
+    return r;
+}
+
+std::atomic<bool> g_diagReleaseSeen{false};
+std::atomic<bool> g_diagReleaseNoLayout{false};
+std::atomic<uint32_t> g_releaseDrawLogCount{0};
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
+    XrSwapchain swapchain, const XrSwapchainImageReleaseInfo* info) {
+    // Draw the visor border NOW — the app has finished rendering this image (it is
+    // releasing it) and the runtime has not yet consumed it. This is the last point
+    // at which the app side legitimately owns the image, so the write cannot be
+    // overwritten by the app and is guaranteed present when the runtime composites.
+    // Independent of the visibility-mask path; that path must never suppress this.
+    if (enabled && maskEnabled && g_d3d11Mask.initialized && g_d3d11Mask.context) {
+        ID3D11Texture2D* tex = nullptr;
+        uint32_t arrSize = 1;
+        int64_t  scFormat = 0;
+        std::vector<EyeView> views;
+        bool tracked = false, sessionOk = false;
+        {
+            std::lock_guard<std::mutex> lk(g_swapchainMutex);
+            auto it = g_swapchains.find(swapchain);
+            if (it != g_swapchains.end()) {
+                tracked = true;
+                const TrackedSwapchain& ts = it->second;
+                sessionOk = (ts.session == g_d3d11Mask.session);
+                if (sessionOk && ts.lastAcquiredIndex < ts.textures.size()) {
+                    tex      = ts.textures[ts.lastAcquiredIndex];
+                    arrSize  = ts.arraySize;
+                    scFormat = ts.format;
+                    views    = ts.eyeViews; // copy; layout captured in xrEndFrame
+                }
+            }
+        }
+        if (!g_diagReleaseSeen.exchange(true))
+            Log("d3d11 mask DIAG: xrReleaseSwapchainImage reached (tracked=%d sessionMatch=%d eyeViews=%zu)\n",
+                tracked ? 1 : 0, sessionOk ? 1 : 0, views.size());
+
+        if (tracked && sessionOk && tex) {
+            if (views.empty()) {
+                if (!g_diagReleaseNoLayout.exchange(true))
+                    Log("d3d11 mask DIAG: no eye layout yet for this swapchain (captured on first xrEndFrame; mask starts next frame)\n");
+            } else {
+                for (const EyeView& ev : views) {
+                    DrawVisorBorderToTexture(tex, arrSize, scFormat, ev.arraySlice, ev.rect);
+                }
+                const uint32_t n = g_releaseDrawLogCount.fetch_add(1);
+                if (n == 0)
+                    Log("d3d11 mask: direct-write at release active (drawing %zu eye view(s))\n", views.size());
+            }
+        }
+    }
+    return nextXrReleaseSwapchainImage(swapchain, info);
+}
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySwapchain(XrSwapchain swapchain) {
+    { std::lock_guard<std::mutex> lk(g_swapchainMutex); g_swapchains.erase(swapchain); }
+    return nextXrDestroySwapchain(swapchain);
+}
+
+// ---- DEBUG test quad: head-locked solid layer (proves VR layer submission) ----
+
+bool InitTestQuad() {
+    if (g_testQuad.initialized) return true;
+    if (g_testQuad.failed) return false;
+    if (g_d3d11Mask.session == XR_NULL_HANDLE || g_d3d11Mask.device == nullptr) return false;
+    if (!nextXrCreateReferenceSpace || !nextXrCreateSwapchain ||
+        !nextXrEnumerateSwapchainImages || !nextXrEnumerateSwapchainFormats ||
+        !nextXrAcquireSwapchainImage || !nextXrWaitSwapchainImage || !nextXrReleaseSwapchainImage) {
+        if (!g_diagTestQuadFail.exchange(true))
+            Log("test quad DIAG: FAIL required OpenXR functions unavailable\n");
+        g_testQuad.failed = true;
+        return false;
+    }
+
+    // VIEW reference space is head-locked: a quad placed in it stays in front of the face.
+    XrReferenceSpaceCreateInfo spaceInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
+    spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
+    spaceInfo.poseInReferenceSpace.orientation.w = 1.0f; // identity
+    XrResult r = nextXrCreateReferenceSpace(g_d3d11Mask.session, &spaceInfo, &g_testQuad.viewSpace);
+    if (r != XR_SUCCESS) {
+        if (!g_diagTestQuadFail.exchange(true))
+            Log("test quad DIAG: FAIL xrCreateReferenceSpace(VIEW) result=%d\n", r);
+        g_testQuad.failed = true;
+        return false;
+    }
+
+    // Pick a supported color format.
+    uint32_t fmtCount = 0;
+    nextXrEnumerateSwapchainFormats(g_d3d11Mask.session, 0, &fmtCount, nullptr);
+    std::vector<int64_t> formats(fmtCount ? fmtCount : 1);
+    if (fmtCount) nextXrEnumerateSwapchainFormats(g_d3d11Mask.session, fmtCount, &fmtCount, formats.data());
+    int64_t chosen = 0;
+    const int64_t prefs[] = {
+        (int64_t)DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, (int64_t)DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
+        (int64_t)DXGI_FORMAT_R8G8B8A8_UNORM,      (int64_t)DXGI_FORMAT_B8G8R8A8_UNORM};
+    for (int64_t pref : prefs) {
+        for (int64_t f : formats) if (f == pref) { chosen = pref; break; }
+        if (chosen) break;
+    }
+    if (!chosen && fmtCount) chosen = formats[0];
+    if (!chosen) chosen = (int64_t)DXGI_FORMAT_R8G8B8A8_UNORM;
+
+    XrSwapchainCreateInfo sci{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+    sci.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+    sci.format = chosen;
+    sci.sampleCount = 1;
+    sci.width = static_cast<uint32_t>(g_testQuad.width);
+    sci.height = static_cast<uint32_t>(g_testQuad.height);
+    sci.faceCount = 1;
+    sci.arraySize = 1;
+    sci.mipCount = 1;
+    r = nextXrCreateSwapchain(g_d3d11Mask.session, &sci, &g_testQuad.swapchain);
+    if (r != XR_SUCCESS) {
+        if (!g_diagTestQuadFail.exchange(true))
+            Log("test quad DIAG: FAIL xrCreateSwapchain result=%d format=%lld\n", r, (long long)chosen);
+        g_testQuad.failed = true;
+        return false;
+    }
+
+    uint32_t imgCount = 0;
+    nextXrEnumerateSwapchainImages(g_testQuad.swapchain, 0, &imgCount, nullptr);
+    std::vector<XrSwapchainImageD3D11KHR> imgs(imgCount ? imgCount : 1,
+                                               {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
+    r = nextXrEnumerateSwapchainImages(g_testQuad.swapchain, imgCount, &imgCount,
+        reinterpret_cast<XrSwapchainImageBaseHeader*>(imgs.data()));
+    if (r != XR_SUCCESS || imgCount == 0) {
+        if (!g_diagTestQuadFail.exchange(true))
+            Log("test quad DIAG: FAIL enumerate images result=%d count=%u\n", r, imgCount);
+        g_testQuad.failed = true;
+        return false;
+    }
+    g_testQuad.textures.resize(imgCount);
+    for (uint32_t i = 0; i < imgCount; ++i) g_testQuad.textures[i] = imgs[i].texture;
+
+    g_testQuad.initialized = true;
+    if (!g_diagTestQuadInit.exchange(true))
+        Log("test quad DIAG: initialized (format=%lld %dx%d images=%u)\n",
+            (long long)chosen, g_testQuad.width, g_testQuad.height, imgCount);
+    return true;
+}
+
+// Clears the test-quad image to solid blue and fills a head-locked quad layer.
+// Returns true if the quad should be submitted this frame.
+bool RenderTestQuadLayer(XrCompositionLayerQuad& outLayer) {
+    if (!InitTestQuad()) return false;
+
+    XrSwapchainImageAcquireInfo ai{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+    uint32_t idx = 0;
+    if (nextXrAcquireSwapchainImage(g_testQuad.swapchain, &ai, &idx) != XR_SUCCESS) return false;
+    XrSwapchainImageWaitInfo wi{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+    wi.timeout = XR_INFINITE_DURATION;
+    if (nextXrWaitSwapchainImage(g_testQuad.swapchain, &wi) != XR_SUCCESS) {
+        nextXrReleaseSwapchainImage(g_testQuad.swapchain, nullptr);
+        return false;
+    }
+    if (idx < g_testQuad.textures.size() && g_testQuad.textures[idx]) {
+        ID3D11Texture2D* tex = g_testQuad.textures[idx];
+        D3D11_TEXTURE2D_DESC td{}; tex->GetDesc(&td);
+        D3D11_RENDER_TARGET_VIEW_DESC rd{};
+        rd.Format = GetNonSRGBFormat(td.Format);
+        rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+        ID3D11RenderTargetView* rtv = nullptr;
+        if (SUCCEEDED(g_d3d11Mask.device->CreateRenderTargetView(tex, &rd, &rtv)) && rtv) {
+            const FLOAT blue[4] = {0.0f, 0.35f, 1.0f, 1.0f};
+            g_d3d11Mask.context->ClearRenderTargetView(rtv, blue);
+            rtv->Release();
+        }
+    }
+    XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    nextXrReleaseSwapchainImage(g_testQuad.swapchain, &ri);
+
+    outLayer = XrCompositionLayerQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    outLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+    outLayer.space = g_testQuad.viewSpace;
+    outLayer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    outLayer.subImage.swapchain = g_testQuad.swapchain;
+    outLayer.subImage.imageRect.offset = {0, 0};
+    outLayer.subImage.imageRect.extent = {g_testQuad.width, g_testQuad.height};
+    outLayer.subImage.imageArrayIndex = 0;
+    outLayer.pose.orientation = {0.0f, 0.0f, 0.0f, 1.0f}; // identity
+    outLayer.pose.position = {0.0f, 0.0f, -1.0f};         // 1 m in front of the face
+    outLayer.size = {0.4f, 0.4f};                          // 40 cm square
+    return true;
+}
+
 void LoadConfig() {
     std::error_code ec;
     lastConfigMtime = std::filesystem::last_write_time(ConfigPath(), ec);
     enabled = ReadBoolSetting(L"enabled", true);
+    verboseLogging = ReadBoolSetting(L"verbose_logging", false);
     splitMode = ReadBoolSetting(L"split_mode", false);
     foveatedCenterCompensation = ReadBoolSetting(L"foveated_center_compensation", false);
     visualMaskOnly = ReadBoolSetting(L"visual_mask_only", false);
     horizontalVisualMaskOnly = ReadBoolSetting(L"horizontal_visual_mask_only", false);
     outerEdgeVisibilityMaskOnly = ReadBoolSetting(L"outer_edge_visibility_mask_only", true);
+    visibilityMaskVisor = ReadBoolSetting(L"visibility_mask_visor", false);
+    testQuad = ReadBoolSetting(L"test_quad", false);
     const double legacyTotal = ReadDoubleSetting(L"vertical_tangent", DefaultTotalTangent);
     totalTangent = std::clamp(
         ReadDoubleSetting(L"total_render_height", ReadDoubleSetting(L"total_share", legacyTotal)),
@@ -368,6 +1206,20 @@ void LoadConfig() {
         ReadDoubleSetting(L"horizontal_render_width", DefaultHorizontalRenderWidth),
         MinRenderScale,
         1.0);
+
+    maskEnabled = ReadBoolSetting(L"mask_enabled", false);
+    maskVertical = std::clamp(ReadDoubleSetting(L"mask_vertical", 1.0), MinVerticalTangent, MaxVerticalTangent);
+    maskHorizontal = std::clamp(ReadDoubleSetting(L"mask_horizontal", 1.0), MinRenderScale, 1.0);
+    maskRounded = ReadBoolSetting(L"mask_rounded", false);
+    maskCorner = std::clamp(ReadDoubleSetting(L"mask_corner", 1.0), 0.0, 1.0);
+    const double oldMaskOffsetY = std::clamp(ReadDoubleSetting(L"mask_offset_y", 0.0), -1.0, 1.0);
+    maskTopBias = std::clamp(ReadDoubleSetting(L"mask_top_bias", oldMaskOffsetY), -1.0, 1.0);
+    maskBottomBias = std::clamp(ReadDoubleSetting(L"mask_bottom_bias", oldMaskOffsetY), -1.0, 1.0);
+    maskLeftBias = std::clamp(ReadDoubleSetting(L"mask_left_bias", 0.0), -1.0, 1.0);
+    maskRightBias = std::clamp(ReadDoubleSetting(L"mask_right_bias", 0.0), -1.0, 1.0);
+    maskTopCurve = std::clamp(ReadDoubleSetting(L"mask_top_curve", 0.0), -1.0, 1.0);
+    maskBottomCurve = std::clamp(ReadDoubleSetting(L"mask_bottom_curve", 0.0), -1.0, 1.0);
+    renderScale = std::clamp(ReadDoubleSetting(L"render_scale", 1.0), 0.1, 3.0);
 
     if (splitMode) {
         topTangent = std::clamp(
@@ -390,6 +1242,9 @@ void LoadConfig() {
     }
 
     DWORD profileEnabled = 0;
+    DWORD profileVisorSize = 0;
+    DWORD profileVisorWidth = 0;
+    DWORD profileVisorHeight = 0;
     if (ReadProfileDword(L"profile_enabled", profileEnabled) && profileEnabled != 0) {
         DWORD profileSplitMode = splitMode ? 1u : 0u;
         DWORD profileTotal = static_cast<DWORD>(std::lround(totalTangent * 1000.0));
@@ -401,6 +1256,52 @@ void LoadConfig() {
         ReadProfileDword(L"top_tangent", profileTop);
         ReadProfileDword(L"bottom_tangent", profileBottom);
         ReadProfileDword(L"horizontal_render_width", profileHorizontal);
+
+        DWORD profileMaskEnabled = maskEnabled ? 1u : 0u;
+        DWORD profileMaskVertical = static_cast<DWORD>(std::lround(maskVertical * 1000.0));
+        DWORD profileMaskHorizontal = static_cast<DWORD>(std::lround(maskHorizontal * 1000.0));
+        DWORD profileMaskRounded = maskRounded ? 1u : 0u;
+        DWORD profileMaskCorner = static_cast<DWORD>(std::lround(maskCorner * 1000.0));
+        DWORD profileMaskTopBias = static_cast<DWORD>(std::lround((std::clamp(maskTopBias, -1.0, 1.0) + 1.0) * 1000.0));
+        DWORD profileMaskBottomBias = static_cast<DWORD>(std::lround((std::clamp(maskBottomBias, -1.0, 1.0) + 1.0) * 1000.0));
+        DWORD profileMaskLeftBias = static_cast<DWORD>(std::lround((std::clamp(maskLeftBias, -1.0, 1.0) + 1.0) * 1000.0));
+        DWORD profileMaskRightBias = static_cast<DWORD>(std::lround((std::clamp(maskRightBias, -1.0, 1.0) + 1.0) * 1000.0));
+        DWORD profileMaskTopCurve = static_cast<DWORD>(std::lround((std::clamp(maskTopCurve, -1.0, 1.0) + 1.0) * 1000.0));
+        DWORD profileMaskBottomCurve = static_cast<DWORD>(std::lround((std::clamp(maskBottomCurve, -1.0, 1.0) + 1.0) * 1000.0));
+        DWORD profileMaskOffsetY = static_cast<DWORD>(std::lround(((maskTopBias + maskBottomBias) * 0.5 + 1.0) * 1000.0));
+        ReadProfileDword(L"mask_enabled", profileMaskEnabled);
+        ReadProfileDword(L"mask_vertical", profileMaskVertical);
+        ReadProfileDword(L"mask_horizontal", profileMaskHorizontal);
+        DWORD profileRenderScale = static_cast<DWORD>(std::lround(renderScale * 1000000.0));
+        ReadProfileDword(L"mask_rounded", profileMaskRounded);
+        ReadProfileDword(L"mask_corner", profileMaskCorner);
+        ReadProfileDword(L"mask_offset_y", profileMaskOffsetY);
+        ReadProfileDword(L"mask_top_bias", profileMaskTopBias);
+        ReadProfileDword(L"mask_bottom_bias", profileMaskBottomBias);
+        ReadProfileDword(L"mask_left_bias", profileMaskLeftBias);
+        ReadProfileDword(L"mask_right_bias", profileMaskRightBias);
+        ReadProfileDword(L"mask_top_curve", profileMaskTopCurve);
+        ReadProfileDword(L"mask_bottom_curve", profileMaskBottomCurve);
+        ReadProfileDword(L"visor_size", profileVisorSize);
+        ReadProfileDword(L"visor_width", profileVisorWidth);
+        ReadProfileDword(L"visor_height", profileVisorHeight);
+        if (!ReadProfileDouble(L"render_scale", renderScale)) {
+            ReadProfileDword(L"render_scale", profileRenderScale);
+            renderScale = DwordToRenderScale(profileRenderScale, renderScale);
+        }
+        renderScale = std::clamp(renderScale, 0.1, 3.0);
+        maskEnabled = profileMaskEnabled != 0;
+        maskVertical = MillisToRenderHeight(profileMaskVertical, maskVertical);
+        maskHorizontal = MillisToRenderScale(profileMaskHorizontal, maskHorizontal);
+        maskRounded = profileMaskRounded != 0;
+        maskCorner = std::clamp(static_cast<double>(profileMaskCorner) / 1000.0, 0.0, 1.0);
+        const double oldProfileOffsetY = SignedMillisToUnit(profileMaskOffsetY, (maskTopBias + maskBottomBias) * 0.5);
+        maskTopBias = SignedMillisToUnit(profileMaskTopBias, oldProfileOffsetY);
+        maskBottomBias = SignedMillisToUnit(profileMaskBottomBias, oldProfileOffsetY);
+        maskLeftBias = SignedMillisToUnit(profileMaskLeftBias, maskLeftBias);
+        maskRightBias = SignedMillisToUnit(profileMaskRightBias, maskRightBias);
+        maskTopCurve = SignedMillisToUnit(profileMaskTopCurve, maskTopCurve);
+        maskBottomCurve = SignedMillisToUnit(profileMaskBottomCurve, maskBottomCurve);
 
         splitMode = profileSplitMode != 0;
         totalTangent = MillisToRenderHeight(profileTotal, totalTangent);
@@ -415,7 +1316,20 @@ void LoadConfig() {
         }
     }
 
-    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d horizontal_outer_edges_only=1 uevr_like=%d\n",
+    visorSize = std::clamp(ReadDoubleSetting(L"mask_size", OpeningFromMask(maskVertical, maskHorizontal, totalTangent, horizontalRenderWidth)), 0.05, 1.0);
+    visorWidth = std::clamp(ReadDoubleSetting(L"mask_width_scale", 1.0), 0.25, 2.0);
+    visorHeight = std::clamp(ReadDoubleSetting(L"mask_height_scale", 1.0), 0.25, 2.0);
+    if (profileVisorSize > 0)
+        visorSize = std::clamp(static_cast<double>(profileVisorSize) / 1000.0, 0.05, 1.0);
+    if (profileVisorWidth > 0)
+        visorWidth = std::clamp(static_cast<double>(profileVisorWidth) / 1000.0, 0.25, 2.0);
+    if (profileVisorHeight > 0)
+        visorHeight = std::clamp(static_cast<double>(profileVisorHeight) / 1000.0, 0.25, 2.0);
+    visorCurve = std::clamp(1.0 - maskCorner, 0.0, 1.0);
+    visorOffsetX = std::clamp(maskLeftBias, -1.0, 1.0);
+    visorOffsetY = std::clamp(maskTopBias, -1.0, 1.0);
+
+    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d horizontal_outer_edges_only=1 visor_enabled=%d visor_backend=d3d11_direct_write_with_visibility_mask visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_offset_x=%.3f visor_offset_y=%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
         enabled ? 1 : 0,
         currentAppKey.empty() ? L"<global>" : currentAppKey.c_str(),
         splitMode ? "split" : "total",
@@ -429,7 +1343,16 @@ void LoadConfig() {
         visualMaskOnly ? 1 : 0,
         horizontalVisualMaskOnly ? 1 : 0,
         outerEdgeVisibilityMaskOnly ? 1 : 0,
-        uevrLikeProcess ? 1 : 0);
+        maskEnabled ? 1 : 0,
+        visorSize,
+        visorWidth,
+        visorHeight,
+        visorCurve,
+        visorOffsetX,
+        visorOffsetY,
+        renderScale,
+        uevrLikeProcess ? 1 : 0,
+        verboseLogging ? 1 : 0);
 }
 
 void EnsureInitialized() {
@@ -529,6 +1452,17 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrLocateViews(
         return result;
     }
 
+    if (viewLocateInfo != nullptr &&
+        *viewCountOutput >= 2 &&
+        viewCapacityInput >= 2) {
+        g_d3d11Mask.locateSpace = viewLocateInfo->space;
+        g_d3d11Mask.locateTime = viewLocateInfo->displayTime;
+        g_d3d11Mask.latestViewCount = (std::min)(*viewCountOutput, 2u);
+        for (uint32_t i = 0; i < g_d3d11Mask.latestViewCount; ++i) {
+            g_d3d11Mask.latestViews[i] = views[i];
+        }
+    }
+
     const uint32_t frameN = hotReloadFrameCounter.fetch_add(1);
     if (frameN % kConfigReloadInterval == 0) {
         std::error_code ec;
@@ -540,13 +1474,19 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrLocateViews(
     }
 
     const uint32_t logCount = locateViewsLogCount.fetch_add(1);
+    if (maskEnabled && visibilityMaskLogCount.load() == 0 && logCount == 300) {
+        const uint32_t warnCount = visorMaskNoHookLogCount.fetch_add(1);
+        if (warnCount == 0) {
+            Log("visibility mask: rounded visor enabled, but xrGetVisibilityMaskKHR has not been called after 300 locate frames; this runtime path may not consume OpenXR visibility masks, so no in-HMD rounded mask will be visible\n");
+        }
+    }
     for (uint32_t i = 0; i < *viewCountOutput; ++i) {
         const XrFovf before = views[i].fov;
         bool compensated = false;
         float pitchOffset = 0.0f;
         ApplyXRViewLabFov(i, views[i], compensated, pitchOffset);
-        if (logCount < 20 || logCount % 300 == 0) {
-            Log("xrLocateViews[%u]: up %.5f -> %.5f down %.5f -> %.5f left %.5f -> %.5f right %.5f -> %.5f horizontal_render_width=%.3f horizontal_outer_edges_only=1 foveated_center=%d pitch_offset=%.5f\n",
+        if (verboseLogging && (logCount < 20 || logCount % 300 == 0)) {
+            LogVerbose("xrLocateViews[%u]: up %.5f -> %.5f down %.5f -> %.5f left %.5f -> %.5f right %.5f -> %.5f horizontal_render_width=%.3f horizontal_outer_edges_only=1 foveated_center=%d pitch_offset=%.5f\n",
                 i,
                 before.angleUp,
                 views[i].fov.angleUp,
@@ -562,7 +1502,120 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrLocateViews(
         }
     }
 
+    if (logCount == 0) {
+        Log("render: FOV adjustment active (per-frame detail in verbose log only)\n");
+    }
+
     return result;
+}
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
+    XrInstance instance,
+    const XrSessionCreateInfo* createInfo,
+    XrSession* session) {
+    const XrResult result = nextXrCreateSession(instance, createInfo, session);
+    if (result != XR_SUCCESS || createInfo == nullptr || session == nullptr || *session == XR_NULL_HANDLE) {
+        return result;
+    }
+
+    ReleaseD3D11MaskRenderer();
+    g_d3d11Mask.session = *session;
+    const auto* d3d11Binding = reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(
+        FindStructInChain(createInfo->next, XR_TYPE_GRAPHICS_BINDING_D3D11_KHR));
+    if (d3d11Binding != nullptr && d3d11Binding->device != nullptr) {
+        g_d3d11Mask.device = d3d11Binding->device;
+        g_d3d11Mask.device->AddRef();
+        g_d3d11Mask.device->GetImmediateContext(&g_d3d11Mask.context);
+        Log("d3d11 mask: D3D11 session detected; initializing direct-write renderer\n");
+        InitD3D11MaskRenderer();
+    } else {
+        Log("d3d11 mask: session is not D3D11; direct-write fallback unavailable for this session\n");
+    }
+
+    return result;
+}
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
+    if (session == g_d3d11Mask.session) {
+        ReleaseD3D11MaskRenderer();
+    }
+    return nextXrDestroySession(session);
+}
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
+    XrSession session,
+    const XrFrameEndInfo* frameEndInfo) {
+    if (nextXrEndFrame == nullptr || frameEndInfo == nullptr) {
+        return nextXrEndFrame ? nextXrEndFrame(session, frameEndInfo) : XR_ERROR_RUNTIME_FAILURE;
+    }
+
+    if (!g_diagEndFrameCalled.exchange(true)) {
+        Log("d3d11 mask DIAG: xrEndFrame hook called (enabled=%d maskEnabled=%d visMaskCalled=%d "
+            "sessionMatch=%d d3d11Init=%d layerCount=%u)\n",
+            enabled ? 1 : 0, maskEnabled ? 1 : 0, g_visibilityMaskEverCalled.load() ? 1 : 0,
+            (session == g_d3d11Mask.session) ? 1 : 0, g_d3d11Mask.initialized ? 1 : 0,
+            frameEndInfo->layerCount);
+    }
+
+    // Capture the per-eye layout (swapchain -> imageRect + array slice) from the
+    // projection layer. The actual draw happens in xrReleaseSwapchainImage, which
+    // runs earlier in the frame loop, so the layout captured here is consumed by the
+    // NEXT frame's release. The layout is stable frame-to-frame, so this is correct.
+    // NOTE: this is intentionally NOT gated on the visibility-mask path — the native
+    // D3D11 visor must run whether or not the game requests a visibility mask.
+    if (enabled && maskEnabled && g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
+        bool foundProj = false;
+        std::lock_guard<std::mutex> lk(g_swapchainMutex);
+        // Reset captured layouts so stale eyes don't linger if the app changes layers.
+        for (auto& kv : g_swapchains) kv.second.eyeViews.clear();
+        for (uint32_t l = 0; l < frameEndInfo->layerCount; ++l) {
+            const XrCompositionLayerBaseHeader* hdr = frameEndInfo->layers[l];
+            if (hdr == nullptr || hdr->type != XR_TYPE_COMPOSITION_LAYER_PROJECTION) continue;
+            foundProj = true;
+            const auto* proj = reinterpret_cast<const XrCompositionLayerProjection*>(hdr);
+            if (!g_diagProjFound.exchange(true)) {
+                Log("d3d11 mask DIAG: projection layer found (layer=%u viewCount=%u)\n",
+                    l, proj->viewCount);
+            }
+            for (uint32_t v = 0; v < proj->viewCount; ++v) {
+                const XrCompositionLayerProjectionView& pv = proj->views[v];
+                auto it = g_swapchains.find(pv.subImage.swapchain);
+                if (it != g_swapchains.end()) {
+                    it->second.eyeViews.push_back(
+                        EyeView{pv.subImage.imageRect,
+                                static_cast<uint32_t>(pv.subImage.imageArrayIndex)});
+                }
+            }
+        }
+        if (!foundProj && !g_diagNoProjLayer.exchange(true)) {
+            Log("d3d11 mask DIAG: FAIL no projection layer in submitted frame (layerCount=%u)\n",
+                frameEndInfo->layerCount);
+        }
+    }
+
+    // DEBUG: append a head-locked solid quad as our OWN layer to prove VR drawing.
+    if (testQuad && g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
+        XrCompositionLayerQuad quad{};
+        if (RenderTestQuadLayer(quad)) {
+            std::vector<const XrCompositionLayerBaseHeader*> layers;
+            layers.reserve(static_cast<size_t>(frameEndInfo->layerCount) + 1u);
+            for (uint32_t i = 0; i < frameEndInfo->layerCount; ++i)
+                layers.push_back(frameEndInfo->layers[i]);
+            layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader*>(&quad));
+            XrFrameEndInfo patched = *frameEndInfo;
+            patched.layerCount = static_cast<uint32_t>(layers.size());
+            patched.layers = layers.data();
+            const uint32_t n = g_testQuadLogCount.fetch_add(1);
+            if (n == 0)
+                Log("test quad: submitting head-locked blue quad layer (1m in front, 0.4m square)\n");
+            const XrResult tr = nextXrEndFrame(session, &patched);
+            if (tr != XR_SUCCESS && n < 3)
+                Log("test quad DIAG: nextXrEndFrame with quad returned result=%d\n", tr);
+            return tr;
+        }
+    }
+
+    return nextXrEndFrame(session, frameEndInfo);
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
@@ -589,8 +1642,10 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
             reinterpret_cast<PFN_xrVoidFunction*>(&getProperties)) != XR_SUCCESS ||
         getProperties == nullptr) {
         const uint32_t skipCount = enumerateSkipLogCount.fetch_add(1);
-        if (skipCount < 10 || skipCount % 100 == 0) {
-            Log("xrEnumerateViewConfigurationViews: skipped render-height change, xrGetViewConfigurationProperties unavailable\n");
+        if (skipCount == 0) {
+            Log("render: render-resolution change skipped, xrGetViewConfigurationProperties unavailable\n");
+        } else if (verboseLogging && skipCount % 100 == 0) {
+            LogVerbose("xrEnumerateViewConfigurationViews: skipped render-height change, xrGetViewConfigurationProperties unavailable\n");
         }
         return result;
     }
@@ -600,8 +1655,12 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
     if (propertiesResult != XR_SUCCESS ||
         properties.fovMutable != XR_TRUE) {
         const uint32_t skipCount = enumerateSkipLogCount.fetch_add(1);
-        if (skipCount < 10 || skipCount % 100 == 0) {
-            Log("xrEnumerateViewConfigurationViews: skipped render-height change, properties_result=%d fovMutable=%d\n",
+        if (skipCount == 0) {
+            Log("render: render-resolution change skipped, properties_result=%d fovMutable=%d\n",
+                propertiesResult,
+                properties.fovMutable == XR_TRUE ? 1 : 0);
+        } else if (verboseLogging && skipCount % 100 == 0) {
+            LogVerbose("xrEnumerateViewConfigurationViews: skipped render-height change, properties_result=%d fovMutable=%d\n",
                 propertiesResult,
                 properties.fovMutable == XR_TRUE ? 1 : 0);
         }
@@ -611,8 +1670,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
     const uint32_t logCount = enumerateViewsLogCount.fetch_add(1);
     const double requestedHeightScale = std::clamp(topTangent + bottomTangent, 0.01, 1.0);
     const double requestedWidthScale = EffectiveOuterEdgeHorizontalScale();
-    const double renderHeightScale = visualMaskOnly ? 1.0 : ConservativeRecommendedScale(requestedHeightScale);
-    const double renderWidthScale = horizontalVisualMaskOnly ? 1.0 : ConservativeRecommendedScale(requestedWidthScale);
+    const double renderHeightScale = (visualMaskOnly ? 1.0 : ConservativeRecommendedScale(requestedHeightScale)) * renderScale;
+    const double renderWidthScale = (horizontalVisualMaskOnly ? 1.0 : ConservativeRecommendedScale(requestedWidthScale)) * renderScale;
     for (uint32_t i = 0; i < *viewCountOutput; ++i) {
         const uint32_t beforeWidth = views[i].recommendedImageRectWidth;
         const uint32_t beforeHeight = views[i].recommendedImageRectHeight;
@@ -622,8 +1681,13 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
         views[i].recommendedImageRectHeight = std::max<uint32_t>(
             1,
             static_cast<uint32_t>(std::lround(static_cast<double>(views[i].recommendedImageRectHeight) * renderHeightScale)));
-        if (logCount < 10 || logCount % 100 == 0) {
-            Log("xrEnumerateViewConfigurationViews[%u]: recommended width %u -> %u horizontal_render_width=%.3f effective_horizontal_width=%.3f horizontal_visual_mask_only=%d height %u -> %u total_render_height=%.3f visual_mask_only=%d uevr_like=%d\n",
+        if (i == 0 && logCount == 0) {
+            Log("render: resolution scaled width=%.3f height=%.3f (per-view detail in verbose log only)\n",
+                renderWidthScale,
+                renderHeightScale);
+        }
+        if (verboseLogging && (logCount < 10 || logCount % 100 == 0)) {
+            LogVerbose("xrEnumerateViewConfigurationViews[%u]: recommended width %u -> %u horizontal_render_width=%.3f effective_horizontal_width=%.3f horizontal_visual_mask_only=%d height %u -> %u total_render_height=%.3f visual_mask_only=%d uevr_like=%d\n",
                 i,
                 beforeWidth,
                 views[i].recommendedImageRectWidth,
@@ -641,17 +1705,98 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
     return result;
 }
 
+// Replace the runtime's hidden mesh with a rectangular black "visor" border that
+// bounds the visible area. mask_vertical/mask_horizontal are absolute (CROP units);
+// here they become a fraction of the cropped view (1.0 = no mask on that axis).
+// The frame is 8 vertices / 24 indices, well within the runtime's lens-mesh capacity,
+// so no buffer growth is needed. Centered rect for now; per-eye/feathered "bean"
+// shaping follows. Returns false if there is nothing to mask or no room.
+// Replaces the runtime hidden-area mesh with a visor-shaped border.
+// Shape math identical to BeanMaskEditor.BuildGeometry and BuildVisorBorderVerts.
+bool ApplyVisorMask(uint32_t viewIndex, XrVisibilityMaskKHR* mask) {
+    (void)viewIndex;
+    const uint32_t vcap = mask->vertexCapacityInput;
+    const uint32_t icap = mask->indexCapacityInput;
+    const uint32_t segCount = (std::min<uint32_t>)(32u, (std::min<uint32_t>)(vcap / 4u, icap / 6u));
+    if (segCount < 4u) return false;
+
+    // Derive bbox from runtime mesh vertices.
+    float minX = mask->vertices[0].x, maxX = minX;
+    float minY = mask->vertices[0].y, maxY = minY;
+    for (uint32_t i = 1; i < mask->vertexCountOutput; ++i) {
+        minX = (std::min)(minX, mask->vertices[i].x);
+        maxX = (std::max)(maxX, mask->vertices[i].x);
+        minY = (std::min)(minY, mask->vertices[i].y);
+        maxY = (std::max)(maxY, mask->vertices[i].y);
+    }
+    const float bboxW = maxX - minX;
+    const float bboxH = maxY - minY;
+    if (bboxW < 0.001f || bboxH < 0.001f) return false;
+
+    // Same superellipse parameters as BeanMaskEditor.BuildGeometry.
+    const float sw  = std::clamp(static_cast<float>(visorSize * visorWidth),  0.01f, 1.0f);
+    const float sh  = std::clamp(static_cast<float>(visorSize * visorHeight), 0.01f, 1.0f);
+    const float hw  = bboxW * 0.5f * sw;
+    const float hh  = bboxH * 0.5f * sh;
+    const float cx  = (minX + maxX) * 0.5f + (bboxW * 0.5f - hw) * static_cast<float>(visorOffsetX);
+    const float cy  = (minY + maxY) * 0.5f + (bboxH * 0.5f - hh) * static_cast<float>(visorOffsetY);
+    const float exp = 32.0f - std::clamp(static_cast<float>(visorCurve), 0.0f, 1.0f) * 30.0f;
+
+    constexpr float kTwoPi = 6.28318530717958647692f;
+    std::vector<XrVector2f> inner(segCount);
+    for (uint32_t i = 0; i < segCount; ++i) {
+        const float angle = kTwoPi * static_cast<float>(i) / static_cast<float>(segCount);
+        const float c  = std::cos(angle);
+        const float s  = std::sin(angle);
+        const float sc = (c < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(c), 2.0f / exp);
+        const float ss = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp);
+        inner[i] = XrVector2f{
+            std::clamp(cx + sc * hw, minX + 0.001f, maxX - 0.001f),
+            std::clamp(cy + ss * hh, minY + 0.001f, maxY - 0.001f)};
+    }
+
+    uint32_t v = 0, w = 0;
+    auto addQuad = [&](XrVector2f a, XrVector2f b, XrVector2f c2, XrVector2f d) {
+        const uint32_t s = v;
+        mask->vertices[v++] = a; mask->vertices[v++] = b;
+        mask->vertices[v++] = c2; mask->vertices[v++] = d;
+        mask->indices[w++] = s+0; mask->indices[w++] = s+1; mask->indices[w++] = s+2;
+        mask->indices[w++] = s+0; mask->indices[w++] = s+2; mask->indices[w++] = s+3;
+    };
+
+    for (uint32_t i = 0; i < segCount; ++i) {
+        const XrVector2f p0 = inner[i];
+        const XrVector2f p1 = inner[(i + 1) % segCount];
+        const float mid = kTwoPi * (static_cast<float>(i) + 0.5f) / static_cast<float>(segCount);
+        if (std::abs(std::cos(mid)) > std::abs(std::sin(mid))) {
+            const float ex = std::cos(mid) < 0.0f ? minX : maxX;
+            addQuad(XrVector2f{ex, p0.y}, XrVector2f{ex, p1.y}, p1, p0);
+        } else {
+            const float ey = std::sin(mid) < 0.0f ? minY : maxY;
+            addQuad(XrVector2f{p0.x, ey}, XrVector2f{p1.x, ey}, p1, p0);
+        }
+    }
+
+    mask->vertexCountOutput = v;
+    mask->indexCountOutput  = w;
+    return true;
+}
+
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
     XrSession session,
     XrViewConfigurationType viewConfigurationType,
     uint32_t viewIndex,
     XrVisibilityMaskTypeKHR visibilityMaskType,
     XrVisibilityMaskKHR* visibilityMask) {
+    // Informational only. The game calling xrGetVisibilityMaskKHR does NOT disable the
+    // native D3D11 visor — that path runs independently at xrReleaseSwapchainImage.
+    if (!g_visibilityMaskEverCalled.exchange(true)) {
+        Log("visibility mask: game calls xrGetVisibilityMaskKHR (informational; native D3D11 visor unaffected, runs independently)\n");
+    }
+
     const XrResult result = nextXrGetVisibilityMaskKHR(session, viewConfigurationType, viewIndex, visibilityMaskType, visibilityMask);
 
     if (!enabled ||
-        !outerEdgeVisibilityMaskOnly ||
-        uevrLikeProcess ||
         result != XR_SUCCESS ||
         viewConfigurationType != XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO ||
         viewIndex > 1 ||
@@ -663,6 +1808,30 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
         visibilityMask->indexCountOutput < 3 ||
         visibilityMask->vertexCapacityInput < visibilityMask->vertexCountOutput ||
         visibilityMask->indexCapacityInput < visibilityMask->indexCountOutput) {
+        return result;
+    }
+
+    // OPTIONAL legacy path (default OFF): reshape the hidden-area mesh into the visor.
+    // Separate from and additive to the native D3D11 visor; only runs if explicitly
+    // enabled via visibility_mask_visor. Never suppresses the D3D11 path.
+    if (maskEnabled && visibilityMaskVisor) {
+        const uint32_t beforeIndexCount = visibilityMask->indexCountOutput;
+        if (ApplyVisorMask(viewIndex, visibilityMask)) {
+            const uint32_t logCount = visibilityMaskLogCount.fetch_add(1);
+            if (logCount == 0) {
+                Log("visibility mask: OPTIONAL visor-mesh active size=%.3f width=%.3f height=%.3f curve=%.3f offset=(%.3f,%.3f)\n",
+                    visorSize, visorWidth, visorHeight, visorCurve, visorOffsetX, visorOffsetY);
+            }
+            if (verboseLogging && (logCount < 20 || logCount % 100 == 0)) {
+                LogVerbose("xrGetVisibilityMaskKHR: view=%u visor border indices %u -> %u\n",
+                    viewIndex, beforeIndexCount, visibilityMask->indexCountOutput);
+            }
+        }
+        return result;
+    }
+
+    // Legacy outer-edge crop: keep only the outer-half hidden triangles.
+    if (!outerEdgeVisibilityMaskOnly || uevrLikeProcess) {
         return result;
     }
 
@@ -698,8 +1867,11 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
     visibilityMask->indexCountOutput = writeIndex;
 
     const uint32_t logCount = visibilityMaskLogCount.fetch_add(1);
-    if (logCount < 20 || logCount % 100 == 0) {
-        Log("xrGetVisibilityMaskKHR: view=%u hidden indices %u -> %u outer_edge_only=1\n",
+    if (logCount == 0) {
+        Log("visibility mask: outer-edge filtering active (per-call detail in verbose log only)\n");
+    }
+    if (verboseLogging && (logCount < 20 || logCount % 100 == 0)) {
+        LogVerbose("xrGetVisibilityMaskKHR: view=%u hidden indices %u -> %u outer_edge_only=1\n",
             viewIndex,
             beforeIndexCount,
             visibilityMask->indexCountOutput);
@@ -722,6 +1894,47 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetInstanceProcAddr(
         nextXrLocateViews = reinterpret_cast<PFN_xrLocateViews>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrLocateViews);
         Log("hook installed: xrLocateViews\n");
+    } else if (std::strcmp(name, "xrCreateSession") == 0) {
+        nextXrCreateSession = reinterpret_cast<PFN_xrCreateSession>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrCreateSession);
+        Log("hook installed: xrCreateSession\n");
+    } else if (std::strcmp(name, "xrDestroySession") == 0) {
+        nextXrDestroySession = reinterpret_cast<PFN_xrDestroySession>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrDestroySession);
+        Log("hook installed: xrDestroySession\n");
+    } else if (std::strcmp(name, "xrEndFrame") == 0) {
+        nextXrEndFrame = reinterpret_cast<PFN_xrEndFrame>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrEndFrame);
+        Log("hook installed: xrEndFrame\n");
+    } else if (std::strcmp(name, "xrEnumerateSwapchainFormats") == 0) {
+        nextXrEnumerateSwapchainFormats = reinterpret_cast<PFN_xrEnumerateSwapchainFormats>(*function);
+        Log("hook captured: xrEnumerateSwapchainFormats\n");
+    } else if (std::strcmp(name, "xrCreateSwapchain") == 0) {
+        nextXrCreateSwapchain = reinterpret_cast<PFN_xrCreateSwapchain>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrCreateSwapchain);
+        Log("hook installed: xrCreateSwapchain\n");
+    } else if (std::strcmp(name, "xrDestroySwapchain") == 0) {
+        nextXrDestroySwapchain = reinterpret_cast<PFN_xrDestroySwapchain>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrDestroySwapchain);
+        Log("hook installed: xrDestroySwapchain\n");
+    } else if (std::strcmp(name, "xrEnumerateSwapchainImages") == 0) {
+        nextXrEnumerateSwapchainImages = reinterpret_cast<PFN_xrEnumerateSwapchainImages>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrEnumerateSwapchainImages);
+        Log("hook installed: xrEnumerateSwapchainImages\n");
+    } else if (std::strcmp(name, "xrAcquireSwapchainImage") == 0) {
+        nextXrAcquireSwapchainImage = reinterpret_cast<PFN_xrAcquireSwapchainImage>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrAcquireSwapchainImage);
+        Log("hook installed: xrAcquireSwapchainImage\n");
+    } else if (std::strcmp(name, "xrWaitSwapchainImage") == 0) {
+        nextXrWaitSwapchainImage = reinterpret_cast<PFN_xrWaitSwapchainImage>(*function);
+        Log("hook captured: xrWaitSwapchainImage\n");
+    } else if (std::strcmp(name, "xrCreateReferenceSpace") == 0) {
+        nextXrCreateReferenceSpace = reinterpret_cast<PFN_xrCreateReferenceSpace>(*function);
+        Log("hook captured: xrCreateReferenceSpace\n");
+    } else if (std::strcmp(name, "xrReleaseSwapchainImage") == 0) {
+        nextXrReleaseSwapchainImage = reinterpret_cast<PFN_xrReleaseSwapchainImage>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrReleaseSwapchainImage);
+        Log("hook installed: xrReleaseSwapchainImage\n");
     } else if (std::strcmp(name, "xrEnumerateViewConfigurationViews") == 0) {
         nextXrEnumerateViewConfigurationViews = reinterpret_cast<PFN_xrEnumerateViewConfigurationViews>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrEnumerateViewConfigurationViews);

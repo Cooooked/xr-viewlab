@@ -1,5 +1,44 @@
 # Changelog
 
+> Visor-mask status note (2026-07-01): the native visor mask is implemented as a D3D11 direct-write into
+> the game's eye textures at `xrReleaseSwapchainImage`. It has NOT been confirmed visible in-headset.
+> See `PROJECT_STATUS.md` / `HANDOFF.md` for the live debugging state.
+
+## 4.1.42 — 2026-07-01
+
+- Added a DEBUG head-locked blue test quad (`test_quad` config, default off): our own
+  `XrCompositionLayerQuad` in a `VIEW` reference space at (0,0,−1), 0.4 m, cleared solid blue. Independent
+  of the game textures and of `mask_enabled`. Purpose: prove OpenXR layer submission reaches the headset.
+- Captured `xrCreateReferenceSpace` for the quad's head-locked space.
+
+## 4.1.41 — 2026-07-01
+
+- Removed the gate that disabled the native D3D11 visor whenever the game called
+  `xrGetVisibilityMaskKHR` (this was why Unity/Pistol Whip never drew).
+- Moved the visor draw from `xrEndFrame` to `xrReleaseSwapchainImage` — the lifecycle-correct point where
+  the app has finished rendering the eye and the runtime has not yet consumed it. `xrEndFrame` now only
+  captures the per-eye layout (imageRect + array slice) for the next frame's release-time draw.
+- Made the visibility-mask mesh-reshape optional (`visibility_mask_visor`, default off); it never
+  suppresses the D3D11 path. Outer-edge visibility-mask filtering preserved.
+- Installed `xrReleaseSwapchainImage` hook (was only captured before).
+
+## 4.1.40 — 2026-07-01
+
+- Main window: removed the large blank gap below VIEWLAB ENABLED. Col 0 is now a single top-aligned
+  `LeftColumnPanel` StackPanel, mirroring cols 2/4, so the tall RowSpan side panels can't inject overflow
+  between the left cards.
+- App Profile popup: content wrapped in a vertical `ScrollViewer`; bean editor restored in the visual
+  tree; visor sliders interactive when "Use global" is unchecked; opens without crashing.
+- Typeless-safe RTV format for the eye-texture write (use app-requested swapchain format mapped to non-SRGB).
+- Added extensive one-shot `DIAG` logging across the whole D3D11 mask path.
+
+## 4.1.39 — 2026-06-30/07-01
+
+- Removed the old ViewLab-owned `XrCompositionLayerProjection` "orb" visor renderer.
+- Implemented native D3D11 direct-write of the kidney/superellipse visor border into the game's existing
+  eye textures; added swapchain tracking hooks (create/enumerate-images/acquire/destroy).
+- Restored the ProfileWindow bean editor and interactive per-app visor sliders.
+
 ## 4.1.7 — 2026-06-25
 
 - Removed stale `OpenVRBridge/`, `ReShadePayload/` binaries, and `ReshadeAI/` agent files from repo.

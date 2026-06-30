@@ -33,7 +33,7 @@ if ($currentVersion -and $currentVersion.Matches[0].Groups.Count -ge 4) {
 }
 
 # --- Build ---
-Write-Host "XR ViewLab build root: $Root"
+Write-Host "ViewLab build root: $Root"
 
 function Find-MSBuild {
     $vswhereCandidates = @(
@@ -76,8 +76,10 @@ dotnet publish $DotnetProject -c $Configuration -r win-x64 --self-contained true
 $MSBuild = Find-MSBuild
 Write-Host "Using MSBuild: $MSBuild"
 
-Write-Host "Building OpenXR API layer..."
-& $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=$Platform /m
+Write-Host "Building OpenXR API layer (x64)..."
+& $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=x64 /m
+Write-Host "Building OpenXR API layer (Win32 / 32-bit for 32-bit games)..."
+& $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=Win32 /m
 
 Write-Host "Building MSI..."
 $WixObjDir = Join-Path $Root "Installer\obj\$Configuration"
@@ -91,7 +93,7 @@ if (!(Test-Path $MsiSource)) {
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 $versionLine = Select-String -Path $assemblyInfo -Pattern 'AssemblyInformationalVersion\("([^"]+)"\)' | Select-Object -First 1
 $version = if ($versionLine -and $versionLine.Matches.Count -gt 0) { $versionLine.Matches[0].Groups[1].Value } else { "unknown" }
-$MsiDest = Join-Path $DistDir "XR-ViewLab-$version.msi"
+$MsiDest = Join-Path $DistDir "ViewLab-$version.msi"
 Copy-Item -Path $MsiSource -Destination $MsiDest -Force
 
 Write-Host "Built MSI:"

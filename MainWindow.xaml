@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Window x:Class="XRViewLab.UI.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title="XR ViewLab" Width="330" Height="390" MinWidth="190" MinHeight="280" WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="True" Background="#00FFFFFF" Foreground="#E8E8E8" FontFamily="Segoe UI" FontSize="14" xmlns:ui="clr-namespace:XRViewLab.UI;assembly=xr-viewlab">
+<Window x:Class="XRViewLab.UI.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title="ViewLab" Width="330" Height="390" MinWidth="190" MinHeight="280" WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="True" Background="#00FFFFFF" Foreground="#E8E8E8" FontFamily="Segoe UI" FontSize="14" xmlns:ui="clr-namespace:XRViewLab.UI">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="7" GlassFrameThickness="0" CornerRadius="10" />
   </shell:WindowChrome.WindowChrome>
@@ -163,7 +163,7 @@
         <Setter Property="DataGrid.HorizontalGridLinesBrush" Value="#00FFFFFF" />
         <Setter Property="DataGrid.VerticalGridLinesBrush" Value="#00FFFFFF" />
         <Setter Property="DataGrid.RowHeaderWidth" Value="0" />
-        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
         <Setter Property="DataGrid.SelectionMode" Value="Single" />
         <Setter Property="DataGrid.SelectionUnit" Value="FullRow" />
       </Style>
@@ -309,7 +309,7 @@
       </Grid.RowDefinitions>
       <Border Grid.Row="0" Background="#101112" CornerRadius="10,10,0,0" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
         <Grid>
-          <TextBlock Text="XR VIEWLAB" Margin="18,0,0,0" VerticalAlignment="Center" Foreground="#9C9EA4" FontWeight="SemiBold" FontSize="16" />
+          <TextBlock Text="VIEWLAB" Margin="18,0,0,0" VerticalAlignment="Center" Foreground="#9C9EA4" FontWeight="SemiBold" FontSize="16" />
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" shell:WindowChrome.IsHitTestVisibleInChrome="True">
             <Button Content="-" Width="34" Style="{StaticResource TitleButton}" Click="Minimize_Click" />
             <Button Content="X" Width="38" Style="{StaticResource TitleButton}" Click="Close_Click" />
@@ -337,7 +337,8 @@
               <RowDefinition Height="10" />
               <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Border Name="EnabledCard" Grid.Row="0" CornerRadius="4" BorderThickness="2" Padding="10,8">
+            <StackPanel Name="LeftColumnPanel" Grid.Column="0" Grid.Row="0" Grid.RowSpan="8" VerticalAlignment="Top">
+            <Border Name="EnabledCard" CornerRadius="4" BorderThickness="2" Padding="10,8" Margin="0,0,0,10">
               <Border.BorderBrush>
                 <SolidColorBrush x:Name="EnabledBorderBrush" Color="#C90012" />
               </Border.BorderBrush>
@@ -350,7 +351,7 @@
                 </TextBlock.Foreground>
               </TextBlock>
             </Border>
-            <Border Name="RenderCard" Grid.Row="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,0">
+            <Border Name="RenderCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,0">
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Name="RenderLabelColumn" Width="Auto" />
@@ -379,16 +380,20 @@
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="6" />
                   <RowDefinition Height="Auto" />
-                  <RowDefinition Height="5" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="8" />
-                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="0" />
+                  <RowDefinition Height="0" />
+                  <RowDefinition Height="0" />
+                  <RowDefinition Height="0" />
+                  <RowDefinition Height="0" />
+                  <RowDefinition Height="0" />
+                  <RowDefinition Height="0" />
+                  <RowDefinition Height="0" />
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Vertical" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Vertical" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="How much vertical view the game renders. Keep this generous (around 0.40 for DiRT) to avoid LOD pop-in; use Visor Mask below for the visible border." />
                 <TextBox Name="TotalBox" Grid.Row="0" Grid.Column="2" TextChanged="RenderValue_Changed" />
                 <TextBlock Name="TotalHint" Grid.Row="0" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                 <Slider Name="TotalSlider" Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0.01" Maximum="1" ValueChanged="RenderSlider_Changed" />
-                <TextBlock Grid.Row="4" Grid.Column="0" Text="Horizontal" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Horizontal" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="How much horizontal view the game renders. Keep this generous; use Visor Mask below for the visible border." />
                 <TextBox Name="HorizontalBox" Grid.Row="4" Grid.Column="2" TextChanged="RenderValue_Changed" />
                 <TextBlock Name="HorizontalHint" Grid.Row="4" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                 <Slider Name="HorizontalSlider" Grid.Row="6" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0.01" Maximum="1" ValueChanged="RenderSlider_Changed" />
@@ -404,53 +409,72 @@
                 <TextBlock Name="CombinedHint" Grid.Row="18" Grid.ColumnSpan="5" Foreground="{StaticResource MutedBrush}" />
               </Grid>
             </Border>
-            <!-- Standalone Render Options: single/two-col mode only (Grid rows 5/6, col 0) -->
-            <TextBlock Name="OptionsHeader" Grid.Row="5" Text="RENDER OPTIONS" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
-            <Border Name="OptionsCard" Grid.Row="6" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,0">
+            <!-- Render Options: lives in LeftColumnPanel for single/two-col; moved to RightColumnPanel in 3-col by UpdateResponsiveLayout -->
+            <TextBlock Name="OptionsHeader" Text="RENDER OPTIONS" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,10,0,5" />
+            <Border Name="OptionsCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,0">
               <StackPanel>
                 <CheckBox Name="FoveatedCenterCheck" Content="Center fovea on render slice" Foreground="#A8A8A8" Margin="0,0,0,4" ToolTip="Centers the game's foveated rendering circle on the rendered area." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                <CheckBox Name="StencilOuterEdgesCheck" Content="Stencil outer edges only" Foreground="#A8A8A8" Margin="0,0,0,4" ToolTip="Filters OpenXR hidden visibility-mask triangles so each eye keeps only its outer-side stencil." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                <CheckBox Name="StencilOuterEdgesCheck" Content="Stencil outer edges only" Foreground="#A8A8A8" Margin="0,0,0,4" ToolTip="Filters OpenXR hidden visibility-mask triangles so each eye keeps only its outer-side stencil. Works with Virtual Desktop's FOV stencil." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                 <CheckBox Name="CropOuterEdgesCheck" Content="Crop outer edges only" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Crops only the outer edges of the render area instead of the full vertical slice." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                <Button Name="VisualMasksButton" Content="Visual Masks ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" Click="VisualMasksButton_Click" />
+                <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
+                <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
+                <CheckBox Name="MaskEnabledCheck" Content="OpenXR D3D11 visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor layer in xrEndFrame. This first renderer only applies to OpenXR D3D11 sessions." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                <ui:BeanMaskEditor x:Name="MaskBeanEditor" Height="76" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" ToolTip="Preview uses the same rounded aperture settings as the OpenXR D3D11 mask texture." />
+                <Grid Margin="0,0,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="52" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Size" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskOpeningSlider" Grid.Row="0" Grid.Column="1" Minimum="0.05" Maximum="1" ValueChanged="MaskOpeningSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Width" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskWidthSlider" Grid.Row="1" Grid.Column="1" Minimum="0.5" Maximum="1.5" ValueChanged="MaskShapeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Height" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskHeightSlider" Grid.Row="2" Grid.Column="1" Minimum="0.5" Maximum="1.5" ValueChanged="MaskShapeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskRoundnessSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="4" Grid.Column="0" Text="X" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskOffsetXSlider" Grid.Row="4" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Y" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskOffsetYSlider" Grid.Row="5" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                </Grid>
+                <TextBox Name="MaskVerticalBox" Visibility="Collapsed" />
+                <TextBox Name="MaskHorizontalBox" Visibility="Collapsed" />
+                <Slider Name="MaskVerticalSlider" Visibility="Collapsed" Minimum="0.01" Maximum="1" ValueChanged="MaskSlider_Changed" />
+                <Slider Name="MaskHorizontalSlider" Visibility="Collapsed" Minimum="0.01" Maximum="1" ValueChanged="MaskSlider_Changed" />
+                <CheckBox Name="MaskRoundedCheck" Visibility="Collapsed" />
+                <TextBlock Text="Renderer: OpenXR D3D11 xrEndFrame. Other backend paths stay unsupported until implemented." Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" />
               </StackPanel>
             </Border>
+            </StackPanel>
             <!-- Right column: single StackPanel spanning all rows — not sized by left-col row heights -->
             <StackPanel Name="RightColumnPanel" Grid.Row="0" Grid.RowSpan="9" Grid.Column="4" Visibility="Collapsed">
-              <TextBlock Text="RENDER OPTIONS" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
-              <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
-                <StackPanel>
-                  <CheckBox Content="Center fovea on render slice" Foreground="#A8A8A8" Margin="0,0,0,4" IsChecked="{Binding IsChecked, ElementName=FoveatedCenterCheck, Mode=TwoWay}" ToolTip="Centers the game's foveated rendering circle on the rendered area." />
-                  <CheckBox Content="Stencil outer edges only" Foreground="#A8A8A8" Margin="0,0,0,4" IsChecked="{Binding IsChecked, ElementName=StencilOuterEdgesCheck, Mode=TwoWay}" ToolTip="Filters OpenXR hidden visibility-mask triangles so each eye keeps only its outer-side stencil." />
-                  <CheckBox Content="Crop outer edges only" Foreground="#A8A8A8" Margin="0,0,0,6" IsChecked="{Binding IsChecked, ElementName=CropOuterEdgesCheck, Mode=TwoWay}" ToolTip="Crops only the outer edges of the render area instead of the full vertical slice." />
-                  <Button Name="VisualMasksButton2" Content="Visual Masks ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" Click="VisualMasksButton_Click" />
-                </StackPanel>
-              </Border>
-              <TextBlock Name="ReShadeOpenXRHeader2" Text="ReShade MENU — OpenXR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
+              <!-- OptionsHeader and OptionsCard are injected here by UpdateResponsiveLayout in 3-col mode -->
+              <TextBlock Name="ReShadeOpenXRHeader2" Text="ReShade Remote" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenXRCard2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
                 <StackPanel>
-                  <CheckBox Name="XrGameplayModeCheck2" Content="Gameplay mode" ToolTip="Enables game-aware menu behaviour" Checked="XrGameplayMode_Changed" Unchecked="XrGameplayMode_Changed" />
-                  <CheckBox Name="XrMenuEnabledCheck2" Content="Desktop VR Menu" Margin="0,4,0,0" ToolTip="Enables the mirrored desktop preview window" Checked="XrMenuEnabled_Changed" Unchecked="XrMenuEnabled_Changed" />
-                  <CheckBox Name="XrWinHeadlessCheck2" Content="  Headless (no title bar)" Margin="16,2,0,0" ToolTip="Removes window title bar and borders" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
-                  <CheckBox Name="XrWinTopmostCheck2" Content="  Always on top" Margin="16,0,0,0" ToolTip="Keeps the desktop window above others" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
-                  <Separator Margin="0,6,0,4" Background="{StaticResource BorderBrush}" Height="1" />
-                  <Button Name="VrQuadButton2" Content="VR Quad ▾" Padding="10,4" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Click="VrQuadButton_Click" />
+                  <Button Content="Remote ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
                 </StackPanel>
               </Border>
-              <TextBlock Name="ReShadeOpenVRHeader2" Text="ReShade MENU — OpenVR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
-              <Border Name="ReShadeOpenVRCard2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
-                <TextBlock Text="Coming soon" Foreground="{StaticResource MutedBrush}" FontSize="12" />
-              </Border>
             </StackPanel>
-            <!-- Hidden checkboxes for Visual Masks (state lives here, popup will reference by name) -->
+            <!-- Hidden checkboxes for Edge Masks (state lives here, popup will reference by name) -->
             <Canvas Width="0" Height="0" Grid.Row="0">
               <Popup Name="VisualMasksPopup" StaysOpen="False" AllowsTransparency="True">
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10">
                   <StackPanel>
-                    <TextBlock Text="Horizontal visual mask" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
+                    <TextBlock Text="Horizontal edge mask" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
                     <CheckBox Name="HorizVisualMaskBothCheck" Content="Both sides" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Applies a horizontal visual mask to both the inner and outer edges of each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                     <CheckBox Name="HorizOuterEyeMaskCheck" Content="Outer-eye mask only (no pixel savings)" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Masks only the outer edge of each eye — does not reduce GPU pixel cost." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                     <CheckBox Name="HorizInnerEyeMaskCheck" Content="Inner-eye mask only (no pixel savings)" Foreground="#A8A8A8" Margin="0,0,0,10" ToolTip="Masks only the inner (nose) edge of each eye — does not reduce GPU pixel cost." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                    <TextBlock Text="Vertical visual mask" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
+                    <TextBlock Text="Vertical edge mask" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
                     <CheckBox Name="VertVisualMaskBothCheck" Content="Both sides" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Applies a vertical visual mask to both the top and bottom edges of each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                     <CheckBox Name="VertTopMaskCheck" Content="Top mask only" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Masks only the top edge of the vertical render area." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                     <CheckBox Name="VertBottomMaskCheck" Content="Bottom mask only" Foreground="#A8A8A8" ToolTip="Masks only the bottom edge of the vertical render area." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
@@ -539,46 +563,38 @@
                     <RowDefinition Height="7" />
                     <RowDefinition Height="Auto" />
                   </Grid.RowDefinitions>
-                  <TextBlock Text="Checked apps use XR ViewLab. Double-click to set custom values." Foreground="{StaticResource MutedBrush}" />
+                  <TextBlock Text="Checked apps use ViewLab. Double-click for per-game crop, visor, and render %." Foreground="{StaticResource MutedBrush}" />
                   <Grid Grid.Row="2">
-                    <DataGrid Name="AppsGrid" IsReadOnly="False" MouseDoubleClick="AppsGrid_DoubleClick">
+                    <DataGrid Name="AppsGrid" IsReadOnly="False" CanUserResizeColumns="True" MouseDoubleClick="AppsGrid_DoubleClick" PreviewKeyDown="AppsGrid_KeyDown">
                       <DataGrid.Columns>
                         <DataGridTemplateColumn x:Name="AppsCheckColumn" Header="" Width="28" MinWidth="24" MaxWidth="52" CanUserResize="True">
                           <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                               <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                                <CheckBox HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource TableCheckBox}" IsChecked="{Binding AppEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Checked="AppEnabled_Changed" Unchecked="AppEnabled_Changed" />
+                                <CheckBox HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource TableCheckBox}" IsChecked="{Binding AppEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Click="AppEnabled_Click" />
                               </Grid>
                             </DataTemplate>
                           </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTextColumn x:Name="AppsNameColumn" Header="Application" ElementStyle="{StaticResource GridTextCell}" Width="*" MinWidth="60" IsReadOnly="True" CanUserResize="False" Binding="{Binding Display}" />
-                        <DataGridTextColumn x:Name="AppsValueColumn" Header="Values" ElementStyle="{StaticResource GridValueCell}" Width="84" MinWidth="72" CanUserResize="True" Binding="{Binding Summary}" IsReadOnly="True" />
-                        <DataGridTextColumn x:Name="AppsXrTypeColumn" Header="XR" ElementStyle="{StaticResource GridValueCell}" Width="60" MinWidth="50" CanUserResize="False" Binding="{Binding XrType}" IsReadOnly="True" />
+                        <DataGridTextColumn x:Name="AppsNameColumn" Header="Application" ElementStyle="{StaticResource GridTextCell}" Width="*" MinWidth="80" IsReadOnly="True" CanUserResize="True" Binding="{Binding Display}" />
+                        <DataGridTextColumn x:Name="AppsValueColumn" Header="Values" ElementStyle="{StaticResource GridValueCell}" Width="62" MinWidth="36" CanUserResize="True" Binding="{Binding Summary}" IsReadOnly="True" />
+                        <DataGridTextColumn x:Name="AppsXrTypeColumn" Header="XR" ElementStyle="{StaticResource GridValueCell}" Width="42" MinWidth="28" CanUserResize="True" Binding="{Binding XrType}" IsReadOnly="True" />
                       </DataGrid.Columns>
                     </DataGrid>
-                    <TextBlock Name="AppsEmptyText" Text="No apps detected yet.&#x0a;Launch an OpenXR game, then click Reload apps." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
+                    <TextBlock Name="AppsEmptyText" Text="No apps detected yet.&#x0a;Launch a VR game, then click Reload apps." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
                   </Grid>
-                  <StackPanel Grid.Row="4" Orientation="Horizontal">
+                  <WrapPanel Grid.Row="4">
                     <Button Content="Reload apps" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ReloadApps_Click" />
-                    <Button Content="Reset profile" Style="{StaticResource RedButton}" Click="ResetApp_Click" />
-                  </StackPanel>
+                    <Button Content="Reset profile" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ResetApp_Click" />
+                    <CheckBox Name="ShowHiddenAppsCheck" Content="Show hidden" VerticalAlignment="Center" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" />
+                  </WrapPanel>
                 </Grid>
               </Border>
-              <TextBlock Name="ReShadeOpenXRHeader" Text="ReShade MENU — OpenXR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
+              <TextBlock Name="ReShadeOpenXRHeader" Text="ReShade Remote" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenXRCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
                 <StackPanel>
-                  <CheckBox Name="XrGameplayModeCheck" Content="Gameplay mode" ToolTip="Enables game-aware menu behaviour" Checked="XrGameplayMode_Changed" Unchecked="XrGameplayMode_Changed" />
-                  <CheckBox Name="XrMenuEnabledCheck" Content="Desktop VR Menu" Margin="0,4,0,0" ToolTip="Enables the mirrored desktop preview window" Checked="XrMenuEnabled_Changed" Unchecked="XrMenuEnabled_Changed" />
-                  <CheckBox Name="XrWinHeadlessCheck" Content="  Headless (no title bar)" Margin="16,2,0,0" ToolTip="Removes window title bar and borders" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
-                  <CheckBox Name="XrWinTopmostCheck" Content="  Always on top" Margin="16,0,0,0" ToolTip="Keeps the desktop window above others" Checked="XrControl_Changed" Unchecked="XrControl_Changed" />
-                  <Separator Margin="0,6,0,4" Background="{StaticResource BorderBrush}" Height="1" />
-                  <Button Name="VrQuadButton" Content="VR Quad ▾" Padding="10,4" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Click="VrQuadButton_Click" />
+                  <Button Content="Remote ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
                 </StackPanel>
-              </Border>
-              <TextBlock Name="ReShadeOpenVRHeader" Text="ReShade MENU — OpenVR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
-              <Border Name="ReShadeOpenVRCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
-                <TextBlock Text="Coming soon" Foreground="{StaticResource MutedBrush}" FontSize="12" />
               </Border>
               <TextBlock Name="ThanksText" Text="Thanks to Beta Testers: Kinder, hkguy6" HorizontalAlignment="Right" Foreground="#5F6064" FontSize="12" Margin="0,6,4,4" />
             </StackPanel>
