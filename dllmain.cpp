@@ -53,11 +53,12 @@ double visorOffsetY = 0.0;
 // where someone explicitly wants it (config key: visibility_mask_visor).
 bool visibilityMaskVisor = false;
 
-// DEBUG, default OFF (config key: test_quad). Draws a solid head-locked quad 1m in
-// front of the face as its OWN composition layer — independent of the game's
-// rendering. This is the "can we draw anything in VR at all" probe: if it appears
-// in-headset, our layer submission works and the mask can be rebuilt as a layer.
-bool testQuad = false;
+// Which masking mechanism to use (config key: visor_technique = off | a | c).
+//   QuadOverlay (a): our own head-locked alpha-cutout quad layer(s) (OpenKneeboard-style).
+//   DirectWrite (c): draw the border into the game's eye texture at xrReleaseSwapchainImage.
+// Gated by mask_enabled. Default DirectWrite for back-compat.
+enum class VisorTechnique { Off, QuadOverlay, DirectWrite };
+VisorTechnique visorTechnique = VisorTechnique::DirectWrite;
 // Per-frame hook detail (xrLocateViews / xrEnumerateViewConfigurationViews /
 // xrGetVisibilityMaskKHR) is gated behind this flag and, when on, routed to a
 // SEPARATE ViewLab.verbose.log so the human-facing ViewLab.log (and the in-UI
@@ -165,21 +166,18 @@ struct D3D11MaskState {
 
 D3D11MaskState g_d3d11Mask;
 
-// DEBUG test quad: our own head-locked composition layer (solid color), used to
-// prove that layer submission reaches the headset at all.
-struct TestQuadState {
+// Technique A: head-locked alpha-cutout visor quad(s) as our own composition layer.
+struct VisorQuadState {
     XrSpace viewSpace = XR_NULL_HANDLE;
     XrSwapchain swapchain = XR_NULL_HANDLE;
     std::vector<ID3D11Texture2D*> textures; // runtime-owned
-    int32_t width = 256;
-    int32_t height = 256;
+    int32_t width = 1024;
+    int32_t height = 1024;
     bool initialized = false;
     bool failed = false;
 };
-TestQuadState g_testQuad;
-std::atomic<bool> g_diagTestQuadInit{false};
-std::atomic<bool> g_diagTestQuadFail{false};
-std::atomic<uint32_t> g_testQuadLogCount{0};
+VisorQuadState g_visorQuad;
+std::atomic<uint32_t> g_visorQuadLogCount{0};
 
 std::filesystem::path LocalAppDataPath() {
     wchar_t localAppData[MAX_PATH]{};
@@ -383,6 +381,20 @@ double ReadDoubleSetting(const wchar_t* key, double fallback) {
     return value;
 }
 
+std::string ReadStringSetting(const wchar_t* key, const char* fallback) {
+    wchar_t buffer[64]{};
+    GetPrivateProfileStringW(L"Settings", key, L"", buffer, static_cast<DWORD>(std::size(buffer)), ConfigPath().c_str());
+    if (buffer[0] == L'\0') return fallback;
+    std::string out;
+    for (const wchar_t* p = buffer; *p; ++p) out.push_back(static_cast<char>(*p));
+    // trim + lowercase
+    while (!out.empty() && (out.back() == ' ' || out.back() == '\t')) out.pop_back();
+    size_t s = 0; while (s < out.size() && (out[s] == ' ' || out[s] == '\t')) ++s;
+    out = out.substr(s);
+    for (char& c : out) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + 32);
+    return out;
+}
+
 std::wstring CurrentProcessPath() {
     wchar_t path[MAX_PATH]{};
     if (GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path))) == 0) {
@@ -457,9 +469,28 @@ std::wstring AppRegistryPath(const std::wstring& appKey) {
     return std::wstring(AppRegistryRoot) + L"\\" + appKey;
 }
 
-void RememberApplication(const char* openXrAppName) {
+std::wstring CurrentUtcTimestamp() {
+    SYSTEMTIME st{};
+    GetSystemTime(&st);
+    wchar_t buffer[32]{};
+    swprintf_s(buffer, L"%04u-%02u-%02uT%02u:%02u:%02uZ",
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    return buffer;
+}
+
+void SetRegistryStringValue(HKEY key, const wchar_t* name, const std::wstring& value) {
+    RegSetValueExW(key, name, 0, REG_SZ, reinterpret_cast<const BYTE*>(value.c_str()), static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t)));
+}
+
+void SetRegistryDwordValue(HKEY key, const wchar_t* name, DWORD value) {
+    RegSetValueExW(key, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value));
+}
+
+void RememberApplication(const char* openXrAppName, const char* openXrEngineName, XrResult createResult, const char* runtimeName) {
     currentAppKey = SanitizeRegistryKey(CurrentProcessFileName());
     const std::wstring displayName = Utf8ToWide(openXrAppName);
+    const std::wstring engineName = Utf8ToWide(openXrEngineName);
+    const std::wstring runtime = Utf8ToWide(runtimeName);
     const std::wstring modulePath = CurrentProcessPath();
     uevrLikeProcess = DetectUevrLikeProcess(modulePath, CurrentProcessFileName(), displayName);
 
@@ -470,17 +501,36 @@ void RememberApplication(const char* openXrAppName) {
     }
 
     if (!displayName.empty()) {
-        RegSetValueExW(key, L"display_name", 0, REG_SZ, reinterpret_cast<const BYTE*>(displayName.c_str()), static_cast<DWORD>((displayName.size() + 1) * sizeof(wchar_t)));
+        SetRegistryStringValue(key, L"display_name", displayName);
+        SetRegistryStringValue(key, L"last_openxr_app_name", displayName);
+    }
+    if (!engineName.empty()) {
+        SetRegistryStringValue(key, L"last_openxr_engine_name", engineName);
     }
     if (!modulePath.empty()) {
-        RegSetValueExW(key, L"module", 0, REG_SZ, reinterpret_cast<const BYTE*>(modulePath.c_str()), static_cast<DWORD>((modulePath.size() + 1) * sizeof(wchar_t)));
+        SetRegistryStringValue(key, L"module", modulePath);
     }
+    if (!runtime.empty()) {
+        SetRegistryStringValue(key, L"last_runtime", runtime);
+    }
+    const std::wstring now = CurrentUtcTimestamp();
+    SetRegistryStringValue(key, L"last_seen", now);
+    SetRegistryStringValue(key, L"last_seen_utc", now);
+    SetRegistryDwordValue(key, L"last_pid", static_cast<DWORD>(GetCurrentProcessId()));
+    SetRegistryDwordValue(key, L"last_result", static_cast<DWORD>(createResult));
+#if defined(_WIN64)
+    SetRegistryStringValue(key, L"last_bitness", L"64-bit");
+#else
+    SetRegistryStringValue(key, L"last_bitness", L"32-bit");
+#endif
     RegCloseKey(key);
 
-    Log("app profile: active app_key=%ls display=%ls module=%ls\n",
+    Log("app profile: active app_key=%ls display=%ls module=%ls result=%d runtime=%ls\n",
         currentAppKey.c_str(),
         displayName.empty() ? L"<unknown>" : displayName.c_str(),
-        modulePath.empty() ? L"<unknown>" : modulePath.c_str());
+        modulePath.empty() ? L"<unknown>" : modulePath.c_str(),
+        createResult,
+        runtime.empty() ? L"<unknown>" : runtime.c_str());
     if (uevrLikeProcess) {
         Log("app profile: UEVR-like Unreal process detected, enabling conservative runtime guards\n");
     }
@@ -606,10 +656,8 @@ void ReleaseD3D11MaskRenderer() {
     if (g_d3d11Mask.device)  { g_d3d11Mask.device->Release();  g_d3d11Mask.device = nullptr; }
     g_d3d11Mask = D3D11MaskState{};
     g_visibilityMaskEverCalled.store(false);
-    // Test quad swapchain/space are owned by the runtime and freed with the session.
-    g_testQuad = TestQuadState{};
-    g_diagTestQuadInit.store(false);
-    g_diagTestQuadFail.store(false);
+    // Visor quad swapchain/space are owned by the runtime and freed with the session.
+    g_visorQuad = VisorQuadState{};
 }
 
 const XrBaseInStructure* FindStructInChain(const void* next, XrStructureType type) {
@@ -955,6 +1003,10 @@ void DrawVisorBorderToTexture(
     if (sDSS) sDSS->Release(); if (sVS)  sVS->Release();
     if (sPS)  sPS->Release();  if (sLayout) sLayout->Release();
     if (sVB)  sVB->Release();
+
+    // Force submission so a separate-device runtime encoder (e.g. VDXR streaming)
+    // sees the write before it consumes the released image.
+    g_d3d11Mask.context->Flush();
 }
 
 // ---- Swapchain interception for D3D11 fallback tracking ----
@@ -1012,7 +1064,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
     // at which the app side legitimately owns the image, so the write cannot be
     // overwritten by the app and is guaranteed present when the runtime composites.
     // Independent of the visibility-mask path; that path must never suppress this.
-    if (enabled && maskEnabled && g_d3d11Mask.initialized && g_d3d11Mask.context) {
+    if (enabled && maskEnabled && visorTechnique == VisorTechnique::DirectWrite &&
+        g_d3d11Mask.initialized && g_d3d11Mask.context) {
         ID3D11Texture2D* tex = nullptr;
         uint32_t arrSize = 1;
         int64_t  scFormat = 0;
@@ -1059,34 +1112,28 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySwapchain(XrSwapchain swapchai
     return nextXrDestroySwapchain(swapchain);
 }
 
-// ---- DEBUG test quad: head-locked solid layer (proves VR layer submission) ----
+// ---- Head-locked RGBA layer helper (shared by test quad and technique-A visor) ----
 
-bool InitTestQuad() {
-    if (g_testQuad.initialized) return true;
-    if (g_testQuad.failed) return false;
+// Creates a head-locked VIEW reference space + an RGBA swapchain of the given size.
+bool CreateHeadLockedRgbaLayer(int32_t w, int32_t h, const char* tag,
+                               XrSpace& outSpace, XrSwapchain& outSc,
+                               std::vector<ID3D11Texture2D*>& outTex) {
     if (g_d3d11Mask.session == XR_NULL_HANDLE || g_d3d11Mask.device == nullptr) return false;
     if (!nextXrCreateReferenceSpace || !nextXrCreateSwapchain ||
         !nextXrEnumerateSwapchainImages || !nextXrEnumerateSwapchainFormats ||
         !nextXrAcquireSwapchainImage || !nextXrWaitSwapchainImage || !nextXrReleaseSwapchainImage) {
-        if (!g_diagTestQuadFail.exchange(true))
-            Log("test quad DIAG: FAIL required OpenXR functions unavailable\n");
-        g_testQuad.failed = true;
+        Log("%s: FAIL required OpenXR functions unavailable\n", tag);
         return false;
     }
 
-    // VIEW reference space is head-locked: a quad placed in it stays in front of the face.
-    XrReferenceSpaceCreateInfo spaceInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
-    spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
-    spaceInfo.poseInReferenceSpace.orientation.w = 1.0f; // identity
-    XrResult r = nextXrCreateReferenceSpace(g_d3d11Mask.session, &spaceInfo, &g_testQuad.viewSpace);
-    if (r != XR_SUCCESS) {
-        if (!g_diagTestQuadFail.exchange(true))
-            Log("test quad DIAG: FAIL xrCreateReferenceSpace(VIEW) result=%d\n", r);
-        g_testQuad.failed = true;
-        return false;
+    if (outSpace == XR_NULL_HANDLE) {
+        XrReferenceSpaceCreateInfo spaceInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
+        spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW; // head-locked
+        spaceInfo.poseInReferenceSpace.orientation.w = 1.0f;         // identity
+        XrResult r = nextXrCreateReferenceSpace(g_d3d11Mask.session, &spaceInfo, &outSpace);
+        if (r != XR_SUCCESS) { Log("%s: FAIL xrCreateReferenceSpace result=%d\n", tag, r); return false; }
     }
 
-    // Pick a supported color format.
     uint32_t fmtCount = 0;
     nextXrEnumerateSwapchainFormats(g_d3d11Mask.session, 0, &fmtCount, nullptr);
     std::vector<int64_t> formats(fmtCount ? fmtCount : 1);
@@ -1106,83 +1153,172 @@ bool InitTestQuad() {
     sci.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
     sci.format = chosen;
     sci.sampleCount = 1;
-    sci.width = static_cast<uint32_t>(g_testQuad.width);
-    sci.height = static_cast<uint32_t>(g_testQuad.height);
+    sci.width = static_cast<uint32_t>(w);
+    sci.height = static_cast<uint32_t>(h);
     sci.faceCount = 1;
     sci.arraySize = 1;
     sci.mipCount = 1;
-    r = nextXrCreateSwapchain(g_d3d11Mask.session, &sci, &g_testQuad.swapchain);
-    if (r != XR_SUCCESS) {
-        if (!g_diagTestQuadFail.exchange(true))
-            Log("test quad DIAG: FAIL xrCreateSwapchain result=%d format=%lld\n", r, (long long)chosen);
-        g_testQuad.failed = true;
-        return false;
-    }
+    XrResult r = nextXrCreateSwapchain(g_d3d11Mask.session, &sci, &outSc);
+    if (r != XR_SUCCESS) { Log("%s: FAIL xrCreateSwapchain result=%d format=%lld\n", tag, r, (long long)chosen); return false; }
 
     uint32_t imgCount = 0;
-    nextXrEnumerateSwapchainImages(g_testQuad.swapchain, 0, &imgCount, nullptr);
-    std::vector<XrSwapchainImageD3D11KHR> imgs(imgCount ? imgCount : 1,
-                                               {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    r = nextXrEnumerateSwapchainImages(g_testQuad.swapchain, imgCount, &imgCount,
+    nextXrEnumerateSwapchainImages(outSc, 0, &imgCount, nullptr);
+    std::vector<XrSwapchainImageD3D11KHR> imgs(imgCount ? imgCount : 1, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
+    r = nextXrEnumerateSwapchainImages(outSc, imgCount, &imgCount,
         reinterpret_cast<XrSwapchainImageBaseHeader*>(imgs.data()));
-    if (r != XR_SUCCESS || imgCount == 0) {
-        if (!g_diagTestQuadFail.exchange(true))
-            Log("test quad DIAG: FAIL enumerate images result=%d count=%u\n", r, imgCount);
-        g_testQuad.failed = true;
-        return false;
-    }
-    g_testQuad.textures.resize(imgCount);
-    for (uint32_t i = 0; i < imgCount; ++i) g_testQuad.textures[i] = imgs[i].texture;
-
-    g_testQuad.initialized = true;
-    if (!g_diagTestQuadInit.exchange(true))
-        Log("test quad DIAG: initialized (format=%lld %dx%d images=%u)\n",
-            (long long)chosen, g_testQuad.width, g_testQuad.height, imgCount);
+    if (r != XR_SUCCESS || imgCount == 0) { Log("%s: FAIL enumerate images result=%d count=%u\n", tag, r, imgCount); return false; }
+    outTex.resize(imgCount);
+    for (uint32_t i = 0; i < imgCount; ++i) outTex[i] = imgs[i].texture;
+    Log("%s: layer created (format=%lld %dx%d images=%u)\n", tag, (long long)chosen, w, h, imgCount);
     return true;
 }
 
-// Clears the test-quad image to solid blue and fills a head-locked quad layer.
-// Returns true if the quad should be submitted this frame.
-bool RenderTestQuadLayer(XrCompositionLayerQuad& outLayer) {
-    if (!InitTestQuad()) return false;
+// ---- Technique A: head-locked alpha-cutout visor quad(s) ----
+
+bool InitVisorQuad() {
+    if (g_visorQuad.initialized) return true;
+    if (g_visorQuad.failed) return false;
+    if (!g_d3d11Mask.initialized) return false; // needs the shaders/VB from InitD3D11MaskRenderer
+    if (!CreateHeadLockedRgbaLayer(g_visorQuad.width, g_visorQuad.height, "visor A",
+                                   g_visorQuad.viewSpace, g_visorQuad.swapchain, g_visorQuad.textures)) {
+        g_visorQuad.failed = true;
+        return false;
+    }
+    g_visorQuad.initialized = true;
+    return true;
+}
+
+// Renders the alpha-cutout into the quad texture: transparent inside the superellipse
+// opening, opaque black outside. Reuses the mask shaders/VB. Saves/restores D3D11 state.
+void RenderVisorCutout(ID3D11Texture2D* tex, int32_t w, int32_t h) {
+    if (!g_d3d11Mask.initialized || !tex) return;
+
+    constexpr uint32_t kMaxVerts = 192;
+    float verts[kMaxVerts * 2]{};
+    const uint32_t vertCount = BuildVisorBorderVerts(-1.0f, 1.0f, -1.0f, 1.0f, verts, kMaxVerts);
+    if (vertCount == 0) return;
+
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(g_d3d11Mask.context->Map(g_d3d11Mask.vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
+    memcpy(mapped.pData, verts, vertCount * sizeof(float) * 2);
+    g_d3d11Mask.context->Unmap(g_d3d11Mask.vb, 0);
+
+    D3D11_TEXTURE2D_DESC td{}; tex->GetDesc(&td);
+    D3D11_RENDER_TARGET_VIEW_DESC rd{};
+    rd.Format = GetNonSRGBFormat(td.Format);
+    rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+    ID3D11RenderTargetView* rtv = nullptr;
+    if (FAILED(g_d3d11Mask.device->CreateRenderTargetView(tex, &rd, &rtv)) || !rtv) return;
+
+    auto* ctx = g_d3d11Mask.context;
+
+    // Save state.
+    ID3D11RenderTargetView* sRTV = nullptr; ID3D11DepthStencilView* sDSV = nullptr;
+    ctx->OMGetRenderTargets(1, &sRTV, &sDSV);
+    UINT sVPCount = 1; D3D11_VIEWPORT sVP{}; ctx->RSGetViewports(&sVPCount, &sVP);
+    ID3D11RasterizerState* sRS = nullptr; ctx->RSGetState(&sRS);
+    ID3D11BlendState* sBS = nullptr; FLOAT sBF[4]{}; UINT sSM = 0; ctx->OMGetBlendState(&sBS, sBF, &sSM);
+    ID3D11DepthStencilState* sDSS = nullptr; UINT sSRef = 0; ctx->OMGetDepthStencilState(&sDSS, &sSRef);
+    ID3D11VertexShader* sVS = nullptr; ctx->VSGetShader(&sVS, nullptr, nullptr);
+    ID3D11PixelShader* sPS = nullptr; ctx->PSGetShader(&sPS, nullptr, nullptr);
+    ID3D11InputLayout* sIL = nullptr; ctx->IAGetInputLayout(&sIL);
+    D3D11_PRIMITIVE_TOPOLOGY sTopo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED; ctx->IAGetPrimitiveTopology(&sTopo);
+    ID3D11Buffer* sVB = nullptr; UINT sStride = 0, sOff = 0; ctx->IAGetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
+
+    // Draw: clear to transparent, then black border (alpha=1) outside the opening.
+    const FLOAT clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    ctx->OMSetRenderTargets(1, &rtv, nullptr);
+    ctx->ClearRenderTargetView(rtv, clear);
+    D3D11_VIEWPORT vp{}; vp.Width = static_cast<float>(w); vp.Height = static_cast<float>(h); vp.MaxDepth = 1.0f;
+    static const FLOAT kBF[] = {0.f, 0.f, 0.f, 0.f};
+    UINT stride = sizeof(float) * 2, offset = 0;
+    ctx->RSSetViewports(1, &vp);
+    ctx->RSSetState(g_d3d11Mask.rs);
+    ctx->OMSetBlendState(g_d3d11Mask.bs, kBF, 0xFFFFFFFF);
+    ctx->OMSetDepthStencilState(g_d3d11Mask.dss, 0);
+    ctx->VSSetShader(g_d3d11Mask.vs, nullptr, 0);
+    ctx->PSSetShader(g_d3d11Mask.ps, nullptr, 0);
+    ctx->IASetInputLayout(g_d3d11Mask.layout);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->IASetVertexBuffers(0, 1, &g_d3d11Mask.vb, &stride, &offset);
+    ctx->Draw(vertCount, 0);
+
+    // Restore.
+    ctx->OMSetRenderTargets(1, &sRTV, sDSV);
+    if (sVPCount > 0) ctx->RSSetViewports(sVPCount, &sVP);
+    ctx->RSSetState(sRS);
+    ctx->OMSetBlendState(sBS, sBF, sSM);
+    ctx->OMSetDepthStencilState(sDSS, sSRef);
+    ctx->VSSetShader(sVS, nullptr, 0);
+    ctx->PSSetShader(sPS, nullptr, 0);
+    ctx->IASetInputLayout(sIL);
+    ctx->IASetPrimitiveTopology(sTopo);
+    ctx->IASetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
+
+    rtv->Release();
+    if (sRTV) sRTV->Release(); if (sDSV) sDSV->Release();
+    if (sRS) sRS->Release(); if (sBS) sBS->Release();
+    if (sDSS) sDSS->Release(); if (sVS) sVS->Release();
+    if (sPS) sPS->Release(); if (sIL) sIL->Release();
+    if (sVB) sVB->Release();
+}
+
+// Renders the cutout once and fills up to `cap` head-locked quad layers (per-eye when
+// FOV is known, else a single BOTH quad). Returns the number of layers filled.
+uint32_t RenderVisorQuadLayers(XrCompositionLayerQuad* out, uint32_t cap) {
+    if (cap == 0 || out == nullptr) return 0;
+    if (!InitVisorQuad()) return 0;
 
     XrSwapchainImageAcquireInfo ai{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
     uint32_t idx = 0;
-    if (nextXrAcquireSwapchainImage(g_testQuad.swapchain, &ai, &idx) != XR_SUCCESS) return false;
-    XrSwapchainImageWaitInfo wi{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
-    wi.timeout = XR_INFINITE_DURATION;
-    if (nextXrWaitSwapchainImage(g_testQuad.swapchain, &wi) != XR_SUCCESS) {
-        nextXrReleaseSwapchainImage(g_testQuad.swapchain, nullptr);
-        return false;
+    if (nextXrAcquireSwapchainImage(g_visorQuad.swapchain, &ai, &idx) != XR_SUCCESS) return 0;
+    XrSwapchainImageWaitInfo wi{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO}; wi.timeout = XR_INFINITE_DURATION;
+    if (nextXrWaitSwapchainImage(g_visorQuad.swapchain, &wi) != XR_SUCCESS) {
+        nextXrReleaseSwapchainImage(g_visorQuad.swapchain, nullptr);
+        return 0;
     }
-    if (idx < g_testQuad.textures.size() && g_testQuad.textures[idx]) {
-        ID3D11Texture2D* tex = g_testQuad.textures[idx];
-        D3D11_TEXTURE2D_DESC td{}; tex->GetDesc(&td);
-        D3D11_RENDER_TARGET_VIEW_DESC rd{};
-        rd.Format = GetNonSRGBFormat(td.Format);
-        rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-        ID3D11RenderTargetView* rtv = nullptr;
-        if (SUCCEEDED(g_d3d11Mask.device->CreateRenderTargetView(tex, &rd, &rtv)) && rtv) {
-            const FLOAT blue[4] = {0.0f, 0.35f, 1.0f, 1.0f};
-            g_d3d11Mask.context->ClearRenderTargetView(rtv, blue);
-            rtv->Release();
+    if (idx < g_visorQuad.textures.size() && g_visorQuad.textures[idx])
+        RenderVisorCutout(g_visorQuad.textures[idx], g_visorQuad.width, g_visorQuad.height);
+    XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    nextXrReleaseSwapchainImage(g_visorQuad.swapchain, &ri);
+
+    const float d = 1.0f; // metres in front of the face
+    auto fill = [&](XrCompositionLayerQuad& q, XrEyeVisibility eye,
+                    float cx, float cy, float sx, float sy) {
+        q = XrCompositionLayerQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+        q.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+        q.space = g_visorQuad.viewSpace;
+        q.eyeVisibility = eye;
+        q.subImage.swapchain = g_visorQuad.swapchain;
+        q.subImage.imageRect.offset = {0, 0};
+        q.subImage.imageRect.extent = {g_visorQuad.width, g_visorQuad.height};
+        q.subImage.imageArrayIndex = 0;
+        q.pose.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+        q.pose.position = {cx, cy, -d};
+        q.size = {sx, sy};
+    };
+
+    // Single BOTH-eye quad, centered, sized to cover the FOV. This mirrors the proven
+    // test-quad path (BOTH eye). Per-eye LEFT/RIGHT quads were not rendering on VDXR.
+    float halfW = 1.3f, halfH = 1.0f; // fallback tan half-extents (~52 deg H / ~45 deg V)
+    if (g_d3d11Mask.latestViewCount >= 2) {
+        halfW = 0.0f; halfH = 0.0f;
+        for (uint32_t i = 0; i < 2; ++i) {
+            const XrFovf& f = g_d3d11Mask.latestViews[i].fov;
+            halfW = (std::max)(halfW, (std::max)(std::abs(std::tan(f.angleLeft)), std::abs(std::tan(f.angleRight))));
+            halfH = (std::max)(halfH, (std::max)(std::abs(std::tan(f.angleUp)),   std::abs(std::tan(f.angleDown))));
         }
     }
-    XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-    nextXrReleaseSwapchainImage(g_testQuad.swapchain, &ri);
+    const float w = d * halfW * 2.0f * 1.05f; // slight oversize so black reaches the edges
+    const float h = d * halfH * 2.0f * 1.05f;
+    fill(out[0], XR_EYE_VISIBILITY_BOTH, 0.0f, 0.0f, w, h);
+    const uint32_t n = 1;
 
-    outLayer = XrCompositionLayerQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
-    outLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-    outLayer.space = g_testQuad.viewSpace;
-    outLayer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-    outLayer.subImage.swapchain = g_testQuad.swapchain;
-    outLayer.subImage.imageRect.offset = {0, 0};
-    outLayer.subImage.imageRect.extent = {g_testQuad.width, g_testQuad.height};
-    outLayer.subImage.imageArrayIndex = 0;
-    outLayer.pose.orientation = {0.0f, 0.0f, 0.0f, 1.0f}; // identity
-    outLayer.pose.position = {0.0f, 0.0f, -1.0f};         // 1 m in front of the face
-    outLayer.size = {0.4f, 0.4f};                          // 40 cm square
-    return true;
+    const uint32_t lg = g_visorQuadLogCount.fetch_add(1);
+    if (lg == 0)
+        Log("visor A: submitting BOTH-eye quad (size=%.3f w=%.3f h=%.3f curve=%.3f quad=%.2fx%.2fm)\n",
+            visorSize, visorWidth, visorHeight, visorCurve, w, h);
+    return n;
 }
 
 void LoadConfig() {
@@ -1196,7 +1332,12 @@ void LoadConfig() {
     horizontalVisualMaskOnly = ReadBoolSetting(L"horizontal_visual_mask_only", false);
     outerEdgeVisibilityMaskOnly = ReadBoolSetting(L"outer_edge_visibility_mask_only", true);
     visibilityMaskVisor = ReadBoolSetting(L"visibility_mask_visor", false);
-    testQuad = ReadBoolSetting(L"test_quad", false);
+    {
+        const std::string t = ReadStringSetting(L"visor_technique", "c");
+        if (t == "off" || t == "0")            visorTechnique = VisorTechnique::Off;
+        else if (t == "a" || t == "1" || t == "quad") visorTechnique = VisorTechnique::QuadOverlay;
+        else                                    visorTechnique = VisorTechnique::DirectWrite; // "c"/"3"/default
+    }
     const double legacyTotal = ReadDoubleSetting(L"vertical_tangent", DefaultTotalTangent);
     totalTangent = std::clamp(
         ReadDoubleSetting(L"total_render_height", ReadDoubleSetting(L"total_share", legacyTotal)),
@@ -1257,7 +1398,6 @@ void LoadConfig() {
         ReadProfileDword(L"bottom_tangent", profileBottom);
         ReadProfileDword(L"horizontal_render_width", profileHorizontal);
 
-        DWORD profileMaskEnabled = maskEnabled ? 1u : 0u;
         DWORD profileMaskVertical = static_cast<DWORD>(std::lround(maskVertical * 1000.0));
         DWORD profileMaskHorizontal = static_cast<DWORD>(std::lround(maskHorizontal * 1000.0));
         DWORD profileMaskRounded = maskRounded ? 1u : 0u;
@@ -1269,7 +1409,9 @@ void LoadConfig() {
         DWORD profileMaskTopCurve = static_cast<DWORD>(std::lround((std::clamp(maskTopCurve, -1.0, 1.0) + 1.0) * 1000.0));
         DWORD profileMaskBottomCurve = static_cast<DWORD>(std::lround((std::clamp(maskBottomCurve, -1.0, 1.0) + 1.0) * 1000.0));
         DWORD profileMaskOffsetY = static_cast<DWORD>(std::lround(((maskTopBias + maskBottomBias) * 0.5 + 1.0) * 1000.0));
-        ReadProfileDword(L"mask_enabled", profileMaskEnabled);
+        // Visor ENABLE is global-only now: per-app profiles no longer carry/override mask_enabled.
+        // (Per-app shape values below are still honored.) This stops stale per-app mask_enabled=0
+        // from silently overriding the global visor toggle.
         ReadProfileDword(L"mask_vertical", profileMaskVertical);
         ReadProfileDword(L"mask_horizontal", profileMaskHorizontal);
         DWORD profileRenderScale = static_cast<DWORD>(std::lround(renderScale * 1000000.0));
@@ -1290,7 +1432,7 @@ void LoadConfig() {
             renderScale = DwordToRenderScale(profileRenderScale, renderScale);
         }
         renderScale = std::clamp(renderScale, 0.1, 3.0);
-        maskEnabled = profileMaskEnabled != 0;
+        // maskEnabled intentionally NOT overridden per-app — it stays at the global value read above.
         maskVertical = MillisToRenderHeight(profileMaskVertical, maskVertical);
         maskHorizontal = MillisToRenderScale(profileMaskHorizontal, maskHorizontal);
         maskRounded = profileMaskRounded != 0;
@@ -1316,7 +1458,10 @@ void LoadConfig() {
         }
     }
 
-    visorSize = std::clamp(ReadDoubleSetting(L"mask_size", OpeningFromMask(maskVertical, maskHorizontal, totalTangent, horizontalRenderWidth)), 0.05, 1.0);
+    // Fallback MUST be a visible visor opening (0.82), not the legacy OpeningFromMask
+    // formula which clamps to 1.0 for cropped views (= full opening = invisible mask).
+    // A missing mask_size (e.g. wiped from the ini) previously silently disabled the mask.
+    visorSize = std::clamp(ReadDoubleSetting(L"mask_size", 0.82), 0.05, 1.0);
     visorWidth = std::clamp(ReadDoubleSetting(L"mask_width_scale", 1.0), 0.25, 2.0);
     visorHeight = std::clamp(ReadDoubleSetting(L"mask_height_scale", 1.0), 0.25, 2.0);
     if (profileVisorSize > 0)
@@ -1557,13 +1702,13 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
             frameEndInfo->layerCount);
     }
 
-    // Capture the per-eye layout (swapchain -> imageRect + array slice) from the
-    // projection layer. The actual draw happens in xrReleaseSwapchainImage, which
-    // runs earlier in the frame loop, so the layout captured here is consumed by the
-    // NEXT frame's release. The layout is stable frame-to-frame, so this is correct.
-    // NOTE: this is intentionally NOT gated on the visibility-mask path — the native
-    // D3D11 visor must run whether or not the game requests a visibility mask.
-    if (enabled && maskEnabled && g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
+    // Technique C only: capture the per-eye layout (swapchain -> imageRect + array
+    // slice) from the projection layer. The actual draw happens in
+    // xrReleaseSwapchainImage, which runs earlier in the frame loop, so the layout
+    // captured here is consumed by the NEXT frame's release. Layout is stable frame to
+    // frame. Not gated on the visibility-mask path — the D3D11 visor runs regardless.
+    if (enabled && maskEnabled && visorTechnique == VisorTechnique::DirectWrite &&
+        g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
         bool foundProj = false;
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
         // Reset captured layouts so stale eyes don't linger if the app changes layers.
@@ -1593,25 +1738,26 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         }
     }
 
-    // DEBUG: append a head-locked solid quad as our OWN layer to prove VR drawing.
-    if (testQuad && g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
-        XrCompositionLayerQuad quad{};
-        if (RenderTestQuadLayer(quad)) {
+    // Technique A: append our OWN head-locked visor quad layer(s) on top of the app's.
+    // Uses the same BOTH-eye quad mechanism proven by the (now-removed) test quad.
+    if (enabled && maskEnabled && visorTechnique == VisorTechnique::QuadOverlay &&
+        g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
+        XrCompositionLayerQuad visorLayers[2]{};
+        const uint32_t nv = RenderVisorQuadLayers(visorLayers, 2);
+        if (nv > 0) {
             std::vector<const XrCompositionLayerBaseHeader*> layers;
-            layers.reserve(static_cast<size_t>(frameEndInfo->layerCount) + 1u);
+            layers.reserve(static_cast<size_t>(frameEndInfo->layerCount) + nv);
             for (uint32_t i = 0; i < frameEndInfo->layerCount; ++i)
                 layers.push_back(frameEndInfo->layers[i]);
-            layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader*>(&quad));
+            for (uint32_t i = 0; i < nv; ++i)
+                layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader*>(&visorLayers[i]));
             XrFrameEndInfo patched = *frameEndInfo;
             patched.layerCount = static_cast<uint32_t>(layers.size());
             patched.layers = layers.data();
-            const uint32_t n = g_testQuadLogCount.fetch_add(1);
-            if (n == 0)
-                Log("test quad: submitting head-locked blue quad layer (1m in front, 0.4m square)\n");
-            const XrResult tr = nextXrEndFrame(session, &patched);
-            if (tr != XR_SUCCESS && n < 3)
-                Log("test quad DIAG: nextXrEndFrame with quad returned result=%d\n", tr);
-            return tr;
+            const XrResult r = nextXrEndFrame(session, &patched);
+            if (r != XR_SUCCESS && g_visorQuadLogCount.load() < 3)
+                Log("visor A DIAG: nextXrEndFrame with quad layer(s) result=%d\n", r);
+            return r;
         }
     }
 
@@ -1975,8 +2121,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateApiLayerInstance(
 
     const XrResult result = apiLayerInfo->nextInfo->nextCreateApiLayerInstance(instanceCreateInfo, &chainedApiLayerInfo, instance);
     const char* appName = instanceCreateInfo ? instanceCreateInfo->applicationInfo.applicationName : "<unknown>";
-    RememberApplication(appName);
-    LoadConfig();
+    const char* engineName = instanceCreateInfo ? instanceCreateInfo->applicationInfo.engineName : "<unknown>";
+    std::string runtimeName;
     if (result == XR_SUCCESS && instance != nullptr && *instance != XR_NULL_HANDLE) {
         PFN_xrGetInstanceProperties getInstanceProperties = nullptr;
         if (nextXrGetInstanceProcAddr(
@@ -1986,6 +2132,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateApiLayerInstance(
             getInstanceProperties != nullptr) {
             XrInstanceProperties properties{XR_TYPE_INSTANCE_PROPERTIES};
             if (getInstanceProperties(*instance, &properties) == XR_SUCCESS) {
+                runtimeName = properties.runtimeName;
                 Log("runtime: name=%s version=%u.%u.%u\n",
                     properties.runtimeName,
                     XR_VERSION_MAJOR(properties.runtimeVersion),
@@ -1994,6 +2141,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateApiLayerInstance(
             }
         }
     }
+    RememberApplication(appName, engineName, result, runtimeName.c_str());
+    LoadConfig();
     if (instanceCreateInfo != nullptr) {
         Log("application: name=%s engine=%s api=%u.%u.%u extensions=%u\n",
             instanceCreateInfo->applicationInfo.applicationName,

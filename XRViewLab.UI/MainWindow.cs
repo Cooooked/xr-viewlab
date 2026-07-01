@@ -11,6 +11,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -36,6 +37,7 @@ public partial class MainWindow : Window
 
 	// Render options
 	private const string MaskEnabledKey = "mask_enabled";
+	private const string VisorTechniqueKey = "visor_technique";
 	private const string MaskRoundedKey = "mask_rounded";
 	private const string MaskCornerKey = "mask_corner";
 	private const string MaskOffsetYKey = "mask_offset_y";
@@ -469,6 +471,7 @@ public partial class MainWindow : Window
 		SetColumnWidth(AppsNameColumn, ReadColumnWidth("apps_name_column_width", 180.0, 80.0, 500.0));
 		SetColumnWidth(AppsValueColumn, ReadColumnWidth("apps_value_column_width", 62.0, 36.0, 260.0));
 		SetColumnWidth(AppsXrTypeColumn, ReadColumnWidth("apps_xr_column_width", 42.0, 28.0, 160.0));
+		SetColumnWidth(AppsStatusColumn, ReadColumnWidth("apps_status_column_width", 66.0, 52.0, 180.0));
 	}
 
 	private void RegisterColumnWidthPersistence()
@@ -477,6 +480,7 @@ public partial class MainWindow : Window
 		RegisterColumnWidthPersistence(AppsNameColumn, "apps_name_column_width");
 		RegisterColumnWidthPersistence(AppsValueColumn, "apps_value_column_width");
 		RegisterColumnWidthPersistence(AppsXrTypeColumn, "apps_xr_column_width");
+		RegisterColumnWidthPersistence(AppsStatusColumn, "apps_status_column_width");
 	}
 
 	private static void SetColumnWidth(DataGridColumn column, double width)
@@ -919,6 +923,10 @@ public partial class MainWindow : Window
 		HorizontalBox.Text = FormatScale(value);
 		// Mask (visor): absolute bounds, default 1.0 = no mask on that axis.
 		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
+		string technique = ReadSetting(VisorTechniqueKey, "c").Trim().ToLowerInvariant();
+		VisorTechniqueOff.IsChecked = technique == "off" || technique == "0";
+		VisorTechniqueQuad.IsChecked = technique == "a" || technique == "1" || technique == "quad";
+		VisorTechniqueDirect.IsChecked = !(VisorTechniqueOff.IsChecked == true || VisorTechniqueQuad.IsChecked == true);
 		MaskRoundedCheck.IsChecked = true;
 		MaskVerticalBox.Text = FormatScale(ReadScaleSetting("mask_vertical", 1.0));
 		MaskHorizontalBox.Text = FormatScale(ReadScaleSetting("mask_horizontal", 1.0));
@@ -1235,6 +1243,16 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		StatusText.Text = "Render options saved. Restart the VR game.";
 	}
 
+	private void VisorTechnique_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		string technique = VisorTechniqueQuad.IsChecked == true ? "a"
+			: VisorTechniqueOff.IsChecked == true ? "off"
+			: "c";
+		WritePrivateProfileString("Settings", VisorTechniqueKey, technique, ConfigPath);
+		StatusText.Text = "Visor technique saved. Restart the VR game.";
+	}
+
 	private void SaveExperimentalSettings()
 	{
 		Directory.CreateDirectory(ConfigDirectory);
@@ -1530,10 +1548,19 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		"pivotpoint", "pivotpoint.exe",
 	};
 
+	private sealed record KnownSteamVrApp(string AppId, string ExeName, string DisplayName, string XrType);
+
+	private static readonly KnownSteamVrApp[] KnownSteamVrApps =
+	{
+		new("2981220", "Forefront.exe", "Forefront", "OpenXR"),
+	};
+
 	private void LoadAppProfiles()
 	{
 		_loading = true;
 		_apps.Clear();
+		DiscoverKnownSteamApps();
+		List<AppProfile> loadedApps = new();
 		using RegistryKey registryKey = Registry.CurrentUser.OpenSubKey(AppRegistryRoot);
 		if (registryKey != null)
 		{
@@ -1553,14 +1580,156 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 					{
 						continue;
 					}
-					_apps.Add(item);
+					loadedApps.Add(item);
 				}
 			}
+		}
+		foreach (AppProfile app in loadedApps.OrderBy(a => a.DisplayName, StringComparer.CurrentCultureIgnoreCase))
+		{
+			_apps.Add(app);
 		}
 		_loading = false;
 		if (AppsEmptyText != null)
 		{
 			AppsEmptyText.Visibility = _apps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+		}
+	}
+
+	private static void DiscoverKnownSteamApps()
+	{
+		foreach (string library in GetSteamLibraryFolders())
+		{
+			string steamApps = Path.Combine(library, "steamapps");
+			foreach (KnownSteamVrApp app in KnownSteamVrApps)
+			{
+				string manifest = Path.Combine(steamApps, "appmanifest_" + app.AppId + ".acf");
+				if (!File.Exists(manifest))
+				{
+					continue;
+				}
+				string installDir = ReadAcfValue(manifest, "installdir");
+				string modulePath = "";
+				if (!string.IsNullOrWhiteSpace(installDir))
+				{
+					string guessed = Path.Combine(steamApps, "common", installDir, app.ExeName);
+					modulePath = File.Exists(guessed) ? guessed : guessed;
+				}
+				EnsureDiscoveredAppProfile(app.ExeName, app.DisplayName, modulePath, app.XrType, "Steam " + app.AppId);
+			}
+		}
+	}
+
+	private static IEnumerable<string> GetSteamLibraryFolders()
+	{
+		HashSet<string> folders = new(StringComparer.OrdinalIgnoreCase);
+		string steamPath = "";
+		using (RegistryKey? steamKey = Registry.CurrentUser.OpenSubKey("Software\\Valve\\Steam"))
+		{
+			steamPath = Convert.ToString(steamKey?.GetValue("SteamPath", "")) ?? "";
+			if (string.IsNullOrWhiteSpace(steamPath))
+			{
+				string steamExe = Convert.ToString(steamKey?.GetValue("SteamExe", "")) ?? "";
+				steamPath = string.IsNullOrWhiteSpace(steamExe) ? "" : Path.GetDirectoryName(steamExe) ?? "";
+			}
+		}
+		if (!string.IsNullOrWhiteSpace(steamPath) && Directory.Exists(steamPath))
+		{
+			folders.Add(steamPath.Replace('/', Path.DirectorySeparatorChar));
+			string libraryFolders = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
+			if (File.Exists(libraryFolders))
+			{
+				foreach (string path in ReadSteamLibraryPaths(libraryFolders))
+				{
+					if (Directory.Exists(path))
+					{
+						folders.Add(path);
+					}
+				}
+			}
+		}
+		return folders;
+	}
+
+	private static IEnumerable<string> ReadSteamLibraryPaths(string libraryFoldersPath)
+	{
+		string text = File.ReadAllText(libraryFoldersPath);
+		HashSet<string> paths = new(StringComparer.OrdinalIgnoreCase);
+		foreach (Match match in Regex.Matches(text, "\"path\"\\s+\"(?<path>(?:\\\\.|[^\"])*)\"", RegexOptions.IgnoreCase))
+		{
+			string path = UnescapeSteamValue(match.Groups["path"].Value);
+			if (!string.IsNullOrWhiteSpace(path) && paths.Add(path))
+			{
+				yield return path.Replace('/', Path.DirectorySeparatorChar);
+			}
+		}
+		foreach (Match match in Regex.Matches(text, "\"\\d+\"\\s+\"(?<path>(?:\\\\.|[^\"])*)\"", RegexOptions.IgnoreCase))
+		{
+			string path = UnescapeSteamValue(match.Groups["path"].Value);
+			if (!string.IsNullOrWhiteSpace(path) && paths.Add(path))
+			{
+				yield return path.Replace('/', Path.DirectorySeparatorChar);
+			}
+		}
+	}
+
+	private static string ReadAcfValue(string manifestPath, string key)
+	{
+		string text = File.ReadAllText(manifestPath);
+		Match match = Regex.Match(text, "\"" + Regex.Escape(key) + "\"\\s+\"(?<value>(?:\\\\.|[^\"])*)\"", RegexOptions.IgnoreCase);
+		return match.Success ? UnescapeSteamValue(match.Groups["value"].Value) : "";
+	}
+
+	private static string UnescapeSteamValue(string value)
+	{
+		return value.Replace("\\\\", "\\").Replace("\\\"", "\"");
+	}
+
+	private static string SanitizeAppKey(string value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			return "Unknown.exe";
+		}
+		char[] invalid = { '\\', '/', ':', '*', '?', '"', '<', '>', '|' };
+		foreach (char ch in invalid)
+		{
+			value = value.Replace(ch, '_');
+		}
+		return value;
+	}
+
+	private static void EnsureDiscoveredAppProfile(string exeName, string displayName, string modulePath, string xrType, string source)
+	{
+		string keyName = SanitizeAppKey(Path.GetFileName(exeName));
+		if (AppKeyBlacklist.Contains(keyName) || AppKeyBlacklist.Contains(Path.GetFileNameWithoutExtension(keyName)))
+		{
+			return;
+		}
+		using RegistryKey appKey = Registry.CurrentUser.CreateSubKey(AppRegistryRoot + "\\" + keyName, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
+		SetRegistryStringIfEmpty(appKey, "display_name", string.IsNullOrWhiteSpace(displayName) ? Path.GetFileNameWithoutExtension(keyName) : displayName);
+		if (!string.IsNullOrWhiteSpace(modulePath))
+		{
+			SetRegistryStringIfEmpty(appKey, "module", modulePath);
+		}
+		SetRegistryStringIfEmpty(appKey, "discovered_source", source);
+		SetRegistryStringIfEmpty(appKey, "discovered_xr_type", xrType);
+		SetRegistryDwordIfMissing(appKey, "app_enabled", 1);
+		SetRegistryDwordIfMissing(appKey, "profile_enabled", 0);
+	}
+
+	private static void SetRegistryStringIfEmpty(RegistryKey key, string name, string value)
+	{
+		if (string.IsNullOrWhiteSpace(Convert.ToString(key.GetValue(name, ""))))
+		{
+			key.SetValue(name, value, RegistryValueKind.String);
+		}
+	}
+
+	private static void SetRegistryDwordIfMissing(RegistryKey key, string name, int value)
+	{
+		if (key.GetValue(name) == null)
+		{
+			key.SetValue(name, value, RegistryValueKind.DWord);
 		}
 	}
 
@@ -1585,7 +1754,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		string rawDisplayName = Convert.ToString(appKey.GetValue("display_name", keyName)) ?? keyName;
 		string text = Convert.ToString(appKey.GetValue("module", "")) ?? "";
 		bool isOpenComposite = rawDisplayName.StartsWith("OpenComposite_", StringComparison.OrdinalIgnoreCase);
-		string xrType = isOpenComposite ? "OpenVR" : "OpenXR";
+		string discoveredXrType = Convert.ToString(appKey.GetValue("discovered_xr_type", "")) ?? "";
+		string xrType = !string.IsNullOrWhiteSpace(discoveredXrType) ? discoveredXrType : (isOpenComposite ? "OpenVR" : "OpenXR");
 		// User-set custom_name wins over the layer-written display_name (the layer
 		// overwrites display_name every launch, so renames must live in custom_name).
 		string customName = Convert.ToString(appKey.GetValue("custom_name", null)) ?? "";
@@ -1622,6 +1792,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			DisplayName = text2,
 			Display = text2,
 			XrType = xrType,
+			HookStatus = ReadHookStatus(appKey),
 			AppEnabled = appEnabled,
 			Hidden = hidden,
 			ProfileEnabled = profileEnabled,
@@ -1644,6 +1815,30 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			VisorWidth = visorWidth,
 			VisorHeight = visorHeight
 		};
+	}
+
+	private static string ReadHookStatus(RegistryKey appKey)
+	{
+		if (appKey.GetValue("last_seen") == null)
+		{
+			return "Not hooked";
+		}
+		object? resultValue = appKey.GetValue("last_result");
+		if (resultValue != null)
+		{
+			try
+			{
+				if (Convert.ToInt32(resultValue, CultureInfo.InvariantCulture) != 0)
+				{
+					return "Failed";
+				}
+			}
+			catch
+			{
+				return "Failed";
+			}
+		}
+		return "Hooked";
 	}
 
 	private static string CleanAppDisplayName(string displayName, string keyName, string modulePath)
@@ -1683,7 +1878,42 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void ReloadApps_Click(object sender, RoutedEventArgs e)
 	{
 		LoadAppProfiles();
-		StatusText.Text = "App list reloaded.";
+		StatusText.Text = ForefrontStatusMessage() ?? "App list reloaded.";
+	}
+
+	private void AddApp_Click(object sender, RoutedEventArgs e)
+	{
+		OpenFileDialog dialog = new()
+		{
+			Title = "Add VR application",
+			Filter = "Applications (*.exe)|*.exe|All files (*.*)|*.*",
+			CheckFileExists = true,
+			Multiselect = false
+		};
+		if (dialog.ShowDialog(this) != true)
+		{
+			return;
+		}
+		string exeName = Path.GetFileName(dialog.FileName);
+		string displayName = Path.GetFileNameWithoutExtension(dialog.FileName);
+		EnsureDiscoveredAppProfile(exeName, displayName, dialog.FileName, "OpenXR", "Manual");
+		LoadAppProfiles();
+		StatusText.Text = displayName + " added. If it stays 'Not hooked' after launch, OpenXR did not load the ViewLab layer into that process.";
+	}
+
+	private string? ForefrontStatusMessage()
+	{
+		AppProfile? forefront = _apps.FirstOrDefault(a => a.Key.Equals("Forefront.exe", StringComparison.OrdinalIgnoreCase));
+		if (forefront == null)
+		{
+			return null;
+		}
+		return forefront.HookStatus switch
+		{
+			"Hooked" => "Forefront found and hooked by ViewLab.",
+			"Failed" => "Forefront found, but OpenXR instance creation failed while ViewLab was in the layer chain. Check the log.",
+			_ => "Forefront found, but ViewLab has not hooked it yet. Launch Forefront, then reload apps; if it stays here, the OpenXR layer is not loading into Forefront."
+		};
 	}
 
 	private void AppsGrid_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)

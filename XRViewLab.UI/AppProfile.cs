@@ -44,6 +44,8 @@ public sealed class AppProfile : INotifyPropertyChanged
 
 	private string _display = "";
 
+	private string _hookStatus = "";
+
 	public string Key { get; init; } = "";
 
 	// The executable file name (e.g. "dirtrally2.exe"), used to recompute Display on rename.
@@ -76,6 +78,19 @@ public sealed class AppProfile : INotifyPropertyChanged
 	}
 
 	public string XrType { get; init; } = "";
+
+	public string HookStatus
+	{
+		get => _hookStatus;
+		set
+		{
+			if (_hookStatus != value)
+			{
+				_hookStatus = value;
+				OnPropertyChanged("HookStatus");
+			}
+		}
+	}
 
 	public bool AppEnabled
 	{

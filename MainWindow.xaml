@@ -418,7 +418,13 @@
                 <CheckBox Name="CropOuterEdgesCheck" Content="Crop outer edges only" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Crops only the outer edges of the render area instead of the full vertical slice." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                 <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
-                <CheckBox Name="MaskEnabledCheck" Content="OpenXR D3D11 visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor layer in xrEndFrame. This first renderer only applies to OpenXR D3D11 sessions." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                <CheckBox Name="MaskEnabledCheck" Content="OpenXR D3D11 visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor. Pick the rendering technique below." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                <TextBlock Text="Technique" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,3" />
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                  <RadioButton Name="VisorTechniqueQuad" GroupName="VisorTech" Content="Quad (A)" Foreground="#A8A8A8" Margin="0,0,12,0" Checked="VisorTechnique_Changed" ToolTip="Technique A: head-locked alpha-cutout quad overlay layer(s). Most compatible; independent of the game's swapchains." />
+                  <RadioButton Name="VisorTechniqueDirect" GroupName="VisorTech" Content="Direct (C)" Foreground="#A8A8A8" Margin="0,0,12,0" Checked="VisorTechnique_Changed" ToolTip="Technique C: draws the border directly into the game's eye texture at swapchain release." />
+                  <RadioButton Name="VisorTechniqueOff" GroupName="VisorTech" Content="Off" Foreground="#A8A8A8" Checked="VisorTechnique_Changed" ToolTip="Visor mask off (crop only)." />
+                </StackPanel>
                 <ui:BeanMaskEditor x:Name="MaskBeanEditor" Height="76" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" ToolTip="Preview uses the same rounded aperture settings as the OpenXR D3D11 mask texture." />
                 <Grid Margin="0,0,0,0">
                   <Grid.ColumnDefinitions>
@@ -579,12 +585,14 @@
                         <DataGridTextColumn x:Name="AppsNameColumn" Header="Application" ElementStyle="{StaticResource GridTextCell}" Width="*" MinWidth="80" IsReadOnly="True" CanUserResize="True" Binding="{Binding Display}" />
                         <DataGridTextColumn x:Name="AppsValueColumn" Header="Values" ElementStyle="{StaticResource GridValueCell}" Width="62" MinWidth="36" CanUserResize="True" Binding="{Binding Summary}" IsReadOnly="True" />
                         <DataGridTextColumn x:Name="AppsXrTypeColumn" Header="XR" ElementStyle="{StaticResource GridValueCell}" Width="42" MinWidth="28" CanUserResize="True" Binding="{Binding XrType}" IsReadOnly="True" />
+                        <DataGridTextColumn x:Name="AppsStatusColumn" Header="Status" ElementStyle="{StaticResource GridValueCell}" Width="66" MinWidth="52" CanUserResize="True" Binding="{Binding HookStatus}" IsReadOnly="True" />
                       </DataGrid.Columns>
                     </DataGrid>
-                    <TextBlock Name="AppsEmptyText" Text="No apps detected yet.&#x0a;Launch a VR game, then click Reload apps." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
+                    <TextBlock Name="AppsEmptyText" Text="No apps detected yet.&#x0a;Launch a VR game, reload apps, or add the game exe." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
                   </Grid>
                   <WrapPanel Grid.Row="4">
                     <Button Content="Reload apps" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ReloadApps_Click" />
+                    <Button Content="Add app" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="AddApp_Click" />
                     <Button Content="Reset profile" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ResetApp_Click" />
                     <CheckBox Name="ShowHiddenAppsCheck" Content="Show hidden" VerticalAlignment="Center" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" />
                   </WrapPanel>
