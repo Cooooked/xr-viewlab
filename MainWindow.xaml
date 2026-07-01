@@ -380,10 +380,10 @@
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="6" />
                   <RowDefinition Height="Auto" />
-                  <RowDefinition Height="0" />
-                  <RowDefinition Height="0" />
-                  <RowDefinition Height="0" />
-                  <RowDefinition Height="0" />
+                  <RowDefinition Height="6" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="4" />
+                  <RowDefinition Height="Auto" />
                   <RowDefinition Height="0" />
                   <RowDefinition Height="0" />
                   <RowDefinition Height="0" />
@@ -407,6 +407,8 @@
                 <TextBlock Name="BottomHint" Grid.Row="14" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                 <Slider Name="BottomSlider" Grid.Row="16" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="1" ValueChanged="RenderSlider_Changed" />
                 <TextBlock Name="CombinedHint" Grid.Row="18" Grid.ColumnSpan="5" Foreground="{StaticResource MutedBrush}" />
+                <CheckBox Name="EdgeSmearFixCheck" Grid.Row="20" Grid.ColumnSpan="5" Content="Experimental: edge-smear fix" Foreground="#A8A8A8" Margin="0,0,0,0" ToolTip="Draws small black guard bands into the submitted projection edges to stop runtimes sampling smeared edge texels." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                <CheckBox Name="LodPopInFixCheck" Grid.Row="22" Grid.ColumnSpan="5" Content="Experimental: LOD pop-in fix" Foreground="#A8A8A8" Margin="0,0,0,0" ToolTip="Diagnostic-only in this build; ViewLab still preserves the vertical and horizontal crop." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
               </Grid>
             </Border>
             <!-- Render Options: lives in LeftColumnPanel for single/two-col; moved to RightColumnPanel in 3-col by UpdateResponsiveLayout -->
@@ -421,7 +423,8 @@
                 <CheckBox Name="MaskEnabledCheck" Content="OpenXR D3D11 visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor. Pick the rendering technique below." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                 <TextBlock Text="Technique" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,3" />
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                  <RadioButton Name="VisorTechniqueQuad" GroupName="VisorTech" Content="Quad (A)" Foreground="#A8A8A8" Margin="0,0,12,0" Checked="VisorTechnique_Changed" ToolTip="Technique A: head-locked alpha-cutout quad overlay layer(s). Most compatible; independent of the game's swapchains." />
+                  <RadioButton Name="VisorTechniqueQuad" GroupName="VisorTech" Content="Quad (A)" Foreground="#A8A8A8" Margin="0,0,12,0" Checked="VisorTechnique_Changed" ToolTip="Technique A: head-locked alpha visor quad, independent of the game's swapchains." />
+                  <RadioButton Name="VisorTechniqueIntercept" GroupName="VisorTech" Content="Intercept (B)" Foreground="#A8A8A8" Margin="0,0,12,0" Checked="VisorTechnique_Changed" ToolTip="Technique B: app-facing swapchain textures composited into the runtime textures with the visor mask." />
                   <RadioButton Name="VisorTechniqueDirect" GroupName="VisorTech" Content="Direct (C)" Foreground="#A8A8A8" Margin="0,0,12,0" Checked="VisorTechnique_Changed" ToolTip="Technique C: draws the border directly into the game's eye texture at swapchain release." />
                   <RadioButton Name="VisorTechniqueOff" GroupName="VisorTech" Content="Off" Foreground="#A8A8A8" Checked="VisorTechnique_Changed" ToolTip="Visor mask off (crop only)." />
                 </StackPanel>
@@ -436,8 +439,8 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="0" />
+                    <RowDefinition Height="0" />
                   </Grid.RowDefinitions>
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="Size" VerticalAlignment="Center" FontSize="12" />
                   <Slider Name="MaskOpeningSlider" Grid.Row="0" Grid.Column="1" Minimum="0.05" Maximum="1" ValueChanged="MaskOpeningSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
@@ -447,10 +450,8 @@
                   <Slider Name="MaskHeightSlider" Grid.Row="2" Grid.Column="1" Minimum="0.5" Maximum="1.5" ValueChanged="MaskShapeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
                   <TextBlock Grid.Row="3" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
                   <Slider Name="MaskRoundnessSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="4" Grid.Column="0" Text="X" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskOffsetXSlider" Grid.Row="4" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Y" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskOffsetYSlider" Grid.Row="5" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <Slider Name="MaskOffsetXSlider" Grid.Row="4" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
+                  <Slider Name="MaskOffsetYSlider" Grid.Row="5" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
                 </Grid>
                 <TextBox Name="MaskVerticalBox" Visibility="Collapsed" />
                 <TextBox Name="MaskHorizontalBox" Visibility="Collapsed" />

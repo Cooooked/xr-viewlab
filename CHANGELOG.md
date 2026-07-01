@@ -1,8 +1,64 @@
 # Changelog
 
-> Visor-mask status note (2026-07-01): the native visor mask is implemented as a D3D11 direct-write into
-> the game's eye textures at `xrReleaseSwapchainImage`. It has NOT been confirmed visible in-headset.
-> See `PROJECT_STATUS.md` / `HANDOFF.md` for the live debugging state.
+> Visor-mask status note (2026-07-01, late): layer submission is CONFIRMED working in-headset (a BOTH-eye
+> debug quad drew). The mask was invisible because `visorSize` resolved to 1.0 (opening = whole view =
+> zero-width border); fixed in 4.1.46. Technique A (quad overlay) is now the primary path and awaits
+> in-headset confirmation. See `PROJECT_STATUS.md` / `HANDOFF.md`.
+
+## 4.1.55 - 2026-07-02
+
+- Optimized release-time D3D11 visor/edge drawing by caching runtime swapchain render-target views instead
+  of creating an RTV for every eye draw.
+- Removed heap allocations from the high-segment visor geometry builders by switching their fixed-size
+  curve buffers to stack arrays.
+- Verified the x64 native OpenXR layer build before the full installer build.
+- Full installer build passed: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.55.msi`.
+
+## 4.1.54 - 2026-07-02
+
+- Preserved the real vertical/horizontal tangent crop path. The LOD-pop-in experiment is now
+  diagnostic-only and no longer bypasses cropped FOV, avoiding the stretch-over-lens failure.
+- Reworked the edge-smear experiment to draw black guard pixels into projection texture edges instead of
+  changing submitted `imageRect` metadata.
+- Technique A remains a real OpenXR composition-layer path, now drawing the same open-inner left/right
+  visor artwork into a BOTH-eye alpha quad for VDXR compatibility.
+- Technique B is narrowed to D3D11 colour non-MSAA swapchains and bypasses unsupported swapchains instead
+  of intercepting them.
+- Technique C now draws at release and late `xrEndFrame`, with higher-segment open-inner geometry and a
+  projected partner-eye boundary for aggressive horizontal crop convergence.
+- Removed visible X/Y visor sliders from the main UI and made the DLL ignore stale X/Y profile biases.
+  Size, Width, Height, and Curve are the active shape controls.
+- Full installer build passed: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.54.msi`.
+
+## 4.1.47 — 2026-07-01
+
+- Removed the debug test quad entirely (it proved layer submission; done).
+- Technique A reworked to a single BOTH-eye head-locked quad (per-eye LEFT/RIGHT quads were not rendering
+  on VDXR; the BOTH-eye quad did), FOV-sized, alpha-cutout (black ring, transparent hole).
+- Technique C: added `context->Flush()` after the eye-texture draw so a streaming runtime's encoder
+  (VDXR) sees the write; C remains unreliable on streaming runtimes (A is primary).
+
+## 4.1.46 — 2026-07-01
+
+- FIX (root cause of "no mask"): `visorSize` fallback for a missing `mask_size` was the legacy
+  OpeningFromMask formula, which clamps to 1.0 for cropped views = full opening = invisible border.
+  Fallback is now a visible 0.82. This is why neither technique showed a mask despite drawing correctly.
+
+## 4.1.45 — 2026-07-01
+
+- Added a UI **Technique** selector (radio: Quad (A) / Direct (C) / Off) in Render Options, writing
+  `visor_technique`. Verified in-app (round-trips a↔c↔off to the ini). No more hand-editing the ini.
+
+## 4.1.44 — 2026-07-01
+
+- Implemented technique A (quad overlay) alongside technique C, selectable via `visor_technique`.
+- Shared `CreateHeadLockedRgbaLayer` helper for the head-locked VIEW-space RGBA swapchain.
+
+## 4.1.43 — 2026-07-01
+
+- Visor ENABLE made global-only: per-app profiles no longer carry/override `mask_enabled` (they still
+  tune shape). Fixes stale per-app `mask_enabled=0` silently overriding the global toggle. Per-app enable
+  checkbox disabled in the profile popup.
 
 ## 4.1.42 — 2026-07-01
 

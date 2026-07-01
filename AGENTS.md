@@ -10,7 +10,22 @@ Active source directory:
 
 Do not reference or depend on files outside `F:\AI-Projects\ViewLab`.
 
-## Current State (2026-07-01, v4.1.42)
+## Current State (2026-07-02, v4.1.55)
+
+- Latest installer: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.55.msi`.
+- After implementation changes, always run `.\build.ps1` and put the exact MSI path in a plain text block
+  in the final reply.
+- Vertical/horizontal crop is the core performance feature and must remain active unless the user
+  explicitly asks otherwise.
+- Visor A/B/C are real selectable paths. A = BOTH-eye OpenXR quad overlay with open-inner left/right
+  artwork; B = D3D11 colour non-MSAA swapchain interception; C = release-time plus late-end-frame direct
+  write.
+- `lod_popin_fix` is diagnostic-only in 4.1.55. Do not restore the unsafe full-FOV path that stretched
+  cropped output over the full lens.
+- Release-time D3D11 visor/edge drawing caches runtime swapchain RTVs per image/slice, and visor geometry
+  builders avoid per-draw heap curve buffers.
+
+## Current State (2026-07-01 late, v4.1.47)
 
 For the live, detailed state always read `PROJECT_STATUS.md` and `HANDOFF.md` first — they supersede
 this section. Summary:
@@ -18,11 +33,13 @@ this section. Summary:
 - Render crop OpenXR layer (FOV + recommended resolution): done, active in `dllmain.cpp`.
 - Per-app enable/disable + custom render values: done (WPF writes / DLL reads HKCU app registry keys).
 - Merged Applications table, double-click app profile editor, ReShade Remote popout: done.
-- Visor mask (in progress, NOT confirmed in-headset): native D3D11 direct-write of a kidney/superellipse
-  border into the game's eye textures at `xrReleaseSwapchainImage`. Visibility-mask path is optional
-  (`visibility_mask_visor`). A debug head-locked blue test quad (`test_quad`) probes VR layer submission.
-- Key open bug: the visor "enable" toggle is not persisting — `mask_enabled=0` everywhere despite the UI;
-  the D3D11 draw is gated on it, so nothing draws. See `PROJECT_STATUS.md`.
+- Layer submission CONFIRMED in-headset (BOTH-eye debug quad drew on VDXR). Prior "no mask" was
+  `visorSize`=1.0 (full opening); fixed (fallback 0.82).
+- Visor: enable is global-only; `visor_technique` selector (UI radio). Technique A = per-eye
+  head-locked alpha-cutout quads; technique B = app-facing swapchain interception/composite; technique C =
+  eye-texture direct write at release. All three use the same open-inner-eye visor shape. Debug test quad removed.
+- Pending (user-requested, deferred): experimental edge-smear toggle + LOD-pop-in toggle. See
+  `PROJECT_STATUS.md` / `IMPLEMENTATION_PLAN_visor.md`.
 
 ## File Map
 
@@ -58,9 +75,11 @@ Current clean source only persists these options. Any actual ReShade binary/menu
 
 ## Last Change
 
-v4.1.42: added the debug head-locked blue test quad (`test_quad`) to prove OpenXR layer submission in
-Pistol Whip/DiRT. Preceded by the visor-mask redesign (4.1.39–4.1.41): native D3D11 direct-write at
-`xrReleaseSwapchainImage`, gate removed, visibility-mask made optional. See `CHANGELOG.md`.
+v4.1.47: layer submission confirmed working in-headset (BOTH-eye debug quad drew). Found + fixed the
+"no mask" root cause — `visorSize`=1.0 (full opening = invisible border), fallback now 0.82. Technique A
+(BOTH-eye quad overlay) is primary and awaits in-headset confirmation; technique C draws but doesn't show
+on VDXR; debug test quad removed; enable is global-only; UI Technique selector added. See `CHANGELOG.md`
+and `PROJECT_STATUS.md`.
 
 ## Source Backup Reference
 
@@ -70,8 +89,11 @@ See `SOURCE_BACKUP.md` for the complete inventory of all backup sources, build v
 
 - `build.ps1` auto-increments the version. When building components manually (to avoid a double bump),
   bump `Properties\AssemblyInfo.cs` + `Installer\Product.wxs` yourself and build each project directly.
-- Latest installer: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.42.msi` (builds clean; visor not yet
-  confirmed in-headset).
+- After implementing any requested code/UI/DLL change, run the full installer build with `.\build.ps1`
+  unless the user explicitly says not to. In the final reply, always give the full runnable MSI path,
+  including the file name, in a plain text block the user can paste into Windows Run. Example:
+  `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.55.msi`. Do not provide only the folder.
+- Latest installer: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.55.msi` (builds clean).
 - Source must not depend on files outside `F:\AI-Projects\ViewLab`.
 - The WPF app and DLL both use `xr-viewlab.ini`, but only the WPF app knows about the ReShade MENU keys right now.
 - The DLL reads render/app keys only; see `dllmain_features.md`.
@@ -87,4 +109,4 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 The MSI is copied to:
 
-`F:\ViewLab\dist`
+`F:\AI-Projects\ViewLab\dist`

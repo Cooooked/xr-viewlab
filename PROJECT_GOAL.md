@@ -6,6 +6,40 @@ Do not reference or depend on files outside `F:\AI-Projects\ViewLab`.
 
 > Live state lives in `PROJECT_STATUS.md` and `HANDOFF.md`; this journal is historical context.
 
+## Standing User Delivery Rule
+
+After any implementation change, build the full installer with `.\build.ps1` unless explicitly told not to.
+Final replies must include the exact runnable MSI path, including file name, in a plain text block suitable
+for Windows Run. Do not give only the folder path.
+
+Current latest built installer:
+
+```text
+F:\AI-Projects\ViewLab\dist\ViewLab-4.1.55.msi
+```
+
+## Current 4.1.55 Work Log
+
+- Optimized release-time D3D11 visor/edge drawing by caching runtime swapchain render-target views per
+  tracked image/slice and reusing them during release-time direct/edge draws.
+- Removed heap allocations from the high-segment visor geometry builders by replacing fixed-size curve
+  vectors with stack arrays.
+- Preserved vertical/horizontal tangent crop and all A/B/C visor paths.
+- Full build passed and produced `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.55.msi`.
+
+## 4.1.54 Work Log
+
+- Preserved vertical/horizontal tangent crop and disabled the unsafe LOD full-FOV experiment that stretched
+  the image over the lens. `lod_popin_fix` is diagnostic-only in this build.
+- Replaced the edge-smear metadata inset experiment with actual black guard-band drawing into projection
+  texture edges.
+- Reworked visor A/B/C wiring: A is a real BOTH-eye OpenXR quad with open-inner left/right artwork; B only
+  intercepts D3D11 colour non-MSAA swapchains; C draws at release and late `xrEndFrame` for
+  OpenComposite/DiRT timing.
+- Fixed main-panel visor controls: Size/Width/Height/Curve are visible and persisted; X/Y sliders are
+  removed and stale X/Y biases are ignored by the DLL.
+- Full build passed and produced `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.54.msi`.
+
 ## Current Goal
 
 Rebuild XR ViewLab from the clean 4.0.0 UI target:
@@ -27,6 +61,16 @@ Known-good UI target is documented by the 4.0.0 control list in this journal and
 If a binary reference or ReShade payload is needed again, copy it into `F:\ViewLab` first and document it here.
 
 ## Latest Work Log
+
+### 2026-07-01 late (v4.1.43 → 4.1.47, visor-mask breakthrough)
+
+- Confirmed layer submission works in-headset (BOTH-eye debug quad drew on VDXR/Pistol Whip).
+- Found the real "no mask" root cause: `visorSize`=1.0 (opening = full view = zero-width border). Fixed
+  the DLL fallback to 0.82 (4.1.46).
+- Enable made global-only (4.1.43); UI Technique selector added (4.1.45); technique A implemented (4.1.44)
+  and reworked to a single BOTH-eye FOV-sized quad (4.1.47); technique C given a Flush (unreliable on VDXR).
+- Removed the debug test quad (4.1.47).
+- Pending: confirm A in-headset; then experimental edge-smear + LOD-pop-in toggles (deferred, gate off).
 
 ### 2026-07-01 (v4.1.39 → 4.1.42, visor-mask debugging)
 

@@ -53,6 +53,8 @@ public partial class MainWindow : Window
 	private const string FoveatedCenterKey = "foveated_center_compensation";
 	private const string StencilOuterEdgesKey = "stencil_outer_edges_only";
 	private const string CropOuterEdgesKey = "crop_outer_edges_only";
+	private const string EdgeSmearFixKey = "edge_smear_fix";
+	private const string LodPopInFixKey = "lod_popin_fix";
 	private const string HorizVisualMaskBothKey = "horizontal_visual_mask_both";
 	private const string HorizOuterEyeMaskKey = "horizontal_outer_eye_mask";
 	private const string HorizInnerEyeMaskKey = "horizontal_inner_eye_mask";
@@ -926,22 +928,24 @@ public partial class MainWindow : Window
 		string technique = ReadSetting(VisorTechniqueKey, "c").Trim().ToLowerInvariant();
 		VisorTechniqueOff.IsChecked = technique == "off" || technique == "0";
 		VisorTechniqueQuad.IsChecked = technique == "a" || technique == "1" || technique == "quad";
-		VisorTechniqueDirect.IsChecked = !(VisorTechniqueOff.IsChecked == true || VisorTechniqueQuad.IsChecked == true);
+		VisorTechniqueIntercept.IsChecked = technique == "b" || technique == "2" || technique == "intercept" || technique == "interception";
+		VisorTechniqueDirect.IsChecked = !(VisorTechniqueOff.IsChecked == true || VisorTechniqueQuad.IsChecked == true || VisorTechniqueIntercept.IsChecked == true);
 		MaskRoundedCheck.IsChecked = true;
 		MaskVerticalBox.Text = FormatScale(ReadScaleSetting("mask_vertical", 1.0));
 		MaskHorizontalBox.Text = FormatScale(ReadScaleSetting("mask_horizontal", 1.0));
-		double oldOffset = ReadSignedScaleSetting(MaskOffsetYKey, 0.0);
 		MaskRoundnessSlider.Value = 1.0 - ReadScaleSetting(MaskCornerKey, 0.5);
 		MaskOpeningSlider.Value = ReadScaleSetting(MaskSizeKey, OpeningFromMask(ReadScaleSetting("mask_vertical", 1.0), ReadScaleSetting("mask_horizontal", 1.0), num, value));
 		MaskWidthSlider.Value = ReadRangeSetting(MaskWidthScaleKey, 1.0, 0.5, 1.5);
 		MaskHeightSlider.Value = ReadRangeSetting(MaskHeightScaleKey, 1.0, 0.5, 1.5);
-		MaskOffsetXSlider.Value = ReadSignedScaleSetting(MaskLeftBiasKey, 0.0);
-		MaskOffsetYSlider.Value = ReadSignedScaleSetting(MaskTopBiasKey, oldOffset);
+		MaskOffsetXSlider.Value = 0.0;
+		MaskOffsetYSlider.Value = 0.0;
 		SyncMaskEditorFromSliders();
 		// Render options
 		FoveatedCenterCheck.IsChecked = ReadBoolSetting(FoveatedCenterKey, fallback: false);
 		StencilOuterEdgesCheck.IsChecked = ReadBoolSetting(StencilOuterEdgesKey, fallback: true);
 		CropOuterEdgesCheck.IsChecked = ReadBoolSetting(CropOuterEdgesKey, fallback: true);
+		EdgeSmearFixCheck.IsChecked = ReadBoolSetting(EdgeSmearFixKey, fallback: false);
+		LodPopInFixCheck.IsChecked = ReadBoolSetting(LodPopInFixKey, fallback: false);
 		HorizVisualMaskBothCheck.IsChecked = ReadBoolSetting(HorizVisualMaskBothKey, fallback: false);
 		HorizOuterEyeMaskCheck.IsChecked = ReadBoolSetting(HorizOuterEyeMaskKey, fallback: false);
 		HorizInnerEyeMaskCheck.IsChecked = ReadBoolSetting(HorizInnerEyeMaskKey, fallback: false);
@@ -1139,8 +1143,6 @@ public partial class MainWindow : Window
 		else if (sender == MaskWidthSlider)    MaskWidthSlider.Value    = 1.0;
 		else if (sender == MaskHeightSlider)   MaskHeightSlider.Value   = 1.0;
 		else if (sender == MaskRoundnessSlider) MaskRoundnessSlider.Value = 0.75;
-		else if (sender == MaskOffsetXSlider)  MaskOffsetXSlider.Value  = 0.0;
-		else if (sender == MaskOffsetYSlider)  MaskOffsetYSlider.Value  = 0.0;
 		SyncMaskEditorFromSliders();
 		ApplyMaskOpening(MaskOpeningSlider.Value);
 		_syncingControls = false;
@@ -1247,6 +1249,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading) return;
 		string technique = VisorTechniqueQuad.IsChecked == true ? "a"
+			: VisorTechniqueIntercept.IsChecked == true ? "b"
 			: VisorTechniqueOff.IsChecked == true ? "off"
 			: "c";
 		WritePrivateProfileString("Settings", VisorTechniqueKey, technique, ConfigPath);
@@ -1261,6 +1264,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", FoveatedCenterKey, FoveatedCenterCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", StencilOuterEdgesKey, StencilOuterEdgesCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CropOuterEdgesKey, CropOuterEdgesCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", EdgeSmearFixKey, EdgeSmearFixCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", LodPopInFixKey, LodPopInFixCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HorizVisualMaskBothKey, HorizVisualMaskBothCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HorizOuterEyeMaskKey, HorizOuterEyeMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HorizInnerEyeMaskKey, HorizInnerEyeMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
@@ -1502,11 +1507,11 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", MaskWidthScaleKey, FormatStorageScale(MaskWidthSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", MaskHeightScaleKey, FormatStorageScale(MaskHeightSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", MaskCornerKey, FormatStorageScale(1.0 - MaskRoundnessSlider.Value), ConfigPath);
-		WritePrivateProfileString("Settings", MaskOffsetYKey, FormatStorageScale(MaskOffsetYSlider.Value), ConfigPath);
-		WritePrivateProfileString("Settings", MaskTopBiasKey, FormatStorageScale(MaskOffsetYSlider.Value), ConfigPath);
-		WritePrivateProfileString("Settings", MaskBottomBiasKey, FormatStorageScale(MaskOffsetYSlider.Value), ConfigPath);
-		WritePrivateProfileString("Settings", MaskLeftBiasKey, FormatStorageScale(MaskOffsetXSlider.Value), ConfigPath);
-		WritePrivateProfileString("Settings", MaskRightBiasKey, FormatStorageScale(MaskOffsetXSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskOffsetYKey, "0", ConfigPath);
+		WritePrivateProfileString("Settings", MaskTopBiasKey, "0", ConfigPath);
+		WritePrivateProfileString("Settings", MaskBottomBiasKey, "0", ConfigPath);
+		WritePrivateProfileString("Settings", MaskLeftBiasKey, "0", ConfigPath);
+		WritePrivateProfileString("Settings", MaskRightBiasKey, "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskTopCurveKey, "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskBottomCurveKey, "0", ConfigPath);
 		SaveReShadeMenuSettings();
@@ -1986,10 +1991,10 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			maskHorizontal,
 			true,
 			1.0 - (MaskRoundnessSlider?.Value ?? 0.5),
-			MaskOffsetYSlider?.Value ?? 0.0,
-			MaskOffsetYSlider?.Value ?? 0.0,
-			MaskOffsetXSlider?.Value ?? 0.0,
-			MaskOffsetXSlider?.Value ?? 0.0,
+			0.0,
+			0.0,
+			0.0,
+			0.0,
 			0.0,
 			0.0,
 			MaskOpeningSlider?.Value ?? 0.82,

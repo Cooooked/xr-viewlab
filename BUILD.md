@@ -2,7 +2,7 @@
 
 Active source folder:
 
-`F:\ViewLab`
+`F:\AI-Projects\ViewLab`
 
 ## Build UI
 
@@ -20,4 +20,11 @@ Use `.\build.ps1`; it builds the MSI automatically.
 
 Copy final MSI builds to:
 
-`F:\ViewLab\dist`
+`F:\AI-Projects\ViewLab\dist`
+
+After implementation work, run the full installer build and give the user the exact runnable MSI path,
+including file name, in a plain text block suitable for Windows Run. Example:
+
+```text
+F:\AI-Projects\ViewLab\dist\ViewLab-4.1.55.msi
+```

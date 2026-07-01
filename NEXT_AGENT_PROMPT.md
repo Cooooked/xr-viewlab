@@ -2,6 +2,18 @@
 
 You are continuing ViewLab development in `F:\AI-Projects\ViewLab`.
 
+## Standing User Delivery Rule
+
+After any implementation change, run the full installer build with `.\build.ps1` unless explicitly told
+not to. Final replies must include the exact runnable MSI path, including file name, in a plain text block
+suitable for Windows Run. Do not give only the folder path.
+
+Current latest built installer:
+
+```text
+F:\AI-Projects\ViewLab\dist\ViewLab-4.1.55.msi
+```
+
 Start by reading, in order:
 
 1. `F:\AI-Projects\PROJECTS.md`
@@ -11,14 +23,13 @@ Start by reading, in order:
 
 ## Current Task
 
-Continue the first real visor-mask implementation slice:
-
-> OpenXR D3D11 only, ViewLab-owned rounded visor mask rendered through `xrEndFrame`.
+Continue post-4.1.55 visor verification and tuning.
 
 Acceptance test:
 
-> In an OpenXR D3D11 game, with no `xrGetVisibilityMaskKHR` dependency, ViewLab can draw its own
-> rounded visor mask through `xrEndFrame`.
+> With vertical/horizontal crop still active, Technique A/B/C can be selected honestly, the Size/Width/
+> Height/Curve controls affect the in-HMD visor, and Pistol Whip plus DiRT/OpenComposite do not show a
+> curved-plus-straight binocular double edge.
 
 ## Hard Rules
 
@@ -34,12 +45,7 @@ Acceptance test:
 
 ## Current Dirty Source State
 
-Partial OpenXR D3D11 renderer work has already been applied to:
-
-- `pch.h`
-- `dllmain.cpp`
-
-The current code may not compile. Run:
+The current code builds clean as of 4.1.55. Run:
 
 ```powershell
 & 'F:\AI-Projects\ViewLab\build.ps1'
@@ -49,9 +55,10 @@ Then fix the OpenXR layer compile/link errors before doing UI work.
 
 Known immediate follow-up:
 
-- `ResolveVisorOpenXrFunctions(instance)` exists and should be called from `XRViewLab_xrCreateSession`.
-- The previous `std::min/std::max` macro compile failure in `FillVisorPixels` has already been patched.
-- If D3D11 linker errors appear, add `d3d11.lib` and `dxgi.lib` to `XRViewLabLayer.vcxproj`.
+- HMD-test Technique A/B/C on Pistol Whip and DiRT/OpenComposite.
+- If C black still receives ReShade effects, prefer A; direct-write order depends on API-layer order.
+- Do not revive the unsafe LOD full-FOV path unless a real reprojection/copy path exists; it stretched
+  crop over the full lens.
 
 ## Current Goal List
 
@@ -62,7 +69,7 @@ Known immediate follow-up:
 5. Expose honest Render Options UI controls only for real renderer-backed visor settings.
 6. Make desktop preview use the same rounded aperture math as the runtime texture generator.
 7. Preserve crop thousandths and render-scale double precision through global/app profile save/load/sync.
-8. Build WPF app, x64 layer, Win32 layer, and MSI cleanly.
+8. Build WPF app, x64 layer, Win32 layer, and MSI cleanly; final reply must include the full MSI path.
 9. Install/stage the new build only after layer compile succeeds.
 10. Verify logs show OpenXR D3D11 visor renderer active/unavailable/failed reason clearly.
 11. Check headset/runtime state before any VR game launch.
