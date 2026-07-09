@@ -48,10 +48,12 @@ XR_APILAYER_cooooked_verticaltangent_overlaytest.json
 openxr-verticaltangent-overlaytest.ini
 .tools/
 .claude/workspaces/
-# Agent safety - never commit these
+# Agent safety - never create or commit these
+# Work with the user's global ~/.claude directory, NOT project-local .claude/
 .claude/
 .agents/
 .devin/
-# Preserve any local AI workspace configs
+.claude/**
+# Preserve documentation
 !.gitignore
-!AGENTS.md
+!agents.md
