@@ -4,6 +4,26 @@
 > quad drew), and current product uses Technique C Direct (native D3D11 visor into game eye textures).
 > See `PROJECT_STATUS.md` / `HANDOFF.md`.
 
+## 4.1.89 - 2026-07-10 (Hotfix)
+
+- **REVERTED 4.1.88 bad defaults** that broke Pistol Whip at startup: commit a02f6de applied the user's
+  current settings as hardcoded defaults, including `mask_size=1` (invisible mask) and incorrect render
+  crop values (0.2 vertical instead of 0.18, etc.). These were never tested and caused immediate crashes.
+  Reverted to original good defaults: render crop 0.18/0.09 vertical, 0.80 horizontal, mask_size=0.82,
+  foveated_center_compensation=0. Per-app profiles remain unaffected. Users with 4.1.88 should update.
+- **Fixed critical D3D11 initialization crash**: `FreeLibrary(dxcLib)` was being called at line 811 in
+  `InitD3D11MaskRenderer()`, BEFORE shader blob pointers were used to create vertex/pixel shaders and
+  input layouts (lines 814, 823, 836). This caused 0xC0000005 access violations when reading freed DLL
+  memory. Moved `FreeLibrary` to after all blob usage completes, and added it to all error paths. This
+  was causing Pistol Whip (and other games) to crash immediately at startup.
+- **Updated build.ps1** to automatically deploy native DLLs (`XR_APILAYER_cooooked_xrviewlab.dll` x64/Win32)
+  to publish directory and dist folder on every build, ensuring users get updated binaries with each
+  release without manual intervention.
+- Known issues NOT yet fixed: pin dragging in mask preview (Focusable="True" added but not fully
+  functional), inner-low (nose bridge) slider not producing visible change in lens preview (may need
+  exaggerated slider ranges or stencil-mode logic fix), edge-smear-fix logic still needs investigation.
+- `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
 ## 4.1.88 - 2026-07-10
 
 - **Removed non-functional "Curve Exp" and "Inner X" sliders** from the UI and all internal plumbing. Both were experimental controls that had no real effect on the mask geometry; they were confusing and dead code. Removed `MaskInnerBridgeCurveExpKey` and `MaskInnerStartXKey` constants from `MainWindow.cs`, corresponding handler methods, XML rows in `MainWindow.xaml`, and native-layer global variables + reads in `dllmain.cpp`. Removed `_innerBridgeCurveExp` and `_innerStartX` fields and enum entries from `BeanMaskEditor.cs`, plus all related drag detection and pin drawing.
