@@ -266,10 +266,10 @@ public sealed class BeanMaskEditor : FrameworkElement
 			double y = apexY + sy;
 			points.Add(new Point(Math.Clamp(x, area.Left, area.Right), Math.Clamp(y, area.Top, area.Bottom)));
 		}
-		if (InnerLowerY > 0.0001)
+		if (InnerLowerY > 0.0)
 		{
 			double bandTopY = Math.Clamp(y1 - InnerLowerY * (y1 - y0), y0, y1);
-			AddNoseBridgeCurve(points, centerX, y1, innerX, bandTopY, InnerLowerY * 0.5, InnerBridgeWidth, area);
+			AddNoseBridgeCurve(points, centerX, y1, innerX, bandTopY, InnerLowerY, InnerBridgeWidth, area);
 		}
 		else
 		{
@@ -337,7 +337,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 		var pins = PinPositions(area);
 		DrawPin(dc, pins.outerApex, Color.FromRgb(255, 96, 105));
 		DrawPin(dc, pins.innerLower, Color.FromRgb(255, 180, 90));
-		if (InnerLowerY > 0.0001)
+		if (InnerLowerY > 0.0)
 		{
 			DrawPin(dc, pins.innerBridge, Color.FromRgb(120, 200, 255));
 		}
@@ -384,7 +384,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 		{
 			_dragTarget = DragTarget.OuterApex;
 		}
-		else if (InnerLowerY > 0.0001 && DistanceSquared(p, pins.innerBridge) <= 144.0)
+		else if (InnerLowerY > 0.0 && DistanceSquared(p, pins.innerBridge) <= 144.0)
 		{
 			_dragTarget = DragTarget.InnerBridge;
 		}
