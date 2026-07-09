@@ -46,6 +46,13 @@ double visorHeight = 1.0;
 double visorCurve = 0.75;
 double visorOffsetX = 0.0;
 double visorOffsetY = 0.0;
+double visorOuterApexY = 0.0;
+double visorInnerLowerY = 0.0;
+double visorInnerBridgeWidth = 0.5;
+double visorInnerBridgeRise = 0.0;
+double visorInnerBridgePeakX = 0.5;
+double visorInnerBridgeSteepness = 0.5;
+double visorInnerBridgeCurveExp = 0.5;
 // OPTIONAL, default OFF. The native visor is the D3D11 direct-write path (drawn at
 // xrReleaseSwapchainImage). This flag enables the SEPARATE legacy approach that
 // reshapes the runtime hidden-area mesh into the visor via xrGetVisibilityMaskKHR.
@@ -170,6 +177,7 @@ struct D3D11MaskState {
     ID3D11PixelShader* ps = nullptr;
     ID3D11InputLayout* layout = nullptr;
     ID3D11Buffer* vb = nullptr;
+    ID3D11Buffer* jitterCB = nullptr;  // Constant buffer for jitter offset + alpha (4-pass AA)
     ID3D11RasterizerState* rs = nullptr;
     ID3D11BlendState* bs = nullptr;
     ID3D11DepthStencilState* dss = nullptr;
@@ -720,6 +728,11 @@ DXGI_FORMAT GetNonSRGBFormat(DXGI_FORMAT fmt) {
     }
 }
 
+// Solid opaque black, single pass, blending disabled (see BlendEnable=FALSE in
+// InitD3D11MaskRenderer). Alpha is hardcoded 1.0 and there is no constant buffer:
+// a prior JitterCB (unbound → read as 0) made the pixel shader emit alpha=0, which
+// is fragile if the compositor ever honours the eye texture's alpha. Do NOT
+// reintroduce alpha blending for multi-pass AA — that tints the whole interior grey.
 static const char kVisorVS[] =
     "float4 main(float2 pos : POSITION) : SV_POSITION {"
     " return float4(pos.x, pos.y, 0.0f, 1.0f); }";
@@ -779,6 +792,23 @@ bool InitD3D11MaskRenderer() {
         return false;
     }
     if (errBlob) { errBlob->Release(); errBlob = nullptr; }
+
+    // Create jitter constant buffer (16 bytes: jitter.x, jitter.y, alpha, pad)
+    D3D11_BUFFER_DESC cbd{};
+    cbd.ByteWidth = 16;
+    cbd.Usage = D3D11_USAGE_DYNAMIC;
+    cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    if (FAILED(g_d3d11Mask.device->CreateBuffer(&cbd, nullptr, &g_d3d11Mask.jitterCB))) {
+        Log("d3d11 mask: jitter constant buffer create failed\n");
+        vsBlob->Release();
+        psBlob->Release();
+        FreeLibrary(dxcLib);
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+
+    // Free d3dcompiler only after all blobs are released (fixes Pistol Whip crash)
     FreeLibrary(dxcLib);
 
     hr = g_d3d11Mask.device->CreateVertexShader(
@@ -845,6 +875,70 @@ bool InitD3D11MaskRenderer() {
     return true;
 }
 
+// Geometric interpolation for the Curve slider: maps 0..1 to exp 32..2.
+// Shared with BeanMaskEditor.CurveExponent in the UI preview.
+static float VisorCurveExponent(double curve) {
+    const double clamped = std::clamp(curve, 0.0, 1.0);
+    return static_cast<float>(32.0 * std::pow(2.0 / 32.0, clamped));
+}
+
+// Converts UI y-DOWN (WPF) to NDC y-UP (D3D) for Apex Y.
+// The preview canvas is y-DOWN while native geometry is built in y-UP D3D NDC.
+static float ApexYFromConfigNdc(double configY) {
+    return static_cast<float>(-configY);
+}
+
+// Kidney-bean inner-edge curve: cubic Bézier with horizontal tangents at both ends
+// for a natural seal profile. New parameters (rise, peakX, steepness, curveExp) refine shape.
+static void BuildNoseBridgeCurve(
+    float* vertsOut, uint32_t& v, uint32_t vertCapacity,
+    float startX, float startY, float endX, float endY,
+    double bridgeHeight, double bridgeWidth,
+    double bridgeRise, double bridgePeakX, double bridgeSteepness, double bridgeCurveExp) {
+    const float dx = endX - startX;
+    const float dy = endY - startY;
+    if (std::abs(dx) < 0.001f || std::abs(dy) < 0.001f) {
+        if (v + 6 <= vertCapacity) {
+            vertsOut[v*2] = startX; vertsOut[v*2+1] = startY; ++v;
+            vertsOut[v*2] = endX; vertsOut[v*2+1] = endY; ++v;
+        }
+        return;
+    }
+
+    const double clampedBridgeWidth = std::clamp(bridgeWidth, 0.0, 1.0);
+    const double clampedSteepness = std::clamp(bridgeSteepness, 0.0, 1.0);
+    const double clampedRise = std::clamp(bridgeRise, 0.0, 0.5);
+    const double clampedPeakX = std::clamp(bridgePeakX, 0.0, 1.0);
+
+    // Handle length is proportional to the horizontal span, bridge width, and steepness.
+    const float baseHandleLength = std::abs(dx) * static_cast<float>(0.3 + clampedBridgeWidth * 0.4);
+    const float handleLength = baseHandleLength * static_cast<float>(0.5 + clampedSteepness * 0.5);
+
+    // Control points: P1 and P2 sit at the SAME Y-level as their respective endpoints
+    // so the tangent vectors at the start and end are purely horizontal.
+    // PeakX shifts where the handles are positioned horizontally.
+    const float p1x = startX + handleLength * static_cast<float>(0.5 + clampedPeakX * 0.5);
+    const float p1y = startY + static_cast<float>(clampedRise * dy);  // Horizontal tangent at start, with rise adjustment
+    const float p2x = endX - handleLength * static_cast<float>(1.0 - clampedPeakX * 0.5);
+    const float p2y = endY - static_cast<float>(clampedRise * dy);    // Horizontal tangent at end, with rise adjustment
+
+    const uint32_t segCount = 32;
+    for (uint32_t i = 0; i <= segCount; ++i) {
+        if (v >= vertCapacity) break;
+        const float t = static_cast<float>(i) / static_cast<float>(segCount);
+        const float mt = 1.0f - t;
+        const float mt2 = mt * mt;
+        const float mt3 = mt2 * mt;
+        const float t2 = t * t;
+        const float t3 = t2 * t;
+
+        const float x = mt3 * startX + 3.0f * mt2 * t * p1x + 3.0f * mt * t2 * p2x + t3 * endX;
+        const float y = mt3 * startY + 3.0f * mt2 * t * p1y + 3.0f * mt * t2 * p2y + t3 * endY;
+
+        vertsOut[v*2] = x; vertsOut[v*2+1] = y; ++v;
+    }
+}
+
 // Builds visor border as a flat triangle list (unindexed) in the given NDC bbox.
 // Output: float2 pairs. Returns vertex count (= triangle count * 3).
 // Shape math identical to BeanMaskEditor.BuildGeometry.
@@ -863,7 +957,8 @@ uint32_t BuildVisorBorderVerts(
                     + (bboxW * 0.5f - hw) * static_cast<float>(visorOffsetX);
     const float cy  = (bboxMinY + bboxMaxY) * 0.5f
                     + (bboxH * 0.5f - hh) * static_cast<float>(visorOffsetY);
-    const float exp = 32.0f - std::clamp(static_cast<float>(visorCurve), 0.0f, 1.0f) * 30.0f;
+    const float exp = VisorCurveExponent(visorCurve);
+    const float apexY = std::clamp(cy + ApexYFromConfigNdc(visorOuterApexY) * hh, bboxMinY + 0.001f, bboxMaxY - 0.001f);
 
     const uint32_t segCount = (std::min)(96u, vertCapacity / 6u);
     if (segCount < 4u) return 0;
@@ -875,10 +970,11 @@ uint32_t BuildVisorBorderVerts(
         const float c  = std::cos(angle);
         const float s  = std::sin(angle);
         const float sc = (c < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(c), 2.0f / exp);
-        const float ss = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp);
+        const float syScale = s < 0.0f ? apexY - (cy - hh) : (cy + hh) - apexY;
+        const float ss = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp) * syScale;
         inner[i] = {
             std::clamp(cx + sc * hw, bboxMinX + 0.001f, bboxMaxX - 0.001f),
-            std::clamp(cy + ss * hh, bboxMinY + 0.001f, bboxMaxY - 0.001f)};
+            std::clamp(apexY + ss, bboxMinY + 0.001f, bboxMaxY - 0.001f)};
     }
 
     uint32_t v = 0;
@@ -921,9 +1017,10 @@ uint32_t BuildOpenInnerEyeVisorVerts(
     const float hh  = bboxH * 0.5f * sh;
     const float cx  = (bboxMinX + bboxMaxX) * 0.5f;
     const float cy  = (bboxMinY + bboxMaxY) * 0.5f;
-    const float exp = 32.0f - std::clamp(static_cast<float>(visorCurve), 0.0f, 1.0f) * 30.0f;
+    const float exp = VisorCurveExponent(visorCurve);
     const float y0 = std::clamp(cy - hh, bboxMinY + 0.001f, bboxMaxY - 0.001f);
     const float y1 = std::clamp(cy + hh, bboxMinY + 0.001f, bboxMaxY - 0.001f);
+    const float apexY = std::clamp(cy + ApexYFromConfigNdc(visorOuterApexY) * (y1 - y0), y0 + 0.001f, y1 - 0.001f);
     if (y1 <= y0) return 0;
 
     uint32_t v = 0;
@@ -954,9 +1051,10 @@ uint32_t BuildOpenInnerEyeVisorVerts(
         const float c = (std::max)(0.0f, std::cos(t));
         const float s = std::sin(t);
         const float cxOffset = std::pow(c, 2.0f / exp) * hw;
-        const float sy = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp) * hh;
+        const float syScale = s < 0.0f ? apexY - y0 : y1 - apexY;
+        const float sy = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp) * syScale;
         const float x = outerLeft ? (cx - cxOffset) : (cx + cxOffset);
-        const float y = cy + sy;
+        const float y = apexY + sy;
         curve[i] = {
             std::clamp(x, bboxMinX + 0.001f, bboxMaxX - 0.001f),
             std::clamp(y, bboxMinY + 0.001f, bboxMaxY - 0.001f)};
@@ -972,6 +1070,19 @@ uint32_t BuildOpenInnerEyeVisorVerts(
         } else {
             tri(x0c, y0c, x1c, y1c, outerX, y0c);
             tri(outerX, y0c, x1c, y1c, outerX, y1c);
+        }
+    }
+
+    // Add inner-lower nose-bridge curve if enabled
+    if (visorInnerLowerY > 0.0001) {
+        const float bandTopY = std::clamp(y1 - static_cast<float>(visorInnerLowerY) * (y1 - y0), y0, y1);
+        const float innerX = outerLeft ? bboxMaxX : bboxMinX;
+        BuildNoseBridgeCurve(vertsOut, v, vertCapacity, cx, y1, innerX, bandTopY, visorInnerLowerY * 0.5, visorInnerBridgeWidth,
+                             visorInnerBridgeRise, visorInnerBridgePeakX, visorInnerBridgeSteepness, visorInnerBridgeCurveExp);
+    } else {
+        if (v + 6 <= vertCapacity) {
+            const float innerX = outerLeft ? bboxMaxX : bboxMinX;
+            tri(curve[segCount].first, curve[segCount].second, innerX, y1, innerX, y1);
         }
     }
 
@@ -1031,7 +1142,7 @@ uint32_t BuildProjectedPartnerVisorVerts(
     const float sh = std::clamp(static_cast<float>(visorSize * visorHeight), 0.01f, 1.0f);
     const float hw = sw;
     const float hh = sh;
-    const float exp = 32.0f - std::clamp(static_cast<float>(visorCurve), 0.0f, 1.0f) * 30.0f;
+    const float exp = VisorCurveExponent(visorCurve);
     constexpr uint32_t segCount = 96u;
     constexpr float kPi = 3.14159265358979323846f;
 
@@ -1211,6 +1322,17 @@ void DrawVisorBorderToTexture(
     g_d3d11Mask.context->IASetInputLayout(g_d3d11Mask.layout);
     g_d3d11Mask.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     g_d3d11Mask.context->IASetVertexBuffers(0, 1, &g_d3d11Mask.vb, &stride, &offset);
+    
+    // Set jitter constant buffer (no jitter, alpha=1.0 for single-pass opaque draw)
+    float jitterData[4] = {0.0f, 0.0f, 1.0f, 0.0f};
+    D3D11_MAPPED_SUBRESOURCE cbMapped{};
+    if (SUCCEEDED(g_d3d11Mask.context->Map(g_d3d11Mask.jitterCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &cbMapped))) {
+        memcpy(cbMapped.pData, jitterData, sizeof(jitterData));
+        g_d3d11Mask.context->Unmap(g_d3d11Mask.jitterCB, 0);
+    }
+    g_d3d11Mask.context->VSSetConstantBuffers(0, 1, &g_d3d11Mask.jitterCB);
+    g_d3d11Mask.context->PSSetConstantBuffers(0, 1, &g_d3d11Mask.jitterCB);
+    
     g_d3d11Mask.context->Draw(vertCount, 0);
 
     if (!g_diagDrawOk.exchange(true))
@@ -2049,6 +2171,20 @@ void LoadConfig() {
         ReadProfileDword(L"visor_size", profileVisorSize);
         ReadProfileDword(L"visor_width", profileVisorWidth);
         ReadProfileDword(L"visor_height", profileVisorHeight);
+        DWORD profileVisorOuterApexY = static_cast<DWORD>(std::lround((std::clamp(visorOuterApexY, -0.5, 0.5) + 0.5) * 1000.0));
+        DWORD profileVisorInnerLowerY = static_cast<DWORD>(std::lround(visorInnerLowerY * 1000.0));
+        DWORD profileVisorInnerBridgeWidth = static_cast<DWORD>(std::lround(visorInnerBridgeWidth * 1000.0));
+        DWORD profileVisorInnerBridgeRise = static_cast<DWORD>(std::lround(visorInnerBridgeRise * 1000.0));
+        DWORD profileVisorInnerBridgePeakX = static_cast<DWORD>(std::lround(visorInnerBridgePeakX * 1000.0));
+        DWORD profileVisorInnerBridgeSteepness = static_cast<DWORD>(std::lround(visorInnerBridgeSteepness * 1000.0));
+        DWORD profileVisorInnerBridgeCurveExp = static_cast<DWORD>(std::lround(visorInnerBridgeCurveExp * 1000.0));
+        ReadProfileDword(L"mask_outer_apex_y", profileVisorOuterApexY);
+        ReadProfileDword(L"mask_inner_lower_y", profileVisorInnerLowerY);
+        ReadProfileDword(L"mask_inner_bridge_width", profileVisorInnerBridgeWidth);
+        ReadProfileDword(L"mask_inner_bridge_rise", profileVisorInnerBridgeRise);
+        ReadProfileDword(L"mask_inner_bridge_peak_x", profileVisorInnerBridgePeakX);
+        ReadProfileDword(L"mask_inner_bridge_steepness", profileVisorInnerBridgeSteepness);
+        ReadProfileDword(L"mask_inner_bridge_curve_exp", profileVisorInnerBridgeCurveExp);
         if (!ReadProfileDouble(L"render_scale", renderScale)) {
             ReadProfileDword(L"render_scale", profileRenderScale);
             renderScale = DwordToRenderScale(profileRenderScale, renderScale);
@@ -2066,6 +2202,13 @@ void LoadConfig() {
         maskRightBias = SignedMillisToUnit(profileMaskRightBias, maskRightBias);
         maskTopCurve = SignedMillisToUnit(profileMaskTopCurve, maskTopCurve);
         maskBottomCurve = SignedMillisToUnit(profileMaskBottomCurve, maskBottomCurve);
+        visorOuterApexY = SignedMillisToUnit(profileVisorOuterApexY, visorOuterApexY);
+        visorInnerLowerY = static_cast<double>(profileVisorInnerLowerY) / 1000.0;
+        visorInnerBridgeWidth = static_cast<double>(profileVisorInnerBridgeWidth) / 1000.0;
+        visorInnerBridgeRise = static_cast<double>(profileVisorInnerBridgeRise) / 1000.0;
+        visorInnerBridgePeakX = static_cast<double>(profileVisorInnerBridgePeakX) / 1000.0;
+        visorInnerBridgeSteepness = static_cast<double>(profileVisorInnerBridgeSteepness) / 1000.0;
+        visorInnerBridgeCurveExp = static_cast<double>(profileVisorInnerBridgeCurveExp) / 1000.0;
 
         splitMode = profileSplitMode != 0;
         totalTangent = MillisToRenderHeight(profileTotal, totalTangent);
@@ -2086,6 +2229,13 @@ void LoadConfig() {
     visorSize = std::clamp(ReadDoubleSetting(L"mask_size", 0.82), 0.05, 1.0);
     visorWidth = std::clamp(ReadDoubleSetting(L"mask_width_scale", 1.0), 0.25, 2.0);
     visorHeight = std::clamp(ReadDoubleSetting(L"mask_height_scale", 1.0), 0.25, 2.0);
+    visorOuterApexY = std::clamp(ReadDoubleSetting(L"mask_outer_apex_y", 0.0), -0.5, 0.5);
+    visorInnerLowerY = std::clamp(ReadDoubleSetting(L"mask_inner_lower_y", 0.0), 0.0, 0.333);
+    visorInnerBridgeWidth = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_width", 0.5), 0.0, 1.0);
+    visorInnerBridgeRise = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_rise", 0.0), 0.0, 0.5);
+    visorInnerBridgePeakX = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_peak_x", 0.5), 0.0, 1.0);
+    visorInnerBridgeSteepness = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_steepness", 0.5), 0.0, 1.0);
+    visorInnerBridgeCurveExp = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_curve_exp", 0.5), 0.0, 1.0);
     if (profileVisorSize > 0)
         visorSize = std::clamp(static_cast<double>(profileVisorSize) / 1000.0, 0.05, 1.0);
     if (profileVisorWidth > 0)
@@ -2539,7 +2689,7 @@ bool ApplyVisorMask(uint32_t viewIndex, XrVisibilityMaskKHR* mask) {
     const float hh  = bboxH * 0.5f * sh;
     const float cx  = (minX + maxX) * 0.5f + (bboxW * 0.5f - hw) * static_cast<float>(visorOffsetX);
     const float cy  = (minY + maxY) * 0.5f + (bboxH * 0.5f - hh) * static_cast<float>(visorOffsetY);
-    const float exp = 32.0f - std::clamp(static_cast<float>(visorCurve), 0.0f, 1.0f) * 30.0f;
+    const float exp = VisorCurveExponent(visorCurve);
 
     constexpr float kTwoPi = 6.28318530717958647692f;
     std::vector<XrVector2f> inner(segCount);

@@ -49,5 +49,5 @@ public class App : Application
 	}
 
 	[DllImport("user32.dll", CharSet = CharSet.Unicode)]
-	private static extern IntPtr FindWindowW(string className, string windowName);
+	private static extern IntPtr FindWindowW(string? className, string? windowName);
 }

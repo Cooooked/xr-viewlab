@@ -327,6 +327,9 @@ public sealed class AppProfile : INotifyPropertyChanged
 	public double VisorSize { get; set; }
 	public double VisorWidth { get; set; }
 	public double VisorHeight { get; set; }
+	public double VisorOuterApexY { get; set; }
+	public double VisorInnerLowerY { get; set; }
+	public double VisorInnerBridgeWidth { get; set; }
 
 	public string Summary
 	{

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -28,15 +29,15 @@ public sealed class ReShadeRemoteWindow : Window
     bool _applying;
     uint _lastHb; DateTime _lastHbChange = DateTime.MinValue;
 
-    TextBlock _status = null!;
-    Border _gameplay = null!, _tuning = null!, _btnReposition = null!, _btnTransform = null!;
+    TextBlock _status = null!, _setup = null!;
+    Border _gameplay = null!, _tuning = null!, _btnInstall = null!, _btnReposition = null!, _btnTransform = null!;
     CheckBox _menu = null!, _headless = null!, _onTop = null!;
     Window? _reposWin, _transWin;
 
     public ReShadeRemoteWindow()
     {
-        Title = "ReShade Remote";
-        Width = 320; Height = 392; WindowStyle = WindowStyle.None; AllowsTransparency = true;
+        Title = "Advanced: ReShade Remote";
+        Width = 340; Height = 486; WindowStyle = WindowStyle.None; AllowsTransparency = true;
         Background = Brushes.Transparent; Foreground = Text;
         FontFamily = new FontFamily("Segoe UI"); FontSize = 14;
         WindowStartupLocation = WindowStartupLocation.CenterScreen; ResizeMode = ResizeMode.NoResize;
@@ -63,6 +64,12 @@ public sealed class ReShadeRemoteWindow : Window
 
         _status = new TextBlock { Foreground = Muted, FontSize = 12, Margin = new Thickness(0, 0, 0, 8) };
         body.Children.Add(_status);
+        _setup = new TextBlock { Foreground = Muted, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
+        body.Children.Add(_setup);
+
+        body.Children.Add(Header("SETUP"));
+        _btnInstall = RedButton("Install component", InstallPayload);
+        body.Children.Add(_btnInstall);
 
         body.Children.Add(Header("MODE"));
         _gameplay = Chip("Gameplay", () => SetMode(0));
@@ -95,9 +102,9 @@ public sealed class ReShadeRemoteWindow : Window
         bar.ColumnDefinitions.Add(new ColumnDefinition());
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         DockPanel.SetDock(bar, Dock.Top);
-        var t = new TextBlock { Text = "RESHADE  REMOTE", FontSize = 13, FontWeight = FontWeights.Bold, Foreground = Text, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
+        var t = new TextBlock { Text = "ADVANCED  RESHADE  REMOTE", FontSize = 13, FontWeight = FontWeights.Bold, Foreground = Text, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
         Grid.SetColumn(t, 0);
-        var x = new TextBlock { Text = "✕", FontSize = 14, Foreground = Muted, Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(14, 8, 16, 8) };
+        var x = new TextBlock { Text = "X", FontSize = 14, Foreground = Muted, Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(14, 8, 16, 8) };
         x.MouseLeftButtonDown += (_, e) => { e.Handled = true; Close(); };
         x.MouseEnter += (_, _) => x.Foreground = Red; x.MouseLeave += (_, _) => x.Foreground = Muted;
         Grid.SetColumn(x, 1);
@@ -143,9 +150,17 @@ public sealed class ReShadeRemoteWindow : Window
     {
         var b = new Border { Background = Red, BorderBrush = RedBorder, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3), Cursor = Cursors.Hand, Margin = new Thickness(0, 6, 0, 0) };
         b.Child = new TextBlock { Text = text, Foreground = Text, HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(0, 8, 0, 8) };
-        b.MouseLeftButtonUp += (_, _) => onClick();
-        b.MouseEnter += (_, _) => b.Background = RedHover; b.MouseLeave += (_, _) => b.Background = Red;
+        b.MouseLeftButtonUp += (_, _) => { if (b.IsEnabled) onClick(); };
+        b.MouseEnter += (_, _) => { if (b.IsEnabled) b.Background = RedHover; };
+        b.MouseLeave += (_, _) => { if (b.IsEnabled) b.Background = Red; };
         return b;
+    }
+
+    static void SetButtonEnabled(Border b, bool enabled)
+    {
+        b.IsEnabled = enabled;
+        b.Opacity = enabled ? 1.0 : 0.45;
+        b.Cursor = enabled ? Cursors.Hand : Cursors.Arrow;
     }
 
     Border PadButton(string text, Action onClick)
@@ -231,7 +246,7 @@ public sealed class ReShadeRemoteWindow : Window
         bar.ColumnDefinitions.Add(new ColumnDefinition());
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var tt = new TextBlock { Text = title, Foreground = Head, FontSize = 10, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-        var cx = new TextBlock { Text = "✕", Foreground = Muted, Cursor = Cursors.Hand, Padding = new Thickness(8, 2, 2, 2) };
+        var cx = new TextBlock { Text = "X", Foreground = Muted, Cursor = Cursors.Hand, Padding = new Thickness(8, 2, 2, 2) };
         cx.MouseLeftButtonDown += (_, e) => { e.Handled = true; w.Hide(); }; Grid.SetColumn(cx, 1);
         bar.Children.Add(tt); bar.Children.Add(cx);
         bar.MouseLeftButtonDown += (_, e) => { if (!ReferenceEquals(e.OriginalSource, cx) && e.ButtonState == MouseButtonState.Pressed) { try { w.DragMove(); } catch { } } };
@@ -258,9 +273,9 @@ public sealed class ReShadeRemoteWindow : Window
     {
         const float step = 0.03f;
         var pad = Grid3(
-            null, PadButton("↑\nup", () => NudgePos(0, step, 0)), null,
-            PadButton("←\nleft", () => NudgePos(-step, 0, 0)), PadButton("↓\ndown", () => NudgePos(0, -step, 0)), PadButton("→\nright", () => NudgePos(step, 0, 0)),
-            PadButton("⊕\ncloser", () => NudgePos(0, 0, -step)), null, PadButton("⊖\nfarther", () => NudgePos(0, 0, step))
+            null, PadButton("Up", () => NudgePos(0, step, 0)), null,
+            PadButton("Left", () => NudgePos(-step, 0, 0)), PadButton("Down", () => NudgePos(0, -step, 0)), PadButton("Right", () => NudgePos(step, 0, 0)),
+            PadButton("Closer", () => NudgePos(0, 0, -step)), null, PadButton("Farther", () => NudgePos(0, 0, step))
         );
         var sp = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
         sp.Children.Add(pad);
@@ -272,30 +287,132 @@ public sealed class ReShadeRemoteWindow : Window
     {
         var sp = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
         sp.Children.Add(SubHead("SIZE"));
-        sp.Children.Add(Row(PadButton("－ smaller", () => ScaleQuad(0.92f)), PadButton("＋ bigger", () => ScaleQuad(1.08f))));
-        sp.Children.Add(SubHead("ROTATE  (5° / press)"));
+        sp.Children.Add(Row(PadButton("- smaller", () => ScaleQuad(0.92f)), PadButton("+ bigger", () => ScaleQuad(1.08f))));
+        sp.Children.Add(SubHead("ROTATE  (5 deg / press)"));
         sp.Children.Add(Grid3(
-            PadButton("yaw ⟲", () => RotateQuad('y', -5)), PadButton("pitch ⤒", () => RotateQuad('x', -5)), PadButton("roll ⟲", () => RotateQuad('z', -5)),
-            PadButton("yaw ⟳", () => RotateQuad('y', 5)), PadButton("pitch ⤓", () => RotateQuad('x', 5)), PadButton("roll ⟳", () => RotateQuad('z', 5))
+            PadButton("Yaw -", () => RotateQuad('y', -5)), PadButton("Pitch -", () => RotateQuad('x', -5)), PadButton("Roll -", () => RotateQuad('z', -5)),
+            PadButton("Yaw +", () => RotateQuad('y', 5)), PadButton("Pitch +", () => RotateQuad('x', 5)), PadButton("Roll +", () => RotateQuad('z', 5))
         ));
         sp.Children.Add(SubHead("OPACITY"));
-        sp.Children.Add(Row(PadButton("－", () => AlphaQuad(-0.1f)), PadButton("＋", () => AlphaQuad(0.1f))));
+        sp.Children.Add(Row(PadButton("-", () => AlphaQuad(-0.1f)), PadButton("+", () => AlphaQuad(0.1f))));
         sp.Children.Add(RedButton("Reset transform", ResetQuad));
         return Sidecar("TRANSFORM", sp);
     }
 
     UIElement SubHead(string s) => new TextBlock { Text = s, Foreground = Muted, FontSize = 9, FontWeight = FontWeights.SemiBold, Margin = new Thickness(2, 9, 0, 2) };
 
+    static string? PayloadRoot()
+    {
+        try
+        {
+            string installed = Path.Combine(AppContext.BaseDirectory, "ReShadePayload");
+            if (File.Exists(Path.Combine(installed, "ReShade64.dll")) &&
+                File.Exists(Path.Combine(installed, "ReShade64_XR.json")))
+            {
+                return installed;
+            }
+
+            string dev = Path.Combine(Directory.GetCurrentDirectory(), "ReShadePayload");
+            if (File.Exists(Path.Combine(dev, "ReShade64.dll")) &&
+                File.Exists(Path.Combine(dev, "ReShade64_XR.json")))
+            {
+                return dev;
+            }
+        }
+        catch
+        {
+        }
+        return null;
+    }
+
+    static bool HasBundledPayload() => PayloadRoot() != null;
+
+    static string PsQuote(string value) => "'" + value.Replace("'", "''") + "'";
+
+    void InstallPayload()
+    {
+        string? payload = PayloadRoot();
+        if (payload == null)
+        {
+            _setup.Text = "Unavailable: this ViewLab build does not include the ReShade Remote component.";
+            return;
+        }
+
+        string command =
+            "$ErrorActionPreference='Stop';" +
+            "$src=" + PsQuote(payload) + ";" +
+            "$dest='C:\\ProgramData\\ReShade';" +
+            "New-Item -ItemType Directory -Force -Path $dest | Out-Null;" +
+            "Copy-Item -LiteralPath (Join-Path $src 'ReShade64.dll') -Destination (Join-Path $dest 'ReShade64.dll') -Force;" +
+            "Copy-Item -LiteralPath (Join-Path $src 'ReShade64_XR.json') -Destination (Join-Path $dest 'ReShade64_XR.json') -Force;" +
+            "$key='HKLM:\\SOFTWARE\\Khronos\\OpenXR\\1\\ApiLayers\\Implicit';" +
+            "New-Item -Path $key -Force | Out-Null;" +
+            "$json='C:\\ProgramData\\ReShade\\ReShade64_XR.json';" +
+            "New-ItemProperty -Path $key -Name $json -PropertyType DWord -Value 0 -Force | Out-Null;";
+
+        ProcessStartInfo psi = new()
+        {
+            FileName = "powershell.exe",
+            Arguments = "-NoProfile -ExecutionPolicy Bypass -Command " + PsQuote(command),
+            UseShellExecute = true,
+            Verb = "runas",
+            WindowStyle = ProcessWindowStyle.Hidden
+        };
+
+        try
+        {
+            Process.Start(psi);
+            _setup.Text = "Installer launched. Approve Windows permission, then restart the VR game.";
+        }
+        catch
+        {
+            _setup.Text = "Install cancelled. ReShade Remote needs permission to copy the layer to ProgramData and register OpenXR.";
+        }
+    }
+
+    void UpdateSetupText(bool live)
+    {
+        bool hasPayload = HasBundledPayload();
+        SetButtonEnabled(_btnInstall, hasPayload && !live);
+        SetButtonEnabled(_gameplay, live);
+        SetButtonEnabled(_tuning, live);
+        SetButtonEnabled(_btnReposition, live);
+        SetButtonEnabled(_btnTransform, live);
+        _menu.IsEnabled = live;
+        _headless.IsEnabled = live;
+        _onTop.IsEnabled = live;
+
+        if (live)
+        {
+            _setup.Text = "Connected: ReShade Remote component is running.";
+        }
+        else if (!hasPayload)
+        {
+            _setup.Text = "Unavailable: this build does not include the ReShade Remote component.";
+        }
+        else
+        {
+            _setup.Text = "Ready to install. This deploys the patched ReShade OpenXR layer globally; restart the VR game after installing.";
+        }
+    }
+
     void OnTick(object? sender, EventArgs e)
     {
         if (!_svc.Connected) _svc.TryConnect();
-        if (!_svc.Connected) { _status.Text = "○  Not connected"; _status.Foreground = Muted; return; }
+        if (!_svc.Connected)
+        {
+            _status.Text = "[Unavailable] Control channel failed";
+            _status.Foreground = Muted;
+            UpdateSetupText(live: false);
+            return;
+        }
 
         var b = _svc.ReadBlock();
         if (b.heartbeat != _lastHb) { _lastHb = b.heartbeat; _lastHbChange = DateTime.Now; }
         bool live = (DateTime.Now - _lastHbChange).TotalSeconds < 2.0;
-        _status.Text = live ? "●  Connected — ReShade running" : "●  Connected — start a game to apply";
+        _status.Text = live ? "[Connected] ReShade running" : (HasBundledPayload() ? "[Ready] Install or start game" : "[Unavailable] Component missing");
         _status.Foreground = live ? Green : Amber;
+        UpdateSetupText(live);
 
         _applying = true;
         SetChip(_gameplay, b.xr_mode == 0); SetChip(_tuning, b.xr_mode == 1);

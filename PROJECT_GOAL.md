@@ -15,10 +15,100 @@ for Windows Run. Do not give only the folder path.
 Current latest built installer:
 
 ```text
-F:\AI-Projects\ViewLab\dist\ViewLab-4.1.55.msi
+F:\AI-Projects\ViewLab\dist\ViewLab-4.1.64.msi
 ```
 
-## Current 4.1.55 Work Log
+## Current 4.1.64 Work Log
+
+- Completed the Apex Y / Inner low pass: main UI, per-app profile popup, draggable preview pins,
+  INI/registry persistence, and Direct C native geometry are wired to the same values.
+- Made Direct C shape mode match the preview mode: closed bean for normal stenciling, open-inner single
+  eye when `Stencil outer edges only` is enabled.
+- Extended `edge_smear_fix` with exact submitted-FOV matching, invalid imageRect bounds correction,
+  4-pixel recommended-size alignment, and FOV-weighted recommended-size scaling when original runtime FOV
+  is known.
+- Added original runtime FOV to verbose edge-smear diagnostics.
+- Cleaned ReShade Remote corrupted glyph labels and kept the Advanced popup status-driven.
+- Added `Tests/Verify-ViewLabContracts.ps1` and `AUDIT_2026-07-08.md`.
+- Verification passed: WPF Release build, x64 native Release build, Win32 native Release build, contract
+  script, and full `build.ps1`.
+- Full build produced `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.64.msi`.
+
+## Current 4.1.63 Work Log
+
+- Removed the stale `Technique C direct write` subtext under the `Visor mask` checkbox.
+- Added experimental Direct C visor shape controls: `Apex Y` / `mask_outer_apex_y` and `Inner low` /
+  `mask_inner_lower_y`.
+- Added draggable preview pins for both controls and wired them through global UI, per-app profiles,
+  config/registry persistence, native Direct C geometry, and verbose diagnostics.
+- Expanded Edge Masks hover text to say those modes replace render cropping with masking on that axis,
+  reducing or removing GPU pixel savings.
+- Full build passed and produced `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.63.msi`.
+- Immediate handoff focus: edge-smear/render-stretch remains unresolved at aggressive horizontal/vertical
+  crops and should be investigated as a rendering/composition contract problem, not hidden with guard
+  bands or black strips.
+
+## Current 4.1.62 Work Log
+
+- Applied Claude's Technique C review fixes: release-time Direct C draw now marks the swapchain as
+  covered, and late `xrEndFrame` drawing is fallback-only.
+- Reused cached RTVs in the late Direct C fallback path.
+- Expanded verbose edge-smear contract diagnostics to log baseline data with `edge_smear_fix=0`, plus
+  release/late draw provenance and render scale.
+- Fixed per-app visor stale state: reset deletes `visor_size`, `visor_width`, and `visor_height`; saving
+  with `Use global visor settings` checked writes `visor_size=0`.
+
+## Current 4.1.61 Work Log
+
+- Temporarily hid/bypassed visor Techniques A/B and forced Direct C as the only user-facing visor path.
+- Updated the visor mask preview: normal mode shows the closed bean; `Stencil outer edges only` shows the
+  single-eye open-inner shape that matches the Direct C left-eye model.
+- Hid stale per-app visor X/Y offset controls along with width/height. Size and Curve remain the product
+  controls.
+- Bundled the custom ReShade OpenXR payload copied from the newer AIO/patched ReShade work:
+  `ReShade64.dll`, `ReShade64_XR.json`, and compact reference docs under `ReShadePayload`.
+- Reworked ReShade Remote as `Advanced: ReShade Remote`, with explicit status, a component install
+  action, and disabled controls until the heartbeat is live.
+
+## Current 4.1.60 Work Log
+
+- Refocused the visor mask UI around Technique C: renamed the checkbox to `Visor mask`, removed the
+  redundant `Off` radio, and made stale `visor_technique=off` fall back to Direct C.
+- Removed visible manual visor width/height controls from global and per-app UI. Runtime ignores stale
+  width/height values and uses neutral scale so the visor follows the crop rectangle plus Size/Curve.
+- Added verbose-only edge-smear contract diagnostics covering FOV, imageRect, swapchain size, recommended
+  size, crop values, visibility-mask state, and visor state.
+- ReShade Remote now tells the user whether the required custom shared-memory component is present by
+  heartbeat, and warns when no bundled payload exists.
+- Full build passed and produced `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.60.msi`.
+
+## 4.1.59 Work Log
+
+- Corrected Edge Masks wiring: only the "Both sides" controls drive the real DLL `visual_mask_only` and
+  `horizontal_visual_mask_only` keys. One-sided controls are disabled and old one-sided keys are cleared.
+- Full build passed and produced `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.59.msi`.
+
+## 4.1.58 Work Log
+
+- Full settings/logging/hot-path scan found and fixed more UI/DLL key mismatches:
+  `crop_outer_edges_only`, `visual_mask_only`, and `horizontal_visual_mask_only` are now native-layer
+  inputs, with legacy popup keys retained as fallbacks.
+- Edge-smear FOV comparison logs are now verbose-only and `xrEndFrame` metadata patching uses fixed stack
+  buffers instead of per-frame heap vectors.
+- Aligned visor defaults (`mask_size=0.82`, `mask_corner=0.5`) across UI, DLL, and default INI.
+- Full build passed and produced `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.58.msi`.
+
+## 4.1.57 Work Log
+
+- Replaced the non-working edge-smear pixel guard-band path with an `xrEndFrame` projection-FOV patch:
+  `edge_smear_fix=1` now clamps submitted projection-layer FOV to the cropped `xrLocateViews` FOV and
+  logs locate/before/after FOV values at most once per second.
+- Found the mask-on/mask-off difference: native visor paths skipped the legacy outer-edge-only visibility
+  mask filter, while mask-off still applied it. `edge_smear_fix=1` now preserves the runtime visibility
+  mask in both paths, and the UI writes the DLL's real `outer_edge_visibility_mask_only` key.
+- Full build passed and produced `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.57.msi`.
+
+## 4.1.55 Work Log
 
 - Optimized release-time D3D11 visor/edge drawing by caching runtime swapchain render-target views per
   tracked image/slice and reusing them during release-time direct/edge draws.

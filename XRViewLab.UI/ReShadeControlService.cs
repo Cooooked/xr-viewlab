@@ -41,7 +41,7 @@ public sealed class ReShadeControlService : IDisposable
 
     public bool Connected => _connected;
 
-	public event Action<bool> ConnectionChanged;
+	public event Action<bool>? ConnectionChanged;
 
     public bool TryConnect()
     {

@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.55"
+           Language="1033" Version="4.1.82"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -100,6 +100,8 @@
       <ComponentRef Id="RegEnable"/>
       <ComponentRef Id="RegEnable32"/>
       <ComponentRef Id="StartMenuShortcut"/>
+      <ComponentRef Id="ReShadePayloadFiles"/>
+      <ComponentRef Id="ReShadePayloadDocs"/>
     </Feature>
 
     <InstallExecuteSequence>
@@ -135,8 +137,22 @@
           </Component>
           <Directory Id="ReShadePayloadFolder" Name="ReShadePayload">
             <Component Id="ReShadePayloadFiles" Guid="D73B2F3B-0F6A-4EB5-A9B6-78F0E51F37E5" Win64="yes">
+              <File Id="ReShadePayloadDll" Source="..\ReShadePayload\ReShade64.dll" Name="ReShade64.dll" KeyPath="yes"/>
+              <File Id="ReShadePayloadJson" Source="..\ReShadePayload\ReShade64_XR.json" Name="ReShade64_XR.json"/>
+              <File Id="ReShadePayloadReadme" Source="..\ReShadePayload\README_ViewLab.txt" Name="README_ViewLab.txt"/>
               <RemoveFolder Id="RemoveReShadePayloadFolder" On="uninstall"/>
             </Component>
+            <Directory Id="ReShadePayloadDocsFolder" Name="Docs">
+              <Component Id="ReShadePayloadDocs" Guid="92FDE26A-D9D7-4454-95FF-BD2B04DD097A" Win64="yes">
+                <File Id="ReShadePayloadDocsOverview" Source="..\ReShadePayload\Docs\ReshadeAIO_OVERVIEW.md" Name="ReshadeAIO_OVERVIEW.md" KeyPath="yes"/>
+                <File Id="ReShadePayloadDocsMemory" Source="..\ReShadePayload\Docs\ReshadeAIO_MEMORY.md" Name="ReshadeAIO_MEMORY.md"/>
+                <File Id="ReShadePayloadDocsStatus" Source="..\ReShadePayload\Docs\ReshadeAIO_STATUS.md" Name="ReshadeAIO_STATUS.md"/>
+                <File Id="ReShadePayloadDocsOpenComposite" Source="..\ReShadePayload\Docs\OpenComposite_ReShade_fix.md" Name="OpenComposite_ReShade_fix.md"/>
+                <File Id="ReShadePayloadDocsDeployReference" Source="..\ReShadePayload\Docs\Deploy-ReShade.reference.ps1" Name="Deploy-ReShade.reference.ps1"/>
+                <File Id="ReShadePayloadDocsAddGameReference" Source="..\ReShadePayload\Docs\Add-Game.reference.ps1" Name="Add-Game.reference.ps1"/>
+                <RemoveFolder Id="RemoveReShadePayloadDocsFolder" On="uninstall"/>
+              </Component>
+            </Directory>
           </Directory>
           <Component Id="RegEnable" Guid="7CFF3A28-702B-49EB-BD2C-CFD2B2A7FA77" Win64="yes">
             <RegistryValue Root="HKLM"
