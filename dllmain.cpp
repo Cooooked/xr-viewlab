@@ -1950,7 +1950,10 @@ void LoadConfig() {
     foveatedCenterCompensation = ReadBoolSetting(L"foveated_center_compensation", false);
     visualMaskOnly = ReadBoolSetting(L"visual_mask_only", false);
     horizontalVisualMaskOnly = ReadBoolSetting(L"horizontal_visual_mask_only", false);
-    outerEdgeVisibilityMaskOnly = ReadBoolSetting(L"outer_edge_visibility_mask_only", true);
+    // UI checkbox writes stencil_outer_edges_only; older builds used
+    // outer_edge_visibility_mask_only. Read the UI key first, legacy key as fallback.
+    outerEdgeVisibilityMaskOnly = ReadBoolSetting(L"stencil_outer_edges_only",
+        ReadBoolSetting(L"outer_edge_visibility_mask_only", true));
     edgeSmearFix = ReadBoolSetting(L"edge_smear_fix", false);
     lodPopInFix = ReadBoolSetting(L"lod_popin_fix", false);
     edgeSmearPixels = static_cast<int>(std::clamp(ReadDoubleSetting(L"edge_smear_pixels", 2.0), 1.0, 16.0));
@@ -2612,19 +2615,10 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
         return result;
     }
 
-    // When the native visor is active it owns the visible outer boundary. Leaving the
-    // legacy visibility-mask reshaper/filter active can add a second straight or
-    // closed edge beside the curved visor, especially at aggressive horizontal crop.
-    if (maskEnabled && visorTechnique != VisorTechnique::Off) {
-        if (!g_diagVisorSkipsVisibilityEdgeFilter.exchange(true)) {
-            Log("visibility mask: native visor active; skipping legacy visibility-mask shaping/filtering to avoid double boundaries\n");
-        }
-        return result;
-    }
-
     // OPTIONAL legacy path (default OFF): reshape the hidden-area mesh into the visor.
-    // This only runs when no native A/B/C visor is active.
-    if (maskEnabled && visibilityMaskVisor) {
+    // This only runs when no native A/B/C visor is active (the native visor owns the
+    // visible boundary; a reshaped mesh beside it would draw a double boundary).
+    if (maskEnabled && visibilityMaskVisor && visorTechnique == VisorTechnique::Off) {
         const uint32_t beforeIndexCount = visibilityMask->indexCountOutput;
         if (ApplyVisorMask(viewIndex, visibilityMask)) {
             const uint32_t logCount = visibilityMaskLogCount.fetch_add(1);
@@ -2640,8 +2634,16 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
         return result;
     }
 
-    // Legacy outer-edge crop: keep only the outer-half hidden triangles.
+    // Outer-edge stencil filter (UI checkbox "Stencil outer edges only"): keep only the
+    // outer-half hidden triangles so the runtime's FOV stencil (e.g. Virtual Desktop's)
+    // never stencils the inner-eye/top/bottom regions. This MUST also run when the native
+    // D3D11 visor is active: the visor only draws pixels, but the game stencils whatever
+    // this mask returns — an unfiltered mask blacks out the inner edges regardless of the
+    // visor shape, with the runtime's curve instead of the user's apex-y curve.
     if (!outerEdgeVisibilityMaskOnly || uevrLikeProcess) {
+        if (!g_diagVisorSkipsVisibilityEdgeFilter.exchange(true)) {
+            Log("visibility mask: outer-edge filtering OFF (stencil_outer_edges_only=0); runtime mask passed through unmodified\n");
+        }
         return result;
     }
 
@@ -2662,6 +2664,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
              visibilityMask->vertices[i1].x +
              visibilityMask->vertices[i2].x) / 3.0f;
 
+        // Outer half only: left eye (view 0) keeps its left side, right eye (view 1)
+        // keeps its right side. Inner-eye (nose-side) and centre triangles are dropped.
         const bool keepOuterEdge =
             (viewIndex == 0 && centerX <= 0.0f) ||
             (viewIndex == 1 && centerX >= 0.0f);
