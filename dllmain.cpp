@@ -1075,7 +1075,8 @@ uint32_t BuildOpenInnerEyeVisorVerts(
     }
 
     // Add inner-lower nose-bridge curve if enabled
-    if (visorInnerLowerY > 0.0) {
+    // DISABLED: causing stencil mode issues (rendering on top as well as bottom)
+    if (false && visorInnerLowerY > 0.0) {
         const float bandTopY = std::clamp(y1 - static_cast<float>(visorInnerLowerY) * (y1 - y0), y0, y1);
         const float innerX = outerLeft ? bboxMaxX : bboxMinX;
         BuildNoseBridgeCurve(vertsOut, v, vertCapacity, cx, y1, innerX, bandTopY, visorInnerLowerY, visorInnerBridgeWidth,
