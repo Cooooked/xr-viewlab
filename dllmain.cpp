@@ -1109,7 +1109,10 @@ void DrawVisorBorderToTexture(
     float verts[kMaxVerts * 2]{};
     const bool outerLeft = viewIndex == 0;
     uint32_t vertCount = BuildOpenInnerEyeVisorVerts(bboxMinX, bboxMaxX, bboxMinY, bboxMaxY, outerLeft, verts, kMaxVerts);
-    if (allViews.size() >= 2 && viewIndex < 2 && vertCount < kMaxVerts) {
+    // Projected partner-eye boundary: blacks out the inner-eye band the cropped partner
+    // eye can no longer render. This is exactly the inner-edge stenciling the user turns
+    // OFF with "Stencil outer edges only" — only draw it when that setting is unchecked.
+    if (!outerEdgeVisibilityMaskOnly && allViews.size() >= 2 && viewIndex < 2 && vertCount < kMaxVerts) {
         const EyeView& leftEye = allViews[0].viewIndex == 0 ? allViews[0] : allViews[1];
         const EyeView& rightEye = allViews[0].viewIndex == 1 ? allViews[0] : allViews[1];
         if (viewIndex == 0) {
