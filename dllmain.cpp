@@ -47,11 +47,12 @@ double visorCurve = 0.75;
 double visorOffsetX = 0.0;
 double visorOffsetY = 0.0;
 double visorOuterApexY = 0.0;
-double visorInnerLowerY = 0.0;
-double visorInnerBridgeWidth = 0.5;
-double visorInnerBridgeRise = 0.0;
-double visorInnerBridgePeakX = 0.5;
-double visorInnerBridgeSteepness = 0.5;
+// DISABLED: inner-low and bridge features causing stencil mode corruption
+// double visorInnerLowerY = 0.0;
+// double visorInnerBridgeWidth = 0.5;
+// double visorInnerBridgeRise = 0.0;
+// double visorInnerBridgePeakX = 0.5;
+// double visorInnerBridgeSteepness = 0.5;
 // OPTIONAL, default OFF. The native visor is the D3D11 direct-write path (drawn at
 // xrReleaseSwapchainImage). This flag enables the SEPARATE legacy approach that
 // reshapes the runtime hidden-area mesh into the visor via xrGetVisibilityMaskKHR.
@@ -1072,17 +1073,11 @@ uint32_t BuildOpenInnerEyeVisorVerts(
         }
     }
 
-    // Add inner-lower nose-bridge curve if enabled
-    if (visorInnerLowerY > 0.0001) {
-        const float bandTopY = std::clamp(y1 - static_cast<float>(visorInnerLowerY) * (y1 - y0), y0, y1);
+    // DISABLED: inner-low and bridge features causing stencil corruption
+    // Just close off the inner side with a simple triangle
+    if (v + 6 <= vertCapacity) {
         const float innerX = outerLeft ? bboxMaxX : bboxMinX;
-        BuildNoseBridgeCurve(vertsOut, v, vertCapacity, cx, y1, innerX, bandTopY, visorInnerLowerY * 0.5, visorInnerBridgeWidth,
-                             visorInnerBridgeRise, visorInnerBridgePeakX, visorInnerBridgeSteepness);
-    } else {
-        if (v + 6 <= vertCapacity) {
-            const float innerX = outerLeft ? bboxMaxX : bboxMinX;
-            tri(curve[segCount].first, curve[segCount].second, innerX, y1, innerX, y1);
-        }
+        tri(curve[segCount].first, curve[segCount].second, innerX, y1, innerX, y1);
     }
 
     return v;
@@ -2171,17 +2166,18 @@ void LoadConfig() {
         ReadProfileDword(L"visor_width", profileVisorWidth);
         ReadProfileDword(L"visor_height", profileVisorHeight);
         DWORD profileVisorOuterApexY = static_cast<DWORD>(std::lround((std::clamp(visorOuterApexY, -0.5, 0.5) + 0.5) * 1000.0));
-        DWORD profileVisorInnerLowerY = static_cast<DWORD>(std::lround(visorInnerLowerY * 1000.0));
-        DWORD profileVisorInnerBridgeWidth = static_cast<DWORD>(std::lround(visorInnerBridgeWidth * 1000.0));
-        DWORD profileVisorInnerBridgeRise = static_cast<DWORD>(std::lround(visorInnerBridgeRise * 1000.0));
-        DWORD profileVisorInnerBridgePeakX = static_cast<DWORD>(std::lround(visorInnerBridgePeakX * 1000.0));
-        DWORD profileVisorInnerBridgeSteepness = static_cast<DWORD>(std::lround(visorInnerBridgeSteepness * 1000.0));
+        // DISABLED: inner-low and bridge features
+        // DWORD profileVisorInnerLowerY = static_cast<DWORD>(std::lround(visorInnerLowerY * 1000.0));
+        // DWORD profileVisorInnerBridgeWidth = static_cast<DWORD>(std::lround(visorInnerBridgeWidth * 1000.0));
+        // DWORD profileVisorInnerBridgeRise = static_cast<DWORD>(std::lround(visorInnerBridgeRise * 1000.0));
+        // DWORD profileVisorInnerBridgePeakX = static_cast<DWORD>(std::lround(visorInnerBridgePeakX * 1000.0));
+        // DWORD profileVisorInnerBridgeSteepness = static_cast<DWORD>(std::lround(visorInnerBridgeSteepness * 1000.0));
         ReadProfileDword(L"mask_outer_apex_y", profileVisorOuterApexY);
-        ReadProfileDword(L"mask_inner_lower_y", profileVisorInnerLowerY);
-        ReadProfileDword(L"mask_inner_bridge_width", profileVisorInnerBridgeWidth);
-        ReadProfileDword(L"mask_inner_bridge_rise", profileVisorInnerBridgeRise);
-        ReadProfileDword(L"mask_inner_bridge_peak_x", profileVisorInnerBridgePeakX);
-        ReadProfileDword(L"mask_inner_bridge_steepness", profileVisorInnerBridgeSteepness);
+        // ReadProfileDword(L"mask_inner_lower_y", profileVisorInnerLowerY);
+        // ReadProfileDword(L"mask_inner_bridge_width", profileVisorInnerBridgeWidth);
+        // ReadProfileDword(L"mask_inner_bridge_rise", profileVisorInnerBridgeRise);
+        // ReadProfileDword(L"mask_inner_bridge_peak_x", profileVisorInnerBridgePeakX);
+        // ReadProfileDword(L"mask_inner_bridge_steepness", profileVisorInnerBridgeSteepness);
         if (!ReadProfileDouble(L"render_scale", renderScale)) {
             ReadProfileDword(L"render_scale", profileRenderScale);
             renderScale = DwordToRenderScale(profileRenderScale, renderScale);
@@ -2200,11 +2196,12 @@ void LoadConfig() {
         maskTopCurve = SignedMillisToUnit(profileMaskTopCurve, maskTopCurve);
         maskBottomCurve = SignedMillisToUnit(profileMaskBottomCurve, maskBottomCurve);
         visorOuterApexY = SignedMillisToUnit(profileVisorOuterApexY, visorOuterApexY);
-        visorInnerLowerY = static_cast<double>(profileVisorInnerLowerY) / 1000.0;
-        visorInnerBridgeWidth = static_cast<double>(profileVisorInnerBridgeWidth) / 1000.0;
-        visorInnerBridgeRise = static_cast<double>(profileVisorInnerBridgeRise) / 1000.0;
-        visorInnerBridgePeakX = static_cast<double>(profileVisorInnerBridgePeakX) / 1000.0;
-        visorInnerBridgeSteepness = static_cast<double>(profileVisorInnerBridgeSteepness) / 1000.0;
+        // DISABLED: inner-low and bridge features
+        // visorInnerLowerY = static_cast<double>(profileVisorInnerLowerY) / 1000.0;
+        // visorInnerBridgeWidth = static_cast<double>(profileVisorInnerBridgeWidth) / 1000.0;
+        // visorInnerBridgeRise = static_cast<double>(profileVisorInnerBridgeRise) / 1000.0;
+        // visorInnerBridgePeakX = static_cast<double>(profileVisorInnerBridgePeakX) / 1000.0;
+        // visorInnerBridgeSteepness = static_cast<double>(profileVisorInnerBridgeSteepness) / 1000.0;
 
         splitMode = profileSplitMode != 0;
         totalTangent = MillisToRenderHeight(profileTotal, totalTangent);
