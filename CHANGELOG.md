@@ -4,6 +4,18 @@
 > quad drew), and current product uses Technique C Direct (native D3D11 visor into game eye textures).
 > See `PROJECT_STATUS.md` / `HANDOFF.md`.
 
+## 4.1.90 - 2026-07-10 (Feature Fixes)
+
+- **Fixed inner-low (nose bridge) slider visibility**: removed 0.5x scaling multiplier that was
+  reducing the visual effect. Inner-low now renders at full strength matching the slider range
+  (0-0.333), with the nose bridge divot clearly visible in the mask preview as you adjust the control.
+- **Fixed pin dragging for bridge control**: the inner bridge pin can now be dragged at all
+  inner-low values. Previously required InnerLowerY > 0.0001, preventing adjustment when slider
+  was at minimum. Now works smoothly from 0 upward.
+- **Lowered rendering threshold**: changed visibility gate from 0.0001 to 0.0, so inner-low geometry
+  renders even at minimum slider positions instead of appearing only above a small dead zone.
+- `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
 ## 4.1.89 - 2026-07-10 (Hotfix)
 
 - **REVERTED 4.1.88 bad defaults** that broke Pistol Whip at startup: commit a02f6de applied the user's
