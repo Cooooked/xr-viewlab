@@ -4,7 +4,27 @@
 > quad drew), and current product uses Technique C Direct (native D3D11 visor into game eye textures).
 > See `PROJECT_STATUS.md` / `HANDOFF.md`.
 
-## 4.1.92 - 2026-07-10 (Hotfix: Inner-low Rendering in HMD)
+## 4.1.102 - 2026-07-10 (Stencil Outer Edges Fix)
+
+- **Fixed "Stencil outer edges only" doing nothing / inner edges being stenciled.** Two long-standing
+  bugs: (1) the UI checkbox writes `stencil_outer_edges_only` but the DLL only read
+  `outer_edge_visibility_mask_only` — the checkbox was wired to nothing; the DLL now reads the UI key
+  (legacy key as fallback). (2) the outer-edge visibility-mask filter was skipped entirely whenever the
+  native visor was active, so Virtual Desktop's FOV stencil passed through unfiltered and the game
+  stenciled the inner/top/bottom edges itself (with VD's curve, not the user's apex-y curve). The filter
+  now runs regardless of visor state; only the legacy visibility-mask reshaper stays gated on visor-off.
+- Native DLL is the v4.1.55 baseline (no inner-low/bridge code) plus the FreeLibrary crash fix.
+- Versions 4.1.92-4.1.101 were local debugging builds during this investigation; none were released.
+
+## 4.1.93 - 2026-07-10 (Inner-low Rendering Fix Retry)
+
+- **Re-applied inner-low nose bridge rendering fixes**: removed 0.5x multiplier and lowered threshold from
+  0.0001 to 0.0. Native DLL now renders inner-low at full strength with no dead zone. This should fix the
+  barely-visible issue at higher horizontal crop values.
+- Investigating: stencil mode may be affected by geometry sizing at lower crop values. Report results.
+- `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
+## 4.1.92 - 2026-07-10 (Reverted: Stencil Issue)
 
 - **Fixed inner-low nose bridge not rendering in HMD visor**: native DLL had the same bugs as the UI code
   previously had. Threshold was 0.0001 (blocking render at small values), now 0.0. Removed 0.5x multiplier

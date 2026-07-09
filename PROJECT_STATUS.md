@@ -1,9 +1,9 @@
 # ViewLab - Project Status
 
 **Updated:** 2026-07-10
-**Current version:** 4.1.92
-**Latest installer:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.92.msi`
-**Source state:** Fixed inner-low nose bridge not rendering in HMD (threshold and 0.5x multiplier bugs in native layer); added HD visor/anti-aliasing toggles; removed agent config bubble.
+**Current version:** 4.1.102
+**Latest installer:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.102.msi`
+**Source state:** Fixed "Stencil outer edges only" (INI key mismatch `stencil_outer_edges_only` vs `outer_edge_visibility_mask_only`, plus the filter being skipped whenever the native visor was active). Native DLL is the v4.1.55 baseline + FreeLibrary crash fix; all inner-low/bridge native code removed pending redesign. 4.1.92-4.1.101 were unreleased debugging builds.
 
 ## Non-Negotiable Build / Reply Rule
 
