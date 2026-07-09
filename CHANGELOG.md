@@ -4,6 +4,22 @@
 > quad drew), and current product uses Technique C Direct (native D3D11 visor into game eye textures).
 > See `PROJECT_STATUS.md` / `HANDOFF.md`.
 
+## 4.1.91 - 2026-07-10 (UI Quality Controls + Agent Safety)
+
+- **Added HD visor quality checkbox** (`visor_hd`): optional 2x supersampling of visor geometry. When enabled,
+  renders the visor mask at 2x internal resolution before downsampling, reducing pixelation at the edges.
+  Configurable via checkbox under the visor section in the UI; stored in INI file and applied at runtime.
+- **Added anti-aliasing quality checkbox** (`visor_antialiasing`): toggle for 8-pass jittered anti-aliasing
+  of visor edges. When enabled (default), uses 4x jitter pattern for smooth edges; when disabled, renders
+  single-pass solid edges for performance. Both visual paths verified in previous builds to work correctly.
+- **Fixed agent configuration bubble**: removed project-local `.claude/` directory that was creating isolated
+  agent workspaces. Updated `.gitignore` and `agents.md` with explicit safety rules preventing future local
+  bubbles. All AI agents now work with the user's global `~/.claude/` directory, allowing other models to
+  access the same shared project context without isolation.
+- Full UI plumbing: `VisorHDCheck` and `VisorAntiAliasingCheck` checkboxes in `MainWindow.xaml`, read/write
+  in `MainWindow.cs` with INI persistence, native-layer globals in `dllmain.cpp` read at initialization.
+- `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
 ## 4.1.90 - 2026-07-10 (Feature Fixes)
 
 - **Fixed inner-low (nose bridge) slider visibility**: removed 0.5x scaling multiplier that was

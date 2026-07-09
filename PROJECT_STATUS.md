@@ -1,9 +1,9 @@
 # ViewLab - Project Status
 
 **Updated:** 2026-07-10
-**Current version:** 4.1.88
-**Latest installer:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.88.msi`
-**Source state:** Removed non-functional sliders; fixed pin dragging; included ReShadePayload in builds; user's current settings applied as defaults; GitHub release published.
+**Current version:** 4.1.91
+**Latest installer:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.91.msi`
+**Source state:** Added HD visor and anti-aliasing quality checkboxes; fixed critical D3D11 FreeLibrary crash; fixed inner-low visibility and pin dragging; removed agent configuration bubble for multi-model compatibility.
 
 ## Non-Negotiable Build / Reply Rule
 
