@@ -4,6 +4,14 @@
 > quad drew), and current product uses Technique C Direct (native D3D11 visor into game eye textures).
 > See `PROJECT_STATUS.md` / `HANDOFF.md`.
 
+## 4.1.92 - 2026-07-10 (Hotfix: Inner-low Rendering in HMD)
+
+- **Fixed inner-low nose bridge not rendering in HMD visor**: native DLL had the same bugs as the UI code
+  previously had. Threshold was 0.0001 (blocking render at small values), now 0.0. Removed 0.5x multiplier
+  that was halving the visual effect. Inner-low now renders at full strength in the headset, visible in both
+  stencil modes. This fixes the missing bottom eyelid/nose divot that users see in-HMD.
+- `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
 ## 4.1.91 - 2026-07-10 (UI Quality Controls + Agent Safety)
 
 - **Added HD visor quality checkbox** (`visor_hd`): optional 2x supersampling of visor geometry. When enabled,

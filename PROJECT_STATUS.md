@@ -1,9 +1,9 @@
 # ViewLab - Project Status
 
 **Updated:** 2026-07-10
-**Current version:** 4.1.91
-**Latest installer:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.91.msi`
-**Source state:** Added HD visor and anti-aliasing quality checkboxes; fixed critical D3D11 FreeLibrary crash; fixed inner-low visibility and pin dragging; removed agent configuration bubble for multi-model compatibility.
+**Current version:** 4.1.92
+**Latest installer:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.92.msi`
+**Source state:** Fixed inner-low nose bridge not rendering in HMD (threshold and 0.5x multiplier bugs in native layer); added HD visor/anti-aliasing toggles; removed agent config bubble.
 
 ## Non-Negotiable Build / Reply Rule
 
