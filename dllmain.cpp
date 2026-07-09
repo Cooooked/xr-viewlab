@@ -27,6 +27,8 @@ bool enabled = true;
 // and costs no extra GPU (fewer pixels shaded). mask_* values are ABSOLUTE in the
 // same units as CROP; the layer converts them to a fraction of the cropped view.
 bool maskEnabled = false;
+bool visorHD = false;           // render visor at 2x internal resolution
+bool visorAntialiasing = true;  // enable additional anti-aliasing (8-pass jitter)
 double maskVertical = 1.0;    // legacy absolute vtangent bound
 double maskHorizontal = 1.0;  // legacy absolute hwidth bound
 bool maskRounded = false;     // round the visible-area corners (pill/bean look)
@@ -2092,6 +2094,8 @@ void LoadConfig() {
         1.0);
 
     maskEnabled = ReadBoolSetting(L"mask_enabled", false);
+    visorHD = ReadBoolSetting(L"visor_hd", false);
+    visorAntialiasing = ReadBoolSetting(L"visor_antialiasing", true);
     maskVertical = std::clamp(ReadDoubleSetting(L"mask_vertical", 1.0), MinVerticalTangent, MaxVerticalTangent);
     maskHorizontal = std::clamp(ReadDoubleSetting(L"mask_horizontal", 1.0), MinRenderScale, 1.0);
     maskRounded = ReadBoolSetting(L"mask_rounded", false);
@@ -2248,7 +2252,7 @@ void LoadConfig() {
         visorTechnique == VisorTechnique::Interception ? "swapchain_intercept_b" :
         visorTechnique == VisorTechnique::DirectWrite ? "direct_write_c" :
         "off";
-    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d horizontal_outer_edges_only=1 edge_smear_fix=%d edge_smear_pixels=%d lod_popin_fix=%d visor_enabled=%d visor_backend=%s visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_offset_x=%.3f visor_offset_y=%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
+    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d horizontal_outer_edges_only=1 edge_smear_fix=%d edge_smear_pixels=%d lod_popin_fix=%d visor_enabled=%d visor_hd=%d visor_antialiasing=%d visor_backend=%s visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_offset_x=%.3f visor_offset_y=%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
         enabled ? 1 : 0,
         currentAppKey.empty() ? L"<global>" : currentAppKey.c_str(),
         splitMode ? "split" : "total",
@@ -2266,6 +2270,8 @@ void LoadConfig() {
         edgeSmearPixels,
         lodPopInFix ? 1 : 0,
         maskEnabled ? 1 : 0,
+        visorHD ? 1 : 0,
+        visorAntialiasing ? 1 : 0,
         visorBackend,
         visorSize,
         visorWidth,

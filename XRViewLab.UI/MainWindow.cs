@@ -37,6 +37,8 @@ public partial class MainWindow : Window
 
 	// Render options
 	private const string MaskEnabledKey = "mask_enabled";
+	private const string VisorHDKey = "visor_hd";
+	private const string VisorAntiAliasingKey = "visor_antialiasing";
 	private const string MaskRoundedKey = "mask_rounded";
 	private const string MaskCornerKey = "mask_corner";
 	private const string MaskOffsetYKey = "mask_offset_y";
@@ -929,6 +931,8 @@ public partial class MainWindow : Window
 		HorizontalBox.Text = FormatScale(value);
 		// Mask (visor): absolute bounds, default 1.0 = no mask on that axis.
 		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
+		VisorHDCheck.IsChecked = ReadBoolSetting(VisorHDKey, fallback: false);
+		VisorAntiAliasingCheck.IsChecked = ReadBoolSetting(VisorAntiAliasingKey, fallback: true);
 		MaskRoundedCheck.IsChecked = true;
 		MaskVerticalBox.Text = FormatScale(ReadScaleSetting("mask_vertical", 1.0));
 		MaskHorizontalBox.Text = FormatScale(ReadScaleSetting("mask_horizontal", 1.0));
@@ -1323,6 +1327,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		Directory.CreateDirectory(ConfigDirectory);
 		WritePrivateProfileString("Settings", MaskEnabledKey, MaskEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", VisorHDKey, VisorHDCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", VisorAntiAliasingKey, VisorAntiAliasingCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskRoundedKey, MaskEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", FoveatedCenterKey, FoveatedCenterCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", StencilOuterEdgesKey, StencilOuterEdgesCheck.IsChecked == true ? "1" : "0", ConfigPath);

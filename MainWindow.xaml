@@ -421,6 +421,8 @@
                 <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
                 <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                <CheckBox Name="VisorHDCheck" Content="HD visor (2x supersampling)" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Render visor at 2x resolution internally for better edge quality (higher GPU cost)." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                <CheckBox Name="VisorAntiAliasingCheck" Content="Anti-aliasing" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Enable additional anti-aliasing for smoother visor edges." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                 <ui:BeanMaskEditor x:Name="MaskBeanEditor" Height="76" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Preview uses the same rounded aperture settings as the OpenXR D3D11 mask texture." />
                 <Grid Margin="0,0,0,0">
                   <Grid.ColumnDefinitions>
