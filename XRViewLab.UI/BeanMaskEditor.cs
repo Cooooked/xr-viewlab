@@ -20,8 +20,6 @@ public sealed class BeanMaskEditor : FrameworkElement
 	private double _innerBridgeRise = 0.0;
 	private double _innerBridgePeakX = 0.5;
 	private double _innerBridgeSteepness = 0.5;
-	private double _innerBridgeCurveExp = 0.5;
-	private double _innerStartX = 0.0;
 	private bool _openInnerPreview;
 	private DragTarget _dragTarget = DragTarget.None;
 
@@ -30,8 +28,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 		None,
 		OuterApex,
 		InnerLower,
-		InnerBridge,
-		InnerStartX
+		InnerBridge
 	}
 
 	public event EventHandler? ShapeChanged;
@@ -154,18 +151,6 @@ public sealed class BeanMaskEditor : FrameworkElement
 	{
 		get => _innerBridgeSteepness;
 		set => SetValue(ref _innerBridgeSteepness, value, 0.0, 1.0);
-	}
-
-	public double InnerBridgeCurveExp
-	{
-		get => _innerBridgeCurveExp;
-		set => SetValue(ref _innerBridgeCurveExp, value, 0.0, 1.0);
-	}
-
-	public double InnerStartX
-	{
-		get => _innerStartX;
-		set => SetValue(ref _innerStartX, value, 0.0, 0.5);
 	}
 
 	public bool OpenInnerPreview
@@ -352,7 +337,6 @@ public sealed class BeanMaskEditor : FrameworkElement
 		var pins = PinPositions(area);
 		DrawPin(dc, pins.outerApex, Color.FromRgb(255, 96, 105));
 		DrawPin(dc, pins.innerLower, Color.FromRgb(255, 180, 90));
-		DrawPin(dc, pins.innerStartX, Color.FromRgb(255, 100, 200));
 		if (InnerLowerY > 0.0001)
 		{
 			DrawPin(dc, pins.innerBridge, Color.FromRgb(120, 200, 255));
@@ -366,7 +350,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 		dc.DrawEllipse(fill, stroke, p, 5.5, 5.5);
 	}
 
-	private (Point outerApex, Point innerLower, Point innerBridge, Point innerStartX, double y0, double y1, double bridgeStartX, double bridgeStartY, double bridgeEndX, double bridgeEndY) PinPositions(Rect area)
+	private (Point outerApex, Point innerLower, Point innerBridge, double y0, double y1, double bridgeStartX, double bridgeStartY, double bridgeEndX, double bridgeEndY) PinPositions(Rect area)
 	{
 		double halfW = area.Width * 0.5 * Math.Clamp(Size * WidthScale, 0.01, 1.0);
 		double halfH = area.Height * 0.5 * Math.Clamp(Size * HeightScale, 0.01, 1.0);
@@ -381,12 +365,10 @@ public sealed class BeanMaskEditor : FrameworkElement
 		double split = Math.Clamp(1.0 - InnerBridgeWidth, 0.0, 1.0);
 		double bridgeX = centerX + dx * split;
 		double bridgeY = y1 + dy * 0.5;
-		double startX = area.Right - (area.Right - centerX) * InnerStartX;
 		return (
 			new Point(centerX - halfW, outerY),
 			new Point(area.Right, innerY),
 			new Point(bridgeX, bridgeY),
-			new Point(startX, innerY),
 			y0, y1,
 			centerX, y1, area.Right, innerY);
 	}
@@ -401,10 +383,6 @@ public sealed class BeanMaskEditor : FrameworkElement
 		if (DistanceSquared(p, pins.outerApex) <= 144.0)
 		{
 			_dragTarget = DragTarget.OuterApex;
-		}
-		else if (DistanceSquared(p, pins.innerStartX) <= 144.0)
-		{
-			_dragTarget = DragTarget.InnerStartX;
 		}
 		else if (InnerLowerY > 0.0001 && DistanceSquared(p, pins.innerBridge) <= 144.0)
 		{
@@ -433,11 +411,6 @@ public sealed class BeanMaskEditor : FrameworkElement
 		if (_dragTarget == DragTarget.OuterApex)
 		{
 			OuterApexY = Math.Clamp((mouse.Y - pins.y0) / span, -0.5, 0.5);
-		}
-		else if (_dragTarget == DragTarget.InnerStartX)
-		{
-			double dxSpan = pins.bridgeEndX - pins.bridgeStartX;
-			InnerStartX = Math.Clamp((mouse.X - pins.bridgeStartX) / dxSpan, 0.0, 0.5);
 		}
 		else if (_dragTarget == DragTarget.InnerLower)
 		{

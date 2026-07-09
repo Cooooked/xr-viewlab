@@ -53,8 +53,6 @@ public partial class MainWindow : Window
 	private const string MaskInnerBridgeRiseKey = "mask_inner_bridge_rise";
 	private const string MaskInnerBridgePeakXKey = "mask_inner_bridge_peak_x";
 	private const string MaskInnerBridgeSteepnessKey = "mask_inner_bridge_steepness";
-	private const string MaskInnerBridgeCurveExpKey = "mask_inner_bridge_curve_exp";
-	private const string MaskInnerStartXKey = "mask_inner_start_x";
 	private const string FoveatedCenterKey = "foveated_center_compensation";
 	private const string StencilOuterEdgesKey = "stencil_outer_edges_only";
 	private const string CropOuterEdgesKey = "crop_outer_edges_only";
@@ -914,8 +912,6 @@ public partial class MainWindow : Window
 		MaskBeanEditor.InnerBridgeRise = MaskInnerBridgeRiseSlider?.Value ?? 0.0;
 		MaskBeanEditor.InnerBridgePeakX = MaskInnerBridgePeakXSlider?.Value ?? 0.5;
 		MaskBeanEditor.InnerBridgeSteepness = MaskInnerBridgeSteepnessSlider?.Value ?? 0.5;
-		MaskBeanEditor.InnerBridgeCurveExp = MaskInnerBridgeCurveExpSlider?.Value ?? 0.5;
-		MaskBeanEditor.InnerStartX = MaskInnerStartXSlider?.Value ?? 0.0;
 		MaskBeanEditor.OpenInnerPreview = StencilOuterEdgesCheck?.IsChecked == true;
 	}
 
@@ -945,8 +941,6 @@ public partial class MainWindow : Window
 		MaskInnerBridgeRiseSlider.Value = ReadRangeSetting(MaskInnerBridgeRiseKey, 0.0, 0.0, 0.5);
 		MaskInnerBridgePeakXSlider.Value = ReadRangeSetting(MaskInnerBridgePeakXKey, 0.5, 0.0, 1.0);
 		MaskInnerBridgeSteepnessSlider.Value = ReadRangeSetting(MaskInnerBridgeSteepnessKey, 0.5, 0.0, 1.0);
-		MaskInnerBridgeCurveExpSlider.Value = ReadRangeSetting(MaskInnerBridgeCurveExpKey, 0.5, 0.0, 1.0);
-		MaskInnerStartXSlider.Value = ReadRangeSetting(MaskInnerStartXKey, 0.0, 0.0, 0.5);
 		MaskOffsetXSlider.Value = 0.0;
 		MaskOffsetYSlider.Value = 0.0;
 		SyncMaskEditorFromSliders();
@@ -1199,24 +1193,6 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private void MaskInnerBridgeCurveExpSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-	{
-		if (!_loading && !_syncingControls && MaskBeanEditor != null)
-		{
-			SyncMaskEditorFromSliders();
-			SaveGlobalSettings();
-		}
-	}
-
-	private void MaskInnerStartXSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-	{
-		if (!_loading && !_syncingControls && MaskBeanEditor != null)
-		{
-			SyncMaskEditorFromSliders();
-			SaveGlobalSettings();
-		}
-	}
-
 	private void MaskSliderReset_RightClick(object sender, MouseButtonEventArgs e)
 	{
 		if (_loading) return;
@@ -1231,7 +1207,6 @@ public partial class MainWindow : Window
 		else if (sender == MaskInnerBridgeRiseSlider) MaskInnerBridgeRiseSlider.Value = 0.0;
 		else if (sender == MaskInnerBridgePeakXSlider) MaskInnerBridgePeakXSlider.Value = 0.5;
 		else if (sender == MaskInnerBridgeSteepnessSlider) MaskInnerBridgeSteepnessSlider.Value = 0.5;
-		else if (sender == MaskInnerBridgeCurveExpSlider) MaskInnerBridgeCurveExpSlider.Value = 0.5;
 		SyncMaskEditorFromSliders();
 		ApplyMaskOpening(MaskOpeningSlider.Value);
 		_syncingControls = false;
@@ -1600,7 +1575,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", MaskInnerBridgeRiseKey, FormatStorageScale(MaskInnerBridgeRiseSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", MaskInnerBridgePeakXKey, FormatStorageScale(MaskInnerBridgePeakXSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", MaskInnerBridgeSteepnessKey, FormatStorageScale(MaskInnerBridgeSteepnessSlider.Value), ConfigPath);
-		WritePrivateProfileString("Settings", MaskInnerBridgeCurveExpKey, FormatStorageScale(MaskInnerBridgeCurveExpSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", MaskOffsetYKey, "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskTopBiasKey, "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskBottomBiasKey, "0", ConfigPath);

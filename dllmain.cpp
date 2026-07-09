@@ -52,7 +52,6 @@ double visorInnerBridgeWidth = 0.5;
 double visorInnerBridgeRise = 0.0;
 double visorInnerBridgePeakX = 0.5;
 double visorInnerBridgeSteepness = 0.5;
-double visorInnerBridgeCurveExp = 0.5;
 // OPTIONAL, default OFF. The native visor is the D3D11 direct-write path (drawn at
 // xrReleaseSwapchainImage). This flag enables the SEPARATE legacy approach that
 // reshapes the runtime hidden-area mesh into the visor via xrGetVisibilityMaskKHR.
@@ -889,12 +888,12 @@ static float ApexYFromConfigNdc(double configY) {
 }
 
 // Kidney-bean inner-edge curve: cubic Bézier with horizontal tangents at both ends
-// for a natural seal profile. New parameters (rise, peakX, steepness, curveExp) refine shape.
+// for a natural seal profile. Parameters (rise, peakX, steepness) refine shape.
 static void BuildNoseBridgeCurve(
     float* vertsOut, uint32_t& v, uint32_t vertCapacity,
     float startX, float startY, float endX, float endY,
     double bridgeHeight, double bridgeWidth,
-    double bridgeRise, double bridgePeakX, double bridgeSteepness, double bridgeCurveExp) {
+    double bridgeRise, double bridgePeakX, double bridgeSteepness) {
     const float dx = endX - startX;
     const float dy = endY - startY;
     if (std::abs(dx) < 0.001f || std::abs(dy) < 0.001f) {
@@ -1078,7 +1077,7 @@ uint32_t BuildOpenInnerEyeVisorVerts(
         const float bandTopY = std::clamp(y1 - static_cast<float>(visorInnerLowerY) * (y1 - y0), y0, y1);
         const float innerX = outerLeft ? bboxMaxX : bboxMinX;
         BuildNoseBridgeCurve(vertsOut, v, vertCapacity, cx, y1, innerX, bandTopY, visorInnerLowerY * 0.5, visorInnerBridgeWidth,
-                             visorInnerBridgeRise, visorInnerBridgePeakX, visorInnerBridgeSteepness, visorInnerBridgeCurveExp);
+                             visorInnerBridgeRise, visorInnerBridgePeakX, visorInnerBridgeSteepness);
     } else {
         if (v + 6 <= vertCapacity) {
             const float innerX = outerLeft ? bboxMaxX : bboxMinX;
@@ -2177,14 +2176,12 @@ void LoadConfig() {
         DWORD profileVisorInnerBridgeRise = static_cast<DWORD>(std::lround(visorInnerBridgeRise * 1000.0));
         DWORD profileVisorInnerBridgePeakX = static_cast<DWORD>(std::lround(visorInnerBridgePeakX * 1000.0));
         DWORD profileVisorInnerBridgeSteepness = static_cast<DWORD>(std::lround(visorInnerBridgeSteepness * 1000.0));
-        DWORD profileVisorInnerBridgeCurveExp = static_cast<DWORD>(std::lround(visorInnerBridgeCurveExp * 1000.0));
         ReadProfileDword(L"mask_outer_apex_y", profileVisorOuterApexY);
         ReadProfileDword(L"mask_inner_lower_y", profileVisorInnerLowerY);
         ReadProfileDword(L"mask_inner_bridge_width", profileVisorInnerBridgeWidth);
         ReadProfileDword(L"mask_inner_bridge_rise", profileVisorInnerBridgeRise);
         ReadProfileDword(L"mask_inner_bridge_peak_x", profileVisorInnerBridgePeakX);
         ReadProfileDword(L"mask_inner_bridge_steepness", profileVisorInnerBridgeSteepness);
-        ReadProfileDword(L"mask_inner_bridge_curve_exp", profileVisorInnerBridgeCurveExp);
         if (!ReadProfileDouble(L"render_scale", renderScale)) {
             ReadProfileDword(L"render_scale", profileRenderScale);
             renderScale = DwordToRenderScale(profileRenderScale, renderScale);
@@ -2208,7 +2205,6 @@ void LoadConfig() {
         visorInnerBridgeRise = static_cast<double>(profileVisorInnerBridgeRise) / 1000.0;
         visorInnerBridgePeakX = static_cast<double>(profileVisorInnerBridgePeakX) / 1000.0;
         visorInnerBridgeSteepness = static_cast<double>(profileVisorInnerBridgeSteepness) / 1000.0;
-        visorInnerBridgeCurveExp = static_cast<double>(profileVisorInnerBridgeCurveExp) / 1000.0;
 
         splitMode = profileSplitMode != 0;
         totalTangent = MillisToRenderHeight(profileTotal, totalTangent);
@@ -2235,7 +2231,6 @@ void LoadConfig() {
     visorInnerBridgeRise = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_rise", 0.0), 0.0, 0.5);
     visorInnerBridgePeakX = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_peak_x", 0.5), 0.0, 1.0);
     visorInnerBridgeSteepness = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_steepness", 0.5), 0.0, 1.0);
-    visorInnerBridgeCurveExp = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_curve_exp", 0.5), 0.0, 1.0);
     if (profileVisorSize > 0)
         visorSize = std::clamp(static_cast<double>(profileVisorSize) / 1000.0, 0.05, 1.0);
     if (profileVisorWidth > 0)
