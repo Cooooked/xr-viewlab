@@ -82,6 +82,20 @@ if (Test-Path $PayloadSrc) {
     Copy-Item -Path $PayloadSrc -Destination $PayloadDest -Recurse -Force
 }
 
+# Create ViewLab directory and copy native DLLs for distribution
+$ViewLabDir = Join-Path $PublishDir "ViewLab"
+New-Item -ItemType Directory -Path $ViewLabDir -Force | Out-Null
+
+# Copy native DLLs to the ViewLab subdirectory for shipping
+$Dll64Src = Join-Path $Root "x64\Release\XR_APILAYER_cooooked_xrviewlab.dll"
+$Dll32Src = Join-Path $Root "Release\XR_APILAYER_cooooked_xrviewlab32.dll"
+if (Test-Path $Dll64Src) {
+    Copy-Item -Path $Dll64Src -Destination "$ViewLabDir\" -Force
+}
+if (Test-Path $Dll32Src) {
+    Copy-Item -Path $Dll32Src -Destination "$ViewLabDir\" -Force
+}
+
 $MSBuild = Find-MSBuild
 Write-Host "Using MSBuild: $MSBuild"
 
@@ -89,6 +103,22 @@ Write-Host "Building OpenXR API layer (x64)..."
 & $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=x64 /m
 Write-Host "Building OpenXR API layer (Win32 / 32-bit for 32-bit games)..."
 & $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=Win32 /m
+
+# Copy native DLLs to distribution/release folder
+$Dll64Src = Join-Path $Root "x64\Release\XR_APILAYER_cooooked_xrviewlab.dll"
+$Dll32Src = Join-Path $Root "Release\XR_APILAYER_cooooked_xrviewlab32.dll"
+$DllDest = Join-Path $DistDir "ViewLab-dlls"
+if ((Test-Path $Dll64Src) -or (Test-Path $Dll32Src)) {
+    New-Item -ItemType Directory -Path $DllDest -Force | Out-Null
+    if (Test-Path $Dll64Src) {
+        Copy-Item -Path $Dll64Src -Destination "$DllDest\" -Force
+        Write-Host "Copied x64 DLL to dist"
+    }
+    if (Test-Path $Dll32Src) {
+        Copy-Item -Path $Dll32Src -Destination "$DllDest\" -Force
+        Write-Host "Copied Win32 DLL to dist"
+    }
+}
 
 Write-Host "Building MSI..."
 $WixObjDir = Join-Path $Root "Installer\obj\$Configuration"
