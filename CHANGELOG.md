@@ -4,6 +4,15 @@
 > quad drew), and current product uses Technique C Direct (native D3D11 visor into game eye textures).
 > See `PROJECT_STATUS.md` / `HANDOFF.md`.
 
+## 4.1.103 - 2026-07-10 (Inner-Edge Stenciling, Part 2)
+
+- **Gated the projected partner-eye boundary behind the stencil checkbox.** The D3D11 visor draw
+  unconditionally added `BuildProjectedPartnerVisorVerts`, which blacks out the inner-eye band the
+  cropped partner eye can no longer render. At aggressive horizontal outer crop this filled the whole
+  nose-side region black (with its own curve, ignoring apex-y) — the inner-edge stenciling still
+  visible after 4.1.102's visibility-mask fix. It now draws only when "Stencil outer edges only" is
+  unchecked.
+
 ## 4.1.102 - 2026-07-10 (Stencil Outer Edges Fix)
 
 - **Fixed "Stencil outer edges only" doing nothing / inner edges being stenciled.** Two long-standing
