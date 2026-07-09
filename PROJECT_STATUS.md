@@ -1,9 +1,9 @@
 # ViewLab - Project Status
 
 **Updated:** 2026-07-10
-**Current version:** 4.1.82 (in progress)
-**Latest installer:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.65.msi` (older)
-**Source state:** Bézier kidney-bean curve fixed (horizontal tangents both ends); shader remnant cleaned; building 4.1.82 next.
+**Current version:** 4.1.88
+**Latest installer:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.88.msi`
+**Source state:** Removed non-functional sliders; fixed pin dragging; included ReShadePayload in builds; user's current settings applied as defaults; GitHub release published.
 
 ## Non-Negotiable Build / Reply Rule
 

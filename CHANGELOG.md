@@ -1,8 +1,17 @@
 # Changelog
 
-> Visor-mask status note (2026-07-08): layer submission is CONFIRMED working in-headset (a BOTH-eye debug
-> quad drew), but current product debugging is focused on Technique C Direct because A/B were not
-> functionally useful in the user's testing. See `PROJECT_STATUS.md` / `HANDOFF.md`.
+> Visor-mask status note (2026-07-10): layer submission is CONFIRMED working in-headset (a BOTH-eye debug
+> quad drew), and current product uses Technique C Direct (native D3D11 visor into game eye textures).
+> See `PROJECT_STATUS.md` / `HANDOFF.md`.
+
+## 4.1.88 - 2026-07-10
+
+- **Removed non-functional "Curve Exp" and "Inner X" sliders** from the UI and all internal plumbing. Both were experimental controls that had no real effect on the mask geometry; they were confusing and dead code. Removed `MaskInnerBridgeCurveExpKey` and `MaskInnerStartXKey` constants from `MainWindow.cs`, corresponding handler methods, XML rows in `MainWindow.xaml`, and native-layer global variables + reads in `dllmain.cpp`. Removed `_innerBridgeCurveExp` and `_innerStartX` fields and enum entries from `BeanMaskEditor.cs`, plus all related drag detection and pin drawing.
+- **Fixed pin dragging in the mask preview** by adding `Focusable="True"` to the `BeanMaskEditor` element in `MainWindow.xaml`, allowing the canvas to capture mouse events for dragging the visible pins.
+- **Included ReShadePayload in published builds**: added post-publish copy logic to `build.ps1` to copy the `ReShadePayload` directory to the output folder after `dotnet publish`, so the component is available in development/testing and included in the MSI.
+- **Set user's current application settings as defaults** for all fresh installs: captured the user's existing render/mask configuration (render crop 0.2 vertical / 0.8 horizontal, foveated center on, crop outer edges on, and 8 mask slider positions) and applied them as fallback defaults in `MainWindow.cs`, `xr-viewlab.ini`, and `dllmain.cpp`, while preserving per-app profiles. New installs and updates now reflect these preferences.
+- **Published GitHub release v4.1.88** with the updated MSI installer for public distribution to users.
+- `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
 
 ## 4.1.68 - 2026-07-09
 
