@@ -27,8 +27,6 @@ bool enabled = true;
 // and costs no extra GPU (fewer pixels shaded). mask_* values are ABSOLUTE in the
 // same units as CROP; the layer converts them to a fraction of the cropped view.
 bool maskEnabled = false;
-bool visorHD = false;           // render visor at 2x internal resolution
-bool visorAntialiasing = true;  // enable additional anti-aliasing (8-pass jitter)
 double maskVertical = 1.0;    // legacy absolute vtangent bound
 double maskHorizontal = 1.0;  // legacy absolute hwidth bound
 bool maskRounded = false;     // round the visible-area corners (pill/bean look)
@@ -809,12 +807,14 @@ bool InitD3D11MaskRenderer() {
         return false;
     }
 
+    // Free d3dcompiler only after all blobs are released (fixes Pistol Whip crash)
+    FreeLibrary(dxcLib);
+
     hr = g_d3d11Mask.device->CreateVertexShader(
         vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &g_d3d11Mask.vs);
     if (FAILED(hr)) {
         Log("d3d11 mask: CreateVertexShader hr=0x%08X\n", static_cast<unsigned>(hr));
         vsBlob->Release(); psBlob->Release();
-        FreeLibrary(dxcLib);
         g_d3d11Mask.failed = true;
         return false;
     }
@@ -825,7 +825,6 @@ bool InitD3D11MaskRenderer() {
     if (FAILED(hr)) {
         Log("d3d11 mask: CreatePixelShader hr=0x%08X\n", static_cast<unsigned>(hr));
         vsBlob->Release();
-        FreeLibrary(dxcLib);
         g_d3d11Mask.failed = true;
         return false;
     }
@@ -836,7 +835,6 @@ bool InitD3D11MaskRenderer() {
     hr = g_d3d11Mask.device->CreateInputLayout(
         elems, 1, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &g_d3d11Mask.layout);
     vsBlob->Release();
-    FreeLibrary(dxcLib);
     if (FAILED(hr)) {
         Log("d3d11 mask: CreateInputLayout hr=0x%08X\n", static_cast<unsigned>(hr));
         g_d3d11Mask.failed = true;
@@ -1075,10 +1073,10 @@ uint32_t BuildOpenInnerEyeVisorVerts(
     }
 
     // Add inner-lower nose-bridge curve if enabled
-    if (visorInnerLowerY > 0.0) {
+    if (visorInnerLowerY > 0.0001) {
         const float bandTopY = std::clamp(y1 - static_cast<float>(visorInnerLowerY) * (y1 - y0), y0, y1);
         const float innerX = outerLeft ? bboxMaxX : bboxMinX;
-        BuildNoseBridgeCurve(vertsOut, v, vertCapacity, cx, y1, innerX, bandTopY, visorInnerLowerY, visorInnerBridgeWidth,
+        BuildNoseBridgeCurve(vertsOut, v, vertCapacity, cx, y1, innerX, bandTopY, visorInnerLowerY * 0.5, visorInnerBridgeWidth,
                              visorInnerBridgeRise, visorInnerBridgePeakX, visorInnerBridgeSteepness);
     } else {
         if (v + 6 <= vertCapacity) {
@@ -2094,8 +2092,6 @@ void LoadConfig() {
         1.0);
 
     maskEnabled = ReadBoolSetting(L"mask_enabled", false);
-    visorHD = ReadBoolSetting(L"visor_hd", false);
-    visorAntialiasing = ReadBoolSetting(L"visor_antialiasing", true);
     maskVertical = std::clamp(ReadDoubleSetting(L"mask_vertical", 1.0), MinVerticalTangent, MaxVerticalTangent);
     maskHorizontal = std::clamp(ReadDoubleSetting(L"mask_horizontal", 1.0), MinRenderScale, 1.0);
     maskRounded = ReadBoolSetting(L"mask_rounded", false);
@@ -2252,7 +2248,7 @@ void LoadConfig() {
         visorTechnique == VisorTechnique::Interception ? "swapchain_intercept_b" :
         visorTechnique == VisorTechnique::DirectWrite ? "direct_write_c" :
         "off";
-    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d horizontal_outer_edges_only=1 edge_smear_fix=%d edge_smear_pixels=%d lod_popin_fix=%d visor_enabled=%d visor_hd=%d visor_antialiasing=%d visor_backend=%s visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_offset_x=%.3f visor_offset_y=%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
+    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d horizontal_outer_edges_only=1 edge_smear_fix=%d edge_smear_pixels=%d lod_popin_fix=%d visor_enabled=%d visor_backend=%s visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_offset_x=%.3f visor_offset_y=%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
         enabled ? 1 : 0,
         currentAppKey.empty() ? L"<global>" : currentAppKey.c_str(),
         splitMode ? "split" : "total",
@@ -2270,8 +2266,6 @@ void LoadConfig() {
         edgeSmearPixels,
         lodPopInFix ? 1 : 0,
         maskEnabled ? 1 : 0,
-        visorHD ? 1 : 0,
-        visorAntialiasing ? 1 : 0,
         visorBackend,
         visorSize,
         visorWidth,
