@@ -918,7 +918,7 @@ public partial class MainWindow : Window
 	private void LoadSettings()
 	{
 		_loading = true;
-		double num = ReadScaleSetting("total_render_height", ReadScaleSetting("total_share", ReadScaleSetting("vertical_tangent", 0.2)));
+		double num = ReadScaleSetting("total_render_height", ReadScaleSetting("total_share", ReadScaleSetting("vertical_tangent", 0.18)));
 		double value = ReadScaleSetting("horizontal_render_width", 0.8);
 		bool value2 = ReadBoolSetting("split_mode", fallback: false);
 		_viewlabEnabled = ReadBoolSetting("enabled", fallback: true);
@@ -932,15 +932,15 @@ public partial class MainWindow : Window
 		MaskRoundedCheck.IsChecked = true;
 		MaskVerticalBox.Text = FormatScale(ReadScaleSetting("mask_vertical", 1.0));
 		MaskHorizontalBox.Text = FormatScale(ReadScaleSetting("mask_horizontal", 1.0));
-		MaskRoundnessSlider.Value = 1.0 - ReadScaleSetting(MaskCornerKey, 0.1756993);
+		MaskRoundnessSlider.Value = 1.0 - ReadScaleSetting(MaskCornerKey, 0.5);
 		MaskOpeningSlider.Value = ReadScaleSetting(MaskSizeKey, OpeningFromMask(ReadScaleSetting("mask_vertical", 1.0), ReadScaleSetting("mask_horizontal", 1.0), num, value));
 
-		MaskApexYSlider.Value = ReadRangeSetting(MaskOuterApexYKey, -0.22755245, -0.5, 0.5);
-		MaskInnerLowerSlider.Value = ReadRangeSetting(MaskInnerLowerYKey, 0.11730682, 0.0, 0.333);
-		MaskInnerBridgeSlider.Value = ReadRangeSetting(MaskInnerBridgeWidthKey, 1.0, 0.0, 1.0);
+		MaskApexYSlider.Value = ReadRangeSetting(MaskOuterApexYKey, 0.0, -0.5, 0.5);
+		MaskInnerLowerSlider.Value = ReadRangeSetting(MaskInnerLowerYKey, 0.0, 0.0, 0.333);
+		MaskInnerBridgeSlider.Value = ReadRangeSetting(MaskInnerBridgeWidthKey, 0.5, 0.0, 1.0);
 		MaskInnerBridgeRiseSlider.Value = ReadRangeSetting(MaskInnerBridgeRiseKey, 0.0, 0.0, 0.5);
-		MaskInnerBridgePeakXSlider.Value = ReadRangeSetting(MaskInnerBridgePeakXKey, 1.0, 0.0, 1.0);
-		MaskInnerBridgeSteepnessSlider.Value = ReadRangeSetting(MaskInnerBridgeSteepnessKey, 1.0, 0.0, 1.0);
+		MaskInnerBridgePeakXSlider.Value = ReadRangeSetting(MaskInnerBridgePeakXKey, 0.5, 0.0, 1.0);
+		MaskInnerBridgeSteepnessSlider.Value = ReadRangeSetting(MaskInnerBridgeSteepnessKey, 0.5, 0.0, 1.0);
 		MaskOffsetXSlider.Value = 0.0;
 		MaskOffsetYSlider.Value = 0.0;
 		SyncMaskEditorFromSliders();
