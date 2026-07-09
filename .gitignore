@@ -47,3 +47,11 @@ openxr-verticaltangent-overlaytest/
 XR_APILAYER_cooooked_verticaltangent_overlaytest.json
 openxr-verticaltangent-overlaytest.ini
 .tools/
+.claude/workspaces/
+# Agent safety - never commit these
+.claude/
+.agents/
+.devin/
+# Preserve any local AI workspace configs
+!.gitignore
+!AGENTS.md
