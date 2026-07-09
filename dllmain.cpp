@@ -46,6 +46,15 @@ double visorHeight = 1.0;
 double visorCurve = 0.75;
 double visorOffsetX = 0.0;
 double visorOffsetY = 0.0;
+// Visor shape controls. Formula-identical to the UI preview (BeanMaskEditor.cs) — any
+// change here must be mirrored there. Values are authored in the UI's coordinate
+// convention (y grows DOWN); the UI-to-NDC flip happens ONLY in ApexYFromConfigNdc.
+double visorOuterApexY = 0.0;          // mask_outer_apex_y: -0.5..0.5, outer-curve apex offset
+double visorInnerLowerY = 0.0;         // mask_inner_lower_y: 0..0.333, nose-divot band height (0 = off)
+double visorInnerBridgeWidth = 0.5;    // mask_inner_bridge_width: 0..1, bezier handle width
+double visorInnerBridgeRise = 0.0;     // mask_inner_bridge_rise: 0..0.5, endpoint tangent rise
+double visorInnerBridgePeakX = 0.5;    // mask_inner_bridge_peak_x: 0..1, handle horizontal shift
+double visorInnerBridgeSteepness = 0.5;// mask_inner_bridge_steepness: 0..1, handle length scale
 // OPTIONAL, default OFF. The native visor is the D3D11 direct-write path (drawn at
 // xrReleaseSwapchainImage). This flag enables the SEPARATE legacy approach that
 // reshapes the runtime hidden-area mesh into the visor via xrGetVisibilityMaskKHR.
@@ -847,6 +856,20 @@ bool InitD3D11MaskRenderer() {
     return true;
 }
 
+// Curve slider -> superellipse exponent. Geometric interpolation from exp=32 (flat
+// rounded-rect) to exp=2 (full lemon). MUST stay identical to the UI's
+// BeanMaskEditor.CurveExponent: 32 * (2/32)^curve.
+float VisorCurveExponent(double curve) {
+    return 32.0f * std::pow(2.0f / 32.0f, static_cast<float>(std::clamp(curve, 0.0, 1.0)));
+}
+
+// The UI authors apex-y in screen coordinates (y grows DOWN); D3D NDC y grows UP.
+// This is the ONLY place that flip happens — past inversion bugs came from flipping
+// (or forgetting to flip) in individual geometry builders.
+float ApexYFromConfigNdc(double configApexY) {
+    return -static_cast<float>(std::clamp(configApexY, -0.5, 0.5));
+}
+
 // Builds visor border as a flat triangle list (unindexed) in the given NDC bbox.
 // Output: float2 pairs. Returns vertex count (= triangle count * 3).
 // Shape math identical to BeanMaskEditor.BuildGeometry.
@@ -865,7 +888,10 @@ uint32_t BuildVisorBorderVerts(
                     + (bboxW * 0.5f - hw) * static_cast<float>(visorOffsetX);
     const float cy  = (bboxMinY + bboxMaxY) * 0.5f
                     + (bboxH * 0.5f - hh) * static_cast<float>(visorOffsetY);
-    const float exp = 32.0f - std::clamp(static_cast<float>(visorCurve), 0.0f, 1.0f) * 30.0f;
+    const float exp = VisorCurveExponent(visorCurve);
+    // Apex offset, mirroring BeanMaskEditor.BuildGeometry (flip in ApexYFromConfigNdc).
+    const float apexY = std::clamp(cy + ApexYFromConfigNdc(visorOuterApexY) * hh * 2.0f,
+                                   cy - hh + 0.001f, cy + hh - 0.001f);
 
     const uint32_t segCount = (std::min)(96u, vertCapacity / 6u);
     if (segCount < 4u) return 0;
@@ -877,10 +903,11 @@ uint32_t BuildVisorBorderVerts(
         const float c  = std::cos(angle);
         const float s  = std::sin(angle);
         const float sc = (c < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(c), 2.0f / exp);
-        const float ss = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp);
+        const float syScale = s < 0.0f ? (apexY - (cy - hh)) : ((cy + hh) - apexY);
+        const float ss = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp) * syScale;
         inner[i] = {
             std::clamp(cx + sc * hw, bboxMinX + 0.001f, bboxMaxX - 0.001f),
-            std::clamp(cy + ss * hh, bboxMinY + 0.001f, bboxMaxY - 0.001f)};
+            std::clamp(apexY + ss, bboxMinY + 0.001f, bboxMaxY - 0.001f)};
     }
 
     uint32_t v = 0;
@@ -906,6 +933,60 @@ uint32_t BuildVisorBorderVerts(
     return v;
 }
 
+// Nose-divot fill: solid triangles between a cubic bezier and the opening's BOTTOM
+// edge (NDC yBase), from the eye-rect centre to the inner edge. The bezier math is
+// identical to BeanMaskEditor.AddNoseBridgeCurve (horizontal tangents at both ends;
+// width/rise/peakX/steepness shape the handles), made sign-aware so the right eye
+// mirrors correctly. Every emitted vertex is clamped into [yBase, yTop], so the divot
+// is structurally bottom-only — it can never appear in the upper part of the lens.
+void BuildNoseBridgeCurve(
+    float* vertsOut, uint32_t& v, uint32_t vertCapacity,
+    float startX, float endX, float yBase, float yTop) {
+    const float dx = endX - startX;
+    if (std::abs(dx) < 0.0005f || yTop - yBase < 0.0005f) return;
+
+    const float w  = static_cast<float>(std::clamp(visorInnerBridgeWidth, 0.0, 1.0));
+    const float st = static_cast<float>(std::clamp(visorInnerBridgeSteepness, 0.0, 1.0));
+    const float rs = static_cast<float>(std::clamp(visorInnerBridgeRise, 0.0, 0.5));
+    const float px = static_cast<float>(std::clamp(visorInnerBridgePeakX, 0.0, 1.0));
+
+    // Handle length proportional to the horizontal span, bridge width, and steepness
+    // (same formula as the UI preview).
+    const float handleLength = std::abs(dx) * (0.3f + w * 0.4f) * (0.5f + st * 0.5f);
+    const float dir = dx > 0.0f ? 1.0f : -1.0f;
+    const float dy  = yTop - yBase;
+
+    const float p0x = startX,                                           p0y = yBase;
+    const float p1x = startX + dir * handleLength * (0.5f + px * 0.5f), p1y = yBase + rs * dy;
+    const float p2x = endX - dir * handleLength * (1.0f - px * 0.5f),   p2y = yTop - rs * dy;
+    const float p3x = endX,                                             p3y = yTop;
+
+    const float xLo = (std::min)(startX, endX);
+    const float xHi = (std::max)(startX, endX);
+
+    constexpr uint32_t segCount = 32;
+    float prevX = p0x, prevY = p0y;
+    for (uint32_t i = 1; i <= segCount; ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(segCount);
+        const float mt = 1.0f - t;
+        const float mt2 = mt * mt, mt3 = mt2 * mt, t2 = t * t, t3 = t2 * t;
+        float x = mt3 * p0x + 3.0f * mt2 * t * p1x + 3.0f * mt * t2 * p2x + t3 * p3x;
+        float y = mt3 * p0y + 3.0f * mt2 * t * p1y + 3.0f * mt * t2 * p2y + t3 * p3y;
+        x = std::clamp(x, xLo, xHi);
+        y = std::clamp(y, yBase, yTop);
+        // Trapezoid between this curve segment and the bottom edge.
+        if (v + 6 <= vertCapacity) {
+            vertsOut[v*2] = prevX; vertsOut[v*2+1] = yBase; ++v;
+            vertsOut[v*2] = prevX; vertsOut[v*2+1] = prevY; ++v;
+            vertsOut[v*2] = x;     vertsOut[v*2+1] = y;     ++v;
+            vertsOut[v*2] = prevX; vertsOut[v*2+1] = yBase; ++v;
+            vertsOut[v*2] = x;     vertsOut[v*2+1] = y;     ++v;
+            vertsOut[v*2] = x;     vertsOut[v*2+1] = yBase; ++v;
+        }
+        prevX = x; prevY = y;
+    }
+}
+
 // Builds a per-eye visor mask that stays open toward the inner eye edge.
 // Left eye: curved cap on the left/outer side, open toward the right/inner side.
 // Right eye: mirrored. Top/bottom bands span the full eye rect so the corners are
@@ -923,10 +1004,14 @@ uint32_t BuildOpenInnerEyeVisorVerts(
     const float hh  = bboxH * 0.5f * sh;
     const float cx  = (bboxMinX + bboxMaxX) * 0.5f;
     const float cy  = (bboxMinY + bboxMaxY) * 0.5f;
-    const float exp = 32.0f - std::clamp(static_cast<float>(visorCurve), 0.0f, 1.0f) * 30.0f;
+    const float exp = VisorCurveExponent(visorCurve);
     const float y0 = std::clamp(cy - hh, bboxMinY + 0.001f, bboxMaxY - 0.001f);
     const float y1 = std::clamp(cy + hh, bboxMinY + 0.001f, bboxMaxY - 0.001f);
     if (y1 <= y0) return 0;
+    // Outer-curve apex, offset by the user's apex-y (flip handled in ApexYFromConfigNdc).
+    // Mirrors BeanMaskEditor.AddOpenInnerHalf: the curve's vertical scale is split at
+    // the apex so the shape stays inside [y0, y1] at any apex position.
+    const float apexY = std::clamp(cy + ApexYFromConfigNdc(visorOuterApexY) * (y1 - y0), y0 + 0.001f, y1 - 0.001f);
 
     uint32_t v = 0;
     auto tri = [&](float ax, float ay, float bx, float by, float cx2, float cy2) {
@@ -956,9 +1041,12 @@ uint32_t BuildOpenInnerEyeVisorVerts(
         const float c = (std::max)(0.0f, std::cos(t));
         const float s = std::sin(t);
         const float cxOffset = std::pow(c, 2.0f / exp) * hw;
-        const float sy = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp) * hh;
+        // Vertical scale split at the apex: below-apex points scale to (apexY - y0),
+        // above-apex points to (y1 - apexY). Identical to the UI preview.
+        const float syScale = s < 0.0f ? (apexY - y0) : (y1 - apexY);
+        const float sy = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp) * syScale;
         const float x = outerLeft ? (cx - cxOffset) : (cx + cxOffset);
-        const float y = cy + sy;
+        const float y = apexY + sy;
         curve[i] = {
             std::clamp(x, bboxMinX + 0.001f, bboxMaxX - 0.001f),
             std::clamp(y, bboxMinY + 0.001f, bboxMaxY - 0.001f)};
@@ -975,6 +1063,15 @@ uint32_t BuildOpenInnerEyeVisorVerts(
             tri(x0c, y0c, x1c, y1c, outerX, y0c);
             tri(outerX, y0c, x1c, y1c, outerX, y1c);
         }
+    }
+
+    // Nose divot: fill between the bezier and the opening's BOTTOM edge (NDC y0),
+    // from the eye-rect centre to the inner edge. Note: the old implementation used
+    // y1 here — NDC y-up vs UI y-down — which put the divot at the TOP of the lens.
+    if (visorInnerLowerY > 0.0) {
+        const float innerX = outerLeft ? bboxMaxX : bboxMinX;
+        const float bandTopY = std::clamp(y0 + static_cast<float>(visorInnerLowerY) * (y1 - y0), y0, y1);
+        BuildNoseBridgeCurve(vertsOut, v, vertCapacity, cx, innerX, y0, bandTopY);
     }
 
     return v;
@@ -1033,7 +1130,7 @@ uint32_t BuildProjectedPartnerVisorVerts(
     const float sh = std::clamp(static_cast<float>(visorSize * visorHeight), 0.01f, 1.0f);
     const float hw = sw;
     const float hh = sh;
-    const float exp = 32.0f - std::clamp(static_cast<float>(visorCurve), 0.0f, 1.0f) * 30.0f;
+    const float exp = VisorCurveExponent(visorCurve);
     constexpr uint32_t segCount = 96u;
     constexpr float kPi = 3.14159265358979323846f;
 
@@ -1108,11 +1205,17 @@ void DrawVisorBorderToTexture(
     constexpr uint32_t kMaxVerts = 1536;
     float verts[kMaxVerts * 2]{};
     const bool outerLeft = viewIndex == 0;
-    uint32_t vertCount = BuildOpenInnerEyeVisorVerts(bboxMinX, bboxMaxX, bboxMinY, bboxMaxY, outerLeft, verts, kMaxVerts);
+    // The visor shape follows the same setting as the UI preview: "Stencil outer edges
+    // only" ON = per-eye open-inner arch (inner/nose side stays visible), OFF = closed
+    // bean that fully surrounds the opening (inner edge stenciled too).
+    const bool openInnerShape = outerEdgeVisibilityMaskOnly;
+    uint32_t vertCount = openInnerShape
+        ? BuildOpenInnerEyeVisorVerts(bboxMinX, bboxMaxX, bboxMinY, bboxMaxY, outerLeft, verts, kMaxVerts)
+        : BuildVisorBorderVerts(bboxMinX, bboxMaxX, bboxMinY, bboxMaxY, verts, kMaxVerts);
     // Projected partner-eye boundary: blacks out the inner-eye band the cropped partner
     // eye can no longer render. This is exactly the inner-edge stenciling the user turns
     // OFF with "Stencil outer edges only" — only draw it when that setting is unchecked.
-    if (!outerEdgeVisibilityMaskOnly && allViews.size() >= 2 && viewIndex < 2 && vertCount < kMaxVerts) {
+    if (!openInnerShape && allViews.size() >= 2 && viewIndex < 2 && vertCount < kMaxVerts) {
         const EyeView& leftEye = allViews[0].viewIndex == 0 ? allViews[0] : allViews[1];
         const EyeView& rightEye = allViews[0].viewIndex == 1 ? allViews[0] : allViews[1];
         if (viewIndex == 0) {
@@ -1992,6 +2095,14 @@ void LoadConfig() {
     maskBottomCurve = std::clamp(ReadDoubleSetting(L"mask_bottom_curve", 0.0), -1.0, 1.0);
     renderScale = std::clamp(ReadDoubleSetting(L"render_scale", 1.0), 0.1, 3.0);
 
+    // Visor shape controls (ranges identical to the UI sliders).
+    visorOuterApexY = std::clamp(ReadDoubleSetting(L"mask_outer_apex_y", 0.0), -0.5, 0.5);
+    visorInnerLowerY = std::clamp(ReadDoubleSetting(L"mask_inner_lower_y", 0.0), 0.0, 0.333);
+    visorInnerBridgeWidth = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_width", 0.5), 0.0, 1.0);
+    visorInnerBridgeRise = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_rise", 0.0), 0.0, 0.5);
+    visorInnerBridgePeakX = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_peak_x", 0.5), 0.0, 1.0);
+    visorInnerBridgeSteepness = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_steepness", 0.5), 0.0, 1.0);
+
     if (splitMode) {
         topTangent = std::clamp(
             ReadDoubleSetting(L"top_tangent", totalTangent * 0.5),
@@ -2057,6 +2168,19 @@ void LoadConfig() {
         ReadProfileDword(L"visor_size", profileVisorSize);
         ReadProfileDword(L"visor_width", profileVisorWidth);
         ReadProfileDword(L"visor_height", profileVisorHeight);
+
+        // Per-app visor shape overrides (ProfileWindow stores apex-y as signed millis
+        // (v+1)*1000, inner-low/bridge-width as plain millis v*1000). Initialized from
+        // the global values so a missing registry key keeps the global setting.
+        DWORD profileOuterApexY = static_cast<DWORD>(std::lround((std::clamp(visorOuterApexY, -1.0, 1.0) + 1.0) * 1000.0));
+        DWORD profileInnerLowerY = static_cast<DWORD>(std::lround(visorInnerLowerY * 1000.0));
+        DWORD profileBridgeWidth = static_cast<DWORD>(std::lround(visorInnerBridgeWidth * 1000.0));
+        ReadProfileDword(L"mask_outer_apex_y", profileOuterApexY);
+        ReadProfileDword(L"mask_inner_lower_y", profileInnerLowerY);
+        ReadProfileDword(L"mask_inner_bridge_width", profileBridgeWidth);
+        visorOuterApexY = std::clamp(SignedMillisToUnit(profileOuterApexY, visorOuterApexY), -0.5, 0.5);
+        visorInnerLowerY = std::clamp(static_cast<double>(profileInnerLowerY) / 1000.0, 0.0, 0.333);
+        visorInnerBridgeWidth = std::clamp(static_cast<double>(profileBridgeWidth) / 1000.0, 0.0, 1.0);
         if (!ReadProfileDouble(L"render_scale", renderScale)) {
             ReadProfileDword(L"render_scale", profileRenderScale);
             renderScale = DwordToRenderScale(profileRenderScale, renderScale);
@@ -2111,7 +2235,7 @@ void LoadConfig() {
         visorTechnique == VisorTechnique::Interception ? "swapchain_intercept_b" :
         visorTechnique == VisorTechnique::DirectWrite ? "direct_write_c" :
         "off";
-    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d horizontal_outer_edges_only=1 edge_smear_fix=%d edge_smear_pixels=%d lod_popin_fix=%d visor_enabled=%d visor_backend=%s visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_offset_x=%.3f visor_offset_y=%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
+    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d horizontal_outer_edges_only=1 edge_smear_fix=%d edge_smear_pixels=%d lod_popin_fix=%d visor_enabled=%d visor_backend=%s visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_offset_x=%.3f visor_offset_y=%.3f visor_outer_apex_y=%.3f visor_inner_lower_y=%.3f visor_inner_bridge_w/r/px/s=%.3f/%.3f/%.3f/%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
         enabled ? 1 : 0,
         currentAppKey.empty() ? L"<global>" : currentAppKey.c_str(),
         splitMode ? "split" : "total",
@@ -2136,6 +2260,12 @@ void LoadConfig() {
         visorCurve,
         visorOffsetX,
         visorOffsetY,
+        visorOuterApexY,
+        visorInnerLowerY,
+        visorInnerBridgeWidth,
+        visorInnerBridgeRise,
+        visorInnerBridgePeakX,
+        visorInnerBridgeSteepness,
         renderScale,
         uevrLikeProcess ? 1 : 0,
         verboseLogging ? 1 : 0);
@@ -2547,7 +2677,7 @@ bool ApplyVisorMask(uint32_t viewIndex, XrVisibilityMaskKHR* mask) {
     const float hh  = bboxH * 0.5f * sh;
     const float cx  = (minX + maxX) * 0.5f + (bboxW * 0.5f - hw) * static_cast<float>(visorOffsetX);
     const float cy  = (minY + maxY) * 0.5f + (bboxH * 0.5f - hh) * static_cast<float>(visorOffsetY);
-    const float exp = 32.0f - std::clamp(static_cast<float>(visorCurve), 0.0f, 1.0f) * 30.0f;
+    const float exp = VisorCurveExponent(visorCurve);
 
     constexpr float kTwoPi = 6.28318530717958647692f;
     std::vector<XrVector2f> inner(segCount);
