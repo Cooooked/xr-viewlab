@@ -4,6 +4,18 @@
 > quad drew), and current product uses Technique C Direct (native D3D11 visor into game eye textures).
 > See `PROJECT_STATUS.md` / `HANDOFF.md`.
 
+## 4.1.105 - 2026-07-10 (Pass 1: Visor Shape Rewrite)
+
+- **Rewrote apex-y, inner-low, and all four bridge controls natively** (clean rewrite on the v4.1.55
+  baseline, formula-identical to the UI preview). Root cause of the old "divot on top of the lens" bug
+  found and fixed: the old native code anchored the nose bridge to NDC `y1` (top) instead of `y0`
+  (bottom) — UI y-down vs NDC y-up — and emitted bare points into a triangle list (garbage geometry).
+  New `BuildNoseBridgeCurve` fills real band-clamped trapezoids: the divot is structurally bottom-only.
+- **Native shape now follows the stencil checkbox like the preview**: ON = per-eye open-inner arch,
+  OFF = closed bean (now apex-aware). Geometric curve exponent `32*(2/32)^curve` everywhere.
+- Config plumbing for all six shape keys (ini + per-app registry), config log extended.
+- Rewrote `Tests/Verify-ViewLabContracts.ps1` for the new design; all contracts pass.
+
 ## 4.1.103 - 2026-07-10 (Inner-Edge Stenciling, Part 2)
 
 - **Gated the projected partner-eye boundary behind the stencil checkbox.** The D3D11 visor draw
