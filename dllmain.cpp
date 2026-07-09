@@ -807,14 +807,12 @@ bool InitD3D11MaskRenderer() {
         return false;
     }
 
-    // Free d3dcompiler only after all blobs are released (fixes Pistol Whip crash)
-    FreeLibrary(dxcLib);
-
     hr = g_d3d11Mask.device->CreateVertexShader(
         vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &g_d3d11Mask.vs);
     if (FAILED(hr)) {
         Log("d3d11 mask: CreateVertexShader hr=0x%08X\n", static_cast<unsigned>(hr));
         vsBlob->Release(); psBlob->Release();
+        FreeLibrary(dxcLib);
         g_d3d11Mask.failed = true;
         return false;
     }
@@ -825,6 +823,7 @@ bool InitD3D11MaskRenderer() {
     if (FAILED(hr)) {
         Log("d3d11 mask: CreatePixelShader hr=0x%08X\n", static_cast<unsigned>(hr));
         vsBlob->Release();
+        FreeLibrary(dxcLib);
         g_d3d11Mask.failed = true;
         return false;
     }
@@ -835,6 +834,7 @@ bool InitD3D11MaskRenderer() {
     hr = g_d3d11Mask.device->CreateInputLayout(
         elems, 1, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &g_d3d11Mask.layout);
     vsBlob->Release();
+    FreeLibrary(dxcLib);
     if (FAILED(hr)) {
         Log("d3d11 mask: CreateInputLayout hr=0x%08X\n", static_cast<unsigned>(hr));
         g_d3d11Mask.failed = true;
