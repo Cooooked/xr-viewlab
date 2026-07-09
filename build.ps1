@@ -73,6 +73,15 @@ function Find-MSBuild {
 Write-Host "Building WPF app..."
 dotnet publish $DotnetProject -c $Configuration -r win-x64 --self-contained true /p:PublishSingleFile=true
 
+# Copy ReShadePayload to publish directory for development/testing
+$PublishDir = Join-Path $Root "bin\Release\net8.0-windows\win-x64\publish"
+$PayloadSrc = Join-Path $Root "ReShadePayload"
+$PayloadDest = Join-Path $PublishDir "ReShadePayload"
+if (Test-Path $PayloadSrc) {
+    Remove-Item -Path $PayloadDest -Recurse -Force -ErrorAction SilentlyContinue
+    Copy-Item -Path $PayloadSrc -Destination $PayloadDest -Recurse -Force
+}
+
 $MSBuild = Find-MSBuild
 Write-Host "Using MSBuild: $MSBuild"
 
