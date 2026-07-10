@@ -1,177 +1,91 @@
-# XR ViewLab Agent Handoff
+# ViewLab — AI Operating Manual
 
-Tone note from the user: dry, direct, no fluff. Good engineering, fewer ceremonies.
+Canonical entry point for every coding agent (Claude, Codex, or other). Read this file,
+then `STATE.md`, then start working. Everything else is read on demand via the index below.
 
-## One Folder, One Truth
+**One folder, one truth:** the repo is `F:\AI-Projects\ViewLab`. Never depend on files outside it.
+Repository memory beats conversation memory: if this file or `STATE.md` disagrees with what you
+remember or assume, the repo wins. If the repo is stale, fix the repo immediately.
 
-Active source directory:
+## What ViewLab is
 
-`F:\AI-Projects\ViewLab`
+An OpenXR **implicit API layer** (`XR_APILAYER_cooooked_xrviewlab`, native C++ in `dllmain.cpp`)
+plus a **WPF settings app** (`XRViewLab.UI/`). The layer crops the vertical/horizontal FOV and
+recommended render resolution reported to VR games (GPU savings), and draws a black "visor" mask
+directly into the game's eye textures via D3D11 (Technique C Direct). Config flows UI → ini +
+per-app registry → DLL. Ships as an MSI. Primary test game: Pistol Whip via Virtual Desktop (VDXR).
 
-Do not reference or depend on files outside `F:\AI-Projects\ViewLab`.
+## Operating rules (non-negotiable)
 
-## Current State (2026-07-08, v4.1.65)
+1. **Build + delivery:** after any implementation change run `.\build.ps1` (auto-bumps version,
+   builds WPF + x64/Win32 layer + MSI into `dist\`). The final reply must contain the exact MSI
+   path in a plain text block, e.g. `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.105.msi`. Never just
+   the folder.
+2. **Test before release:** the user tests each build in-headset. NEVER push to GitHub or publish
+   a release without the user confirming the build works.
+3. **Contracts:** `Tests\Verify-ViewLabContracts.ps1` must pass before committing. It pins the
+   UI↔DLL config-key wiring, geometry parity, and past regression fixes.
+4. **Docs are operational state:** every commit that changes behavior also updates `STATE.md`
+   (and `CHANGELOG.md` for user-visible changes). Decisions → `docs/DECISIONS.md`. New/changed
+   config keys → `docs/CONFIG.md`. New regressions → `docs/REGRESSIONS.md`. Never create new
+   status/handoff/session/summary documents — update the canonical ones.
+5. **Git safety:** NEVER run `git restore` / `git checkout <file>` / `git reset` / `git revert` /
+   `git stash` or delete uncommitted changes without explicit user approval. Uncommitted work or
+   a recent MSI in `dist\` may be the real working state, not git HEAD. When the user reports a
+   regression: stop, ask which build worked, check `dist\` and `backups\` before touching git.
+6. **Scope discipline:** one bug, one fix, one commit. Prove root cause before patching. No
+   speculative edits, no drive-by refactors, no renames unless asked. If you find an unrelated
+   bug, record it in `STATE.md` → Known issues instead of fixing it now.
+7. **Agent workspaces:** never create a project-local `.claude/`, `.codex/`, `.agents/` or similar
+   memory directory. Tool memory lives outside the repo; repo memory lives in these docs.
+8. **VR testing:** check headset/runtime state before launching games.
+   `XR_ERROR_FORM_FACTOR_UNAVAILABLE` = headset not streaming — stop and tell the user.
 
-- Latest installer: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.65.msi`.
-- 4.1.65 was a bug/perf sweep: fixed the UI-side `mask_size`=1.0 clobber (regression of the 4.1.46
-  invisible-mask root cause), retargeted the false visibility-mask warning to the legacy
-  `visibility_mask_visor` path, removed dead legacy config reads and fossil `reshade_*` keys, and
-  removed per-frame heap allocations/duplicate mutex passes from the Direct C release/end-frame
-  paths. `mask_size` is the single source of truth for the visor opening; never derive it from the
-  legacy `mask_vertical`/`mask_horizontal` values.
-- After implementation changes, always run `.\build.ps1` and put the exact MSI path in a plain text block
-  in the final reply.
-- Vertical/horizontal crop is the core performance feature and must remain active unless the user
-  explicitly asks otherwise.
-- Visor A/B source paths remain in code but are hidden/bypassed in the product. Current debugging focuses
-  on Technique C Direct: release-time plus late-end-frame direct write.
-- Technique C late `xrEndFrame` drawing is fallback-only; the release-time draw is the normal/legal path.
-- `lod_popin_fix` is diagnostic-only in 4.1.63. Do not restore the unsafe full-FOV path that stretched
-  cropped output over the full lens.
-- Release-time D3D11 visor/edge drawing caches runtime swapchain RTVs per image/slice, and visor geometry
-  builders avoid per-draw heap curve buffers.
-- 4.1.63 added experimental Direct C visor shape controls: `Apex Y`/`mask_outer_apex_y` moves the outer
-  curve apex up/down, and `Inner low`/`mask_inner_lower_y` adds a bottom-only inner-eye stencil curve.
-  These are built, not yet confirmed in headset.
-- Edge smear/render stretching is still unresolved. Treat current edge-smear fixes as suspicious and
-  investigate the actual render/composition path before changing code.
+## Reading policy (context economy)
 
-## Current State (2026-07-01 late, v4.1.47)
+Read metadata before source. The two big files are expensive; open them **only for the function
+you need**, located by symbol search, never end-to-end "to get familiar":
 
-For the live, detailed state always read `PROJECT_STATUS.md` and `HANDOFF.md` first — they supersede
-this section. Summary:
+| File | Lines | Cost | Open when |
+|---|---|---|---|
+| `dllmain.cpp` | ~3000 | HIGH | editing native behavior — jump to the symbol via grep |
+| `XRViewLab.UI/MainWindow.cs` | ~2200 | HIGH | editing UI logic/persistence — jump to symbol |
+| everything else | <700 | ok | as needed |
 
-- Render crop OpenXR layer (FOV + recommended resolution): done, active in `dllmain.cpp`.
-- Per-app enable/disable + custom render values: done (WPF writes / DLL reads HKCU app registry keys).
-- Merged Applications table, double-click app profile editor, ReShade Remote popout: done.
-- Layer submission CONFIRMED in-headset (BOTH-eye debug quad drew on VDXR). Prior "no mask" was
-  `visorSize`=1.0 (full opening); fixed (fallback 0.82).
-- Visor: enable is global-only; `visor_technique` selector (UI radio). Technique A = per-eye
-  head-locked alpha-cutout quads; technique B = app-facing swapchain interception/composite; technique C =
-  eye-texture direct write at release. All three use the same open-inner-eye visor shape. Debug test quad removed.
-- Pending (user-requested, deferred): experimental edge-smear toggle + LOD-pop-in toggle. See
-  `PROJECT_STATUS.md` / `IMPLEMENTATION_PLAN_visor.md`.
+`docs/ARCHITECTURE.md` maps every subsystem to its owning symbols so you can grep instead of read.
 
-## File Map
+## Navigation index
 
-- `MainWindow.xaml` - WPF dark UI layout, merged app table, ReShade MENU, footer.
-- `XRViewLab.UI/MainWindow.cs` - WPF app logic, config read/write, app registry UI, update check, ReShade install button.
-- `XRViewLab.UI/AppProfile.cs` - app row model for Applications table.
-- `XRViewLab.UI/ProfileWindow.cs` - per-app custom top/bottom/horizontal editor.
-- `XRViewLab.UI/UpdateRelease.cs` - update-check DTO.
-- `dllmain.cpp` - OpenXR API layer hook implementation.
-- `loader_interfaces.h` - OpenXR loader/API-layer structs.
-- `XR_APILAYER_cooooked_xrviewlab.json` - implicit OpenXR layer manifest.
-- `xr-viewlab.ini` - default config copied by installer / fallback config.
-- `xr-viewlab.csproj` - WPF .NET project.
-- `XRViewLabLayer.vcxproj` - native OpenXR layer project.
-- `Installer/Product.wxs` - WiX MSI definition.
-- `Installer/CreateDesktopShortcut.vbs` - installer prompt helpers.
-- `Installer/PreserveConfig.vbs` - installer config/registry cleanup helpers.
-- `app.ico` - app/installer icon.
-- `ReShadePayload/` - bundled custom ReShade OpenXR payload and compact reference docs for Advanced:
-  ReShade Remote.
-- `PROJECT_GOAL.md` - running project journal; update before/after meaningful work.
-- `dllmain_features.md` - DLL INI/registry key reference.
-- `build.ps1` - single build entry point.
+| Question | Answer lives in |
+|---|---|
+| What's the current version / active work / known issues? | `STATE.md` |
+| How does the system work? Where does subsystem X live? | `docs/ARCHITECTURE.md` |
+| What does config key X do? Who reads/writes it? | `docs/CONFIG.md` |
+| Why is it built this way? | `docs/DECISIONS.md` |
+| What broke before and must never break again? | `docs/REGRESSIONS.md` |
+| How do I verify behavior in the headset? | `docs/VERIFICATION.md` |
+| What shipped when? | `CHANGELOG.md` |
+| Older research/plans/journals (rarely needed) | `docs/history/` |
+| ReShade Remote payload internals | `ReShadePayload/Docs/` |
+| Backup inventory / recovery sources | `docs/history/SOURCE_BACKUP.md` |
 
-## ReShade MENU UI
+## Source map
 
-The old `reshade_hmd_menu`/`reshade_desktop_duplicate`/`reshade_3d_menu` ini keys are gone: no
-code read or wrote them, so they were removed from the default ini and the dead UI constants were
-deleted. ReShade Remote state lives in the `Advanced: ReShade Remote` popout (shared-memory
-control block + `openxr_quad_transform.ini` under ProgramData). Do not revive the old
-registry-patching `ReShadeSyncService`.
+| Path | Owns |
+|---|---|
+| `dllmain.cpp` | the entire native layer: OpenXR hooks, FOV/resolution crop, D3D11 visor renderer, visibility-mask stencil filter, config/registry reads |
+| `XR_APILAYER_cooooked_xrviewlab.json` | implicit layer manifest (installer registers x64+Win32 under HKLM Khronos ApiLayers) |
+| `XRViewLab.UI/MainWindow.cs` + `MainWindow.xaml` | settings UI, ini/registry persistence, app list, update check |
+| `XRViewLab.UI/BeanMaskEditor.cs` | visor preview canvas + draggable pins — **reference spec for native geometry** (must stay formula-identical to `dllmain.cpp`) |
+| `XRViewLab.UI/ProfileWindow.cs` + `ProfileWindow.xaml` | per-app profile editor (registry DWORDs) |
+| `XRViewLab.UI/AppProfile.cs` | app row model |
+| `XRViewLab.UI/ReShadeRemoteWindow.cs`, `ReShadeControlService.cs` | Advanced: ReShade Remote popout (shared-memory control of bundled ReShade payload) |
+| `xr-viewlab.ini` | bundled default config (MSI may overwrite the live ini — see REGRESSIONS) |
+| `build.ps1` | single build entry point (version bump + WPF + native x64/Win32 + MSI + dist copy) |
+| `Installer/Product.wxs` | WiX MSI definition, layer registration |
+| `Tests/Verify-ViewLabContracts.ps1` | contract test |
+| `ReShadePayload/` | bundled ReShade OpenXR payload + its docs (installed by MSI) |
+| `backups/`, `reference/` | snapshots & reading material — never referenced by code |
 
-## Last Change
-
-v4.1.63: added experimental Direct C visor apex/inner-lower shape controls with draggable preview pins.
-Build is clean, but in-headset behaviour is not confirmed. The next focus is edge-smear/render-stretch
-forensics at aggressive crop values.
-
-v4.1.62: visor product path is focused on Direct C. Techniques A/B are hidden/bypassed, late Direct C
-draw is fallback-only, and verbose edge-smear contract diagnostics include baseline/draw provenance.
-
-v4.1.61: visor product path is focused on Direct C. Techniques A/B are hidden/bypassed, the preview shows
-the single-eye open-inner shape when `Stencil outer edges only` is enabled, and Advanced: ReShade Remote
-bundles the custom OpenXR payload with an install action. See `CHANGELOG.md` and `PROJECT_STATUS.md`.
-
-v4.1.47: layer submission confirmed working in-headset (BOTH-eye debug quad drew). Found + fixed the
-"no mask" root cause — `visorSize`=1.0 (full opening = invisible border), fallback now 0.82. Technique A
-(BOTH-eye quad overlay) is primary and awaits in-headset confirmation; technique C draws but doesn't show
-on VDXR; debug test quad removed; enable is global-only; UI Technique selector added. See `CHANGELOG.md`
-and `PROJECT_STATUS.md`.
-
-## Source Backup Reference
-
-See `SOURCE_BACKUP.md` for the complete inventory of all backup sources, build versions, ReShade mod source backups, and rebuild instructions.
-
-## Known Gotchas
-
-- `build.ps1` auto-increments the version. When building components manually (to avoid a double bump),
-  bump `Properties\AssemblyInfo.cs` + `Installer\Product.wxs` yourself and build each project directly.
-- After implementing any requested code/UI/DLL change, run the full installer build with `.\build.ps1`
-  unless the user explicitly says not to. In the final reply, always give the full runnable MSI path,
-  including the file name, in a plain text block the user can paste into Windows Run. Example:
-  `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.63.msi`. Do not provide only the folder.
-- Latest installer: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.65.msi` (builds clean).
-- Source must not depend on files outside `F:\AI-Projects\ViewLab`.
-- The WPF app and DLL both use `xr-viewlab.ini`, but only the WPF app knows about the ReShade MENU keys right now.
-- The DLL reads render/app keys only; see `dllmain_features.md`.
-
-## CRITICAL: AGENT SAFETY RULES
-
-**ABSOLUTELY FORBIDDEN WITHOUT EXPLICIT USER APPROVAL:**
-
-- NEVER run `git restore` on any file
-- NEVER run `git checkout` on any file
-- NEVER run `git reset` of any kind
-- NEVER run `git revert` of any kind
-- NEVER run `git stash` of any kind
-- NEVER delete or revert uncommitted changes
-- NEVER assume Git HEAD is the source of truth
-- NEVER compare against Git HEAD for "original" state
-
-**MANDATORY BEFORE ANY DESTRUCTIVE OPERATION:**
-
-1. Check `git status` - if there are uncommitted changes, STOP
-2. Ask the user for explicit approval before any git operation that changes files
-3. If asked to "restore" or "revert", clarify EXACTLY what state to restore to
-4. If asked to "rollback", ask for the specific commit hash or backup name
-5. Check `dist/` folder for recent MSIs - these may represent the real working state
-6. Check `backups/` folder for patches or snapshots
-7. Check git reflog for recent operations
-8. Only use `git diff` to inspect changes, never to apply them automatically
-
-**IF THE USER IS ANGRY OR REPORTS A REGRESSION:**
-
-1. STOP ALL IMMEDIATE CHANGES
-2. Ask for the specific build number that was working
-3. Ask for the specific time/date when it was working
-4. Do NOT assume any git state is correct
-5. Do NOT restore to Git HEAD without confirmation
-6. The real working state may be:
-   - Uncommitted local changes (not in git)
-   - A recent MSI in `dist/`
-   - A patch in `backups/`
-   - A zip snapshot in `backups/`
-
-**WORKSPACE POLICY:**
-
-- This project should be edited in a Git workspace/branch, not directly on master
-- Always create a feature branch before making changes
-- Never modify files on master without explicit approval
-- If working directly on master, commit frequently after each successful build
-
-## Build
-
-Run:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass -Force
-.\build.ps1
-```
-
-The MSI is copied to:
-
-`F:\AI-Projects\ViewLab\dist`
+Live config at runtime: `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini` (UI writes, DLL reads).
+Per-app profiles: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>`. Logs: `%LOCALAPPDATA%\XR ViewLab\ViewLab.log`.
