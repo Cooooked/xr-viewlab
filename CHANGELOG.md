@@ -1,8 +1,43 @@
 # Changelog
 
-> Visor-mask status note (2026-07-10): layer submission is CONFIRMED working in-headset (a BOTH-eye debug
-> quad drew), and current product uses Technique C Direct (native D3D11 visor into game eye textures).
-> See `PROJECT_STATUS.md` / `HANDOFF.md`.
+> Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
+
+## 4.1.109 - 2026-07-10 (Bug Scan Fix Pass)
+
+- Fixed the remaining preview pin-drag breakage by making the apex drag inverse match the rendered
+  centre-origin pin position.
+- Fixed safe config/install consistency: `mask_size` now falls back directly to `0.82`, the default
+  ini is packaged into publish/MSI output, and build output copies freshly-built native DLLs after
+  MSBuild completes.
+- Fixed Edge Masks "Both" wiring to the DLL keys and disabled unsupported one-sided controls.
+- Implemented native `crop_outer_edges_only` reading/logging and restored recommended image-size
+  scaling when `fovMutable` reporting is unavailable.
+- Split late fallback draw flags for edge guard vs Direct C visor, broadened D3D11 RTV/viewport
+  state restore, and added open-inner vertical AA feathering.
+- Tightened per-app visor profile semantics: global mode saves as global, unsupported per-app
+  visor enable is not written, bridge-width missing fallback is `0.5`, and the curve reset matches
+  default config.
+
+## 4.1.110 - 2026-07-10 (Bug Scan — documented findings)
+
+- Finalized comprehensive bug scan (`docs/BUG_SCAN_2026-07-10.md`) covering 43 new findings
+  across native layer, UI, build/installer, and documentation.
+- Cross-referenced and aligned all seven canonical memory files (STATE.md, CHANGELOG.md,
+  docs/ARCHITECTURE.md, docs/CONFIG.md, docs/DECISIONS.md, docs/REGRESSIONS.md,
+  docs/BUG_AUDIT.md).
+- `Tests/Verify-ViewLabContracts.ps1` passes.
+
+## 4.1.107 - 2026-07-10 (Full Bug-Fix Bundle)
+
+- Implemented preview pin dragging via mouse capture/release/lost-capture handling.
+- Implemented native `visor_antialiasing` and `visor_hd`: D3D11 visor vertices now carry alpha,
+  AA adds feathered aperture strips with SRC_ALPHA blending, and HD doubles curve tessellation.
+- Completed per-app shape plumbing for bridge rise, peak X, and steepness; reset/delete now covers
+  all visor override keys.
+- Reconciled installer policy: MSI backs up then intentionally resets visor settings to safe
+  defaults, with complete bundled ini defaults and contract coverage.
+- Restored Pass 4 robustness: cached RTVs are used by release and late paths, late `xrEndFrame`
+  drawing is fallback-only, and original-FOV edge-smear diagnostics are back.
 
 ## 4.1.105 - 2026-07-10 (Pass 1: Visor Shape Rewrite)
 

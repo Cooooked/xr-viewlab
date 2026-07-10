@@ -32,8 +32,8 @@ When adding any key: grep BOTH sides before shipping.
 **Why:** missing `mask_size` (wiped from ini) fell back to a formula that clamps to 1.0 = full
 opening = zero-width border. Regressed twice via legacy `mask_vertical/horizontal` derivation.
 **Never again:** fallback is 0.82 in UI and DLL; opening never derived from legacy keys (D3).
-(The 0.82 fallback is a Pass 4 re-add item for the current 4.1.55-derived LoadConfig — check
-`mask_size` handling before release.)
+Contract tests pin the UI's direct `0.82` fallback so installer-stripped configs cannot recreate
+the invisible visor on the next save.
 
 ## R5 — Untested "current settings as defaults" broke launch (4.1.88; reverted 4.1.89)
 **What:** hardcoding the user's live settings as app defaults shipped `mask_size=1` (R4 again)
@@ -46,8 +46,9 @@ high-risk — they interact with the MSI ini overwrite (R6).
 bundled default ini (e.g. `mask_enabled`, `mask_size`, `mask_corner`) were dropped, silently
 changing behavior after "just an update".
 **Never again:** keep the bundled `xr-viewlab.ini` complete (every product key present with sane
-default — contract test asserts the shape keys); after installs, expect the user may need to
-re-check settings. A proper preserve-on-upgrade fix is future work.
+default), include it in the MSI/package output, and make the reset policy explicit. Current
+policy is backup-then-reset visor settings, not preserve-on-upgrade. Contract tests assert the
+default key set, Product.wxs packaging, and the installer reset list.
 
 ## R7 — The 2026-07-10 spiral: 14 blind builds, features lost (4.1.88→4.1.101)
 **What:** 12+ hours of guess-edit-build cycles on the inner-low/stencil symptoms; five failed
@@ -69,3 +70,23 @@ subsystem; reverts are for known-good states, not exploration.
 drag dies as soon as the cursor leaves the small canvas; thresholds were never the problem.
 **Lesson:** input bugs are pipeline bugs (capture, routing, hit-testing) before they are
 geometry bugs.
+
+**2026-07-10 fix:** `BeanMaskEditor` now captures mouse only after a pin hit, releases on
+mouse-up, and clears drag state on lost capture. Contract test pins the input pipeline.
+
+**2026-07-10 correction:** capture alone was not enough. `ShapeChanged` saved the old slider
+values, and `SaveGlobalSettings()` immediately rebuilt the editor from those stale sliders,
+snapping the drag back. The host windows now sync editor values back to sliders before saving,
+and the editor uses preview mouse events plus full-rectangle hit testing.
+
+**2026-07-10 correction 2:** the apex pin drag inverse also used `pins.y0` instead of the
+pin band centre. That made the centred pin map to `0.5` and clamped negative drags away. The
+drag code now uses the same centre-origin formula as `PinPositions`; contract tests pin it.
+
+## R9 - Intentional visor reset must not become silent key loss (2026-07-10)
+**What:** MSI install/upgrade resets visor settings to safe defaults by design, but this can look
+like the old accidental dropped-key bug if docs/tests are stale.
+**Why:** `Installer\PreserveConfig.vbs` strips visor keys after backing up the live ini. That is
+the chosen policy for now; crop/render settings are preserved.
+**Never again:** bundled `xr-viewlab.ini` carries every product key with safe defaults, installer
+reset strips the complete current visor key set, and the contract test pins both lists.

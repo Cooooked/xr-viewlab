@@ -37,6 +37,9 @@
     <None Remove="ReshadeAI\**" />
     <None Remove="OpenVRBridge\**" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="xr-viewlab.ini" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
   <Target Name="RemoveLegacyReShadeMenuHelper" AfterTargets="Build;Publish">
     <Delete Files="$(TargetDir)reshade-vr-menu.exe" TreatErrorsAsWarnings="true" />
     <Delete Files="$(PublishDir)reshade-vr-menu.exe" TreatErrorsAsWarnings="true" />

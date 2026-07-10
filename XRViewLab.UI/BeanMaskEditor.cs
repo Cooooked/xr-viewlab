@@ -23,6 +23,12 @@ public sealed class BeanMaskEditor : FrameworkElement
 	private bool _openInnerPreview;
 	private DragTarget _dragTarget = DragTarget.None;
 
+	public BeanMaskEditor()
+	{
+		Focusable = true;
+		IsHitTestVisible = true;
+	}
+
 	private enum DragTarget
 	{
 		None,
@@ -373,10 +379,19 @@ public sealed class BeanMaskEditor : FrameworkElement
 			centerX, y1, area.Right, innerY);
 	}
 
-	protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+	protected override HitTestResult? HitTestCore(PointHitTestParameters hitTestParameters)
 	{
-		base.OnMouseLeftButtonDown(e);
+		Point p = hitTestParameters.HitPoint;
+		return p.X >= 0.0 && p.X <= ActualWidth && p.Y >= 0.0 && p.Y <= ActualHeight
+			? new PointHitTestResult(this, p)
+			: null;
+	}
+
+	protected override void OnPreviewMouseLeftButtonDown(MouseButtonEventArgs e)
+	{
+		base.OnPreviewMouseLeftButtonDown(e);
 		Focus();
+		_dragTarget = DragTarget.None;
 		var area = new Rect(2.0, 2.0, Math.Max(0.0, ActualWidth - 4.0), Math.Max(0.0, ActualHeight - 4.0));
 		var pins = PinPositions(area);
 		Point p = e.GetPosition(this);
@@ -392,14 +407,26 @@ public sealed class BeanMaskEditor : FrameworkElement
 		{
 			_dragTarget = DragTarget.InnerLower;
 		}
-		e.Handled = true;
+		if (_dragTarget != DragTarget.None)
+		{
+			CaptureMouse();
+			e.Handled = true;
+		}
 	}
 
-	protected override void OnMouseMove(MouseEventArgs e)
+	protected override void OnPreviewMouseMove(MouseEventArgs e)
 	{
-		base.OnMouseMove(e);
+		base.OnPreviewMouseMove(e);
 		if (_dragTarget == DragTarget.None || e.LeftButton != MouseButtonState.Pressed)
 		{
+			if (_dragTarget != DragTarget.None)
+			{
+				_dragTarget = DragTarget.None;
+				if (IsMouseCaptured)
+				{
+					ReleaseMouseCapture();
+				}
+			}
 			return;
 		}
 
@@ -410,7 +437,8 @@ public sealed class BeanMaskEditor : FrameworkElement
 
 		if (_dragTarget == DragTarget.OuterApex)
 		{
-			OuterApexY = Math.Clamp((mouse.Y - pins.y0) / span, -0.5, 0.5);
+			double centerY = (pins.y0 + pins.y1) * 0.5;
+			OuterApexY = Math.Clamp((mouse.Y - centerY) / span, -0.5, 0.5);
 		}
 		else if (_dragTarget == DragTarget.InnerLower)
 		{
@@ -425,11 +453,21 @@ public sealed class BeanMaskEditor : FrameworkElement
 		e.Handled = true;
 	}
 
-	protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+	protected override void OnPreviewMouseLeftButtonUp(MouseButtonEventArgs e)
 	{
-		base.OnMouseLeftButtonUp(e);
+		base.OnPreviewMouseLeftButtonUp(e);
 		_dragTarget = DragTarget.None;
+		if (IsMouseCaptured)
+		{
+			ReleaseMouseCapture();
+		}
 		e.Handled = true;
+	}
+
+	protected override void OnLostMouseCapture(MouseEventArgs e)
+	{
+		base.OnLostMouseCapture(e);
+		_dragTarget = DragTarget.None;
 	}
 
 	private static double DistanceSquared(Point a, Point b)

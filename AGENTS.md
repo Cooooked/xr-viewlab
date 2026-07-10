@@ -25,10 +25,13 @@ per-app registry → DLL. Ships as an MSI. Primary test game: Pistol Whip via Vi
    a release without the user confirming the build works.
 3. **Contracts:** `Tests\Verify-ViewLabContracts.ps1` must pass before committing. It pins the
    UI↔DLL config-key wiring, geometry parity, and past regression fixes.
-4. **Docs are operational state:** every commit that changes behavior also updates `STATE.md`
-   (and `CHANGELOG.md` for user-visible changes). Decisions → `docs/DECISIONS.md`. New/changed
-   config keys → `docs/CONFIG.md`. New regressions → `docs/REGRESSIONS.md`. Never create new
-   status/handoff/session/summary documents — update the canonical ones.
+4. **Documentation synchronization contract:** a behavioral change is NOT complete until the
+   canonical memory is updated **in the same commit**: `STATE.md` always (+ `CHANGELOG.md` if
+   user-visible); config keys → `docs/CONFIG.md`; permanent decisions → `docs/DECISIONS.md`;
+   regressions → `docs/REGRESSIONS.md`; subsystem shape → `docs/ARCHITECTURE.md` +
+   `repo-index.json`. If a commit updates no canonical memory, the commit message must say why
+   (docs-only / comment-only / build-artifact-only). Never create new status/handoff/session/
+   summary documents — update the canonical ones.
 5. **Git safety:** NEVER run `git restore` / `git checkout <file>` / `git reset` / `git revert` /
    `git stash` or delete uncommitted changes without explicit user approval. Uncommitted work or
    a recent MSI in `dist\` may be the real working state, not git HEAD. When the user reports a
@@ -43,8 +46,10 @@ per-app registry → DLL. Ships as an MSI. Primary test game: Pistol Whip via Vi
 
 ## Reading policy (context economy)
 
-Read metadata before source. The two big files are expensive; open them **only for the function
-you need**, located by symbol search, never end-to-end "to get familiar":
+Read metadata before source. **`repo-index.json` is the machine index**: subsystem → files →
+symbols → tests → docs → keywords. Answer "where does X live" from it, then grep the symbol.
+The two big files are expensive; open them **only for the function you need**, located by
+symbol search, never end-to-end "to get familiar":
 
 | File | Lines | Cost | Open when |
 |---|---|---|---|
@@ -58,6 +63,7 @@ you need**, located by symbol search, never end-to-end "to get familiar":
 
 | Question | Answer lives in |
 |---|---|
+| Where does subsystem/symbol/test X live? (machine index) | `repo-index.json` |
 | What's the current version / active work / known issues? | `STATE.md` |
 | How does the system work? Where does subsystem X live? | `docs/ARCHITECTURE.md` |
 | What does config key X do? Who reads/writes it? | `docs/CONFIG.md` |

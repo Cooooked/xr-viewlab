@@ -71,3 +71,10 @@ earlier eras was consolidated 2026-07-10 (27 root .md → 4 + docs/).
 Gameplay mode is launch-time config, not a live toggle; shared-memory `XRControlBlock` layout is
 frozen (both sides must match); commands are edge-triggered (rising edge) to prevent repeat
 execution; desktop and HMD render paths stay separated. Details: `ReShadePayload/Docs/`.
+
+## D12 - MSI install resets visor settings after backup (2026-07-10)
+The current installer policy is to back up `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini`, then strip
+visor keys and per-app visor overrides so upgrades start from safe visor defaults. Crop and render
+profile values are preserved. Rejected for this pass: preserve-on-upgrade, because stale visor keys
+from experimental builds have repeatedly caused confusing visual states. Consequence: testers must
+re-enable the visor after install when validating visor visuals.

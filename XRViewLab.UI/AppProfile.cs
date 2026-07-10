@@ -330,6 +330,9 @@ public sealed class AppProfile : INotifyPropertyChanged
 	public double VisorOuterApexY { get; set; }
 	public double VisorInnerLowerY { get; set; }
 	public double VisorInnerBridgeWidth { get; set; }
+	public double VisorInnerBridgeRise { get; set; }
+	public double VisorInnerBridgePeakX { get; set; }
+	public double VisorInnerBridgeSteepness { get; set; }
 
 	public string Summary
 	{

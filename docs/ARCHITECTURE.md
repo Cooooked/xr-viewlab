@@ -74,8 +74,22 @@ Games query the visibility mask once per session → restart the game to see ste
 ## Build & packaging
 
 `build.ps1` (the only build entry): bumps version in `Properties/AssemblyInfo.cs` +
-`Installer/Product.wxs` → `dotnet publish` WPF (win-x64 self-contained single-file) → MSBuild
-native layer x64 then Win32 → copies both layer DLLs to dist + publish dir → WiX MSI →
-`dist\ViewLab-<version>.msi`. Manual builds must bump versions by hand to avoid double-bumps.
-MSI registers both layer manifests under HKLM Khronos ApiLayers (x64 + WOW6432Node) and installs
-the app, default ini, and ReShadePayload.
+`Installer/Product.wxs` → `dotnet publish` WPF (win-x64 self-contained single-file) → copies the
+repo default `xr-viewlab.ini` into publish output → MSBuild native layer x64 then Win32 → copies
+the freshly-built layer DLLs to dist + publish dir → WiX MSI → `dist\ViewLab-<version>.msi`.
+Manual builds must bump versions by hand to avoid double-bumps. MSI registers both layer
+manifests under HKLM Khronos ApiLayers (x64 + WOW6432Node) and installs the app, default ini,
+and ReShadePayload.
+
+## 2026-07-10 visor quality / robustness update
+
+- The D3D11 visor vertex format is now `{x, y, alpha}`. `visor_antialiasing=1` adds feather
+  strips on the aperture boundary and draws with `SRC_ALPHA`; `visor_hd=1` doubles curve
+  tessellation from 96 to 192 segments.
+- Direct C draws at `xrReleaseSwapchainImage` using cached per-image/per-slice RTVs. The
+  `xrEndFrame` draw is fallback-only when release-time drawing did not run for that frame, with
+  independent release flags for edge guard and Direct C visor paths.
+- `XRViewLab_xrLocateViews` stores original and cropped FOVs for diagnostics; recommended-size
+  logging uses per-view effective horizontal/vertical scale helpers when available.
+- MSI install backs up then intentionally resets visor keys to safe defaults. This is product
+  policy, not the old accidental dropped-key regression.

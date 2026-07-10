@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-10
-**Current version:** 4.1.105 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.105.msi`
+**Current version:** 4.1.110 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.110.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
 **Publish state:** local commits ahead of origin/master; DO NOT push until user confirms current work in-headset.
 
@@ -17,28 +17,21 @@ Three fixes from the recovery are load-bearing and must survive all future work:
 FreeLibrary-after-blob-use, stencil key wiring + filter-runs-with-visor-active, partner-eye
 boundary gated to closed-bean mode (details in `docs/DECISIONS.md` D7–D9).
 
-## Active milestone: visor feature rewrite (4 passes)
+## Current implementation status
 
-- **Pass 1 — DONE, built as 4.1.105, AWAITING HEADSET CONFIRMATION.**
-  Apex Y / Inner low / Bridge / Rise / Peak X / Steepness rewritten natively, formula-identical
-  to the preview; nose divot anchored to NDC bottom (old top-of-lens bug is structurally
-  impossible now); visor shape follows the stencil checkbox (ON = open-inner arch, OFF = closed
-  bean); geometric curve exponent everywhere; per-app registry reads for apex/inner-low/bridge-width.
-  Headset checklist: divot bottom-inner only at 0.8 crop; nothing at top; apex-y bends outer
-  curve; bridge sliders reshape divot; stencil toggle bean/arch after game restart.
-- **Pass 2 — pending:** pin click-drag root fix in `BeanMaskEditor.cs` (`CaptureMouse()` on
-  mouse-down + release on up/lost-capture; five threshold tweaks already failed — it's the input
-  pipeline, not thresholds). Desktop-testable, no headset needed.
-- **Pass 3 — pending:** edge quality ("8-bit look"). AA checkbox (`visor_antialiasing`) =
-  single-pass feathered edge strip (vertex format gains a coverage float; boundary strip ~1–1.5
-  texels, inner alpha 1 → outer alpha 0; SRC_ALPHA blend). HD checkbox (`visor_hd`) = double
-  curve tessellation (96→192 segments). Supersampling was considered and rejected
-  (`docs/DECISIONS.md` D10). Historical alternative: 4.1.68 used 4-pass JitterCB
-  (`docs/history/dllmain_features_4.1.68.md`).
-- **Pass 4 — pending, lowest priority:** re-add perf/robustness items lost with the 4.1.55
-  reset: per-image/slice RTV caching; late `xrEndFrame` fallback draw (OpenComposite titles,
-  e.g. DiRT); `mask_size` missing-key fallback 0.82 + dead legacy-key removal; verbose-log split
-  (`ViewLab.verbose.log`); edge-smear FOV diagnostics (contract asserts parked in the test file).
+Passes 1-4 plus the bug-scan fix pass are implemented in-tree and built as 4.1.110, but they are not headset-confirmed.
+The last user-confirmed headset-good build remains 4.1.103. Do not push or publish until the
+user confirms a current MSI in-headset.
+
+In-tree implementation summary:
+- Preview pins capture/release mouse, clear drag state on lost capture, and sync dragged values
+  back to sliders before saving.
+- Native visor AA uses per-vertex alpha feather strips; HD doubles curve tessellation.
+- All six visor shape controls have per-app registry plumbing.
+- Direct C release-time drawing uses cached RTVs and late `xrEndFrame` drawing is intended to be
+  fallback-only.
+- MSI install backs up then intentionally resets visor settings to safe defaults; crop/render
+  profile values are preserved.
 
 ## What works (as of 4.1.105, pending headset confirm where noted)
 
@@ -51,18 +44,141 @@ boundary gated to closed-bean mode (details in `docs/DECISIONS.md` D7–D9).
 - ReShade Remote popout + bundled payload install.
 - Update check, app list, responsive UI layouts.
 
-## Known issues / not working
+## Bug scan findings - 2026-07-10
 
-- **Pin click-drag in the preview canvas** — broken (Pass 2).
-- **Visor edges look "8-bit"/blocky in-headset** — no AA in current native code (Pass 3).
-- `visor_hd` / `visor_antialiasing` checkboxes exist in UI + ini but native does nothing with
-  them yet (Pass 3 wires them).
-- Edge smear at aggressive crop — unresolved long-standing investigation; diagnostics were lost
-  with the 4.1.55 reset (Pass 4).
-- Inner-low sliders are not disabled in closed-bean mode even though the divot only renders in
-  open-inner mode (cosmetic UI gap).
-- MSI install can overwrite/drop live ini keys (`docs/REGRESSIONS.md` R6) — re-check settings
-  after install.
+Severity key: P0 = release blocker, P1 = high, P2 = medium, P3 = docs/test/low-risk.
+
+1. **P0 - UI missing-`mask_size` fallback can still recreate the invisible visor.**
+   `Installer\PreserveConfig.vbs` strips `mask_size`, and existing local configs are not replaced
+   with the bundled default. `XRViewLab.UI\MainWindow.cs` still loads a missing `mask_size` with
+   `OpeningFromMask(...)`; with current default crop values this clamps to `1.0`, and
+   `SaveGlobalSettings()` can write `mask_size=1.0`. This is R4 again unless fixed.
+   Evidence: `MainWindow.cs` `OpeningFromMask` / `LoadSettings` / `SaveGlobalSettings`, plus
+   `PreserveConfig.vbs` reset list.
+
+2. **P0 - The default `xr-viewlab.ini` is not packaged into the current MSI path.**
+   `Installer\Installer.wixproj` compiles only `Product.wxs`; `Product.wxs` installs the app exe
+   and icon but no `xr-viewlab.ini`. The published folder currently has no `xr-viewlab.ini`.
+   `Installer\HarvestedFiles.wxs` references one, but that harvest file is not included in the
+   WiX project. Fresh installs therefore depend on code fallbacks, and upgrades keep stripped
+   local configs without a default-file repair path.
+
+3. **P1 - Per-machine installer custom actions may touch the wrong user's config/profile.**
+   The MSI is per-machine, but immediate VBScript actions read/write `%LOCALAPPDATA%` and HKCU.
+   In elevated installs, backup/reset may target the elevated account rather than the actual
+   ViewLab user. That undermines the chosen "backup then reset visor settings" policy.
+
+4. **P1 - Edge Masks popup writes keys the DLL never reads.**
+   The UI loads/saves `horizontal_visual_mask_both`, `horizontal_outer_eye_mask`,
+   `horizontal_inner_eye_mask`, `vertical_visual_mask_both`, `vertical_top_mask_only`, and
+   `vertical_bottom_mask_only`. The DLL reads only `visual_mask_only` and
+   `horizontal_visual_mask_only`, so the popup controls appear to have no native effect.
+
+5. **P1 - `crop_outer_edges_only` is saved by the UI but ignored by the DLL.**
+   The main UI persists `crop_outer_edges_only`, and docs describe it as a crop mode, but
+   `LoadConfig()` does not read the key. The native log hardcodes `horizontal_outer_edges_only=1`
+   and `EffectiveOuterEdgeHorizontalScale()` always applies the outer-edge-only model.
+
+6. **P1 - Apex pin drag math is not the inverse of the rendered pin position.**
+   `BeanMaskEditor.PinPositions` renders the apex pin at `centerY + OuterApexY * span`, but
+   dragging writes `OuterApexY = (mouse.Y - pins.y0) / span`. A default centered pin drag maps to
+   `0.5`, negative apex values are effectively unreachable by drag, and the pin can appear to
+   jump or clamp instead of tracking the cursor.
+
+7. **P1 - Profile "Use global visor settings" checkbox does not save as global.**
+   `ProfileWindow.UseGlobal` is only set by the `Use Global Values` button. If the checkbox is
+   checked and the user presses Save, `MainWindow` sees `UseGlobal == false` and writes a custom
+   profile. The editor also remains interactive while the sliders are disabled, so dragging the
+   preview can create custom values while the UI claims it is using global visor settings.
+
+8. **P1 - One global release-draw flag can suppress a required late fallback.**
+   `g_releaseDrewThisFrame` is set by edge guard, Technique B, or Direct C release drawing, then
+   `xrEndFrame` skips all late drawing when the flag is true. If edge guard draws but Direct C
+   has no usable eye layout yet, or one swapchain draws while another did not, the late visor
+   fallback is skipped even though the visor path still needed it.
+
+9. **P2 - Recommended render-size scaling is incorrectly gated on `fovMutable`.**
+   `XRViewLab_xrEnumerateViewConfigurationViews()` skips recommended image-size changes when
+   `XrViewConfigurationProperties::fovMutable` is false. That property describes mutable FOV,
+   not whether an API layer can adjust app-visible recommended swapchain dimensions, so render
+   savings can be silently disabled on runtimes with immutable FOV.
+
+10. **P2 - D3D11 state restore is incomplete for complex app state.**
+    The visor/edge-guard draw paths save and restore one RTV, one viewport, and vertex-buffer slot 0.
+    Apps using multiple render targets, multiple viewports, or additional IA slots can have state
+    collapsed after ViewLab draws, especially in the late `xrEndFrame` path.
+
+11. **P2 - Open-inner AA does not feather top/bottom aperture bands.**
+    `BuildOpenInnerEyeVisorVerts()` ignores `featherY`; the curved outer edge gets an alpha
+    feather, but the full-width top and bottom black bands remain hard-edged.
+
+12. **P2 - UI reads missing per-app `mask_inner_bridge_width` as 0.0 while native defaults to 0.5/global.**
+    Older profiles missing this newer key keep the current global bridge width in native code,
+    but the UI displays `0.0`. Opening and saving can persist a different bridge shape than the
+    DLL would have used.
+
+13. **P2 - Profile popup re-enables a global-only visor enable checkbox.**
+   The XAML says visor enable is global-only and starts disabled, but `SetVisorSlidersEnabled`
+   enables `VisorEnabledCheck` for custom profiles. `Save_Click` writes the value, while the DLL
+   intentionally ignores per-app `mask_enabled`. This invites a UI promise the runtime will not keep.
+
+14. **P2 - Profile global mode initializes the curve slider from stale per-app state.**
+   When `visorSize <= 0` means "use global", most visor controls load global values, but
+   `VisorCurveSlider` still uses `1.0 - maskCorner` from the app profile instead of
+   `_globalMaskCorner`. Saving can accidentally turn an old per-app curve into a fresh override.
+
+15. **P2 - Per-app `mask_horizontal` is decoded with a render-scale helper.**
+   `LoadConfig()` reads `mask_horizontal` through `MillisToRenderScale`, whose minimum clamp is
+   `0.1`, not the UI's `0.01` mask range. Legacy/visual-mask per-app values below 10% cannot
+   round-trip correctly.
+
+16. **P2 - Curve right-click reset disagrees with the default config.**
+   The bundled config default is `mask_corner=0.5`, which maps to curve slider `0.5`, but
+   `MaskSliderReset_RightClick` resets the curve slider to `0.75` and writes `mask_corner=0.25`.
+
+17. **P3 - `build.ps1` copies native DLLs into publish output before rebuilding them.**
+    The local publish/dev-test folder can receive stale native layer DLLs from a previous build.
+    The MSI sources DLLs from the rebuilt Release paths, so the shipped MSI may be correct while
+    local publish-folder testing is misleading.
+
+18. **P3 - Legacy `visibility_mask_visor` path diverges from current visor geometry.**
+    `ApplyVisorMask()` uses a symmetric closed superellipse and ignores open-inner mode, apex,
+    inner-low/bridge controls, AA, and HD. If `visibility_mask_visor=1` with Technique off, the
+    hidden visibility-mask visor no longer matches the UI or Direct C renderer.
+
+19. **P3 - Canonical docs/contracts are stale or contradictory.**
+    `docs\CONFIG.md` still labels bridge rise/peak/steepness as global-only and says AA/HD native
+    wiring is Pass 3, while the code now reads/writes those paths. `CHANGELOG.md` has no 4.1.108
+    entry for the pin-drag correction. Contract tests pass while missing the behavioural failures
+    above: safe UI fallback, MSI default-ini packaging, edge-mask key wiring,
+    `crop_outer_edges_only`, apex drag inverse math, profile use-global save semantics,
+    global-only enable state, and release/late draw feature gating.
+
+## Bug scan fix pass - 2026-07-10
+
+Confident fixes implemented in-tree for findings 1, 2, 4-17, and 19:
+
+- UI missing `mask_size` now falls back directly to `0.82`; curve reset is back to `0.5`.
+- Default `xr-viewlab.ini` is included in publish/MSI output, and `build.ps1` copies native DLLs
+  after MSBuild so publish-folder testing does not use stale layer binaries.
+- Edge Masks "Both" controls write `visual_mask_only` / `horizontal_visual_mask_only`; unsupported
+  one-sided controls are disabled until the DLL has matching behaviour.
+- Native reads/logs `crop_outer_edges_only`, recommended-size scaling no longer depends on
+  `fovMutable`, and per-app `mask_horizontal` uses mask-scale decoding.
+- Preview apex pin dragging now uses the same centre-origin inverse as the rendered pin position.
+- Profile "Use global visor settings" saves as global, disables preview pin edits in global mode,
+  keeps unsupported per-app visor enable disabled, and uses safe bridge/curve fallbacks.
+- Direct C/edge-guard late fallback flags are independent, open-inner AA feathers top/bottom bands,
+  and D3D11 visor/edge draw state restore now covers all RTV slots and viewport slots.
+- Contracts now cover the fixed behaviours above.
+
+Residual issues intentionally not fixed in this pass:
+
+- Finding 3 remains open: MSI HKCU/%LOCALAPPDATA% custom actions may run in the elevated user
+  context. Fixing that needs a deliberate installer design change, not a quick patch.
+- Finding 18 remains open: the legacy `visibility_mask_visor=1` hidden-mesh reshaper still
+  diverges from current Direct C visor geometry. It is disabled by default and only used when the
+  Direct visor is off.
 
 ## Environment facts
 
@@ -73,3 +189,12 @@ boundary gated to closed-bean mode (details in `docs/DECISIONS.md` D7–D9).
   stencil settings.
 - Layer registration: HKLM `SOFTWARE\Khronos\OpenXR\1\ApiLayers\Implicit` (x64) and
   `WOW6432Node` (Win32). A stray 32-bit entry in the 64-bit hive was removed 2026-07-10.
+
+## Latest verification
+
+- `Tests\Verify-ViewLabContracts.ps1` passed on 2026-07-10 after the 4.1.110 build.
+- `dotnet build xr-viewlab.csproj -c Release --no-restore` passed with 0 warnings / 0 errors on
+  2026-07-10.
+- `.\build.ps1` passed on 2026-07-10 with 0 warnings / 0 errors for WPF, x64 native, Win32 native,
+  and WiX MSI:
+   `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.110.msi`.

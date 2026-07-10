@@ -484,12 +484,12 @@
                   <StackPanel>
                     <TextBlock Text="Horizontal edge mask" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
                     <CheckBox Name="HorizVisualMaskBothCheck" Content="Both sides" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Applies a horizontal visual mask to both the inner and outer edges of each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                    <CheckBox Name="HorizOuterEyeMaskCheck" Content="Outer-eye mask only (no pixel savings)" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Masks only the outer edge of each eye — does not reduce GPU pixel cost." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                    <CheckBox Name="HorizInnerEyeMaskCheck" Content="Inner-eye mask only (no pixel savings)" Foreground="#A8A8A8" Margin="0,0,0,10" ToolTip="Masks only the inner (nose) edge of each eye — does not reduce GPU pixel cost." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                    <CheckBox Name="HorizOuterEyeMaskCheck" Content="Outer-eye mask only (no pixel savings)" IsEnabled="False" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="One-sided edge masks are not wired in this build." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                    <CheckBox Name="HorizInnerEyeMaskCheck" Content="Inner-eye mask only (no pixel savings)" IsEnabled="False" Foreground="#A8A8A8" Margin="0,0,0,10" ToolTip="One-sided edge masks are not wired in this build." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                     <TextBlock Text="Vertical edge mask" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
                     <CheckBox Name="VertVisualMaskBothCheck" Content="Both sides" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Applies a vertical visual mask to both the top and bottom edges of each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                    <CheckBox Name="VertTopMaskCheck" Content="Top mask only" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Masks only the top edge of the vertical render area." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                    <CheckBox Name="VertBottomMaskCheck" Content="Bottom mask only" Foreground="#A8A8A8" ToolTip="Masks only the bottom edge of the vertical render area." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                    <CheckBox Name="VertTopMaskCheck" Content="Top mask only" IsEnabled="False" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="One-sided edge masks are not wired in this build." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                    <CheckBox Name="VertBottomMaskCheck" Content="Bottom mask only" IsEnabled="False" Foreground="#A8A8A8" ToolTip="One-sided edge masks are not wired in this build." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                   </StackPanel>
                 </Border>
               </Popup>

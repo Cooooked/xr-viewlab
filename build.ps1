@@ -74,7 +74,7 @@ Write-Host "Building WPF app..."
 dotnet publish $DotnetProject -c $Configuration -r win-x64 --self-contained true /p:PublishSingleFile=true
 
 # Copy ReShadePayload to publish directory for development/testing
-$PublishDir = Join-Path $Root "bin\Release\net8.0-windows\win-x64\publish"
+$PublishDir = Join-Path $Root "bin\$Configuration\net8.0-windows\win-x64\publish"
 $PayloadSrc = Join-Path $Root "ReShadePayload"
 $PayloadDest = Join-Path $PublishDir "ReShadePayload"
 if (Test-Path $PayloadSrc) {
@@ -82,19 +82,16 @@ if (Test-Path $PayloadSrc) {
     Copy-Item -Path $PayloadSrc -Destination $PayloadDest -Recurse -Force
 }
 
-# Create ViewLab directory and copy native DLLs for distribution
+# Copy the bundled default config to publish output. The MSI also installs the repo copy
+# directly, but local publish-folder runs use this legacy migration source.
+$DefaultConfigSrc = Join-Path $Root "xr-viewlab.ini"
+if (Test-Path $DefaultConfigSrc) {
+    Copy-Item -Path $DefaultConfigSrc -Destination (Join-Path $PublishDir "xr-viewlab.ini") -Force
+}
+
+# Create ViewLab directory for native DLLs used by publish-folder testing.
 $ViewLabDir = Join-Path $PublishDir "ViewLab"
 New-Item -ItemType Directory -Path $ViewLabDir -Force | Out-Null
-
-# Copy native DLLs to the ViewLab subdirectory for shipping
-$Dll64Src = Join-Path $Root "x64\Release\XR_APILAYER_cooooked_xrviewlab.dll"
-$Dll32Src = Join-Path $Root "Release\XR_APILAYER_cooooked_xrviewlab32.dll"
-if (Test-Path $Dll64Src) {
-    Copy-Item -Path $Dll64Src -Destination "$ViewLabDir\" -Force
-}
-if (Test-Path $Dll32Src) {
-    Copy-Item -Path $Dll32Src -Destination "$ViewLabDir\" -Force
-}
 
 $MSBuild = Find-MSBuild
 Write-Host "Using MSBuild: $MSBuild"
@@ -105,8 +102,20 @@ Write-Host "Building OpenXR API layer (Win32 / 32-bit for 32-bit games)..."
 & $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=Win32 /m
 
 # Copy native DLLs to distribution/release folder
-$Dll64Src = Join-Path $Root "x64\Release\XR_APILAYER_cooooked_xrviewlab.dll"
-$Dll32Src = Join-Path $Root "Release\XR_APILAYER_cooooked_xrviewlab32.dll"
+$Dll64Src = Join-Path $Root "x64\$Configuration\XR_APILAYER_cooooked_xrviewlab.dll"
+$Dll32Src = Join-Path $Root "$Configuration\XR_APILAYER_cooooked_xrviewlab32.dll"
+$Dll32FallbackSrc = Join-Path $Root "Release\XR_APILAYER_cooooked_xrviewlab32.dll"
+if (!(Test-Path $Dll32Src) -and $Configuration -eq "Release") {
+    $Dll32Src = $Dll32FallbackSrc
+}
+
+if (Test-Path $Dll64Src) {
+    Copy-Item -Path $Dll64Src -Destination "$ViewLabDir\" -Force
+}
+if (Test-Path $Dll32Src) {
+    Copy-Item -Path $Dll32Src -Destination "$ViewLabDir\" -Force
+}
+
 $DllDest = Join-Path $DistDir "ViewLab-dlls"
 if ((Test-Path $Dll64Src) -or (Test-Path $Dll32Src)) {
     New-Item -ItemType Directory -Path $DllDest -Force | Out-Null

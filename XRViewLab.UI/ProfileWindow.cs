@@ -57,6 +57,9 @@ public partial class ProfileWindow : Window
 	private readonly double _globalVisorOuterApexY;
 	private readonly double _globalVisorInnerLowerY;
 	private readonly double _globalVisorInnerBridgeWidth;
+	private readonly double _globalVisorInnerBridgeRise;
+	private readonly double _globalVisorInnerBridgePeakX;
+	private readonly double _globalVisorInnerBridgeSteepness;
 
 	// In-memory boxes feed the legacy mask_vertical/horizontal calculation (not shown in UI).
 	private readonly TextBox MaskVerticalBox = new() { Text = "1" };
@@ -64,6 +67,7 @@ public partial class ProfileWindow : Window
 
 	// Guards event handlers that fire via WPF property coercion during InitializeComponent.
 	private bool _initialized;
+	private bool _syncingControls;
 
 	public double VisorSizeValue { get; private set; } = 0.82;
 	public double VisorCurveValue { get; private set; } = 0.75;
@@ -72,8 +76,11 @@ public partial class ProfileWindow : Window
 	public double VisorOuterApexYValue { get; private set; }
 	public double VisorInnerLowerYValue { get; private set; }
 	public double VisorInnerBridgeWidthValue { get; private set; } = 0.5;
+	public double VisorInnerBridgeRiseValue { get; private set; }
+	public double VisorInnerBridgePeakXValue { get; private set; } = 0.5;
+	public double VisorInnerBridgeSteepnessValue { get; private set; } = 0.5;
 
-	public ProfileWindow(string appName, string exeName, bool hidden, double top, double bottom, double horizontal, double renderScale, bool maskEnabled, double maskVertical, double maskHorizontal, bool maskRounded, double maskCorner, double maskTopBias, double maskBottomBias, double maskLeftBias, double maskRightBias, double maskTopCurve, double maskBottomCurve, bool globalMaskEnabled, double globalMaskVertical, double globalMaskHorizontal, double globalMaskCorner, double globalOffsetX, double globalOffsetY, double visorSize, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double globalVisorSize, double globalVisorOuterApexY, double globalVisorInnerLowerY, double globalVisorInnerBridgeWidth)
+	public ProfileWindow(string appName, string exeName, bool hidden, double top, double bottom, double horizontal, double renderScale, bool maskEnabled, double maskVertical, double maskHorizontal, bool maskRounded, double maskCorner, double maskTopBias, double maskBottomBias, double maskLeftBias, double maskRightBias, double maskTopCurve, double maskBottomCurve, bool globalMaskEnabled, double globalMaskVertical, double globalMaskHorizontal, double globalMaskCorner, double globalOffsetX, double globalOffsetY, double visorSize, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double visorInnerBridgeRise, double visorInnerBridgePeakX, double visorInnerBridgeSteepness, double globalVisorSize, double globalVisorOuterApexY, double globalVisorInnerLowerY, double globalVisorInnerBridgeWidth, double globalVisorInnerBridgeRise, double globalVisorInnerBridgePeakX, double globalVisorInnerBridgeSteepness)
 	{
 		InitializeComponent();
 		_initialized = true;
@@ -87,6 +94,9 @@ public partial class ProfileWindow : Window
 		_globalVisorOuterApexY = globalVisorOuterApexY;
 		_globalVisorInnerLowerY = globalVisorInnerLowerY;
 		_globalVisorInnerBridgeWidth = globalVisorInnerBridgeWidth;
+		_globalVisorInnerBridgeRise = globalVisorInnerBridgeRise;
+		_globalVisorInnerBridgePeakX = globalVisorInnerBridgePeakX;
+		_globalVisorInnerBridgeSteepness = globalVisorInnerBridgeSteepness;
 		DisplayName = appName;
 		HiddenValue = hidden;
 		NameBox.Text = appName;
@@ -115,10 +125,13 @@ public partial class ProfileWindow : Window
 		UseGlobalVisorCheck.IsChecked = useGlobal;
 		VisorEnabledCheck.IsChecked = maskEnabled;
 		VisorSizeSlider.Value = useGlobal ? globalVisorSize : Math.Clamp(visorSize, 0.05, 1.0);
-		VisorCurveSlider.Value = Math.Clamp(1.0 - maskCorner, 0.0, 1.0);
+		VisorCurveSlider.Value = Math.Clamp(1.0 - (useGlobal ? globalMaskCorner : maskCorner), 0.0, 1.0);
 		VisorApexYSlider.Value = useGlobal ? globalVisorOuterApexY : Math.Clamp(visorOuterApexY, -0.5, 0.5);
 		VisorInnerLowerSlider.Value = useGlobal ? globalVisorInnerLowerY : Math.Clamp(visorInnerLowerY, 0.0, 0.333);
 		VisorInnerBridgeSlider.Value = useGlobal ? globalVisorInnerBridgeWidth : Math.Clamp(visorInnerBridgeWidth, 0.0, 1.0);
+		VisorInnerBridgeRiseSlider.Value = useGlobal ? globalVisorInnerBridgeRise : Math.Clamp(visorInnerBridgeRise, 0.0, 0.5);
+		VisorInnerBridgePeakXSlider.Value = useGlobal ? globalVisorInnerBridgePeakX : Math.Clamp(visorInnerBridgePeakX, 0.0, 1.0);
+		VisorInnerBridgeSteepnessSlider.Value = useGlobal ? globalVisorInnerBridgeSteepness : Math.Clamp(visorInnerBridgeSteepness, 0.0, 1.0);
 		VisorOffsetXSlider.Value = Math.Clamp((maskLeftBias + maskRightBias) * 0.5, -1.0, 1.0);
 		VisorOffsetYSlider.Value = Math.Clamp((maskTopBias + maskBottomBias) * 0.5, -1.0, 1.0);
 		SetVisorSlidersEnabled(!useGlobal);
@@ -212,6 +225,9 @@ public partial class ProfileWindow : Window
 		MaskBeanEditor.OuterApexY = VisorApexYSlider?.Value ?? 0.0;
 		MaskBeanEditor.InnerLowerY = VisorInnerLowerSlider?.Value ?? 0.0;
 		MaskBeanEditor.InnerBridgeWidth = VisorInnerBridgeSlider?.Value ?? 0.5;
+		MaskBeanEditor.InnerBridgeRise = VisorInnerBridgeRiseSlider?.Value ?? 0.0;
+		MaskBeanEditor.InnerBridgePeakX = VisorInnerBridgePeakXSlider?.Value ?? 0.5;
+		MaskBeanEditor.InnerBridgeSteepness = VisorInnerBridgeSteepnessSlider?.Value ?? 0.5;
 		MaskBeanEditor.OffsetX = VisorOffsetXSlider?.Value ?? 0.0;
 		MaskBeanEditor.OffsetY = VisorOffsetYSlider?.Value ?? 0.0;
 		MaskBeanEditor.OpenInnerPreview = StencilOuterEdgesCheck?.IsChecked == true;
@@ -219,14 +235,18 @@ public partial class ProfileWindow : Window
 
 	private void SetVisorSlidersEnabled(bool enabled)
 	{
-		VisorEnabledCheck.IsEnabled = enabled;
+		VisorEnabledCheck.IsEnabled = false;
 		VisorSizeSlider.IsEnabled = enabled;
 		VisorCurveSlider.IsEnabled = enabled;
 		VisorApexYSlider.IsEnabled = enabled;
 		VisorInnerLowerSlider.IsEnabled = enabled;
 		VisorInnerBridgeSlider.IsEnabled = enabled;
+		VisorInnerBridgeRiseSlider.IsEnabled = enabled;
+		VisorInnerBridgePeakXSlider.IsEnabled = enabled;
+		VisorInnerBridgeSteepnessSlider.IsEnabled = enabled;
 		VisorOffsetXSlider.IsEnabled = enabled;
 		VisorOffsetYSlider.IsEnabled = enabled;
+		MaskBeanEditor.IsEnabled = enabled;
 	}
 
 	private void UpdateHideShowButton()
@@ -270,7 +290,7 @@ public partial class ProfileWindow : Window
 
 	private void MaskOpeningSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
-		if (!_initialized || VisorSizeSlider == null)
+		if (!_initialized || _syncingControls || VisorSizeSlider == null)
 		{
 			return;
 		}
@@ -315,8 +335,12 @@ public partial class ProfileWindow : Window
 		VisorOuterApexYValue = VisorApexYSlider.Value;
 		VisorInnerLowerYValue = VisorInnerLowerSlider.Value;
 		VisorInnerBridgeWidthValue = VisorInnerBridgeSlider.Value;
+		VisorInnerBridgeRiseValue = VisorInnerBridgeRiseSlider.Value;
+		VisorInnerBridgePeakXValue = VisorInnerBridgePeakXSlider.Value;
+		VisorInnerBridgeSteepnessValue = VisorInnerBridgeSteepnessSlider.Value;
 		VisorOffsetXValue = VisorOffsetXSlider.Value;
 		VisorOffsetYValue = VisorOffsetYSlider.Value;
+		UseGlobal = UseGlobalVisorCheck.IsChecked == true;
 		base.DialogResult = true;
 	}
 
@@ -339,6 +363,9 @@ public partial class ProfileWindow : Window
 		VisorApexYSlider.Value = _globalVisorOuterApexY;
 		VisorInnerLowerSlider.Value = _globalVisorInnerLowerY;
 		VisorInnerBridgeSlider.Value = _globalVisorInnerBridgeWidth;
+		VisorInnerBridgeRiseSlider.Value = _globalVisorInnerBridgeRise;
+		VisorInnerBridgePeakXSlider.Value = _globalVisorInnerBridgePeakX;
+		VisorInnerBridgeSteepnessSlider.Value = _globalVisorInnerBridgeSteepness;
 		VisorOffsetXSlider.Value = _globalOffsetX;
 		VisorOffsetYSlider.Value = _globalOffsetY;
 		UseGlobalVisorCheck.IsChecked = true;
@@ -350,38 +377,44 @@ public partial class ProfileWindow : Window
 
 	private void MaskRoundnessSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
-		if (!_initialized || MaskBeanEditor == null) return;
+		if (!_initialized || _syncingControls || MaskBeanEditor == null) return;
 		SyncMaskEditorFromSliders();
 	}
 
 	private void MaskShapeSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
-		if (!_initialized || MaskBeanEditor == null) return;
+		if (!_initialized || _syncingControls || MaskBeanEditor == null) return;
 		SyncMaskEditorFromSliders();
 		ApplyMaskOpening(VisorSizeSlider?.Value ?? 0.82);
 	}
 
 	private void StencilOuterEdgesCheck_Changed(object sender, RoutedEventArgs e)
 	{
-		if (!_initialized || MaskBeanEditor == null) return;
+		if (!_initialized || _syncingControls || MaskBeanEditor == null) return;
 		SyncMaskEditorFromSliders();
 	}
 
 	private void VisorApexYSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
-		if (!_initialized || MaskBeanEditor == null) return;
+		if (!_initialized || _syncingControls || MaskBeanEditor == null) return;
 		SyncMaskEditorFromSliders();
 	}
 
 	private void VisorInnerLowerSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
-		if (!_initialized || MaskBeanEditor == null) return;
+		if (!_initialized || _syncingControls || MaskBeanEditor == null) return;
 		SyncMaskEditorFromSliders();
 	}
 
 	private void VisorInnerBridgeSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
-		if (!_initialized || MaskBeanEditor == null) return;
+		if (!_initialized || _syncingControls || MaskBeanEditor == null) return;
+		SyncMaskEditorFromSliders();
+	}
+
+	private void VisorInnerBridgeDetailSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (!_initialized || _syncingControls || MaskBeanEditor == null) return;
 		SyncMaskEditorFromSliders();
 	}
 
@@ -389,11 +422,18 @@ public partial class ProfileWindow : Window
 	{
 		if (!_initialized) return;
 		bool useGlobal = UseGlobalVisorCheck.IsChecked == true;
+		UseGlobal = useGlobal;
 		if (useGlobal)
 		{
 			VisorEnabledCheck.IsChecked = _globalMaskEnabled;
 			VisorSizeSlider.Value = _globalVisorSize;
 			VisorCurveSlider.Value = Math.Clamp(1.0 - _globalMaskCorner, 0.0, 1.0);
+			VisorApexYSlider.Value = _globalVisorOuterApexY;
+			VisorInnerLowerSlider.Value = _globalVisorInnerLowerY;
+			VisorInnerBridgeSlider.Value = _globalVisorInnerBridgeWidth;
+			VisorInnerBridgeRiseSlider.Value = _globalVisorInnerBridgeRise;
+			VisorInnerBridgePeakXSlider.Value = _globalVisorInnerBridgePeakX;
+			VisorInnerBridgeSteepnessSlider.Value = _globalVisorInnerBridgeSteepness;
 			VisorOffsetXSlider.Value = _globalOffsetX;
 			VisorOffsetYSlider.Value = _globalOffsetY;
 		}
@@ -402,6 +442,20 @@ public partial class ProfileWindow : Window
 
 	private void MaskBeanEditor_ShapeChanged(object sender, EventArgs e)
 	{
+		if (!_initialized || _syncingControls || UseGlobalVisorCheck.IsChecked == true)
+		{
+			return;
+		}
+		_syncingControls = true;
+		VisorApexYSlider.Value = MaskBeanEditor.OuterApexY;
+		VisorInnerLowerSlider.Value = MaskBeanEditor.InnerLowerY;
+		VisorInnerBridgeSlider.Value = MaskBeanEditor.InnerBridgeWidth;
+		VisorInnerBridgeRiseSlider.Value = MaskBeanEditor.InnerBridgeRise;
+		VisorInnerBridgePeakXSlider.Value = MaskBeanEditor.InnerBridgePeakX;
+		VisorInnerBridgeSteepnessSlider.Value = MaskBeanEditor.InnerBridgeSteepness;
+		VisorSizeSlider.Value = MaskBeanEditor.Opening;
+		ApplyMaskOpening(MaskBeanEditor.Opening);
+		_syncingControls = false;
 	}
 
 	private void Cancel_Click(object sender, RoutedEventArgs e)

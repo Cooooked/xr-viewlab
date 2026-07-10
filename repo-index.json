@@ -1,0 +1,115 @@
+{
+  "$comment": "Machine-readable repository index for AI agents. Answer location questions from HERE before opening source. Keep synchronized with docs/ARCHITECTURE.md in the same commit. Human entry point: agents.md.",
+  "project": {
+    "name": "ViewLab (XR ViewLab)",
+    "what": "OpenXR implicit API layer (FOV/resolution crop + D3D11 visor mask drawn into game eye textures) + WPF settings app. Ships as MSI.",
+    "readOrder": ["agents.md", "STATE.md"],
+    "buildCommand": ".\\build.ps1",
+    "testCommand": "Tests\\Verify-ViewLabContracts.ps1",
+    "liveConfig": "%LOCALAPPDATA%\\XR ViewLab\\xr-viewlab.ini",
+    "log": "%LOCALAPPDATA%\\XR ViewLab\\ViewLab.log",
+    "perAppRegistry": "HKCU\\Software\\cooooked\\xr-viewlab\\Apps\\<exe>"
+  },
+  "canonicalDocs": {
+    "operatingManual": "agents.md",
+    "currentState": "STATE.md",
+    "architecture": "docs/ARCHITECTURE.md",
+    "configContract": "docs/CONFIG.md",
+    "decisions": "docs/DECISIONS.md",
+    "regressions": "docs/REGRESSIONS.md",
+    "verification": "docs/VERIFICATION.md",
+    "releaseHistory": "CHANGELOG.md",
+    "machineIndex": "repo-index.json",
+    "toolShims": ["CLAUDE.md"],
+    "updatePolicy": "Behavioral change => update STATE.md (+CHANGELOG.md if user-visible) in the SAME commit; key change => docs/CONFIG.md; permanent decision => docs/DECISIONS.md; regression => docs/REGRESSIONS.md; subsystem shape change => docs/ARCHITECTURE.md + repo-index.json. A commit with none of these requires explicit justification in the commit message (docs-only, comment-only, or build-artifact-only)."
+  },
+  "files": {
+    "expensive": [
+      {"path": "dllmain.cpp", "lines": 3000, "rule": "grep the symbol from subsystems below; never read end-to-end"},
+      {"path": "XRViewLab.UI/MainWindow.cs", "lines": 2250, "rule": "grep the symbol/key constant; never read end-to-end"},
+      {"path": "CHANGELOG.md", "lines": 450, "rule": "read top entries only"}
+    ],
+    "generatedOrArtifacts": ["bin/", "obj/", "x64/", "Release/", "dist/", "Installer/bin/", "Installer/obj/", "XR_APILAYER_cooooked_xrviewlab/", ".vs/"],
+    "historicalDoNotTrust": ["docs/history/", "backups/", "reference/"],
+    "neverReferenceFromCode": ["backups/", "reference/", "docs/history/"]
+  },
+  "subsystems": {
+    "renderCrop": {
+      "what": "Core perf feature: crops FOV tangents + recommended render size the game sees",
+      "files": ["dllmain.cpp"],
+      "symbols": ["XRViewLab_xrLocateViews", "XRViewLab_xrEnumerateViewConfigurationViews", "totalTangent", "horizontalRenderWidth", "topTangent", "bottomTangent"],
+      "docs": ["docs/ARCHITECTURE.md", "docs/CONFIG.md#render-crop-core-perf-feature", "docs/DECISIONS.md#d1"],
+      "keywords": ["projection crop", "FOV", "tangent", "render height", "horizontal crop", "recommended resolution", "GPU savings", "split mode", "foveated"]
+    },
+    "visorMask": {
+      "what": "Black visor drawn into game eye textures via D3D11 at swapchain release (Technique C Direct)",
+      "files": ["dllmain.cpp", "XRViewLab.UI/BeanMaskEditor.cs"],
+      "symbols": ["DrawVisorBorderToTexture", "XRViewLab_xrReleaseSwapchainImage", "XRViewLab_xrEndFrame", "BuildOpenInnerEyeVisorVerts", "BuildVisorBorderVerts", "BuildNoseBridgeCurve", "BuildProjectedPartnerVisorVerts", "VisorCurveExponent", "ApexYFromConfigNdc", "VisorCurveSegments", "VisorVertex", "CachedRtvFor", "InitD3D11MaskRenderer", "openInnerShape"],
+      "previewSpecSymbols": ["BeanMaskEditor.AddOpenInnerHalf", "BeanMaskEditor.BuildGeometry", "BeanMaskEditor.AddNoseBridgeCurve", "BeanMaskEditor.CurveExponent"],
+      "tests": ["Tests/Verify-ViewLabContracts.ps1"],
+      "docs": ["docs/ARCHITECTURE.md#native-layer-anatomy", "docs/CONFIG.md#visor-mask", "docs/DECISIONS.md#d2", "docs/REGRESSIONS.md#r1", "docs/REGRESSIONS.md#r2"],
+      "invariants": ["preview and native geometry formula-identical (D5)", "y-flip ONLY in ApexYFromConfigNdc", "nose divot anchored to NDC y0, band-clamped", "FreeLibrary after all shader blob use (R1)", "AA uses per-vertex alpha feather strips", "late xrEndFrame draw is fallback-only with independent edge-guard and Direct C visor flags"],
+      "keywords": ["visor", "mask", "bean", "arch", "open-inner", "nose bridge", "divot", "apex", "superellipse", "D3D11", "eye texture", "kidney", "antialiasing", "HD", "RTV cache", "late draw"]
+    },
+    "stencilPipeline": {
+      "what": "'Stencil outer edges only' checkbox: filters runtime FOV-stencil mesh + switches visor bean/arch + gates partner boundary",
+      "files": ["dllmain.cpp"],
+      "symbols": ["XRViewLab_xrGetVisibilityMaskKHR", "keepOuterEdge", "outerEdgeVisibilityMaskOnly", "openInnerShape", "ApplyVisorMask", "visibilityMaskVisor"],
+      "tests": ["Tests/Verify-ViewLabContracts.ps1"],
+      "docs": ["docs/ARCHITECTURE.md#the-stencil-pipeline", "docs/DECISIONS.md#d8", "docs/DECISIONS.md#d9", "docs/REGRESSIONS.md#r3"],
+      "invariants": ["filter runs even when visor active", "DLL reads stencil_outer_edges_only (legacy fallback outer_edge_visibility_mask_only)", "game restart required to re-query mask"],
+      "keywords": ["stencil", "visibility mask", "hidden area mesh", "FOV stencil", "Virtual Desktop", "inner edge", "outer edge"]
+    },
+    "configPlumbing": {
+      "what": "UI writes ini + per-app registry; DLL reads at session start / mtime reload",
+      "files": ["XRViewLab.UI/MainWindow.cs", "XRViewLab.UI/ProfileWindow.cs", "XRViewLab.UI/AppProfile.cs", "dllmain.cpp", "xr-viewlab.ini"],
+      "symbols": ["LoadConfig", "ReadBoolSetting", "ReadDoubleSetting", "ReadProfileDword", "SignedMillisToUnit", "MainWindow.LoadSettings", "MainWindow.SaveSettings", "ToMillis", "ToSignedMillis", "FromMillis", "FromSignedMillis"],
+      "tests": ["Tests/Verify-ViewLabContracts.ps1"],
+      "docs": ["docs/CONFIG.md"],
+      "invariants": ["every key must exist on BOTH sides (R3)", "bundled xr-viewlab.ini must carry every product key (R6/R9)", "installer intentionally resets visor keys after backup", "encodings: millis v*1000, signed (v+1)*1000"],
+      "keywords": ["ini", "registry", "settings", "config key", "per-app profile", "persistence", "WritePrivateProfileString"]
+    },
+    "previewCanvas": {
+      "what": "WPF visor preview with draggable pins; THE reference spec for native geometry",
+      "files": ["XRViewLab.UI/BeanMaskEditor.cs"],
+      "symbols": ["OnRender", "PinPositions", "OnPreviewMouseLeftButtonDown", "OnMouseMove", "OnLostMouseCapture", "DrawPins", "OpenInnerPreview", "ShapeChanged"],
+      "docs": ["docs/ARCHITECTURE.md#geometry-parity-rule", "docs/REGRESSIONS.md#r8"],
+      "knownBroken": [],
+      "keywords": ["preview", "pin", "drag", "bean editor", "canvas"]
+    },
+    "uiShell": {
+      "what": "Main settings window: app table, sliders, update check, layouts",
+      "files": ["XRViewLab.UI/MainWindow.cs", "MainWindow.xaml", "XRViewLab.UI/UpdateRelease.cs", "XRViewLab.UI/App.cs"],
+      "symbols": ["MainWindow", "AppProfile", "StencilOuterEdgesCheck", "MaskApexYSlider", "MaskInnerLowerSlider", "MaskInnerBridgeSlider"],
+      "docs": ["docs/ARCHITECTURE.md#wpf-app-anatomy"],
+      "keywords": ["WPF", "slider", "checkbox", "app list", "update check", "layout"]
+    },
+    "reshadeRemote": {
+      "what": "Advanced popout controlling bundled ReShade OpenXR payload via shared memory",
+      "files": ["XRViewLab.UI/ReShadeRemoteWindow.cs", "XRViewLab.UI/ReShadeControlService.cs", "ReShadePayload/"],
+      "symbols": ["ReShadeControlService", "ReShadeRemoteWindow"],
+      "docs": ["ReShadePayload/Docs/ReshadeAIO_OVERVIEW.md", "docs/DECISIONS.md#legacy-reshade-remote-subsystem-pre-2026-07"],
+      "invariants": ["shared-memory XRControlBlock layout frozen", "commands edge-triggered"],
+      "keywords": ["ReShade", "shared memory", "payload", "heartbeat", "quad transform", "ProgramData"]
+    },
+    "buildPackaging": {
+      "what": "Version bump + WPF publish + native x64/Win32 + WiX MSI + layer registration",
+      "files": ["build.ps1", "Installer/Product.wxs", "Properties/AssemblyInfo.cs", "XRViewLabLayer.vcxproj", "xr-viewlab.csproj", "XR_APILAYER_cooooked_xrviewlab.json", "Installer/PreserveConfig.vbs", "Installer/CreateDesktopShortcut.vbs"],
+      "symbols": [],
+      "docs": ["docs/ARCHITECTURE.md#build--packaging"],
+      "invariants": ["build.ps1 auto-bumps version (manual builds must bump AssemblyInfo.cs + Product.wxs by hand)", "MSI packages default xr-viewlab.ini and installer backs up then resets visor keys (R6/R9)", "publish output copies freshly-built native DLLs after MSBuild", "installer registers x64 + WOW6432Node layer manifests"],
+      "keywords": ["MSI", "WiX", "installer", "version bump", "dist", "layer registration", "implicit layer"]
+    },
+    "layerBootstrap": {
+      "what": "OpenXR loader negotiation and hook installation",
+      "files": ["dllmain.cpp", "loader_interfaces.h", "XR_APILAYER_cooooked_xrviewlab.json"],
+      "symbols": ["xrNegotiateLoaderApiLayerInterface", "XRViewLab_xrGetInstanceProcAddr", "EnsureInitialized", "Log"],
+      "docs": ["docs/ARCHITECTURE.md#native-layer-anatomy"],
+      "keywords": ["OpenXR", "loader", "hook", "negotiate", "implicit layer", "instance proc addr"]
+    }
+  },
+  "activeWork": {
+    "authority": "STATE.md",
+    "milestone": "visor feature rewrite in 4 passes; see STATE.md 'Active milestone' for live status"
+  }
+}

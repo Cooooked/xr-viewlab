@@ -77,6 +77,16 @@ Sub ResetVisorSettings()
     "mask_width_scale", _
     "mask_height_scale", _
     "mask_corner", _
+    "visor_technique", _
+    "visor_hd", _
+    "visor_antialiasing", _
+    "visibility_mask_visor", _
+    "mask_outer_apex_y", _
+    "mask_inner_lower_y", _
+    "mask_inner_bridge_width", _
+    "mask_inner_bridge_rise", _
+    "mask_inner_bridge_peak_x", _
+    "mask_inner_bridge_steepness", _
     "mask_offset_x", _
     "mask_offset_y", _
     "mask_top_bias", _
@@ -144,6 +154,12 @@ Sub ResetVisorSettings()
       reg.DeleteValue    &H80000001, appKey, "visor_size"
       reg.DeleteValue    &H80000001, appKey, "visor_width"
       reg.DeleteValue    &H80000001, appKey, "visor_height"
+      reg.DeleteValue    &H80000001, appKey, "mask_outer_apex_y"
+      reg.DeleteValue    &H80000001, appKey, "mask_inner_lower_y"
+      reg.DeleteValue    &H80000001, appKey, "mask_inner_bridge_width"
+      reg.DeleteValue    &H80000001, appKey, "mask_inner_bridge_rise"
+      reg.DeleteValue    &H80000001, appKey, "mask_inner_bridge_peak_x"
+      reg.DeleteValue    &H80000001, appKey, "mask_inner_bridge_steepness"
     Next
   End If
 End Sub

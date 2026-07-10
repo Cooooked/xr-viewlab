@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.105"
+           Language="1033" Version="4.1.110"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -130,7 +130,9 @@
           <Component Id="AppFiles" Guid="B5EC7B3F-8094-43B8-A6B4-9E4D48B8281A" Win64="yes">
             <File Id="SettingsApp" Source="..\bin\Release\net8.0-windows\win-x64\publish\xr-viewlab.exe" Name="xr-viewlab.exe" KeyPath="yes"/>
             <File Id="AppIconFile" Source="..\app.ico" Name="xr-viewlab.ico"/>
+            <File Id="DefaultConfigFile" Source="..\xr-viewlab.ini" Name="xr-viewlab.ini"/>
             <RemoveFile Id="RemoveSettingsApp" Name="xr-viewlab.exe" On="uninstall"/>
+            <RemoveFile Id="RemoveDefaultConfigFile" Name="xr-viewlab.ini" On="uninstall"/>
             <RemoveFile Id="RemoveReShadeMenuMirrorApp" Name="reshade-vr-menu.exe" On="both"/>
             <RemoveFile Id="RemoveReShadePackageZip" Name="reshade-package.zip" On="both"/>
             <RemoveFile Id="RemoveAppIconFile" Name="xr-viewlab.ico" On="uninstall"/>
