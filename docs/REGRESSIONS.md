@@ -91,6 +91,16 @@ challenging whether an ordinary update should reset anything.
 **Never again:** upgrades preserve user settings. Defaults repair fresh installs only, and native
 runtime code remains read-only with respect to configuration.
 
+## R11 - ReShade Remote "component missing" despite installed payload (fixed 2026-07-11)
+**What:** the Remote reported "this build does not include the ReShade Remote component" even
+though `C:\Program Files\xr-viewlab\ReShadePayload\` contained ReShade64.dll + json.
+**Why:** the app is published single-file with `IncludeAllContentForSelfExtract=true`, so
+`AppContext.BaseDirectory` is a %TEMP% extraction folder, not the install directory. The payload
+lookup searched BaseDirectory and CWD only. MainWindow already had the correct pattern
+(`Environment.ProcessPath`); the Remote never used it.
+**Never again:** anything locating files next to the installed exe must use
+`Environment.ProcessPath`, never `AppContext.BaseDirectory`. Contract test pins it.
+
 ## R10 - Crop toggle read but not applied; enabled visor could be invisible (caught in headset testing, 2026-07-11)
 **What:** “Crop outer edges only” always behaved as enabled even when unchecked. Separately, an
 enabled visor with legacy `mask_size=1` drew no border, making the visor checkbox look broken.

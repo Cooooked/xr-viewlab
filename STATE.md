@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-11
-**Current version:** 4.1.115 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.115.msi`
+**Current version:** 4.1.117 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.117.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
 **Publish state:** local commits ahead of origin/master; DO NOT push until user confirms current work in-headset.
 
@@ -19,7 +19,7 @@ boundary gated to closed-bean mode (details in `docs/DECISIONS.md` D7–D9).
 
 ## Current implementation status
 
-4.1.115 completes the **single-visor consolidation**: Technique A/B machinery, the
+4.1.117 completes the **single-visor consolidation**: Technique A/B machinery, the
 `visor_technique` selector, and the legacy `visibility_mask_visor` reshaper are fully removed.
 There is exactly ONE visor renderer — the D3D11 draw into the game's eye textures at swapchain
 release, with the late `xrEndFrame` fallback. The retired ini key is read only to log a warning.
@@ -34,14 +34,14 @@ Everything below is NOT headset-confirmed; last confirmed-good remains 4.1.103.
   matter. The reset machinery is removed. NOTE: `mask_size=1` is a LEGAL, intended value (corners
   masked, maximum opening) — an earlier "recover 1 → 0.82" theory was wrong and its clamp is
   removed; only a MISSING key falls back to 0.82 (R4).
-- ReShade Remote was grey because the registered ProgramData DLL was stock ReShade, not ViewLab's
+- ReShade Remote said 'component missing' because the single-file app extracts to TEMP: AppContext.BaseDirectory never pointed at the install dir (R11, fixed: Environment.ProcessPath). Separately, the registered ProgramData DLL was stock ReShade, not ViewLab's
   bundled control-capable payload. The install command and status verification are corrected
   in-tree; Pistol Whip compatibility with the custom payload remains unconfirmed.
 
 In-tree implementation summary:
 - Preview pins capture/release mouse, clear drag state on lost capture, and sync dragged values
   back to sliders before saving.
-- Native visor AA uses per-vertex alpha feather strips; HD doubles curve tessellation.
+- Native visor AA uses per-vertex alpha feather strips; HD doubles curve tessellation. With AA OFF the visor draws through the blend-disabled opaque pipeline (the 4.1.103-proven path) to isolate the unverified alpha path.
 - All six visor shape controls have per-app registry plumbing.
 - Release-time visor drawing uses cached RTVs; late `xrEndFrame` drawing is fallback-only.
 - MSI upgrades preserve the user's live visor, crop, render, and per-app profile settings;

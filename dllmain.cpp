@@ -162,7 +162,8 @@ struct D3D11MaskState {
     ID3D11InputLayout* layout = nullptr;
     ID3D11Buffer* vb = nullptr;
     ID3D11RasterizerState* rs = nullptr;
-    ID3D11BlendState* bs = nullptr;
+    ID3D11BlendState* bs = nullptr;        // SRC_ALPHA blend — used only when AA is on
+    ID3D11BlendState* bsOpaque = nullptr;  // blend disabled — the historically proven visor pipeline
     ID3D11DepthStencilState* dss = nullptr;
     bool initialized = false;
     bool failed = false;
@@ -656,6 +657,7 @@ void ReleaseD3D11MaskRenderer() {
     if (g_d3d11Mask.vb)      { g_d3d11Mask.vb->Release();      g_d3d11Mask.vb = nullptr; }
     if (g_d3d11Mask.dss)     { g_d3d11Mask.dss->Release();     g_d3d11Mask.dss = nullptr; }
     if (g_d3d11Mask.bs)      { g_d3d11Mask.bs->Release();      g_d3d11Mask.bs = nullptr; }
+    if (g_d3d11Mask.bsOpaque){ g_d3d11Mask.bsOpaque->Release(); g_d3d11Mask.bsOpaque = nullptr; }
     if (g_d3d11Mask.rs)      { g_d3d11Mask.rs->Release();      g_d3d11Mask.rs = nullptr; }
     if (g_d3d11Mask.layout)  { g_d3d11Mask.layout->Release();  g_d3d11Mask.layout = nullptr; }
     if (g_d3d11Mask.ps)      { g_d3d11Mask.ps->Release();      g_d3d11Mask.ps = nullptr; }
@@ -836,6 +838,20 @@ bool InitD3D11MaskRenderer() {
     hr = g_d3d11Mask.device->CreateBlendState(&bld, &g_d3d11Mask.bs);
     if (FAILED(hr) || !g_d3d11Mask.bs) {
         Log("d3d11 mask: blend state create failed hr=0x%08X\n", static_cast<unsigned>(hr));
+        ReleaseD3D11MaskRenderer();
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+
+    // Opaque pipeline for AA-off: blending disabled, exactly the draw path that was
+    // last confirmed visible in-headset (4.1.103). The alpha-blended path above is
+    // used ONLY when visor_antialiasing=1 draws feather strips.
+    D3D11_BLEND_DESC bldOpaque{};
+    bldOpaque.RenderTarget[0].BlendEnable           = FALSE;
+    bldOpaque.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    hr = g_d3d11Mask.device->CreateBlendState(&bldOpaque, &g_d3d11Mask.bsOpaque);
+    if (FAILED(hr) || !g_d3d11Mask.bsOpaque) {
+        Log("d3d11 mask: opaque blend state create failed hr=0x%08X\n", static_cast<unsigned>(hr));
         ReleaseD3D11MaskRenderer();
         g_d3d11Mask.failed = true;
         return false;
@@ -1366,7 +1382,8 @@ void DrawVisorBorderToTexture(
     g_d3d11Mask.context->OMSetRenderTargets(1, &rtv, nullptr);
     g_d3d11Mask.context->RSSetViewports(1, &vp);
     g_d3d11Mask.context->RSSetState(g_d3d11Mask.rs);
-    g_d3d11Mask.context->OMSetBlendState(g_d3d11Mask.bs, kBF, 0xFFFFFFFF);
+    g_d3d11Mask.context->OMSetBlendState(
+        visorAntialiasing ? g_d3d11Mask.bs : g_d3d11Mask.bsOpaque, kBF, 0xFFFFFFFF);
     g_d3d11Mask.context->OMSetDepthStencilState(g_d3d11Mask.dss, 0);
     g_d3d11Mask.context->VSSetShader(g_d3d11Mask.vs, nullptr, 0);
     g_d3d11Mask.context->PSSetShader(g_d3d11Mask.ps, nullptr, 0);
@@ -1489,7 +1506,8 @@ void DrawEdgeGuardToTexture(
     g_d3d11Mask.context->OMSetRenderTargets(1, &rtv, nullptr);
     g_d3d11Mask.context->RSSetViewports(1, &vp);
     g_d3d11Mask.context->RSSetState(g_d3d11Mask.rs);
-    g_d3d11Mask.context->OMSetBlendState(g_d3d11Mask.bs, kBF, 0xFFFFFFFF);
+    g_d3d11Mask.context->OMSetBlendState(
+        visorAntialiasing ? g_d3d11Mask.bs : g_d3d11Mask.bsOpaque, kBF, 0xFFFFFFFF);
     g_d3d11Mask.context->OMSetDepthStencilState(g_d3d11Mask.dss, 0);
     g_d3d11Mask.context->VSSetShader(g_d3d11Mask.vs, nullptr, 0);
     g_d3d11Mask.context->PSSetShader(g_d3d11Mask.ps, nullptr, 0);

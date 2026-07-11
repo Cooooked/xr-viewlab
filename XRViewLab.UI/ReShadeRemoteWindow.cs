@@ -306,18 +306,19 @@ public sealed class ReShadeRemoteWindow : Window
     {
         try
         {
-            string installed = Path.Combine(AppContext.BaseDirectory, "ReShadePayload");
-            if (File.Exists(Path.Combine(installed, "ReShade64.dll")) &&
-                File.Exists(Path.Combine(installed, "ReShade64_XR.json")))
+            // The app is published single-file with IncludeAllContentForSelfExtract, so
+            // AppContext.BaseDirectory is a %TEMP% extraction folder — NOT the install
+            // directory. Environment.ProcessPath is the real exe location; check it first.
+            string? exeDir = Path.GetDirectoryName(Environment.ProcessPath);
+            foreach (string? root in new[] { exeDir, AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
             {
-                return installed;
-            }
-
-            string dev = Path.Combine(Directory.GetCurrentDirectory(), "ReShadePayload");
-            if (File.Exists(Path.Combine(dev, "ReShade64.dll")) &&
-                File.Exists(Path.Combine(dev, "ReShade64_XR.json")))
-            {
-                return dev;
+                if (string.IsNullOrEmpty(root)) continue;
+                string candidate = Path.Combine(root, "ReShadePayload");
+                if (File.Exists(Path.Combine(candidate, "ReShade64.dll")) &&
+                    File.Exists(Path.Combine(candidate, "ReShade64_XR.json")))
+                {
+                    return candidate;
+                }
             }
         }
         catch
