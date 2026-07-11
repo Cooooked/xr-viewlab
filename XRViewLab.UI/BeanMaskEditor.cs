@@ -21,7 +21,13 @@ public sealed class BeanMaskEditor : FrameworkElement
 	private double _innerBridgePeakX = 0.5;
 	private double _innerBridgeSteepness = 0.5;
 	private bool _openInnerPreview;
+	private double _cropHorizontal = 1.0;
+	private double _cropVertical = 1.0;
 	private DragTarget _dragTarget = DragTarget.None;
+
+	// Inner-eye notch pins hidden: the notch looks right monocularly but turns translucent
+	// under binocular fusion, so its controls are not exposed in the current UI.
+	private static readonly bool ShowInnerShapePins = false;
 
 	public BeanMaskEditor()
 	{
@@ -164,6 +170,21 @@ public sealed class BeanMaskEditor : FrameworkElement
 		set => SetValue(ref _innerBridgeSteepness, value, -1.0, 2.0);
 	}
 
+	// Post-crop render extents (fraction of the full uncropped render, 0.01..1).
+	// View-only: they scale the preview rect so its aspect tracks the actual render area;
+	// they do not alter mask geometry values and do not raise ShapeChanged.
+	public double CropHorizontal
+	{
+		get => _cropHorizontal;
+		set => SetViewValue(ref _cropHorizontal, value, 0.01, 1.0);
+	}
+
+	public double CropVertical
+	{
+		get => _cropVertical;
+		set => SetViewValue(ref _cropVertical, value, 0.01, 1.0);
+	}
+
 	public bool OpenInnerPreview
 	{
 		get => _openInnerPreview;
@@ -191,11 +212,39 @@ public sealed class BeanMaskEditor : FrameworkElement
 			return;
 		}
 
-		StreamGeometry geometry = OpenInnerPreview ? BuildOpenInnerGeometry(area) : BuildGeometry(area);
+		// The crop rect is the post-crop render area for BOTH eyes side by side; the visor is
+		// drawn inside it so the preview aspect tracks the actual render as crop sliders move.
+		Rect crop = CropRect(area);
+		if (crop.Width <= 4.0 || crop.Height <= 4.0)
+		{
+			return;
+		}
+		dc.DrawRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)), 1.0), crop);
+
+		Rect leftEye = new(crop.Left, crop.Top, crop.Width * 0.5, crop.Height);
+		Rect rightEye = new(crop.Left + crop.Width * 0.5, crop.Top, crop.Width * 0.5, crop.Height);
+		StreamGeometry geometry = OpenInnerPreview
+			? BuildBinocularOpenInnerGeometry(leftEye, rightEye)
+			: BuildBinocularClosedGeometry(leftEye, rightEye);
 		dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromRgb(224, 42, 53)), 4.0), geometry);
 		dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)), 1.0), geometry);
 
-		DrawPins(dc, area);
+		DrawPins(dc, leftEye);
+	}
+
+	private Rect CropRect(Rect area)
+	{
+		double w = Math.Max(0.0, area.Width * CropHorizontal);
+		double h = Math.Max(0.0, area.Height * CropVertical);
+		return new Rect(area.Left + (area.Width - w) * 0.5, area.Top + (area.Height - h) * 0.5, w, h);
+	}
+
+	// Left-eye half of the crop rect — the coordinate space for pins and drags.
+	private Rect LeftEyeArea()
+	{
+		Rect area = new(2.0, 2.0, Math.Max(0.0, ActualWidth - 4.0), Math.Max(0.0, ActualHeight - 4.0));
+		Rect crop = CropRect(area);
+		return new Rect(crop.Left, crop.Top, crop.Width * 0.5, crop.Height);
 	}
 
 	// A steep near-zero shoulder keeps the rectangle visually square while remaining continuous:
@@ -204,7 +253,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 		32.0 * Math.Pow(2.0 / 32.0, Math.Clamp(curve, 0.0, 1.0)) +
 		1024.0 * Math.Exp(-50.0 * Math.Clamp(curve, 0.0, 1.0));
 
-	private StreamGeometry BuildGeometry(Rect area)
+	private void AddClosedFigure(StreamGeometryContext ctx, Rect area)
 	{
 		// Size uniformly shrinks the exposed aperture without touching render crop/FOV.
 		double halfW = area.Width * 0.5 * Math.Clamp(Size * WidthScale, 0.01, 1.0);
@@ -229,19 +278,26 @@ public sealed class BeanMaskEditor : FrameworkElement
 			points.Add(new Point(Math.Clamp(x, area.Left, area.Right), Math.Clamp(y, area.Top, area.Bottom)));
 		}
 
-		StreamGeometry geometry = new();
-		using StreamGeometryContext ctx = geometry.Open();
 		ctx.BeginFigure(points[0], isFilled: false, isClosed: true);
 		ctx.PolyLineTo(points.GetRange(1, points.Count - 1), isStroked: true, isSmoothJoin: true);
+	}
+
+	private StreamGeometry BuildBinocularOpenInnerGeometry(Rect leftEye, Rect rightEye)
+	{
+		StreamGeometry geometry = new();
+		using StreamGeometryContext ctx = geometry.Open();
+		AddOpenInnerHalf(ctx, leftEye, outerLeft: true);
+		AddOpenInnerHalf(ctx, rightEye, outerLeft: false);
 		geometry.Freeze();
 		return geometry;
 	}
 
-	private StreamGeometry BuildOpenInnerGeometry(Rect area)
+	private StreamGeometry BuildBinocularClosedGeometry(Rect leftEye, Rect rightEye)
 	{
 		StreamGeometry geometry = new();
 		using StreamGeometryContext ctx = geometry.Open();
-		AddOpenInnerHalf(ctx, area, outerLeft: true);
+		AddClosedFigure(ctx, leftEye);
+		AddClosedFigure(ctx, rightEye);
 		geometry.Freeze();
 		return geometry;
 	}
@@ -354,15 +410,18 @@ public sealed class BeanMaskEditor : FrameworkElement
 	{
 		var pins = PinPositions(area);
 		DrawPin(dc, pins.outerApex, Color.FromRgb(255, 96, 105));
-		DrawPin(dc, pins.innerLower, Color.FromRgb(255, 180, 90));
 		DrawPin(dc, pins.size, Color.FromRgb(180, 255, 120));
 		DrawPin(dc, pins.curve, Color.FromRgb(210, 120, 255));
-		DrawPin(dc, pins.innerRise, Color.FromRgb(100, 225, 220));
-		DrawPin(dc, pins.innerPeakX, Color.FromRgb(80, 160, 255));
-		DrawPin(dc, pins.innerSteepness, Color.FromRgb(255, 210, 100));
-		if (InnerLowerY > 0.0)
+		if (ShowInnerShapePins)
 		{
-			DrawPin(dc, pins.innerBridge, Color.FromRgb(120, 200, 255));
+			DrawPin(dc, pins.innerLower, Color.FromRgb(255, 180, 90));
+			DrawPin(dc, pins.innerRise, Color.FromRgb(100, 225, 220));
+			DrawPin(dc, pins.innerPeakX, Color.FromRgb(80, 160, 255));
+			DrawPin(dc, pins.innerSteepness, Color.FromRgb(255, 210, 100));
+			if (InnerLowerY > 0.0)
+			{
+				DrawPin(dc, pins.innerBridge, Color.FromRgb(120, 200, 255));
+			}
 		}
 	}
 
@@ -414,28 +473,28 @@ public sealed class BeanMaskEditor : FrameworkElement
 		base.OnPreviewMouseLeftButtonDown(e);
 		Focus();
 		_dragTarget = DragTarget.None;
-		var area = new Rect(2.0, 2.0, Math.Max(0.0, ActualWidth - 4.0), Math.Max(0.0, ActualHeight - 4.0));
+		var area = LeftEyeArea();
 		var pins = PinPositions(area);
 		Point p = e.GetPosition(this);
 		if (DistanceSquared(p, pins.size) <= 144.0)
 			_dragTarget = DragTarget.Size;
 		else if (DistanceSquared(p, pins.curve) <= 144.0)
 			_dragTarget = DragTarget.Curve;
-		else if (DistanceSquared(p, pins.innerRise) <= 144.0)
+		else if (ShowInnerShapePins && DistanceSquared(p, pins.innerRise) <= 144.0)
 			_dragTarget = DragTarget.InnerRise;
-		else if (DistanceSquared(p, pins.innerPeakX) <= 144.0)
+		else if (ShowInnerShapePins && DistanceSquared(p, pins.innerPeakX) <= 144.0)
 			_dragTarget = DragTarget.InnerPeakX;
-		else if (DistanceSquared(p, pins.innerSteepness) <= 144.0)
+		else if (ShowInnerShapePins && DistanceSquared(p, pins.innerSteepness) <= 144.0)
 			_dragTarget = DragTarget.InnerSteepness;
 		else if (DistanceSquared(p, pins.outerApex) <= 144.0)
 		{
 			_dragTarget = DragTarget.OuterApex;
 		}
-		else if (InnerLowerY > 0.0 && DistanceSquared(p, pins.innerBridge) <= 144.0)
+		else if (ShowInnerShapePins && InnerLowerY > 0.0 && DistanceSquared(p, pins.innerBridge) <= 144.0)
 		{
 			_dragTarget = DragTarget.InnerBridge;
 		}
-		else if (DistanceSquared(p, pins.innerLower) <= 144.0)
+		else if (ShowInnerShapePins && DistanceSquared(p, pins.innerLower) <= 144.0)
 		{
 			_dragTarget = DragTarget.InnerLower;
 		}
@@ -462,7 +521,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 			return;
 		}
 
-		var area = new Rect(2.0, 2.0, Math.Max(0.0, ActualWidth - 4.0), Math.Max(0.0, ActualHeight - 4.0));
+		var area = LeftEyeArea();
 		var pins = PinPositions(area);
 		Point mouse = e.GetPosition(this);
 		double span = pins.y1 - pins.y0;
@@ -484,7 +543,8 @@ public sealed class BeanMaskEditor : FrameworkElement
 		}
 		else if (_dragTarget == DragTarget.Size)
 		{
-			Size = Math.Clamp(Math.Abs(mouse.X - ActualWidth * 0.5) / Math.Max(1.0, ActualWidth * 0.5), 0.1, 1.0);
+			double eyeCenterX = area.Left + area.Width * 0.5;
+			Size = Math.Clamp(Math.Abs(mouse.X - eyeCenterX) / Math.Max(1.0, area.Width * 0.5), 0.1, 1.0);
 		}
 		else if (_dragTarget == DragTarget.Curve)
 		{
@@ -527,6 +587,19 @@ public sealed class BeanMaskEditor : FrameworkElement
 		double dx = a.X - b.X;
 		double dy = a.Y - b.Y;
 		return dx * dx + dy * dy;
+	}
+
+	// Like SetValue but does not raise ShapeChanged: crop extents describe the render
+	// area the preview sits in, not an edit to the mask shape itself.
+	private void SetViewValue(ref double field, double value, double min, double max)
+	{
+		double clamped = Math.Clamp(value, min, max);
+		if (Math.Abs(field - clamped) < 0.0001)
+		{
+			return;
+		}
+		field = clamped;
+		InvalidateVisual();
 	}
 
 	private void SetValue(ref double field, double value, double min, double max)

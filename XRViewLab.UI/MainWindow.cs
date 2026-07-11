@@ -906,6 +906,9 @@ public partial class MainWindow : Window
 		MaskBeanEditor.InnerBridgePeakX = MaskInnerBridgePeakXSlider?.Value ?? 0.5;
 		MaskBeanEditor.InnerBridgeSteepness = MaskInnerBridgeSteepnessSlider?.Value ?? 0.5;
 		MaskBeanEditor.OpenInnerPreview = true; // Stencil outer edges only is permanently enabled
+		// Preview rect tracks the post-crop render area so the mask aspect is WYSIWYG.
+		MaskBeanEditor.CropVertical = CurrentVerticalCrop();
+		MaskBeanEditor.CropHorizontal = CurrentHorizontalCrop();
 	}
 
 	private void LoadSettings()
@@ -1073,6 +1076,10 @@ public partial class MainWindow : Window
 		if (!_loading && !_syncingControls)
 		{
 			UpdateHints();
+			if (MaskBeanEditor != null)
+			{
+				SyncMaskEditorFromSliders();
+			}
 			SaveGlobalSettings();
 		}
 	}
@@ -1245,6 +1252,10 @@ public partial class MainWindow : Window
 			{
 				SyncTextFromSlider(HorizontalBox, HorizontalSlider);
 			}
+			if (MaskBeanEditor != null)
+			{
+				SyncMaskEditorFromSliders();
+			}
 			SaveGlobalSettings();
 		}
 	}
@@ -1284,6 +1295,10 @@ public partial class MainWindow : Window
 		{
 			UpdateModeControls();
 			UpdateHints();
+			if (MaskBeanEditor != null)
+			{
+				SyncMaskEditorFromSliders();
+			}
 		}
 	}
 

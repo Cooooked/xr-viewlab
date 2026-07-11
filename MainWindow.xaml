@@ -420,7 +420,7 @@
                 </WrapPanel>
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
                 <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                <ui:BeanMaskEditor x:Name="MaskBeanEditor" Height="76" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Preview uses the same rounded aperture settings as the OpenXR D3D11 mask texture." />
+                <ui:BeanMaskEditor x:Name="MaskBeanEditor" Height="96" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Binocular preview: both eyes inside the current post-crop render area. Follows the Vertical/Horizontal crop values." />
                 <Grid Margin="0,0,0,0">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="52" />
@@ -443,16 +443,18 @@
                   <Slider Name="MaskRoundnessSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
                   <TextBlock Grid.Row="2" Grid.Column="0" Text="Apex Y" VerticalAlignment="Center" FontSize="12" />
                   <Slider Name="MaskApexYSlider" Grid.Row="2" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="MaskApexYSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerLowerSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="0.666" ValueChanged="MaskInnerLowerSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgeSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgeRiseSlider" Grid.Row="5" Grid.Column="1" Minimum="-0.5" Maximum="1" ValueChanged="MaskInnerBridgeRiseSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="6" Grid.Column="0" Text="Peak X" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgePeakXSlider" Grid.Row="6" Grid.Column="1" Minimum="-1" Maximum="2" ValueChanged="MaskInnerBridgePeakXSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="7" Grid.Column="0" Text="Steep" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgeSteepnessSlider" Grid.Row="7" Grid.Column="1" Minimum="-1" Maximum="2" ValueChanged="MaskInnerBridgeSteepnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <!-- Inner-eye notch controls hidden: correct with one eye closed, but translucent
+                       under binocular fusion. Values and plumbing are retained. -->
+                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
+                  <Slider Name="MaskInnerLowerSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="0.666" ValueChanged="MaskInnerLowerSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" Visibility="Collapsed" />
+                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
+                  <Slider Name="MaskInnerBridgeSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" Visibility="Collapsed" />
+                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
+                  <Slider Name="MaskInnerBridgeRiseSlider" Grid.Row="5" Grid.Column="1" Minimum="-0.5" Maximum="1" ValueChanged="MaskInnerBridgeRiseSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" Visibility="Collapsed" />
+                  <TextBlock Grid.Row="6" Grid.Column="0" Text="Peak X" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
+                  <Slider Name="MaskInnerBridgePeakXSlider" Grid.Row="6" Grid.Column="1" Minimum="-1" Maximum="2" ValueChanged="MaskInnerBridgePeakXSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" Visibility="Collapsed" />
+                  <TextBlock Grid.Row="7" Grid.Column="0" Text="Steep" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
+                  <Slider Name="MaskInnerBridgeSteepnessSlider" Grid.Row="7" Grid.Column="1" Minimum="-1" Maximum="2" ValueChanged="MaskInnerBridgeSteepnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" Visibility="Collapsed" />
                   <Slider Name="MaskOffsetXSlider" Grid.Row="8" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
                   <Slider Name="MaskOffsetYSlider" Grid.Row="9" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
                 </Grid>

@@ -220,6 +220,9 @@ public partial class ProfileWindow : Window
 		MaskBeanEditor.OffsetX = VisorOffsetXSlider?.Value ?? 0.0;
 		MaskBeanEditor.OffsetY = VisorOffsetYSlider?.Value ?? 0.0;
 		MaskBeanEditor.OpenInnerPreview = true; // Stencil outer edges only is permanently enabled
+		// Preview rect tracks the post-crop render area so the mask aspect is WYSIWYG.
+		MaskBeanEditor.CropVertical = CurrentVerticalCrop();
+		MaskBeanEditor.CropHorizontal = CurrentHorizontalCrop();
 	}
 
 	private void SetVisorSlidersEnabled(bool enabled)
@@ -268,7 +271,7 @@ public partial class ProfileWindow : Window
 		if (!_initialized) return;
 		if (MaskBeanEditor != null)
 		{
-			MaskBeanEditor.Size = VisorSizeSlider?.Value ?? 1.0;
+			SyncMaskEditorFromSliders();
 		}
 		UpdateHints();
 	}

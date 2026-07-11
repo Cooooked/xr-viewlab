@@ -2,6 +2,16 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## Unreleased - 2026-07-12 (Binocular WYSIWYG Preview)
+
+- The visor preview is now binocular: both eyes drawn side by side inside a rect that scales
+  with the current Vertical/Horizontal crop values, so the preview aspect matches the actual
+  post-crop render area. A faint outline marks the crop rect inside the full uncropped canvas.
+- Hidden the inner-eye notch controls (Inner low, Bridge, Rise, Peak X, Steep) and their preview
+  pins in both the main window and the per-app profile popup. The notch looks correct with one
+  eye closed but turns translucent under binocular fusion. Config keys, saved values, per-app
+  plumbing, and native geometry are unchanged — UI visibility only.
+
 ## Unreleased - 2026-07-12 (Installer Registry Safety)
 
 - Removed the MSI's `CleanupApiLayerRegistry` custom action entirely. Installing or upgrading
