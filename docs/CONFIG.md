@@ -44,7 +44,7 @@ Per-app registry: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>` — DWORD encod
 | ini key | default | DLL global | Notes |
 |---|---|---|---|
 | `stencil_outer_edges_only` | 1 | `outerEdgeVisibilityMaskOnly` | THE checkbox key; legacy fallback `outer_edge_visibility_mask_only`. Drives the 3-part stencil pipeline (ARCHITECTURE) |
-| `visibility_mask_visor` | 0 | `visibilityMaskVisor` | legacy hidden-mesh reshaper, only when visor off |
+| `visibility_mask_visor` | 0 | ignored/retired | retired legacy hidden-mesh reshaper; `1` is logged and ignored |
 
 ## Diagnostics / misc
 
@@ -65,11 +65,15 @@ inner-low slider enablement. ReShade Remote state lives in ProgramData (shared-m
 
 ## 2026-07-10 implementation update
 
-- MSI install/upgrade intentionally backs up the live ini to `xr-viewlab.bak.ini`, then resets
-  visor keys to safe defaults. Crop and render profile values are preserved.
+- MSI install/upgrade preserves the live `%LOCALAPPDATA%` configuration and per-app registry
+  profiles. The packaged ini is a fresh-install template only; neither the installer nor the
+  OpenXR layer resets user tuning during an ordinary upgrade.
 - The bundled `xr-viewlab.ini` must include every product key with safe defaults, including
   `mask_enabled=0`, `mask_size=0.82`, `mask_corner=0.5`, `visor_hd=0`, and
   `visor_antialiasing=1`.
+- `mask_size=1` is not a useful enabled-visor setting: it creates a full-size opening and no
+  black border. When the visor is enabled, ViewLab recovers this legacy value to the visible safe
+  default `0.82`; the UI caps Size at `0.98`.
 - `visor_hd` is now native: it doubles visor curve tessellation. `visor_antialiasing` is now
   native: it enables a per-vertex alpha feather strip on the visor aperture edge.
 - Per-app profiles now carry all six shape keys: `mask_outer_apex_y`, `mask_inner_lower_y`,
@@ -78,3 +82,5 @@ inner-low slider enablement. ReShade Remote state lives in ProgramData (shared-m
   per-app `mask_enabled` override when saving a custom profile.
 - Missing `mask_size` falls back directly to `0.82` in both UI and DLL. Do not reintroduce
   legacy `mask_vertical`/`mask_horizontal` opening derivations as a fallback.
+- `visibility_mask_visor` no longer changes runtime geometry. The Direct C visor is the product
+  path; the old hidden-mesh reshaper cannot represent current shape/AA/HD behaviour.

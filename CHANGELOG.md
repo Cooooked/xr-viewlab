@@ -2,6 +2,27 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## 4.1.113 - 2026-07-11 (Headset Regression Fixes)
+
+- Fixed `Crop outer edges only`: the native FOV crop now scales only the outer edge when enabled
+  and both horizontal edges when disabled, matching the checkbox and recommended render width.
+- Fixed the enabled-but-invisible visor state: legacy `mask_size=1` now recovers to the safe
+  visible opening `0.82`, and Size can no longer be set to a borderless full opening in the UI.
+- Fixed ReShade Remote deployment command quoting and made the panel report whether the bundled
+  custom payload is actually installed instead of implying that any stock ReShade layer can connect.
+
+- Fixed upgrades so they preserve visor settings and per-app tuning. The earlier per-version
+  reset design would have erased those settings after every MSI update and has been removed.
+- Removed user-profile backup/reset work from installer VBScript; it now performs only machine-safe
+  stale OpenXR layer registry cleanup.
+- Fixed the per-machine Start Menu shortcut component key path by moving it from HKCU to HKLM.
+- Retired the legacy `visibility_mask_visor` hidden-mesh reshaper; the key is logged and ignored
+  so it cannot diverge from Direct C visor geometry.
+- Aligned native missing-key defaults for `mask_corner` and `mask_rounded` with the bundled ini.
+- Removed unsafe mid-frame config hot reload; settings now apply on game restart as the UI states.
+- Serialized D3D11 draw hooks with renderer/session teardown to prevent concurrent state use and
+  release during game shutdown or swapchain changes.
+
 ## 4.1.109 - 2026-07-10 (Bug Scan Fix Pass)
 
 - Fixed the remaining preview pin-drag breakage by making the apex drag inverse match the rendered

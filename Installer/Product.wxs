@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.110"
+           Language="1033" Version="4.1.115"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -32,21 +32,11 @@
                   VBScriptCall="PromptLaunchXRViewLab"
                   Execute="immediate"
                   Return="ignore" />
-    <CustomAction Id="BackupConfig"
-                  BinaryKey="PreserveConfigVbs"
-                  VBScriptCall="BackupConfig"
-                  Execute="immediate"
-                  Return="ignore" />
     <CustomAction Id="CleanupApiLayerRegistry"
                   BinaryKey="PreserveConfigVbs"
                   VBScriptCall="CleanupApiLayerRegistry"
                   Execute="deferred"
                   Impersonate="no"
-                  Return="ignore" />
-    <CustomAction Id="ResetVisorSettings"
-                  BinaryKey="PreserveConfigVbs"
-                  VBScriptCall="ResetVisorSettings"
-                  Execute="immediate"
                   Return="ignore" />
 
     <UI>
@@ -96,6 +86,7 @@
 
     <Feature Id="Main" Title="ViewLab" Level="1">
       <ComponentRef Id="LayerFiles"/>
+      <ComponentRef Id="LayerFiles32"/>
       <ComponentRef Id="AppFiles"/>
       <ComponentRef Id="RegEnable"/>
       <ComponentRef Id="RegEnable32"/>
@@ -105,9 +96,7 @@
     </Feature>
 
     <InstallExecuteSequence>
-      <Custom Action="BackupConfig" Before="RemoveFiles">1</Custom>
       <Custom Action="CleanupApiLayerRegistry" Before="InstallFinalize">1</Custom>
-      <Custom Action="ResetVisorSettings" After="InstallFiles">NOT REMOVE</Custom>
     </InstallExecuteSequence>
 
     <Directory Id="TARGETDIR" Name="SourceDir">
@@ -116,12 +105,8 @@
           <Component Id="LayerFiles" Guid="A3E0E51C-45C2-45AA-B458-2F37F261C40A" Win64="yes">
             <File Id="LayerDll" Source="..\x64\Release\XR_APILAYER_cooooked_xrviewlab.dll" Name="XR_APILAYER_cooooked_xrviewlab.dll"/>
             <File Id="LayerJson" Source="..\XR_APILAYER_cooooked_xrviewlab.json" Name="XR_APILAYER_cooooked_xrviewlab.json"/>
-            <File Id="Layer32Dll" Source="..\Release\XR_APILAYER_cooooked_xrviewlab32.dll" Name="XR_APILAYER_cooooked_xrviewlab32.dll"/>
-            <File Id="Layer32Json" Source="..\XR_APILAYER_cooooked_xrviewlab32.json" Name="XR_APILAYER_cooooked_xrviewlab32.json"/>
             <RemoveFile Id="RemoveLayerDll" Name="XR_APILAYER_cooooked_xrviewlab.dll" On="uninstall"/>
             <RemoveFile Id="RemoveLayerJson" Name="XR_APILAYER_cooooked_xrviewlab.json" On="uninstall"/>
-            <RemoveFile Id="RemoveLayer32Dll" Name="XR_APILAYER_cooooked_xrviewlab32.dll" On="uninstall"/>
-            <RemoveFile Id="RemoveLayer32Json" Name="XR_APILAYER_cooooked_xrviewlab32.json" On="uninstall"/>
             <RemoveFile Id="RemoveLogFile" Name="xr-viewlab.log" On="uninstall"/>
             <RemoveFile Id="RemoveOldLayerDll" Name="XR_APILAYER_cooooked_verticaltangent.dll" On="both"/>
             <RemoveFile Id="RemoveOldLayerJson" Name="XR_APILAYER_cooooked_verticaltangent.json" On="both"/>
@@ -176,6 +161,17 @@
           </Component>
         </Directory>
       </Directory>
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER32" Name="xr-viewlab">
+          <Component Id="LayerFiles32" Guid="5F8AE758-6D85-4A0C-9D1B-1849B7F1ED55" Win64="no">
+            <File Id="Layer32Dll" Source="..\Release\XR_APILAYER_cooooked_xrviewlab32.dll" Name="XR_APILAYER_cooooked_xrviewlab32.dll"/>
+            <File Id="Layer32Json" Source="..\XR_APILAYER_cooooked_xrviewlab32.json" Name="XR_APILAYER_cooooked_xrviewlab32.json"/>
+            <RemoveFile Id="RemoveLayer32Dll" Name="XR_APILAYER_cooooked_xrviewlab32.dll" On="uninstall"/>
+            <RemoveFile Id="RemoveLayer32Json" Name="XR_APILAYER_cooooked_xrviewlab32.json" On="uninstall"/>
+            <RemoveFolder Id="RemoveInstallDir32FromLayerFiles" On="uninstall"/>
+          </Component>
+        </Directory>
+      </Directory>
       <Directory Id="ProgramMenuFolder">
         <Directory Id="ApplicationProgramsFolder" Name="ViewLab">
           <Component Id="StartMenuShortcut" Guid="3AE9AB79-5298-4921-B099-9F98E8383356" Win64="yes">
@@ -186,7 +182,7 @@
                       Icon="ProductIcon"
                       WorkingDirectory="INSTALLFOLDER"/>
             <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
-            <RegistryValue Root="HKCU" Key="Software\cooooked\xr-viewlab" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
+            <RegistryValue Root="HKLM" Key="Software\cooooked\xr-viewlab" Name="StartMenuShortcutInstalled" Type="integer" Value="1" KeyPath="yes"/>
           </Component>
         </Directory>
       </Directory>

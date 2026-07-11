@@ -5,6 +5,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ($Configuration -ne "Release") {
+    throw "build.ps1 packages the MSI from Release paths; use -Configuration Release."
+}
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 if ([string]::IsNullOrWhiteSpace($DistDir)) {
@@ -19,7 +22,7 @@ $MsiSource = Join-Path $Root "Installer\bin\$Configuration\xr-viewlab-setup.msi"
 $assemblyInfo = Join-Path $Root "Properties\AssemblyInfo.cs"
 $productWxs   = Join-Path $Root "Installer\Product.wxs"
 
-$currentVersion = Select-String -Path $assemblyInfo -Pattern 'AssemblyInformationalVersion\("(\d+)\.(\d+)\.(\d+)"\)' | Select-Object -First 1
+$currentVersion = Select-String -Path $assemblyInfo -Pattern 'AssemblyInformationalVersion\("(\d+)\.(\d+)\.(\d+)(?:\.\d+)?(?:[-+][^"]*)?"\)' | Select-Object -First 1
 if ($currentVersion -and $currentVersion.Matches[0].Groups.Count -ge 4) {
     $major = $currentVersion.Matches[0].Groups[1].Value
     $minor = $currentVersion.Matches[0].Groups[2].Value
@@ -70,8 +73,19 @@ function Find-MSBuild {
     throw "MSBuild.exe not found. Install Visual Studio Build Tools."
 }
 
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory=$true)][string]$FilePath,
+        [Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments
+    )
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FilePath failed with exit code $LASTEXITCODE"
+    }
+}
+
 Write-Host "Building WPF app..."
-dotnet publish $DotnetProject -c $Configuration -r win-x64 --self-contained true /p:PublishSingleFile=true
+Invoke-Native dotnet publish $DotnetProject -c $Configuration -r win-x64 --self-contained true /p:PublishSingleFile=true
 
 # Copy ReShadePayload to publish directory for development/testing
 $PublishDir = Join-Path $Root "bin\$Configuration\net8.0-windows\win-x64\publish"
@@ -97,9 +111,9 @@ $MSBuild = Find-MSBuild
 Write-Host "Using MSBuild: $MSBuild"
 
 Write-Host "Building OpenXR API layer (x64)..."
-& $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=x64 /m
+Invoke-Native $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=x64 /m
 Write-Host "Building OpenXR API layer (Win32 / 32-bit for 32-bit games)..."
-& $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=Win32 /m
+Invoke-Native $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=Win32 /m
 
 # Copy native DLLs to distribution/release folder
 $Dll64Src = Join-Path $Root "x64\$Configuration\XR_APILAYER_cooooked_xrviewlab.dll"
@@ -132,14 +146,14 @@ if ((Test-Path $Dll64Src) -or (Test-Path $Dll32Src)) {
 Write-Host "Building MSI..."
 $WixObjDir = Join-Path $Root "Installer\obj\$Configuration"
 if (Test-Path $WixObjDir) { Remove-Item -Recurse -Force $WixObjDir }
-& $MSBuild $InstallerProject /p:Configuration=$Configuration /p:Platform=$Platform /m
+Invoke-Native $MSBuild $InstallerProject /p:Configuration=$Configuration /p:Platform=$Platform /m
 
 if (!(Test-Path $MsiSource)) {
     throw "MSI was not produced at $MsiSource"
 }
 
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
-$versionLine = Select-String -Path $assemblyInfo -Pattern 'AssemblyInformationalVersion\("([^"]+)"\)' | Select-Object -First 1
+$versionLine = Select-String -Path $assemblyInfo -Pattern 'AssemblyInformationalVersion\("(\d+\.\d+\.\d+)(?:\.\d+)?(?:[-+][^"]*)?"\)' | Select-Object -First 1
 $version = if ($versionLine -and $versionLine.Matches.Count -gt 0) { $versionLine.Matches[0].Groups[1].Value } else { "unknown" }
 $MsiDest = Join-Path $DistDir "ViewLab-$version.msi"
 Copy-Item -Path $MsiSource -Destination $MsiDest -Force

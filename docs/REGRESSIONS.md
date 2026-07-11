@@ -46,9 +46,9 @@ high-risk — they interact with the MSI ini overwrite (R6).
 bundled default ini (e.g. `mask_enabled`, `mask_size`, `mask_corner`) were dropped, silently
 changing behavior after "just an update".
 **Never again:** keep the bundled `xr-viewlab.ini` complete (every product key present with sane
-default), include it in the MSI/package output, and make the reset policy explicit. Current
-policy is backup-then-reset visor settings, not preserve-on-upgrade. Contract tests assert the
-default key set, Product.wxs packaging, and the installer reset list.
+defaults) and include it in the MSI/package output as a fresh-install template. Ordinary upgrades
+preserve the live `%LOCALAPPDATA%` ini and per-app HKCU profiles. The OpenXR layer must never
+rewrite settings from inside a game. Contract tests pin packaging and the absence of reset hooks.
 
 ## R7 — The 2026-07-10 spiral: 14 blind builds, features lost (4.1.88→4.1.101)
 **What:** 12+ hours of guess-edit-build cycles on the inner-low/stencil symptoms; five failed
@@ -83,10 +83,19 @@ and the editor uses preview mouse events plus full-rectangle hit testing.
 pin band centre. That made the centred pin map to `0.5` and clamped negative drags away. The
 drag code now uses the same centre-origin formula as `PinPositions`; contract tests pin it.
 
-## R9 - Intentional visor reset must not become silent key loss (2026-07-10)
-**What:** MSI install/upgrade resets visor settings to safe defaults by design, but this can look
-like the old accidental dropped-key bug if docs/tests are stale.
-**Why:** `Installer\PreserveConfig.vbs` strips visor keys after backing up the live ini. That is
-the chosen policy for now; crop/render settings are preserved.
-**Never again:** bundled `xr-viewlab.ini` carries every product key with safe defaults, installer
-reset strips the complete current visor key set, and the contract test pins both lists.
+## R9 - Per-version upgrade reset would erase user tuning (caught before headset release, 2026-07-11)
+**What:** the MSI wrote its changing product version as a reset marker; the next UI or game launch
+deleted visor and per-app visor settings. Every upgrade therefore behaved like a factory reset.
+**Why:** a workaround for elevated-installer user context preserved the reset policy rather than
+challenging whether an ordinary update should reset anything.
+**Never again:** upgrades preserve user settings. Defaults repair fresh installs only, and native
+runtime code remains read-only with respect to configuration.
+
+## R10 - Crop toggle read but not applied; enabled visor could be invisible (caught in headset testing, 2026-07-11)
+**What:** “Crop outer edges only” always behaved as enabled even when unchecked. Separately, an
+enabled visor with legacy `mask_size=1` drew no border, making the visor checkbox look broken.
+**Why:** `LoadConfig()` read the crop key, but the FOV calculator unconditionally retained the
+inner edges. A full-size opening was still accepted by the renderer.
+**Never again:** test the FOV branch, not only config read/logging. Outer-edge-only must gate the
+per-eye branch; full crop must scale both sides. An enabled visor must recover an invisible
+full-opening legacy value to a safe visible default.

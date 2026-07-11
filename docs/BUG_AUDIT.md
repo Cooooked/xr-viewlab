@@ -67,6 +67,7 @@ Scope: static audit of native layer, WPF UI/config, installer/build scripts, con
     - References: `dllmain.cpp:2800-2868`, `dllmain.cpp:2902-2915`
     - Why: `ApplyVisorMask()` claims parity, but it uses a symmetric closed superellipse and ignores restored shape controls such as apex-y, open-inner mode, inner-low bridge controls, AA, and HD. If `visibility_mask_visor=1` with `visor_technique=off`, visor geometry diverges from the UI and normal native renderer.
     - Confidence: high
+    - Fixed 2026-07-11: `visibility_mask_visor=1` is now logged and ignored; Direct C remains the product visor path.
 
 13. `build.ps1` copies native DLLs into the publish folder before rebuilding those DLLs.
     - References: `build.ps1:73-97`, `build.ps1:99-105`, `docs/ARCHITECTURE.md:76-79`
@@ -82,6 +83,7 @@ Scope: static audit of native layer, WPF UI/config, installer/build scripts, con
     - References: `Installer/Product.wxs:8`, `Installer/Product.wxs:35-50`, `Installer/Product.wxs:107-110`, `Installer/PreserveConfig.vbs:11-16`, `Installer/PreserveConfig.vbs:68`, `Installer/PreserveConfig.vbs:149-163`
     - Why: the MSI is per-machine, while immediate custom actions touch `%LOCALAPPDATA%` and HKCU. In elevated installs, those locations can resolve to the installing/elevated account instead of the ViewLab user's live settings and profiles.
     - Confidence: medium
+    - Fixed 2026-07-11: MSI/UI/native upgrade reset work was removed; upgrades preserve the actual user's live config and profiles.
 
 16. Canonical state is internally contradictory about the current version and active work.
     - References: `STATE.md:7`, `STATE.md:22-41`, `STATE.md:77-87`, `Properties/AssemblyInfo.cs:8-14`, `Installer/Product.wxs:4-5`

@@ -342,8 +342,7 @@ public sealed class AppProfile : INotifyPropertyChanged
 			{
 				return "Global";
 			}
-			string mask = MaskEnabled ? $";M {MaskVertical:0.###}/{MaskHorizontal:0.###}" : "";
-			return $"{Top:0.###};{Bottom:0.###};{Horizontal:0.###};{RenderScale * 100.0:0.####}%{mask}";
+			return $"{Top:0.###};{Bottom:0.###};{Horizontal:0.###};{RenderScale * 100.0:0.####}%";
 		}
 	}
 

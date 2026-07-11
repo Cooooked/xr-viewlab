@@ -316,9 +316,10 @@ public sealed class BeanMaskEditor : FrameworkElement
 		// Control points: P1 and P2 sit at the SAME Y-level as their respective endpoints
 		// so the tangent vectors at the start and end are purely horizontal.
 		// PeakX shifts where the handles are positioned horizontally.
-		double p1x = startX + handleLength * (0.5 + clampedPeakX * 0.5);
+		double dir = dx > 0.0 ? 1.0 : -1.0;
+		double p1x = startX + dir * handleLength * (0.5 + clampedPeakX * 0.5);
 		double p1y = startY + clampedRise * dy;  // Horizontal tangent at start, with rise adjustment
-		double p2x = endX - handleLength * (1.0 - clampedPeakX * 0.5);
+		double p2x = endX - dir * handleLength * (1.0 - clampedPeakX * 0.5);
 		double p2y = endY - clampedRise * dy;    // Horizontal tangent at end, with rise adjustment
 
 		const int segCount = 32;

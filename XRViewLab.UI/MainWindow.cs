@@ -280,7 +280,6 @@ public partial class MainWindow : Window
 
 	private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
 	{
-		_ = 1;
 		try
 		{
 			StatusText.Text = "Checking for updates...";
@@ -933,7 +932,7 @@ public partial class MainWindow : Window
 		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
 		VisorHDCheck.IsChecked = ReadBoolSetting(VisorHDKey, fallback: false);
 		VisorAntiAliasingCheck.IsChecked = ReadBoolSetting(VisorAntiAliasingKey, fallback: true);
-		MaskRoundedCheck.IsChecked = true;
+		MaskRoundedCheck.IsChecked = ReadBoolSetting(MaskRoundedKey, fallback: true);
 		MaskVerticalBox.Text = FormatScale(ReadScaleSetting("mask_vertical", 1.0));
 		MaskHorizontalBox.Text = FormatScale(ReadScaleSetting("mask_horizontal", 1.0));
 		MaskRoundnessSlider.Value = 1.0 - ReadScaleSetting(MaskCornerKey, 0.5);
@@ -1338,7 +1337,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", MaskEnabledKey, MaskEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", VisorHDKey, VisorHDCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", VisorAntiAliasingKey, VisorAntiAliasingCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", MaskRoundedKey, MaskEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", MaskRoundedKey, MaskRoundedCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", FoveatedCenterKey, FoveatedCenterCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", StencilOuterEdgesKey, StencilOuterEdgesCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CropOuterEdgesKey, CropOuterEdgesCheck.IsChecked == true ? "1" : "0", ConfigPath);
@@ -1700,7 +1699,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 				if (!string.IsNullOrWhiteSpace(installDir))
 				{
 					string guessed = Path.Combine(steamApps, "common", installDir, app.ExeName);
-					modulePath = File.Exists(guessed) ? guessed : guessed;
+					modulePath = File.Exists(guessed) ? guessed : "";
 				}
 				EnsureDiscoveredAppProfile(app.ExeName, app.DisplayName, modulePath, app.XrType, "Steam " + app.AppId);
 			}
@@ -1830,8 +1829,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		bool fallbackMaskEnabled = ReadBoolSetting(MaskEnabledKey, fallback: false);
 		double fallbackMaskVertical = ReadScaleSetting("mask_vertical", 1.0);
 		double fallbackMaskHorizontal = ReadScaleSetting("mask_horizontal", 1.0);
-		bool fallbackMaskRounded = ReadBoolSetting(MaskRoundedKey, fallback: false);
-		double fallbackMaskCorner = ReadScaleSetting(MaskCornerKey, 0.0);
+		bool fallbackMaskRounded = ReadBoolSetting(MaskRoundedKey, fallback: true);
+		double fallbackMaskCorner = ReadScaleSetting(MaskCornerKey, 0.5);
 		double fallbackMaskOffsetY = ReadSignedScaleSetting(MaskOffsetYKey, 0.0);
 		double fallbackMaskTopBias = ReadSignedScaleSetting(MaskTopBiasKey, fallbackMaskOffsetY);
 		double fallbackMaskBottomBias = ReadSignedScaleSetting(MaskBottomBiasKey, fallbackMaskOffsetY);
@@ -2080,7 +2079,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			MaskEnabledCheck?.IsChecked == true,
 			maskVertical,
 			maskHorizontal,
-			true,
+			MaskRoundedCheck?.IsChecked == true,
 			1.0 - (MaskRoundnessSlider?.Value ?? 0.5),
 			0.0,
 			0.0,
@@ -2135,7 +2134,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 
 		var globalMask = CurrentGlobalMaskValues();
-		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, appProfile.VisorSize, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, globalMask.visorSize, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness)
+		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, appProfile.VisorSize, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, globalMask.visorSize, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness, StencilOuterEdgesCheck?.IsChecked == true)
 		{
 			Owner = this
 		};

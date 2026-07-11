@@ -10,8 +10,9 @@ XRViewLab.UI (WPF, .NET 8)                    dllmain.cpp (native OpenXR implici
   MainWindow writes ──► %LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini ──► LoadConfig() reads
   ProfileWindow writes ─► HKCU\Software\cooooked\xr-viewlab\Apps\<exe> ─► ReadProfileDword()
 ```
-There is no live IPC between UI and layer (except ReShade Remote, below). Games pick up config
-changes at session start / config-file mtime reload. The full key contract is `docs/CONFIG.md`.
+There is no live IPC between UI and layer (except ReShade Remote, below). Games read a stable
+config snapshot at startup; restart the game after changing settings. Mid-frame hot reload was
+removed because it raced native render hooks. The full key contract is `docs/CONFIG.md`.
 
 ## Native layer anatomy (dllmain.cpp — grep these symbols)
 
@@ -61,6 +62,13 @@ Three cooperating mechanisms, all keyed to ini `stencil_outer_edges_only` (DLL g
    in arch mode it would black the nose side (DECISIONS D9).
 Games query the visibility mask once per session → restart the game to see stencil changes.
 
+### Horizontal crop modes
+
+`crop_outer_edges_only=1` keeps each eye's inner/nose-side FOV edge fixed and reduces only its
+outer edge. With it off, `XRViewLab_xrLocateViews` scales both horizontal edges around each eye's
+centre. Recommended render width follows the same selected mode. This must remain a real toggle,
+not merely a saved preference.
+
 ## WPF app anatomy
 
 | Subsystem | Where |
@@ -78,8 +86,9 @@ Games query the visibility mask once per session → restart the game to see ste
 repo default `xr-viewlab.ini` into publish output → MSBuild native layer x64 then Win32 → copies
 the freshly-built layer DLLs to dist + publish dir → WiX MSI → `dist\ViewLab-<version>.msi`.
 Manual builds must bump versions by hand to avoid double-bumps. MSI registers both layer
-manifests under HKLM Khronos ApiLayers (x64 + WOW6432Node) and installs the app, default ini,
-and ReShadePayload.
+manifests under HKLM Khronos ApiLayers (x64 + WOW6432Node), and installs the app, fresh-install
+default ini, and ReShadePayload. Upgrades leave the live config in `%LOCALAPPDATA%` and per-app
+HKCU profiles untouched.
 
 ## 2026-07-10 visor quality / robustness update
 
@@ -89,7 +98,11 @@ and ReShadePayload.
 - Direct C draws at `xrReleaseSwapchainImage` using cached per-image/per-slice RTVs. The
   `xrEndFrame` draw is fallback-only when release-time drawing did not run for that frame, with
   independent release flags for edge guard and Direct C visor paths.
+- `g_rendererMutex` serializes D3D11 immediate-context use and renderer/session teardown across
+  OpenXR hooks; `g_swapchainMutex` remains responsible for the swapchain map itself.
 - `XRViewLab_xrLocateViews` stores original and cropped FOVs for diagnostics; recommended-size
   logging uses per-view effective horizontal/vertical scale helpers when available.
-- MSI install backs up then intentionally resets visor keys to safe defaults. This is product
-  policy, not the old accidental dropped-key regression.
+- MSI upgrades preserve the current user's visor and per-app settings. The OpenXR layer is
+  read-only with respect to user configuration; it never performs installer cleanup in a game.
+- `visibility_mask_visor` is retired. The old hidden-mesh visor path is ignored because it cannot
+  represent the current Direct C shape, AA, or HD contract.

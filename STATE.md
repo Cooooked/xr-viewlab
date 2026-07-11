@@ -3,8 +3,8 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-07-10
-**Current version:** 4.1.110 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.110.msi`
+**Updated:** 2026-07-11
+**Current version:** 4.1.115 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.115.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
 **Publish state:** local commits ahead of origin/master; DO NOT push until user confirms current work in-headset.
 
@@ -19,19 +19,33 @@ boundary gated to closed-bean mode (details in `docs/DECISIONS.md` D7–D9).
 
 ## Current implementation status
 
-Passes 1-4 plus the bug-scan fix pass are implemented in-tree and built as 4.1.110, but they are not headset-confirmed.
-The last user-confirmed headset-good build remains 4.1.103. Do not push or publish until the
-user confirms a current MSI in-headset.
+4.1.115 completes the **single-visor consolidation**: Technique A/B machinery, the
+`visor_technique` selector, and the legacy `visibility_mask_visor` reshaper are fully removed.
+There is exactly ONE visor renderer — the D3D11 draw into the game's eye textures at swapchain
+release, with the late `xrEndFrame` fallback. The retired ini key is read only to log a warning.
+Everything below is NOT headset-confirmed; last confirmed-good remains 4.1.103.
+
+## Current headset blockers (2026-07-11)
+
+- 4.1.112 proved that `crop_outer_edges_only` was read but not applied: the FOV hook always used
+  outer-edge-only crop. Corrected in-tree; requires headset retest.
+- The 4.1.112 "visor completely gone" report was most plausibly R9: the installer's per-launch
+  settings reset wiped `mask_enabled` on every game start, so toggling the checkbox could never
+  matter. The reset machinery is removed. NOTE: `mask_size=1` is a LEGAL, intended value (corners
+  masked, maximum opening) — an earlier "recover 1 → 0.82" theory was wrong and its clamp is
+  removed; only a MISSING key falls back to 0.82 (R4).
+- ReShade Remote was grey because the registered ProgramData DLL was stock ReShade, not ViewLab's
+  bundled control-capable payload. The install command and status verification are corrected
+  in-tree; Pistol Whip compatibility with the custom payload remains unconfirmed.
 
 In-tree implementation summary:
 - Preview pins capture/release mouse, clear drag state on lost capture, and sync dragged values
   back to sliders before saving.
 - Native visor AA uses per-vertex alpha feather strips; HD doubles curve tessellation.
 - All six visor shape controls have per-app registry plumbing.
-- Direct C release-time drawing uses cached RTVs and late `xrEndFrame` drawing is intended to be
-  fallback-only.
-- MSI install backs up then intentionally resets visor settings to safe defaults; crop/render
-  profile values are preserved.
+- Release-time visor drawing uses cached RTVs; late `xrEndFrame` drawing is fallback-only.
+- MSI upgrades preserve the user's live visor, crop, render, and per-app profile settings;
+  the packaged ini supplies safe defaults only for a fresh install.
 
 ## What works (as of 4.1.105, pending headset confirm where noted)
 
@@ -66,7 +80,7 @@ Severity key: P0 = release blocker, P1 = high, P2 = medium, P3 = docs/test/low-r
 3. **P1 - Per-machine installer custom actions may touch the wrong user's config/profile.**
    The MSI is per-machine, but immediate VBScript actions read/write `%LOCALAPPDATA%` and HKCU.
    In elevated installs, backup/reset may target the elevated account rather than the actual
-   ViewLab user. That undermines the chosen "backup then reset visor settings" policy.
+   ViewLab user. The final fix removes upgrade-time user-setting reset work entirely.
 
 4. **P1 - Edge Masks popup writes keys the DLL never reads.**
    The UI loads/saves `horizontal_visual_mask_both`, `horizontal_outer_eye_mask`,
@@ -172,13 +186,48 @@ Confident fixes implemented in-tree for findings 1, 2, 4-17, and 19:
   and D3D11 visor/edge draw state restore now covers all RTV slots and viewport slots.
 - Contracts now cover the fixed behaviours above.
 
-Residual issues intentionally not fixed in this pass:
+## Residual cleanup - 2026-07-11
 
-- Finding 3 remains open: MSI HKCU/%LOCALAPPDATA% custom actions may run in the elevated user
-  context. Fixing that needs a deliberate installer design change, not a quick patch.
-- Finding 18 remains open: the legacy `visibility_mask_visor=1` hidden-mesh reshaper still
-  diverges from current Direct C visor geometry. It is disabled by default and only used when the
-  Direct visor is off.
+The two previously documented residuals are fixed in-tree:
+
+- Finding 3: the MSI no longer runs current-user work from VBScript, and ordinary upgrades now
+  preserve all live user settings. A rejected intermediate design used a changing version marker
+  and would have erased visor tuning after every update. The Start Menu component key path also
+  moved from HKCU to HKLM.
+- Finding 18: `visibility_mask_visor=1` is retired. The DLL logs and ignores the key so the
+  legacy hidden-mesh reshaper can no longer diverge from Direct C visor geometry.
+
+No known residual from the original 19-finding scan remains intentionally unfixed. Headset
+validation is still required before pushing or publishing.
+
+Additional cleanup from `docs/BUG_SCAN_2026-07-10.md` fixed in the same pass:
+
+- Technique A no longer passes a null release-info pointer on wait failure.
+- D3D11 rasterizer/blend/depth-state creation is checked before the renderer is marked initialized.
+- Release-time draw paths hold COM references to swapchain textures while drawing outside the
+  swapchain map lock, including the late fallback path, and draw entry points check for a live
+  D3D11 context.
+- Partner-eye boundary projection now uses bbox-relative visor extents instead of raw scale values.
+- Large visor vertex buffers are heap-backed instead of render-thread stack arrays.
+- Native config fallback paths remain absolute when module path lookup fails.
+- Native config is now a stable game-start snapshot; unsafe mid-frame hot reload was removed in
+  line with the UI's existing "restart the VR game" guidance.
+- D3D11 draw hooks and renderer/session teardown now share a dedicated renderer lock, preventing
+  the immediate context or state objects being released during a concurrent draw.
+- UI/profile defaults now agree on `mask_corner=0.5` and `mask_rounded=1`.
+- Profile window global/custom toggling restores the original custom values and refreshes preview.
+- 32-bit layer files are installed from a 32-bit component under `ProgramFilesFolder`.
+- `build.ps1` rejects non-Release packaging, checks native exit codes, and normalizes version parsing.
+
+Remaining broader static-audit items not closed in this pass:
+
+- `docs/BUG_SCAN_2026-07-10.md` P1.1/P1.2: a complete D3D11/config threading refactor is still
+  pending. This pass reduced the biggest release-time texture lifetime risk with COM AddRef/Release
+  and context guards, but did not convert the whole config/global renderer state to immutable
+  snapshots or a dedicated renderer-state lock.
+- Low-priority audit cleanups P3.5/P3.7/P3.8 remain documentation/cleanup-level items: redundant
+  per-app fallback INI reads, legacy custom-install migration coverage, and intentionally hidden
+  legacy bias/curve keys.
 
 ## Environment facts
 
@@ -192,9 +241,9 @@ Residual issues intentionally not fixed in this pass:
 
 ## Latest verification
 
-- `Tests\Verify-ViewLabContracts.ps1` passed on 2026-07-10 after the 4.1.110 build.
+- `Tests\Verify-ViewLabContracts.ps1` passed on 2026-07-11 after the 4.1.113 build.
 - `dotnet build xr-viewlab.csproj -c Release --no-restore` passed with 0 warnings / 0 errors on
-  2026-07-10.
-- `.\build.ps1` passed on 2026-07-10 with 0 warnings / 0 errors for WPF, x64 native, Win32 native,
+  2026-07-11.
+- `.\build.ps1` passed on 2026-07-11 with 0 warnings / 0 errors for WPF, x64 native, Win32 native,
   and WiX MSI:
-   `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.110.msi`.
+   `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.113.msi`.

@@ -72,9 +72,8 @@ Gameplay mode is launch-time config, not a live toggle; shared-memory `XRControl
 frozen (both sides must match); commands are edge-triggered (rising edge) to prevent repeat
 execution; desktop and HMD render paths stay separated. Details: `ReShadePayload/Docs/`.
 
-## D12 - MSI install resets visor settings after backup (2026-07-10)
-The current installer policy is to back up `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini`, then strip
-visor keys and per-app visor overrides so upgrades start from safe visor defaults. Crop and render
-profile values are preserved. Rejected for this pass: preserve-on-upgrade, because stale visor keys
-from experimental builds have repeatedly caused confusing visual states. Consequence: testers must
-re-enable the visor after install when validating visor visuals.
+## D12 - MSI upgrades preserve user settings (revised 2026-07-11)
+The packaged ini supplies safe defaults for a fresh install. Ordinary upgrades do not strip the
+live `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini` or per-app HKCU overrides. A changing MSI-version
+reset marker was rejected because it made every update a factory reset, and running that cleanup
+from the native OpenXR layer also put file/registry mutation inside a game's startup path.

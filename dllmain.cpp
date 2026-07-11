@@ -58,20 +58,8 @@ double visorInnerBridgePeakX = 0.5;    // mask_inner_bridge_peak_x: 0..1, handle
 double visorInnerBridgeSteepness = 0.5;// mask_inner_bridge_steepness: 0..1, handle length scale
 bool visorHD = false;                  // visor_hd: doubles curve tessellation
 bool visorAntialiasing = true;         // visor_antialiasing: feathered aperture edges
-// OPTIONAL, default OFF. The native visor is the D3D11 direct-write path (drawn at
-// xrReleaseSwapchainImage). This flag enables the SEPARATE legacy approach that
-// reshapes the runtime hidden-area mesh into the visor via xrGetVisibilityMaskKHR.
-// It never gates or suppresses the D3D11 path; it is purely additive for runtimes
-// where someone explicitly wants it (config key: visibility_mask_visor).
-bool visibilityMaskVisor = false;
-
-// Which masking mechanism to use (config key: visor_technique = off | a | b | c).
-//   QuadOverlay (a): our own head-locked alpha-cutout quad layer(s) (OpenKneeboard-style).
-//   Interception (b): hand app-owned textures to the app, composite into runtime textures on release.
-//   DirectWrite (c): draw the border into the game's eye texture at xrReleaseSwapchainImage.
-// Gated by mask_enabled. Default DirectWrite for back-compat.
-enum class VisorTechnique { Off, QuadOverlay, Interception, DirectWrite };
-VisorTechnique visorTechnique = VisorTechnique::DirectWrite;
+// There is one product visor: a ViewLab-owned curved corner mask drawn into the
+// game's D3D11 eye textures. The old alternate visor experiments were removed.
 // Per-frame hook detail (xrLocateViews / xrEnumerateViewConfigurationViews /
 // xrGetVisibilityMaskKHR) is gated behind this flag and, when on, routed to a
 // SEPARATE ViewLab.verbose.log so the human-facing ViewLab.log (and the in-UI
@@ -106,7 +94,6 @@ PFN_xrEnumerateSwapchainImages nextXrEnumerateSwapchainImages = nullptr;
 PFN_xrAcquireSwapchainImage nextXrAcquireSwapchainImage = nullptr;
 PFN_xrWaitSwapchainImage nextXrWaitSwapchainImage = nullptr;
 PFN_xrReleaseSwapchainImage nextXrReleaseSwapchainImage = nullptr;
-PFN_xrCreateReferenceSpace nextXrCreateReferenceSpace = nullptr;
 
 std::atomic<uint32_t> locateViewsLogCount{0};
 std::atomic<uint32_t> enumerateViewsLogCount{0};
@@ -116,7 +103,7 @@ std::atomic<uint32_t> visorMaskNoHookLogCount{0};
 std::atomic<uint32_t> visorRendererLogCount{0};
 std::atomic<bool> g_visibilityMaskEverCalled{false};
 
-// One-shot diagnostic flags for the D3D11 direct-write path. Each stage logs the
+// One-shot diagnostic flags for the visor renderer. Each stage logs the
 // first time it is hit (success or failure) so a single in-headset run reveals the
 // first failing stage without spamming the log.
 std::atomic<bool> g_diagEndFrameCalled{false};
@@ -133,17 +120,9 @@ std::atomic<bool> g_diagDrawOk{false};
 std::atomic<bool> g_diagEdgeSmearInset{false};
 std::atomic<bool> g_diagLodFullFov{false};
 std::atomic<bool> g_diagVisorSkipsVisibilityEdgeFilter{false};
-std::atomic<bool> g_diagTechniqueBActive{false};
-std::atomic<bool> g_diagTechniqueBMsaaUnsupported{false};
 std::atomic<bool> g_diagEndFrameLateDraw{false};
 
-// Hot-reload: re-read config when the file changes.
-// Checked every kConfigReloadInterval frames in xrLocateViews.
-constexpr uint32_t kConfigReloadInterval = 240;
-std::atomic<uint32_t> hotReloadFrameCounter{0};
-std::filesystem::file_time_type lastConfigMtime{};
-
-// Per-game swapchain tracking for D3D11 direct-write masking.
+// Per-game swapchain tracking for the D3D11 visor renderer.
 struct EyeView {
     XrRect2Di rect{};       // sub-image rect within the texture for this eye
     uint32_t arraySlice = 0; // texture-array slice for this eye
@@ -160,9 +139,6 @@ struct TrackedSwapchain {
     XrSwapchainUsageFlags usageFlags = 0;
     std::vector<ID3D11Texture2D*> textures;  // runtime textures; not AddRef'd
     std::vector<ID3D11RenderTargetView*> rtvs; // runtime texture RTVs, indexed image * arraySize + slice
-    std::vector<ID3D11Texture2D*> appTextures; // technique B app-facing textures; owned by ViewLab
-    bool interceptionActive = false;
-    bool interceptionUnsupported = false;
     uint32_t lastAcquiredIndex = UINT32_MAX;
     // Per-eye layout captured from the projection layer in xrEndFrame. Stable
     // across frames, so the previous frame's layout is used at release time.
@@ -170,6 +146,9 @@ struct TrackedSwapchain {
 };
 
 std::mutex g_swapchainMutex;
+// Serializes renderer lifetime and immediate-context use across OpenXR hooks. The D3D11
+// immediate context and its state objects must not be released while another hook draws.
+std::recursive_mutex g_rendererMutex;
 std::unordered_map<XrSwapchain, TrackedSwapchain> g_swapchains;
 
 // D3D11 shader-based mask renderer — draws the visor border directly into the
@@ -197,28 +176,11 @@ struct D3D11MaskState {
 
 D3D11MaskState g_d3d11Mask;
 
-// Technique A: head-locked alpha-cutout visor quad(s) as our own composition layer.
-struct VisorQuadState {
-    XrSpace viewSpace = XR_NULL_HANDLE;
-    XrSwapchain swapchain = XR_NULL_HANDLE;
-    std::vector<ID3D11Texture2D*> textures; // runtime-owned
-    int32_t width = 2048;
-    int32_t height = 1024;
-    bool initialized = false;
-    bool failed = false;
-};
-VisorQuadState g_visorQuad;
-std::atomic<uint32_t> g_visorQuadLogCount{0};
-
 void ReleaseTrackedSwapchainResources(TrackedSwapchain& ts) {
     for (ID3D11RenderTargetView* rtv : ts.rtvs) {
         if (rtv) rtv->Release();
     }
     ts.rtvs.clear();
-    for (ID3D11Texture2D* tex : ts.appTextures) {
-        if (tex) tex->Release();
-    }
-    ts.appTextures.clear();
 }
 
 std::filesystem::path LocalAppDataPath() {
@@ -378,6 +340,14 @@ std::filesystem::path GetLayerDirectory() {
 }
 
 std::filesystem::path LegacyConfigPath() {
+    if (layerDirectory.empty()) {
+        const std::filesystem::path localAppData = LocalAppDataPath();
+        if (!localAppData.empty()) {
+            return localAppData / L"XR ViewLab" / ConfigFileName;
+        }
+        std::error_code ec;
+        return std::filesystem::temp_directory_path(ec) / L"XR ViewLab" / ConfigFileName;
+    }
     return layerDirectory / ConfigFileName;
 }
 
@@ -421,20 +391,6 @@ double ReadDoubleSetting(const wchar_t* key, double fallback) {
     }
 
     return value;
-}
-
-std::string ReadStringSetting(const wchar_t* key, const char* fallback) {
-    wchar_t buffer[64]{};
-    GetPrivateProfileStringW(L"Settings", key, L"", buffer, static_cast<DWORD>(std::size(buffer)), ConfigPath().c_str());
-    if (buffer[0] == L'\0') return fallback;
-    std::string out;
-    for (const wchar_t* p = buffer; *p; ++p) out.push_back(static_cast<char>(*p));
-    // trim + lowercase
-    while (!out.empty() && (out.back() == ' ' || out.back() == '\t')) out.pop_back();
-    size_t s = 0; while (s < out.size() && (out[s] == ' ' || out[s] == '\t')) ++s;
-    out = out.substr(s);
-    for (char& c : out) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + 32);
-    return out;
 }
 
 std::wstring CurrentProcessPath() {
@@ -578,6 +534,8 @@ void RememberApplication(const char* openXrAppName, const char* openXrEngineName
     }
 }
 
+
+
 bool ReadProfileDword(const wchar_t* keyName, DWORD& value) {
     if (currentAppKey.empty()) {
         return false;
@@ -687,6 +645,7 @@ XrQuaternionf PitchQuaternion(float radians) {
 }
 
 void ReleaseD3D11MaskRenderer() {
+    std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
     {
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
         for (auto& kv : g_swapchains) {
@@ -705,8 +664,6 @@ void ReleaseD3D11MaskRenderer() {
     if (g_d3d11Mask.device)  { g_d3d11Mask.device->Release();  g_d3d11Mask.device = nullptr; }
     g_d3d11Mask = D3D11MaskState{};
     g_visibilityMaskEverCalled.store(false);
-    // Visor quad swapchain/space are owned by the runtime and freed with the session.
-    g_visorQuad = VisorQuadState{};
 }
 
 const XrBaseInStructure* FindStructInChain(const void* next, XrStructureType type) {
@@ -767,7 +724,7 @@ bool InitD3D11MaskRenderer() {
     HMODULE dxcLib = LoadLibraryA("d3dcompiler_47.dll");
     if (!dxcLib) dxcLib = LoadLibraryA("d3dcompiler_46.dll");
     if (!dxcLib) {
-        Log("d3d11 mask: d3dcompiler not found; direct-write fallback unavailable\n");
+        Log("visor: D3D shader compiler not found; visor unavailable for this game\n");
         g_d3d11Mask.failed = true;
         return false;
     }
@@ -859,7 +816,13 @@ bool InitD3D11MaskRenderer() {
     rsd.FillMode        = D3D11_FILL_SOLID;
     rsd.CullMode        = D3D11_CULL_NONE;
     rsd.DepthClipEnable = TRUE;
-    g_d3d11Mask.device->CreateRasterizerState(&rsd, &g_d3d11Mask.rs);
+    hr = g_d3d11Mask.device->CreateRasterizerState(&rsd, &g_d3d11Mask.rs);
+    if (FAILED(hr) || !g_d3d11Mask.rs) {
+        Log("d3d11 mask: rasterizer state create failed hr=0x%08X\n", static_cast<unsigned>(hr));
+        ReleaseD3D11MaskRenderer();
+        g_d3d11Mask.failed = true;
+        return false;
+    }
 
     D3D11_BLEND_DESC bld{};
     bld.RenderTarget[0].BlendEnable           = TRUE;
@@ -870,15 +833,27 @@ bool InitD3D11MaskRenderer() {
     bld.RenderTarget[0].DestBlendAlpha        = D3D11_BLEND_INV_SRC_ALPHA;
     bld.RenderTarget[0].BlendOpAlpha          = D3D11_BLEND_OP_ADD;
     bld.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-    g_d3d11Mask.device->CreateBlendState(&bld, &g_d3d11Mask.bs);
+    hr = g_d3d11Mask.device->CreateBlendState(&bld, &g_d3d11Mask.bs);
+    if (FAILED(hr) || !g_d3d11Mask.bs) {
+        Log("d3d11 mask: blend state create failed hr=0x%08X\n", static_cast<unsigned>(hr));
+        ReleaseD3D11MaskRenderer();
+        g_d3d11Mask.failed = true;
+        return false;
+    }
 
     D3D11_DEPTH_STENCIL_DESC dsd{};
     dsd.DepthEnable   = FALSE;
     dsd.StencilEnable = FALSE;
-    g_d3d11Mask.device->CreateDepthStencilState(&dsd, &g_d3d11Mask.dss);
+    hr = g_d3d11Mask.device->CreateDepthStencilState(&dsd, &g_d3d11Mask.dss);
+    if (FAILED(hr) || !g_d3d11Mask.dss) {
+        Log("d3d11 mask: depth-stencil state create failed hr=0x%08X\n", static_cast<unsigned>(hr));
+        ReleaseD3D11MaskRenderer();
+        g_d3d11Mask.failed = true;
+        return false;
+    }
 
     g_d3d11Mask.initialized = true;
-    Log("d3d11 mask: initialized (direct-write into eye textures, active when visibility mask unavailable)\n");
+    Log("visor: D3D11 renderer initialized\n");
     return true;
 }
 
@@ -1205,8 +1180,12 @@ uint32_t BuildProjectedPartnerVisorVerts(
 
     const float sw = std::clamp(static_cast<float>(visorSize * visorWidth), 0.01f, 1.0f);
     const float sh = std::clamp(static_cast<float>(visorSize * visorHeight), 0.01f, 1.0f);
-    const float hw = sw;
-    const float hh = sh;
+    const float bboxW = bboxMaxX - bboxMinX;
+    const float bboxH = bboxMaxY - bboxMinY;
+    const float hw = bboxW * 0.5f * sw;
+    const float hh = bboxH * 0.5f * sh;
+    const float sourceCx = (bboxMinX + bboxMaxX) * 0.5f + (bboxW * 0.5f - hw) * static_cast<float>(visorOffsetX);
+    const float sourceCy = (bboxMinY + bboxMaxY) * 0.5f + (bboxH * 0.5f - hh) * static_cast<float>(visorOffsetY);
     const float exp = VisorCurveExponent(visorCurve);
     const uint32_t segCount = VisorCurveSegments();
     constexpr float kPi = 3.14159265358979323846f;
@@ -1218,8 +1197,8 @@ uint32_t BuildProjectedPartnerVisorVerts(
         const float s = std::sin(t);
         const float cxOffset = std::pow(c, 2.0f / exp) * hw;
         const float sy = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp) * hh;
-        const float sourceX = drawLeftBoundary ? -cxOffset : cxOffset;
-        const float sourceY = sy;
+        const float sourceX = std::clamp(sourceCx + (drawLeftBoundary ? -cxOffset : cxOffset), -1.0f, 1.0f);
+        const float sourceY = std::clamp(sourceCy + sy, -1.0f, 1.0f);
         curve[i] = {
             std::clamp(TanToBboxX(NdcToTanX(sourceX, sourceFov), targetFov, bboxMinX, bboxMaxX), bboxMinX, bboxMaxX),
             std::clamp(TanToBboxY(NdcToTanY(sourceY, sourceFov), targetFov, bboxMinY, bboxMaxY), bboxMinY, bboxMaxY)};
@@ -1252,7 +1231,7 @@ void DrawVisorBorderToTexture(
     ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
     const EyeView& eye, const std::vector<EyeView>& allViews,
     ID3D11RenderTargetView* cachedRtv = nullptr) {
-    if (!g_d3d11Mask.initialized || !tex) return;
+    if (!g_d3d11Mask.initialized || !g_d3d11Mask.context || !tex) return;
     const XrRect2Di& rect = eye.rect;
     const uint32_t arrayIndex = eye.arraySlice;
     const uint32_t viewIndex = eye.viewIndex;
@@ -1274,7 +1253,7 @@ void DrawVisorBorderToTexture(
     }
 
     constexpr uint32_t kMaxVerts = 4096;
-    VisorVertex verts[kMaxVerts]{};
+    std::vector<VisorVertex> verts(kMaxVerts);
     const bool outerLeft = viewIndex == 0;
     // The visor shape follows the same setting as the UI preview: "Stencil outer edges
     // only" ON = per-eye open-inner arch (inner/nose side stays visible), OFF = closed
@@ -1283,8 +1262,8 @@ void DrawVisorBorderToTexture(
     const float featherX = visorAntialiasing ? (3.0f / static_cast<float>(texDesc.Width)) : 0.0f;
     const float featherY = visorAntialiasing ? (3.0f / static_cast<float>(texDesc.Height)) : 0.0f;
     uint32_t vertCount = openInnerShape
-        ? BuildOpenInnerEyeVisorVerts(bboxMinX, bboxMaxX, bboxMinY, bboxMaxY, outerLeft, featherX, featherY, verts, kMaxVerts)
-        : BuildVisorBorderVerts(bboxMinX, bboxMaxX, bboxMinY, bboxMaxY, featherX, featherY, verts, kMaxVerts);
+        ? BuildOpenInnerEyeVisorVerts(bboxMinX, bboxMaxX, bboxMinY, bboxMaxY, outerLeft, featherX, featherY, verts.data(), kMaxVerts)
+        : BuildVisorBorderVerts(bboxMinX, bboxMaxX, bboxMinY, bboxMaxY, featherX, featherY, verts.data(), kMaxVerts);
     // Projected partner-eye boundary: blacks out the inner-eye band the cropped partner
     // eye can no longer render. This is exactly the inner-edge stenciling the user turns
     // OFF with "Stencil outer edges only" — only draw it when that setting is unchecked.
@@ -1294,11 +1273,11 @@ void DrawVisorBorderToTexture(
         if (viewIndex == 0) {
             vertCount += BuildProjectedPartnerVisorVerts(
                 bboxMinX, bboxMaxX, bboxMinY, bboxMaxY,
-                false, rightEye.fov, eye.fov, verts + vertCount, kMaxVerts - vertCount);
+                false, rightEye.fov, eye.fov, verts.data() + vertCount, kMaxVerts - vertCount);
         } else {
             vertCount += BuildProjectedPartnerVisorVerts(
                 bboxMinX, bboxMaxX, bboxMinY, bboxMaxY,
-                true, leftEye.fov, eye.fov, verts + vertCount, kMaxVerts - vertCount);
+                true, leftEye.fov, eye.fov, verts.data() + vertCount, kMaxVerts - vertCount);
         }
     }
     if (vertCount == 0) {
@@ -1313,7 +1292,7 @@ void DrawVisorBorderToTexture(
             Log("d3d11 mask DIAG: FAIL vertex buffer Map failed\n");
         return;
     }
-    memcpy(mapped.pData, verts, vertCount * sizeof(VisorVertex));
+    memcpy(mapped.pData, verts.data(), vertCount * sizeof(VisorVertex));
     g_d3d11Mask.context->Unmap(g_d3d11Mask.vb, 0);
 
     // Pick a concrete RTV format. Runtimes frequently allocate swapchain textures as
@@ -1434,7 +1413,7 @@ void DrawEdgeGuardToTexture(
     ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
     uint32_t arrayIndex, const XrRect2Di& rect, int pixels,
     ID3D11RenderTargetView* cachedRtv = nullptr) {
-    if (!g_d3d11Mask.initialized || !tex || pixels <= 0 || rect.extent.width <= 0 || rect.extent.height <= 0) return;
+    if (!g_d3d11Mask.initialized || !g_d3d11Mask.context || !tex || pixels <= 0 || rect.extent.width <= 0 || rect.extent.height <= 0) return;
 
     D3D11_TEXTURE2D_DESC texDesc{};
     tex->GetDesc(&texDesc);
@@ -1569,6 +1548,7 @@ void DrawCapturedProjectionTextures(bool drawEdgeGuard, bool drawVisor, const ch
                 ts.format,
                 ts.eyeViews,
                 {}};
+            if (draw.tex) draw.tex->AddRef();
             draw.rtvs.reserve(draw.views.size());
             for (const EyeView& ev : draw.views) {
                 draw.rtvs.push_back(CachedRtvFor(ts, ts.lastAcquiredIndex, ev.arraySlice));
@@ -1595,6 +1575,7 @@ void DrawCapturedProjectionTextures(bool drawEdgeGuard, bool drawVisor, const ch
         for (ID3D11RenderTargetView* rtv : p.rtvs) {
             if (rtv) rtv->Release();
         }
+        p.tex->Release();
     }
 
     if (eyeCount > 0 && !g_diagEndFrameLateDraw.exchange(true)) {
@@ -1651,10 +1632,11 @@ void RebuildCachedRtvs(TrackedSwapchain& ts) {
     }
 }
 
-// ---- Swapchain interception for D3D11 fallback tracking ----
+// ---- Swapchain tracking for the D3D11 visor ----
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSwapchain(
     XrSession session, const XrSwapchainCreateInfo* info, XrSwapchain* swapchain) {
+    std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
     const XrResult r = nextXrCreateSwapchain(session, info, swapchain);
     if (r == XR_SUCCESS && swapchain && *swapchain != XR_NULL_HANDLE && info) {
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
@@ -1670,54 +1652,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSwapchain(
     return r;
 }
 
-bool CreateInterceptionTextures(TrackedSwapchain& ts, XrSwapchainImageD3D11KHR* runtimeImages, uint32_t count) {
-    if (!g_d3d11Mask.device || runtimeImages == nullptr || count == 0) return false;
-    for (ID3D11Texture2D* tex : ts.appTextures) {
-        if (tex) tex->Release();
-    }
-    ts.appTextures.clear();
-    ts.interceptionActive = false;
-    ts.interceptionUnsupported = false;
-
-    D3D11_TEXTURE2D_DESC desc{};
-    runtimeImages[0].texture->GetDesc(&desc);
-    if ((ts.usageFlags & XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT) == 0) {
-        ts.interceptionUnsupported = true;
-        return false;
-    }
-    if (desc.SampleDesc.Count > 1 || ts.sampleCount > 1) {
-        ts.interceptionUnsupported = true;
-        if (!g_diagTechniqueBMsaaUnsupported.exchange(true)) {
-            Log("visor B: MSAA swapchain unsupported; bypassing interception for this swapchain\n");
-        }
-        return false;
-    }
-
-    desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.CPUAccessFlags = 0;
-    desc.BindFlags |= D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-    ts.appTextures.resize(count, nullptr);
-    for (uint32_t i = 0; i < count; ++i) {
-        HRESULT hr = g_d3d11Mask.device->CreateTexture2D(&desc, nullptr, &ts.appTextures[i]);
-        if (FAILED(hr) || !ts.appTextures[i]) {
-            Log("visor B: CreateTexture2D app-facing texture failed hr=0x%08X index=%u\n", static_cast<unsigned>(hr), i);
-            for (ID3D11Texture2D* tex : ts.appTextures) {
-                if (tex) tex->Release();
-            }
-            ts.appTextures.clear();
-            return false;
-        }
-    }
-    ts.interceptionActive = true;
-    if (!g_diagTechniqueBActive.exchange(true)) {
-        Log("visor B: app-facing swapchain interception active (%u images %ux%u array=%u format=%lld)\n",
-            count, desc.Width, desc.Height, desc.ArraySize, static_cast<long long>(ts.format));
-    }
-    return true;
-}
-
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateSwapchainImages(
     XrSwapchain swapchain, uint32_t capacity, uint32_t* count, XrSwapchainImageBaseHeader* images) {
+    std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
     const XrResult r = nextXrEnumerateSwapchainImages(swapchain, capacity, count, images);
     if (r == XR_SUCCESS && images && count && *count > 0 &&
         images->type == XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR) {
@@ -1728,13 +1665,6 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateSwapchainImages(
             it->second.textures.resize(*count, nullptr);
             for (uint32_t i = 0; i < *count; ++i) it->second.textures[i] = d3d[i].texture;
             RebuildCachedRtvs(it->second);
-            if (enabled && maskEnabled && visorTechnique == VisorTechnique::Interception &&
-                g_d3d11Mask.initialized && it->second.session == g_d3d11Mask.session &&
-                CreateInterceptionTextures(it->second, d3d, *count)) {
-                for (uint32_t i = 0; i < *count; ++i) {
-                    d3d[i].texture = it->second.appTextures[i];
-                }
-            }
         }
     }
     return r;
@@ -1755,16 +1685,17 @@ std::atomic<bool> g_diagReleaseSeen{false};
 std::atomic<bool> g_diagReleaseNoLayout{false};
 std::atomic<uint32_t> g_releaseDrawLogCount{0};
 std::atomic<bool> g_releaseDrewEdgeGuardThisFrame{false};
-std::atomic<bool> g_releaseDrewDirectVisorThisFrame{false};
+std::atomic<bool> g_releaseDrewVisorThisFrame{false};
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
     XrSwapchain swapchain, const XrSwapchainImageReleaseInfo* info) {
+    std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
     // Draw the visor border NOW — the app has finished rendering this image (it is
     // releasing it) and the runtime has not yet consumed it. This is the last point
     // at which the app side legitimately owns the image, so the write cannot be
     // overwritten by the app and is guaranteed present when the runtime composites.
     // Independent of the visibility-mask path; that path must never suppress this.
-    if (enabled && edgeSmearFix && !(maskEnabled && visorTechnique == VisorTechnique::Interception) &&
+    if (enabled && edgeSmearFix &&
         g_d3d11Mask.initialized && g_d3d11Mask.context) {
         ID3D11Texture2D* tex = nullptr;
         uint32_t arrSize = 1;
@@ -1778,6 +1709,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                 const TrackedSwapchain& ts = it->second;
                 if (ts.session == g_d3d11Mask.session && ts.lastAcquiredIndex < ts.textures.size()) {
                     tex = ts.textures[ts.lastAcquiredIndex];
+                    if (tex) tex->AddRef();
                     arrSize = ts.arraySize;
                     scFormat = ts.format;
                     views = ts.eyeViews;
@@ -1801,69 +1733,10 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
         if (!views.empty()) {
             g_releaseDrewEdgeGuardThisFrame.store(true);
         }
+        if (tex) tex->Release();
     }
 
-    if (enabled && maskEnabled && visorTechnique == VisorTechnique::Interception &&
-        g_d3d11Mask.initialized && g_d3d11Mask.context) {
-        ID3D11Texture2D* runtimeTex = nullptr;
-        ID3D11Texture2D* appTex = nullptr;
-        uint32_t arrSize = 1;
-        int64_t scFormat = 0;
-        std::vector<EyeView> views;
-        std::vector<ID3D11RenderTargetView*> rtvs;
-        bool tracked = false, sessionOk = false, active = false;
-        {
-            std::lock_guard<std::mutex> lk(g_swapchainMutex);
-            auto it = g_swapchains.find(swapchain);
-            if (it != g_swapchains.end()) {
-                tracked = true;
-                const TrackedSwapchain& ts = it->second;
-                sessionOk = (ts.session == g_d3d11Mask.session);
-                active = ts.interceptionActive;
-                if (sessionOk && active && ts.lastAcquiredIndex < ts.textures.size() && ts.lastAcquiredIndex < ts.appTextures.size()) {
-                    runtimeTex = ts.textures[ts.lastAcquiredIndex];
-                    appTex = ts.appTextures[ts.lastAcquiredIndex];
-                    arrSize = ts.arraySize;
-                    scFormat = ts.format;
-                    views = ts.eyeViews;
-                    rtvs.reserve(views.size());
-                    for (const EyeView& ev : views) {
-                        rtvs.push_back(CachedRtvFor(ts, ts.lastAcquiredIndex, ev.arraySlice));
-                    }
-                }
-            }
-        }
-        if (tracked && sessionOk && active && runtimeTex && appTex) {
-            g_d3d11Mask.context->CopyResource(runtimeTex, appTex);
-            if (edgeSmearFix) {
-                for (size_t i = 0; i < views.size(); ++i) {
-                    DrawEdgeGuardToTexture(runtimeTex, arrSize, scFormat, views[i].arraySlice, views[i].rect,
-                        edgeSmearPixels, i < rtvs.size() ? rtvs[i] : nullptr);
-                }
-                if (!views.empty() && !g_diagEdgeSmearInset.exchange(true)) {
-                    Log("edge-smear fix: drew %d px black guard bands into projection edges\n", edgeSmearPixels);
-                }
-                if (!views.empty()) {
-                    g_releaseDrewEdgeGuardThisFrame.store(true);
-                }
-            }
-            for (size_t i = 0; i < views.size(); ++i) {
-                DrawVisorBorderToTexture(runtimeTex, arrSize, scFormat, views[i], views,
-                    i < rtvs.size() ? rtvs[i] : nullptr);
-            }
-            for (ID3D11RenderTargetView* rtv : rtvs) {
-                if (rtv) rtv->Release();
-            }
-            const uint32_t n = g_releaseDrawLogCount.fetch_add(1);
-            if (n == 0) {
-                Log("visor B: composited app texture to runtime texture + mask (%zu eye view(s))\n", views.size());
-            }
-        } else {
-            for (ID3D11RenderTargetView* rtv : rtvs) {
-                if (rtv) rtv->Release();
-            }
-        }
-    } else if (enabled && maskEnabled && visorTechnique == VisorTechnique::DirectWrite &&
+    if (enabled && maskEnabled &&
         g_d3d11Mask.initialized && g_d3d11Mask.context) {
         ID3D11Texture2D* tex = nullptr;
         uint32_t arrSize = 1;
@@ -1880,6 +1753,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                 sessionOk = (ts.session == g_d3d11Mask.session);
                 if (sessionOk && ts.lastAcquiredIndex < ts.textures.size()) {
                     tex      = ts.textures[ts.lastAcquiredIndex];
+                    if (tex) tex->AddRef();
                     arrSize  = ts.arraySize;
                     scFormat = ts.format;
                     views    = ts.eyeViews; // copy; layout captured in xrEndFrame
@@ -1908,19 +1782,21 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                 }
                 const uint32_t n = g_releaseDrawLogCount.fetch_add(1);
                 if (n == 0)
-                    Log("visor C: direct-write draw executed (%zu eye view(s))\n", views.size());
-                g_releaseDrewDirectVisorThisFrame.store(true);
+                    Log("visor: draw executed (%zu eye view(s))\n", views.size());
+                g_releaseDrewVisorThisFrame.store(true);
             }
         } else {
             for (ID3D11RenderTargetView* rtv : rtvs) {
                 if (rtv) rtv->Release();
             }
         }
+        if (tex) tex->Release();
     }
     return nextXrReleaseSwapchainImage(swapchain, info);
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySwapchain(XrSwapchain swapchain) {
+    std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
     {
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
         auto it = g_swapchains.find(swapchain);
@@ -1935,229 +1811,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySwapchain(XrSwapchain swapchai
 // ---- Head-locked RGBA layer helper (shared by test quad and technique-A visor) ----
 
 // Creates a head-locked VIEW reference space + an RGBA swapchain of the given size.
-bool CreateHeadLockedRgbaLayer(int32_t w, int32_t h, const char* tag,
-                               XrSpace& outSpace, XrSwapchain& outSc,
-                               std::vector<ID3D11Texture2D*>& outTex) {
-    if (g_d3d11Mask.session == XR_NULL_HANDLE || g_d3d11Mask.device == nullptr) return false;
-    if (!nextXrCreateReferenceSpace || !nextXrCreateSwapchain ||
-        !nextXrEnumerateSwapchainImages || !nextXrEnumerateSwapchainFormats ||
-        !nextXrAcquireSwapchainImage || !nextXrWaitSwapchainImage || !nextXrReleaseSwapchainImage) {
-        Log("%s: FAIL required OpenXR functions unavailable\n", tag);
-        return false;
-    }
-
-    if (outSpace == XR_NULL_HANDLE) {
-        XrReferenceSpaceCreateInfo spaceInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
-        spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW; // head-locked
-        spaceInfo.poseInReferenceSpace.orientation.w = 1.0f;         // identity
-        XrResult r = nextXrCreateReferenceSpace(g_d3d11Mask.session, &spaceInfo, &outSpace);
-        if (r != XR_SUCCESS) { Log("%s: FAIL xrCreateReferenceSpace result=%d\n", tag, r); return false; }
-    }
-
-    uint32_t fmtCount = 0;
-    nextXrEnumerateSwapchainFormats(g_d3d11Mask.session, 0, &fmtCount, nullptr);
-    std::vector<int64_t> formats(fmtCount ? fmtCount : 1);
-    if (fmtCount) nextXrEnumerateSwapchainFormats(g_d3d11Mask.session, fmtCount, &fmtCount, formats.data());
-    int64_t chosen = 0;
-    const int64_t prefs[] = {
-        (int64_t)DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, (int64_t)DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
-        (int64_t)DXGI_FORMAT_R8G8B8A8_UNORM,      (int64_t)DXGI_FORMAT_B8G8R8A8_UNORM};
-    for (int64_t pref : prefs) {
-        for (int64_t f : formats) if (f == pref) { chosen = pref; break; }
-        if (chosen) break;
-    }
-    if (!chosen && fmtCount) chosen = formats[0];
-    if (!chosen) chosen = (int64_t)DXGI_FORMAT_R8G8B8A8_UNORM;
-
-    XrSwapchainCreateInfo sci{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-    sci.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
-    sci.format = chosen;
-    sci.sampleCount = 1;
-    sci.width = static_cast<uint32_t>(w);
-    sci.height = static_cast<uint32_t>(h);
-    sci.faceCount = 1;
-    sci.arraySize = 1;
-    sci.mipCount = 1;
-    XrResult r = nextXrCreateSwapchain(g_d3d11Mask.session, &sci, &outSc);
-    if (r != XR_SUCCESS) { Log("%s: FAIL xrCreateSwapchain result=%d format=%lld\n", tag, r, (long long)chosen); return false; }
-
-    uint32_t imgCount = 0;
-    nextXrEnumerateSwapchainImages(outSc, 0, &imgCount, nullptr);
-    std::vector<XrSwapchainImageD3D11KHR> imgs(imgCount ? imgCount : 1, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-    r = nextXrEnumerateSwapchainImages(outSc, imgCount, &imgCount,
-        reinterpret_cast<XrSwapchainImageBaseHeader*>(imgs.data()));
-    if (r != XR_SUCCESS || imgCount == 0) { Log("%s: FAIL enumerate images result=%d count=%u\n", tag, r, imgCount); return false; }
-    outTex.resize(imgCount);
-    for (uint32_t i = 0; i < imgCount; ++i) outTex[i] = imgs[i].texture;
-    Log("%s: layer created (format=%lld %dx%d images=%u)\n", tag, (long long)chosen, w, h, imgCount);
-    return true;
-}
-
-// ---- Technique A: head-locked alpha-cutout visor quad(s) ----
-
-bool InitVisorQuad() {
-    if (g_visorQuad.initialized) return true;
-    if (g_visorQuad.failed) return false;
-    if (!g_d3d11Mask.initialized) return false; // needs the shaders/VB from InitD3D11MaskRenderer
-    if (!CreateHeadLockedRgbaLayer(g_visorQuad.width, g_visorQuad.height, "visor A",
-                                   g_visorQuad.viewSpace, g_visorQuad.swapchain, g_visorQuad.textures)) {
-        g_visorQuad.failed = true;
-        return false;
-    }
-    g_visorQuad.initialized = true;
-    return true;
-}
-
-// Renders the alpha-cutout into the quad texture: transparent inside the superellipse
-// opening, opaque black outside. Reuses the mask shaders/VB. Saves/restores D3D11 state.
-void RenderVisorCutout(ID3D11Texture2D* tex, int32_t w, int32_t h) {
-    if (!g_d3d11Mask.initialized || !tex) return;
-
-    constexpr uint32_t kMaxVerts = 1536;
-    VisorVertex verts[kMaxVerts]{};
-    uint32_t vertCount = BuildOpenInnerEyeVisorVerts(
-        -1.0f, 0.0f, -1.0f, 1.0f, true, 0.0f, 0.0f, verts, kMaxVerts);
-    vertCount += BuildOpenInnerEyeVisorVerts(
-        0.0f, 1.0f, -1.0f, 1.0f, false, 0.0f, 0.0f, verts + vertCount, kMaxVerts - vertCount);
-    if (vertCount == 0) return;
-
-    D3D11_MAPPED_SUBRESOURCE mapped{};
-    if (FAILED(g_d3d11Mask.context->Map(g_d3d11Mask.vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
-    memcpy(mapped.pData, verts, vertCount * sizeof(VisorVertex));
-    g_d3d11Mask.context->Unmap(g_d3d11Mask.vb, 0);
-
-    D3D11_TEXTURE2D_DESC td{}; tex->GetDesc(&td);
-    D3D11_RENDER_TARGET_VIEW_DESC rd{};
-    rd.Format = GetNonSRGBFormat(td.Format);
-    rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-    ID3D11RenderTargetView* rtv = nullptr;
-    if (FAILED(g_d3d11Mask.device->CreateRenderTargetView(tex, &rd, &rtv)) || !rtv) return;
-
-    auto* ctx = g_d3d11Mask.context;
-
-    // Save state.
-    ID3D11RenderTargetView* sRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
-    ID3D11DepthStencilView* sDSV = nullptr;
-    ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, &sDSV);
-    UINT sVPCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
-    D3D11_VIEWPORT sVPs[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
-    ctx->RSGetViewports(&sVPCount, sVPs);
-    ID3D11RasterizerState* sRS = nullptr; ctx->RSGetState(&sRS);
-    ID3D11BlendState* sBS = nullptr; FLOAT sBF[4]{}; UINT sSM = 0; ctx->OMGetBlendState(&sBS, sBF, &sSM);
-    ID3D11DepthStencilState* sDSS = nullptr; UINT sSRef = 0; ctx->OMGetDepthStencilState(&sDSS, &sSRef);
-    ID3D11VertexShader* sVS = nullptr; ctx->VSGetShader(&sVS, nullptr, nullptr);
-    ID3D11PixelShader* sPS = nullptr; ctx->PSGetShader(&sPS, nullptr, nullptr);
-    ID3D11InputLayout* sIL = nullptr; ctx->IAGetInputLayout(&sIL);
-    D3D11_PRIMITIVE_TOPOLOGY sTopo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED; ctx->IAGetPrimitiveTopology(&sTopo);
-    ID3D11Buffer* sVB = nullptr; UINT sStride = 0, sOff = 0; ctx->IAGetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
-
-    // Draw: clear to transparent, then black border (alpha=1) outside the opening.
-    const FLOAT clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    ctx->OMSetRenderTargets(1, &rtv, nullptr);
-    ctx->ClearRenderTargetView(rtv, clear);
-    D3D11_VIEWPORT vp{}; vp.Width = static_cast<float>(w); vp.Height = static_cast<float>(h); vp.MaxDepth = 1.0f;
-    static const FLOAT kBF[] = {0.f, 0.f, 0.f, 0.f};
-    UINT stride = sizeof(VisorVertex), offset = 0;
-    ctx->RSSetViewports(1, &vp);
-    ctx->RSSetState(g_d3d11Mask.rs);
-    ctx->OMSetBlendState(g_d3d11Mask.bs, kBF, 0xFFFFFFFF);
-    ctx->OMSetDepthStencilState(g_d3d11Mask.dss, 0);
-    ctx->VSSetShader(g_d3d11Mask.vs, nullptr, 0);
-    ctx->PSSetShader(g_d3d11Mask.ps, nullptr, 0);
-    ctx->IASetInputLayout(g_d3d11Mask.layout);
-    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    ctx->IASetVertexBuffers(0, 1, &g_d3d11Mask.vb, &stride, &offset);
-    ctx->Draw(vertCount, 0);
-
-    // Restore.
-    ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, sDSV);
-    if (sVPCount > 0) ctx->RSSetViewports(sVPCount, sVPs);
-    ctx->RSSetState(sRS);
-    ctx->OMSetBlendState(sBS, sBF, sSM);
-    ctx->OMSetDepthStencilState(sDSS, sSRef);
-    ctx->VSSetShader(sVS, nullptr, 0);
-    ctx->PSSetShader(sPS, nullptr, 0);
-    ctx->IASetInputLayout(sIL);
-    ctx->IASetPrimitiveTopology(sTopo);
-    ctx->IASetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
-
-    rtv->Release();
-    for (auto* savedRtv : sRTVs) {
-        if (savedRtv) savedRtv->Release();
-    }
-    if (sDSV) sDSV->Release();
-    if (sRS) sRS->Release(); if (sBS) sBS->Release();
-    if (sDSS) sDSS->Release(); if (sVS) sVS->Release();
-    if (sPS) sPS->Release(); if (sIL) sIL->Release();
-    if (sVB) sVB->Release();
-}
-
-// Renders the cutout once and fills up to `cap` head-locked quad layers (per-eye when
-// FOV is known, else a single BOTH quad). Returns the number of layers filled.
-uint32_t RenderVisorQuadLayers(XrCompositionLayerQuad* out, uint32_t cap) {
-    if (cap == 0 || out == nullptr) return 0;
-    if (!InitVisorQuad()) return 0;
-
-    XrSwapchainImageAcquireInfo ai{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
-    uint32_t idx = 0;
-    if (nextXrAcquireSwapchainImage(g_visorQuad.swapchain, &ai, &idx) != XR_SUCCESS) return 0;
-    XrSwapchainImageWaitInfo wi{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO}; wi.timeout = XR_INFINITE_DURATION;
-    if (nextXrWaitSwapchainImage(g_visorQuad.swapchain, &wi) != XR_SUCCESS) {
-        nextXrReleaseSwapchainImage(g_visorQuad.swapchain, nullptr);
-        return 0;
-    }
-    if (idx < g_visorQuad.textures.size() && g_visorQuad.textures[idx])
-        RenderVisorCutout(g_visorQuad.textures[idx], g_visorQuad.width, g_visorQuad.height);
-    XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-    nextXrReleaseSwapchainImage(g_visorQuad.swapchain, &ri);
-
-    const float d = 1.0f; // metres in front of the face
-    auto fill = [&](XrCompositionLayerQuad& q, XrEyeVisibility eye,
-                    int32_t ox, int32_t oy, int32_t ex, int32_t ey,
-                    float cx, float cy, float sx, float sy) {
-        q = XrCompositionLayerQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
-        q.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-        q.space = g_visorQuad.viewSpace;
-        q.eyeVisibility = eye;
-        q.subImage.swapchain = g_visorQuad.swapchain;
-        q.subImage.imageRect.offset = {ox, oy};
-        q.subImage.imageRect.extent = {ex, ey};
-        q.subImage.imageArrayIndex = 0;
-        q.pose.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
-        q.pose.position = {cx, cy, -d};
-        q.size = {sx, sy};
-    };
-
-    auto fovMetrics = [&](float& sx, float& sy) {
-        float halfW = 1.3f, halfH = 1.0f;
-        if (g_d3d11Mask.latestViewCount >= 2) {
-            halfW = 0.0f;
-            halfH = 0.0f;
-            for (uint32_t view = 0; view < 2; ++view) {
-            const XrFovf& f = g_d3d11Mask.latestViews[view].fov;
-                halfW = (std::max)(halfW, static_cast<float>((std::max)(std::abs(std::tan(static_cast<double>(f.angleLeft))), std::abs(std::tan(static_cast<double>(f.angleRight))))));
-                halfH = (std::max)(halfH, static_cast<float>((std::max)(std::abs(std::tan(static_cast<double>(f.angleUp))), std::abs(std::tan(static_cast<double>(f.angleDown))))));
-            }
-        }
-        sx = d * halfW * 2.0f * 1.05f;
-        sy = d * halfH * 2.0f * 1.05f;
-    };
-
-    float sx = 2.6f, sy = 2.0f;
-    fovMetrics(sx, sy);
-    fill(out[0], XR_EYE_VISIBILITY_BOTH, 0, 0, g_visorQuad.width, g_visorQuad.height, 0.0f, 0.0f, sx, sy);
-    const uint32_t n = 1;
-
-    const uint32_t lg = g_visorQuadLogCount.fetch_add(1);
-    if (lg == 0)
-        Log("visor A: submitting BOTH-eye quad layer (size=%.3f w=%.3f h=%.3f curve=%.3f)\n",
-            visorSize, visorWidth, visorHeight, visorCurve);
-    return n;
-}
-
 void LoadConfig() {
-    std::error_code ec;
-    lastConfigMtime = std::filesystem::last_write_time(ConfigPath(), ec);
     enabled = ReadBoolSetting(L"enabled", true);
     verboseLogging = ReadBoolSetting(L"verbose_logging", false);
     splitMode = ReadBoolSetting(L"split_mode", false);
@@ -2169,17 +1823,17 @@ void LoadConfig() {
     // outer_edge_visibility_mask_only. Read the UI key first, legacy key as fallback.
     outerEdgeVisibilityMaskOnly = ReadBoolSetting(L"stencil_outer_edges_only",
         ReadBoolSetting(L"outer_edge_visibility_mask_only", true));
+    // There is exactly ONE visor renderer (D3D11 draw into the game's eye textures).
+    // The old hidden-mesh reshaper is gone: visibility_mask_visor=1 is retired. Old
+    // inis may still carry the key; it is read only to warn, never to reshape.
+    bool visibilityMaskVisor = ReadBoolSetting(L"visibility_mask_visor", false);
+    if (visibilityMaskVisor) {
+        Log("config: visibility_mask_visor=1 is retired and ignored; the visor draws into eye textures only\n");
+    }
+    visibilityMaskVisor = false;
     edgeSmearFix = ReadBoolSetting(L"edge_smear_fix", false);
     lodPopInFix = ReadBoolSetting(L"lod_popin_fix", false);
     edgeSmearPixels = static_cast<int>(std::clamp(ReadDoubleSetting(L"edge_smear_pixels", 2.0), 1.0, 16.0));
-    visibilityMaskVisor = ReadBoolSetting(L"visibility_mask_visor", false);
-    {
-        const std::string t = ReadStringSetting(L"visor_technique", "c");
-        if (t == "off" || t == "0")            visorTechnique = VisorTechnique::Off;
-        else if (t == "a" || t == "1" || t == "quad") visorTechnique = VisorTechnique::QuadOverlay;
-        else if (t == "b" || t == "2" || t == "intercept" || t == "interception") visorTechnique = VisorTechnique::Interception;
-        else                                    visorTechnique = VisorTechnique::DirectWrite; // "c"/"3"/default
-    }
     const double legacyTotal = ReadDoubleSetting(L"vertical_tangent", DefaultTotalTangent);
     totalTangent = std::clamp(
         ReadDoubleSetting(L"total_render_height", ReadDoubleSetting(L"total_share", legacyTotal)),
@@ -2193,8 +1847,8 @@ void LoadConfig() {
     maskEnabled = ReadBoolSetting(L"mask_enabled", false);
     maskVertical = std::clamp(ReadDoubleSetting(L"mask_vertical", 1.0), MinVerticalTangent, MaxVerticalTangent);
     maskHorizontal = std::clamp(ReadDoubleSetting(L"mask_horizontal", 1.0), 0.01, 1.0);
-    maskRounded = ReadBoolSetting(L"mask_rounded", false);
-    maskCorner = std::clamp(ReadDoubleSetting(L"mask_corner", 1.0), 0.0, 1.0);
+    maskRounded = ReadBoolSetting(L"mask_rounded", true);
+    maskCorner = std::clamp(ReadDoubleSetting(L"mask_corner", 0.5), 0.0, 1.0);
     const double oldMaskOffsetY = std::clamp(ReadDoubleSetting(L"mask_offset_y", 0.0), -1.0, 1.0);
     maskTopBias = std::clamp(ReadDoubleSetting(L"mask_top_bias", oldMaskOffsetY), -1.0, 1.0);
     maskBottomBias = std::clamp(ReadDoubleSetting(L"mask_bottom_bias", oldMaskOffsetY), -1.0, 1.0);
@@ -2350,12 +2004,7 @@ void LoadConfig() {
     visorOffsetX = 0.0;
     visorOffsetY = 0.0;
 
-    const char* visorBackend =
-        visorTechnique == VisorTechnique::QuadOverlay ? "quad_overlay_a" :
-        visorTechnique == VisorTechnique::Interception ? "swapchain_intercept_b" :
-        visorTechnique == VisorTechnique::DirectWrite ? "direct_write_c" :
-        "off";
-    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d crop_outer_edges_only=%d edge_smear_fix=%d edge_smear_pixels=%d lod_popin_fix=%d visor_enabled=%d visor_backend=%s visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_hd=%d visor_antialiasing=%d visor_offset_x=%.3f visor_offset_y=%.3f visor_outer_apex_y=%.3f visor_inner_lower_y=%.3f visor_inner_bridge_w/r/px/s=%.3f/%.3f/%.3f/%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
+    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d crop_outer_edges_only=%d edge_smear_fix=%d edge_smear_pixels=%d lod_popin_fix=%d visor_enabled=%d visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_hd=%d visor_antialiasing=%d visor_offset_x=%.3f visor_offset_y=%.3f visor_outer_apex_y=%.3f visor_inner_lower_y=%.3f visor_inner_bridge_w/r/px/s=%.3f/%.3f/%.3f/%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
         enabled ? 1 : 0,
         currentAppKey.empty() ? L"<global>" : currentAppKey.c_str(),
         splitMode ? "split" : "total",
@@ -2374,7 +2023,6 @@ void LoadConfig() {
         edgeSmearPixels,
         lodPopInFix ? 1 : 0,
         maskEnabled ? 1 : 0,
-        visorBackend,
         visorSize,
         visorWidth,
         visorHeight,
@@ -2479,13 +2127,14 @@ void ApplyXRViewLabFov(uint32_t viewIndex, XrView& view, bool& compensated, floa
     const double originalRightTan = (std::max)(0.0, std::tan(static_cast<double>(view.fov.angleRight)));
     double desiredLeftTan = originalLeftTan;
     double desiredRightTan = originalRightTan;
-    if (viewIndex == 0) {
+    if (cropOuterEdgesOnly && viewIndex == 0) {
         // Left eye: keep the inner/right edge stable and scale only the outer/left edge.
         desiredLeftTan = originalLeftTan * horizontalScale;
-    } else if (viewIndex == 1) {
+    } else if (cropOuterEdgesOnly && viewIndex == 1) {
         // Right eye: keep the inner/left edge stable and scale only the outer/right edge.
         desiredRightTan = originalRightTan * horizontalScale;
     } else {
+        // Full crop scales both sides of each eye around its centre.
         desiredLeftTan = originalLeftTan * horizontalScale;
         desiredRightTan = originalRightTan * horizontalScale;
     }
@@ -2540,16 +2189,6 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrLocateViews(
         g_d3d11Mask.locateSpace = viewLocateInfo->space;
         g_d3d11Mask.locateTime = viewLocateInfo->displayTime;
         g_d3d11Mask.latestViewCount = (std::min)(*viewCountOutput, 2u);
-    }
-
-    const uint32_t frameN = hotReloadFrameCounter.fetch_add(1);
-    if (frameN % kConfigReloadInterval == 0) {
-        std::error_code ec;
-        auto mtime = std::filesystem::last_write_time(ConfigPath(), ec);
-        if (!ec && mtime != lastConfigMtime) {
-            Log("config: file changed, hot-reloading\n");
-            LoadConfig();
-        }
     }
 
     const uint32_t logCount = locateViewsLogCount.fetch_add(1);
@@ -2612,6 +2251,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
         return result;
     }
 
+    std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
+
     ReleaseD3D11MaskRenderer();
     g_d3d11Mask.session = *session;
     const auto* d3d11Binding = reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(
@@ -2620,16 +2261,17 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
         g_d3d11Mask.device = d3d11Binding->device;
         g_d3d11Mask.device->AddRef();
         g_d3d11Mask.device->GetImmediateContext(&g_d3d11Mask.context);
-        Log("d3d11 mask: D3D11 session detected; initializing direct-write renderer\n");
+        Log("visor: D3D11 session detected; initializing renderer\n");
         InitD3D11MaskRenderer();
     } else {
-        Log("d3d11 mask: session is not D3D11; direct-write fallback unavailable for this session\n");
+        Log("visor: this game does not use D3D11; ViewLab's visor is unavailable\n");
     }
 
     return result;
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
+    std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
     if (session == g_d3d11Mask.session) {
         ReleaseD3D11MaskRenderer();
     }
@@ -2643,6 +2285,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         return nextXrEndFrame ? nextXrEndFrame(session, frameEndInfo) : XR_ERROR_RUNTIME_FAILURE;
     }
 
+    std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
+
     if (!g_diagEndFrameCalled.exchange(true)) {
         Log("d3d11 mask DIAG: xrEndFrame hook called (enabled=%d maskEnabled=%d visMaskCalled=%d "
             "sessionMatch=%d d3d11Init=%d layerCount=%u)\n",
@@ -2653,13 +2297,12 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
 
     const XrFrameEndInfo* submitFrame = frameEndInfo;
 
-    // Technique C only: capture the per-eye layout (swapchain -> imageRect + array
+    // Capture the per-eye layout (swapchain -> imageRect + array
     // slice) from the projection layer. The actual draw happens in
     // xrReleaseSwapchainImage, which runs earlier in the frame loop, so the layout
     // captured here is consumed by the NEXT frame's release. Layout is stable frame to
     // frame. Not gated on the visibility-mask path — the D3D11 visor runs regardless.
-    if (enabled && (edgeSmearFix || (maskEnabled &&
-        (visorTechnique == VisorTechnique::DirectWrite || visorTechnique == VisorTechnique::Interception))) &&
+    if (enabled && (edgeSmearFix || maskEnabled) &&
         g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
         bool foundProj = false;
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
@@ -2695,40 +2338,15 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     }
 
     if (enabled && g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
-        const bool drawLateEdgeGuard = edgeSmearFix &&
-            !(maskEnabled && visorTechnique == VisorTechnique::Interception);
-        const bool drawLateDirectVisor = maskEnabled &&
-            visorTechnique == VisorTechnique::DirectWrite;
+        const bool drawLateEdgeGuard = edgeSmearFix;
+        const bool drawLateVisor = maskEnabled;
         const bool releaseDrewEdgeGuard = g_releaseDrewEdgeGuardThisFrame.exchange(false);
-        const bool releaseDrewDirectVisor = g_releaseDrewDirectVisorThisFrame.exchange(false);
+        const bool releaseDrewVisor = g_releaseDrewVisorThisFrame.exchange(false);
         const bool needsLateEdgeGuard = drawLateEdgeGuard && !releaseDrewEdgeGuard;
-        const bool needsLateDirectVisor = drawLateDirectVisor && !releaseDrewDirectVisor;
-        if (needsLateEdgeGuard || needsLateDirectVisor) {
-            DrawCapturedProjectionTextures(needsLateEdgeGuard, needsLateDirectVisor,
-                needsLateDirectVisor ? "visor C" : "edge-smear fix");
-        }
-    }
-
-    // Technique A: append our OWN head-locked visor quad layer(s) on top of the app's.
-    // Uses the same BOTH-eye quad mechanism proven by the (now-removed) test quad.
-    if (enabled && maskEnabled && visorTechnique == VisorTechnique::QuadOverlay &&
-        g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
-        XrCompositionLayerQuad visorLayers[2]{};
-        const uint32_t nv = RenderVisorQuadLayers(visorLayers, 2);
-        if (nv > 0) {
-            std::vector<const XrCompositionLayerBaseHeader*> layers;
-            layers.reserve(static_cast<size_t>(submitFrame->layerCount) + nv);
-            for (uint32_t i = 0; i < submitFrame->layerCount; ++i)
-                layers.push_back(submitFrame->layers[i]);
-            for (uint32_t i = 0; i < nv; ++i)
-                layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader*>(&visorLayers[i]));
-            XrFrameEndInfo patched = *submitFrame;
-            patched.layerCount = static_cast<uint32_t>(layers.size());
-            patched.layers = layers.data();
-            const XrResult r = nextXrEndFrame(session, &patched);
-            if (r != XR_SUCCESS && g_visorQuadLogCount.load() < 3)
-                Log("visor A DIAG: nextXrEndFrame with quad layer(s) result=%d\n", r);
-            return r;
+        const bool needsLateVisor = drawLateVisor && !releaseDrewVisor;
+        if (needsLateEdgeGuard || needsLateVisor) {
+            DrawCapturedProjectionTextures(needsLateEdgeGuard, needsLateVisor,
+                needsLateVisor ? "visor" : "edge-smear fix");
         }
     }
 
@@ -2822,75 +2440,6 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
 // shaping follows. Returns false if there is nothing to mask or no room.
 // Replaces the runtime hidden-area mesh with a visor-shaped border.
 // Shape math identical to BeanMaskEditor.BuildGeometry and BuildVisorBorderVerts.
-bool ApplyVisorMask(uint32_t viewIndex, XrVisibilityMaskKHR* mask) {
-    (void)viewIndex;
-    const uint32_t vcap = mask->vertexCapacityInput;
-    const uint32_t icap = mask->indexCapacityInput;
-    const uint32_t segCount = (std::min<uint32_t>)(32u, (std::min<uint32_t>)(vcap / 4u, icap / 6u));
-    if (segCount < 4u) return false;
-
-    // Derive bbox from runtime mesh vertices.
-    float minX = mask->vertices[0].x, maxX = minX;
-    float minY = mask->vertices[0].y, maxY = minY;
-    for (uint32_t i = 1; i < mask->vertexCountOutput; ++i) {
-        minX = (std::min)(minX, mask->vertices[i].x);
-        maxX = (std::max)(maxX, mask->vertices[i].x);
-        minY = (std::min)(minY, mask->vertices[i].y);
-        maxY = (std::max)(maxY, mask->vertices[i].y);
-    }
-    const float bboxW = maxX - minX;
-    const float bboxH = maxY - minY;
-    if (bboxW < 0.001f || bboxH < 0.001f) return false;
-
-    // Same superellipse parameters as BeanMaskEditor.BuildGeometry.
-    const float sw  = std::clamp(static_cast<float>(visorSize * visorWidth),  0.01f, 1.0f);
-    const float sh  = std::clamp(static_cast<float>(visorSize * visorHeight), 0.01f, 1.0f);
-    const float hw  = bboxW * 0.5f * sw;
-    const float hh  = bboxH * 0.5f * sh;
-    const float cx  = (minX + maxX) * 0.5f + (bboxW * 0.5f - hw) * static_cast<float>(visorOffsetX);
-    const float cy  = (minY + maxY) * 0.5f + (bboxH * 0.5f - hh) * static_cast<float>(visorOffsetY);
-    const float exp = VisorCurveExponent(visorCurve);
-
-    constexpr float kTwoPi = 6.28318530717958647692f;
-    std::vector<XrVector2f> inner(segCount);
-    for (uint32_t i = 0; i < segCount; ++i) {
-        const float angle = kTwoPi * static_cast<float>(i) / static_cast<float>(segCount);
-        const float c  = std::cos(angle);
-        const float s  = std::sin(angle);
-        const float sc = (c < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(c), 2.0f / exp);
-        const float ss = (s < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(s), 2.0f / exp);
-        inner[i] = XrVector2f{
-            std::clamp(cx + sc * hw, minX + 0.001f, maxX - 0.001f),
-            std::clamp(cy + ss * hh, minY + 0.001f, maxY - 0.001f)};
-    }
-
-    uint32_t v = 0, w = 0;
-    auto addQuad = [&](XrVector2f a, XrVector2f b, XrVector2f c2, XrVector2f d) {
-        const uint32_t s = v;
-        mask->vertices[v++] = a; mask->vertices[v++] = b;
-        mask->vertices[v++] = c2; mask->vertices[v++] = d;
-        mask->indices[w++] = s+0; mask->indices[w++] = s+1; mask->indices[w++] = s+2;
-        mask->indices[w++] = s+0; mask->indices[w++] = s+2; mask->indices[w++] = s+3;
-    };
-
-    for (uint32_t i = 0; i < segCount; ++i) {
-        const XrVector2f p0 = inner[i];
-        const XrVector2f p1 = inner[(i + 1) % segCount];
-        const float mid = kTwoPi * (static_cast<float>(i) + 0.5f) / static_cast<float>(segCount);
-        if (std::abs(std::cos(mid)) > std::abs(std::sin(mid))) {
-            const float ex = std::cos(mid) < 0.0f ? minX : maxX;
-            addQuad(XrVector2f{ex, p0.y}, XrVector2f{ex, p1.y}, p1, p0);
-        } else {
-            const float ey = std::sin(mid) < 0.0f ? minY : maxY;
-            addQuad(XrVector2f{p0.x, ey}, XrVector2f{p1.x, ey}, p1, p0);
-        }
-    }
-
-    mask->vertexCountOutput = v;
-    mask->indexCountOutput  = w;
-    return true;
-}
-
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
     XrSession session,
     XrViewConfigurationType viewConfigurationType,
@@ -2917,25 +2466,6 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
         visibilityMask->indexCountOutput < 3 ||
         visibilityMask->vertexCapacityInput < visibilityMask->vertexCountOutput ||
         visibilityMask->indexCapacityInput < visibilityMask->indexCountOutput) {
-        return result;
-    }
-
-    // OPTIONAL legacy path (default OFF): reshape the hidden-area mesh into the visor.
-    // This only runs when no native A/B/C visor is active (the native visor owns the
-    // visible boundary; a reshaped mesh beside it would draw a double boundary).
-    if (maskEnabled && visibilityMaskVisor && visorTechnique == VisorTechnique::Off) {
-        const uint32_t beforeIndexCount = visibilityMask->indexCountOutput;
-        if (ApplyVisorMask(viewIndex, visibilityMask)) {
-            const uint32_t logCount = visibilityMaskLogCount.fetch_add(1);
-            if (logCount == 0) {
-                Log("visibility mask: OPTIONAL visor-mesh active size=%.3f width=%.3f height=%.3f curve=%.3f offset=(%.3f,%.3f)\n",
-                    visorSize, visorWidth, visorHeight, visorCurve, visorOffsetX, visorOffsetY);
-            }
-            if (verboseLogging && (logCount < 20 || logCount % 100 == 0)) {
-                LogVerbose("xrGetVisibilityMaskKHR: view=%u visor border indices %u -> %u\n",
-                    viewIndex, beforeIndexCount, visibilityMask->indexCountOutput);
-            }
-        }
         return result;
     }
 
@@ -3047,9 +2577,6 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetInstanceProcAddr(
     } else if (std::strcmp(name, "xrWaitSwapchainImage") == 0) {
         nextXrWaitSwapchainImage = reinterpret_cast<PFN_xrWaitSwapchainImage>(*function);
         Log("hook captured: xrWaitSwapchainImage\n");
-    } else if (std::strcmp(name, "xrCreateReferenceSpace") == 0) {
-        nextXrCreateReferenceSpace = reinterpret_cast<PFN_xrCreateReferenceSpace>(*function);
-        Log("hook captured: xrCreateReferenceSpace\n");
     } else if (std::strcmp(name, "xrReleaseSwapchainImage") == 0) {
         nextXrReleaseSwapchainImage = reinterpret_cast<PFN_xrReleaseSwapchainImage>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrReleaseSwapchainImage);

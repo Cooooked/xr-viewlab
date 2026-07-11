@@ -48,7 +48,7 @@
       "previewSpecSymbols": ["BeanMaskEditor.AddOpenInnerHalf", "BeanMaskEditor.BuildGeometry", "BeanMaskEditor.AddNoseBridgeCurve", "BeanMaskEditor.CurveExponent"],
       "tests": ["Tests/Verify-ViewLabContracts.ps1"],
       "docs": ["docs/ARCHITECTURE.md#native-layer-anatomy", "docs/CONFIG.md#visor-mask", "docs/DECISIONS.md#d2", "docs/REGRESSIONS.md#r1", "docs/REGRESSIONS.md#r2"],
-      "invariants": ["preview and native geometry formula-identical (D5)", "y-flip ONLY in ApexYFromConfigNdc", "nose divot anchored to NDC y0, band-clamped", "FreeLibrary after all shader blob use (R1)", "AA uses per-vertex alpha feather strips", "late xrEndFrame draw is fallback-only with independent edge-guard and Direct C visor flags"],
+      "invariants": ["preview and native geometry formula-identical (D5)", "y-flip ONLY in ApexYFromConfigNdc", "nose divot anchored to NDC y0, band-clamped", "FreeLibrary after all shader blob use (R1)", "AA uses per-vertex alpha feather strips", "enabled visor must not accept invisible mask_size=1 legacy state", "late xrEndFrame draw is fallback-only with independent edge-guard and Direct C visor flags"],
       "keywords": ["visor", "mask", "bean", "arch", "open-inner", "nose bridge", "divot", "apex", "superellipse", "D3D11", "eye texture", "kidney", "antialiasing", "HD", "RTV cache", "late draw"]
     },
     "stencilPipeline": {
@@ -57,16 +57,16 @@
       "symbols": ["XRViewLab_xrGetVisibilityMaskKHR", "keepOuterEdge", "outerEdgeVisibilityMaskOnly", "openInnerShape", "ApplyVisorMask", "visibilityMaskVisor"],
       "tests": ["Tests/Verify-ViewLabContracts.ps1"],
       "docs": ["docs/ARCHITECTURE.md#the-stencil-pipeline", "docs/DECISIONS.md#d8", "docs/DECISIONS.md#d9", "docs/REGRESSIONS.md#r3"],
-      "invariants": ["filter runs even when visor active", "DLL reads stencil_outer_edges_only (legacy fallback outer_edge_visibility_mask_only)", "game restart required to re-query mask"],
+      "invariants": ["filter runs even when visor active", "DLL reads stencil_outer_edges_only (legacy fallback outer_edge_visibility_mask_only)", "crop_outer_edges_only selects outer-only versus full horizontal FOV crop", "game restart required to re-query mask"],
       "keywords": ["stencil", "visibility mask", "hidden area mesh", "FOV stencil", "Virtual Desktop", "inner edge", "outer edge"]
     },
     "configPlumbing": {
-      "what": "UI writes ini + per-app registry; DLL reads at session start / mtime reload",
+      "what": "UI writes ini + per-app registry; DLL reads a stable snapshot at game startup",
       "files": ["XRViewLab.UI/MainWindow.cs", "XRViewLab.UI/ProfileWindow.cs", "XRViewLab.UI/AppProfile.cs", "dllmain.cpp", "xr-viewlab.ini"],
       "symbols": ["LoadConfig", "ReadBoolSetting", "ReadDoubleSetting", "ReadProfileDword", "SignedMillisToUnit", "MainWindow.LoadSettings", "MainWindow.SaveSettings", "ToMillis", "ToSignedMillis", "FromMillis", "FromSignedMillis"],
       "tests": ["Tests/Verify-ViewLabContracts.ps1"],
       "docs": ["docs/CONFIG.md"],
-      "invariants": ["every key must exist on BOTH sides (R3)", "bundled xr-viewlab.ini must carry every product key (R6/R9)", "installer intentionally resets visor keys after backup", "encodings: millis v*1000, signed (v+1)*1000"],
+      "invariants": ["every key must exist on BOTH sides (R3)", "bundled xr-viewlab.ini must carry every product key (R6/R9)", "MSI upgrades preserve the live LOCALAPPDATA ini and per-app HKCU profiles", "encodings: millis v*1000, signed (v+1)*1000"],
       "keywords": ["ini", "registry", "settings", "config key", "per-app profile", "persistence", "WritePrivateProfileString"]
     },
     "previewCanvas": {
@@ -97,7 +97,7 @@
       "files": ["build.ps1", "Installer/Product.wxs", "Properties/AssemblyInfo.cs", "XRViewLabLayer.vcxproj", "xr-viewlab.csproj", "XR_APILAYER_cooooked_xrviewlab.json", "Installer/PreserveConfig.vbs", "Installer/CreateDesktopShortcut.vbs"],
       "symbols": [],
       "docs": ["docs/ARCHITECTURE.md#build--packaging"],
-      "invariants": ["build.ps1 auto-bumps version (manual builds must bump AssemblyInfo.cs + Product.wxs by hand)", "MSI packages default xr-viewlab.ini and installer backs up then resets visor keys (R6/R9)", "publish output copies freshly-built native DLLs after MSBuild", "installer registers x64 + WOW6432Node layer manifests"],
+      "invariants": ["build.ps1 auto-bumps version (manual builds must bump AssemblyInfo.cs + Product.wxs by hand)", "MSI packages a fresh-install xr-viewlab.ini template and preserves live user settings on upgrade", "Start Menu component key path is HKLM for per-machine install", "publish output copies freshly-built native DLLs after MSBuild", "installer registers x64 + WOW6432Node layer manifests"],
       "keywords": ["MSI", "WiX", "installer", "version bump", "dist", "layer registration", "implicit layer"]
     },
     "layerBootstrap": {

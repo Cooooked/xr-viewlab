@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -327,6 +328,23 @@ public sealed class ReShadeRemoteWindow : Window
 
     static bool HasBundledPayload() => PayloadRoot() != null;
 
+    static bool IsBundledPayloadDeployed()
+    {
+        try
+        {
+            string? payload = PayloadRoot();
+            if (payload == null) return false;
+            FileInfo source = new(Path.Combine(payload, "ReShade64.dll"));
+            FileInfo deployed = new(@"C:\ProgramData\ReShade\ReShade64.dll");
+            return source.Exists && deployed.Exists && source.Length == deployed.Length &&
+                File.Exists(@"C:\ProgramData\ReShade\ReShade64_XR.json");
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     static string PsQuote(string value) => "'" + value.Replace("'", "''") + "'";
 
     void InstallPayload()
@@ -353,7 +371,10 @@ public sealed class ReShadeRemoteWindow : Window
         ProcessStartInfo psi = new()
         {
             FileName = "powershell.exe",
-            Arguments = "-NoProfile -ExecutionPolicy Bypass -Command " + PsQuote(command),
+            // -EncodedCommand avoids Windows/PowerShell quoting ambiguities that previously
+            // allowed the elevation prompt to appear while the copy command did nothing.
+            Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " +
+                Convert.ToBase64String(Encoding.Unicode.GetBytes(command)),
             UseShellExecute = true,
             Verb = "runas",
             WindowStyle = ProcessWindowStyle.Hidden
@@ -390,9 +411,13 @@ public sealed class ReShadeRemoteWindow : Window
         {
             _setup.Text = "Unavailable: this build does not include the ReShade Remote component.";
         }
+        else if (!IsBundledPayloadDeployed())
+        {
+            _setup.Text = "Remote payload is not installed. Click Install component, approve Windows permission, then restart the VR game.";
+        }
         else
         {
-            _setup.Text = "Ready to install. This deploys the patched ReShade OpenXR layer globally; restart the VR game after installing.";
+            _setup.Text = "Remote payload is installed. Start or restart the VR game; controls unlock once ReShade reports in.";
         }
     }
 
