@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.142"
+           Language="1033" Version="4.1.143"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -21,7 +21,6 @@
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
     <Binary Id="CreateDesktopShortcutVbs" SourceFile="CreateDesktopShortcut.vbs" />
-    <Binary Id="PreserveConfigVbs" SourceFile="PreserveConfig.vbs" />
     <CustomAction Id="PromptDesktopShortcut"
                   BinaryKey="CreateDesktopShortcutVbs"
                   VBScriptCall="PromptDesktopShortcut"
@@ -31,12 +30,6 @@
                   BinaryKey="CreateDesktopShortcutVbs"
                   VBScriptCall="PromptLaunchXRViewLab"
                   Execute="immediate"
-                  Return="ignore" />
-    <CustomAction Id="CleanupApiLayerRegistry"
-                  BinaryKey="PreserveConfigVbs"
-                  VBScriptCall="CleanupApiLayerRegistry"
-                  Execute="deferred"
-                  Impersonate="no"
                   Return="ignore" />
 
     <UI>
@@ -94,10 +87,6 @@
       <ComponentRef Id="ReShadePayloadFiles"/>
       <ComponentRef Id="ReShadePayloadDocs"/>
     </Feature>
-
-    <InstallExecuteSequence>
-      <Custom Action="CleanupApiLayerRegistry" Before="InstallFinalize">1</Custom>
-    </InstallExecuteSequence>
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">

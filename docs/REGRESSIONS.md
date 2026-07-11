@@ -120,3 +120,13 @@ inner edges. A full-size opening was still accepted by the renderer.
 **Never again:** test the FOV branch, not only config read/logging. Outer-edge-only must gate the
 per-eye branch; full crop must scale both sides. An enabled visor must recover an invisible
 full-opening legacy value to a safe visible default.
+
+## R13 - MSI must never enumerate the shared OpenXR implicit-layer registry (4.1.142; fixed locally)
+**What:** after a ViewLab MSI upgrade, the machine retained only a fraction of its approximately
+ten implicit OpenXR layer registrations.
+**Why:** the MSI ran a deferred `CleanupApiLayerRegistry` script which enumerated the shared
+`HKLM\...\ApiLayers\Implicit` registry key. Even narrowly filtered cleanup is unacceptable at that
+ownership boundary and can turn an upgrade into a layer-loss incident.
+**Never again:** the MSI contains no registry-enumerating cleanup custom action. WiX may write and
+remove ViewLab's own declared registry values only; no installer code may enumerate, recreate, or
+delete values in the shared implicit-layer key. Contract test pins this.

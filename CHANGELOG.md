@@ -2,6 +2,12 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## Unreleased - 2026-07-12 (Installer Registry Safety)
+
+- Removed the MSI's `CleanupApiLayerRegistry` custom action entirely. Installing or upgrading
+  ViewLab now never enumerates, cleans, recreates, or otherwise alters third-party values under
+  the shared OpenXR implicit-layer registry key; WiX manages only ViewLab's own registrations.
+
 ## Unreleased - 2026-07-12 (Fixed-Foveation Visor Coverage)
 
 - Restored the unified visor Size control (`0.05..1.0`, default `1.0`). It shrinks only the

@@ -55,8 +55,8 @@ Assert-IniValue 'visor_live_revision' '0'
 Assert-IniValue 'stencil_outer_edges_only' '1'
 
 # ---- Installer reset policy is explicit and complete -------------------------------
-Assert-NotContains 'Installer\PreserveConfig.vbs' '%LOCALAPPDATA%' 'installer VBScript does not touch current-user LOCALAPPDATA'
-Assert-NotContains 'Installer\PreserveConfig.vbs' 'H80000001' 'installer VBScript does not touch current-user HKCU'
+Assert-NotContains 'Installer\Product.wxs' 'CleanupApiLayerRegistry' 'installer never enumerates or cleans the shared implicit OpenXR layer registry'
+Assert-NotContains 'Installer\Product.wxs' 'PreserveConfig.vbs' 'installer does not embed a registry-cleanup script'
 Assert-Contains 'Installer\Product.wxs' 'File Id="DefaultConfigFile" Source="\.\.\\xr-viewlab\.ini" Name="xr-viewlab\.ini"' 'MSI packages the default config file'
 Assert-Contains 'xr-viewlab.csproj' 'CopyToPublishDirectory="PreserveNewest"' 'published app carries xr-viewlab.ini for installer harvesting'
 Assert-Contains 'build.ps1' '\$DefaultConfigSrc = Join-Path \$Root "xr-viewlab\.ini"' 'build copies default config into publish output'

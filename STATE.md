@@ -6,7 +6,22 @@
 **Updated:** 2026-07-12
 **Current version:** 4.1.142 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.142.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
-**Publish state:** local commits ahead of origin/master; DO NOT push until user confirms current work in-headset.
+**Publish state:** 4.1.142 published. New installer-safety repair is local; DO NOT publish until the user confirms it in-headset.
+
+## Critical installer safety repair (in progress, 2026-07-12)
+
+**Safety build:** 4.1.143 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.143.msi` (not yet headset-validated).
+
+Pistol Whip was recovered after the Virtual Desktop runtime found its missing
+`C:\ProgramData\Virtual Desktop\accessibility.json` configuration and failed to create the D3D11
+texture swapchain. The minimal valid default has been restored and Pistol Whip is again running
+with ViewLab and ReShade temporarily disabled for isolation.
+
+ViewLab's MSI no longer embeds or runs `CleanupApiLayerRegistry`. Although the script only intended
+to remove stale ViewLab paths, it enumerated the shared `HKLM\...\ApiLayers\Implicit` key during every
+install, which is unacceptable in a machine-wide OpenXR ecosystem. The MSI now writes/removes only
+its own WiX-owned registry values. The previously lost installed third-party manifest registrations
+were restored from disk; their enabled state remains conservative until headset validation.
 
 ## Fixed-foveation visor coverage controls (in progress, 2026-07-12)
 
