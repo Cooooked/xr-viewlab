@@ -172,30 +172,25 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="4" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="4" />
-                <RowDefinition Height="Auto" />
               </Grid.RowDefinitions>
-              <TextBlock Grid.Row="0" Grid.Column="0" Text="Size" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorSizeSlider" Grid.Row="0" Grid.Column="1" Minimum="0.05" Maximum="1" ValueChanged="MaskOpeningSlider_Changed" />
-              <TextBlock Grid.Row="2" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorCurveSlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" />
-              <CheckBox Name="StencilOuterEdgesCheck" Grid.Row="4" Grid.ColumnSpan="2" Content="Stencil outer edges only" Foreground="#A8A8A8" FontSize="12" Margin="0,4,0,0" ToolTip="Preview shows single-eye open-inner shape (nose/bridge) instead of closed bean." Checked="StencilOuterEdgesCheck_Changed" Unchecked="StencilOuterEdgesCheck_Changed" />
-              <TextBlock Grid.Row="6" Grid.Column="0" Text="Apex Y" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorApexYSlider" Grid.Row="6" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="VisorApexYSlider_Changed" />
-              <TextBlock Grid.Row="8" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorInnerLowerSlider" Grid.Row="8" Grid.Column="1" Minimum="0" Maximum="0.333" ValueChanged="VisorInnerLowerSlider_Changed" />
-              <TextBlock Grid.Row="10" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorInnerBridgeSlider" Grid.Row="10" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="VisorInnerBridgeSlider_Changed" />
-              <TextBlock Grid.Row="12" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorInnerBridgeRiseSlider" Grid.Row="12" Grid.Column="1" Minimum="0" Maximum="0.5" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
-              <TextBlock Grid.Row="14" Grid.Column="0" Text="Peak X" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorInnerBridgePeakXSlider" Grid.Row="14" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
-              <TextBlock Grid.Row="16" Grid.Column="0" Text="Steep" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorInnerBridgeSteepnessSlider" Grid.Row="16" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
-              <TextBlock Grid.Row="18" Grid.Column="0" Text="X" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorOffsetXSlider" Grid.Row="18" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
-              <TextBlock Grid.Row="20" Grid.Column="0" Text="Y" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorOffsetYSlider" Grid.Row="20" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorCurveSlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" />
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="Apex Y" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorApexYSlider" Grid.Row="2" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="VisorApexYSlider_Changed" />
+              <TextBlock Grid.Row="4" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorInnerLowerSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="0.333" ValueChanged="VisorInnerLowerSlider_Changed" />
+              <TextBlock Grid.Row="6" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorInnerBridgeSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="VisorInnerBridgeSlider_Changed" />
+              <TextBlock Grid.Row="8" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorInnerBridgeRiseSlider" Grid.Row="8" Grid.Column="1" Minimum="0" Maximum="0.5" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
+              <TextBlock Grid.Row="10" Grid.Column="0" Text="Peak X" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorInnerBridgePeakXSlider" Grid.Row="10" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
+              <TextBlock Grid.Row="12" Grid.Column="0" Text="Steep" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorInnerBridgeSteepnessSlider" Grid.Row="12" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
+              <TextBlock Grid.Row="14" Grid.Column="0" Text="X" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorOffsetXSlider" Grid.Row="14" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
+              <TextBlock Grid.Row="16" Grid.Column="0" Text="Y" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorOffsetYSlider" Grid.Row="16" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
             </Grid>
             <ui:BeanMaskEditor x:Name="MaskBeanEditor" Height="120" Margin="0,8,0,0" ShapeChanged="MaskBeanEditor_ShapeChanged" />
           </StackPanel>

@@ -56,8 +56,8 @@ double visorInnerBridgeWidth = 0.5;    // mask_inner_bridge_width: 0..1, bezier 
 double visorInnerBridgeRise = 0.0;     // mask_inner_bridge_rise: 0..0.5, endpoint tangent rise
 double visorInnerBridgePeakX = 0.5;    // mask_inner_bridge_peak_x: 0..1, handle horizontal shift
 double visorInnerBridgeSteepness = 0.5;// mask_inner_bridge_steepness: 0..1, handle length scale
-bool visorHD = false;                  // visor_hd: doubles curve tessellation
-bool visorAntialiasing = true;         // visor_antialiasing: feathered aperture edges
+constexpr bool visorHD = false;          // HD visor removed
+constexpr bool visorAntialiasing = false; // anti-aliasing removed
 // There is one product visor: a ViewLab-owned curved corner mask drawn into the
 // game's D3D11 eye textures. The old alternate visor experiments were removed.
 // Per-frame hook detail (xrLocateViews / xrEnumerateViewConfigurationViews /
@@ -66,13 +66,13 @@ bool visorAntialiasing = true;         // visor_antialiasing: feathered aperture
 // Log button) only ever shows meaningful init/config/error events. OFF by default.
 bool verboseLogging = false;
 bool splitMode = false;
-bool foveatedCenterCompensation = false;
+bool foveatedCenterCompensation = true;   // permanently enabled
 bool visualMaskOnly = false;
 bool horizontalVisualMaskOnly = false;
-bool outerEdgeVisibilityMaskOnly = true;
-bool edgeSmearFix = false;
-bool lodPopInFix = false;
-int edgeSmearPixels = 2;
+bool outerEdgeVisibilityMaskOnly = true;  // permanently enabled
+constexpr bool edgeSmearFix = false;       // edge-smear fix removed
+constexpr bool lodPopInFix = false;        // LOD pop-in fix removed
+int edgeSmearPixels = 2;                   // unused; kept to avoid changing DrawEdgeGuardToTexture signature
 bool uevrLikeProcess = false;
 double totalTangent = DefaultTotalTangent;
 double topTangent = DefaultTopTangent;
@@ -117,7 +117,7 @@ std::atomic<bool> g_diagDrawNoVerts{false};
 std::atomic<bool> g_diagDrawMapFailed{false};
 std::atomic<bool> g_diagDrawRtvFailed{false};
 std::atomic<bool> g_diagDrawOk{false};
-std::atomic<bool> g_diagEdgeSmearInset{false};
+
 std::atomic<bool> g_diagLodFullFov{false};
 std::atomic<bool> g_diagVisorSkipsVisibilityEdgeFilter{false};
 std::atomic<bool> g_diagEndFrameLateDraw{false};
@@ -888,7 +888,7 @@ float ApexYFromConfigNdc(double configApexY) {
 }
 
 uint32_t VisorCurveSegments(uint32_t requested = 96u) {
-    return visorHD ? requested * 2u : requested;
+    return requested; // HD visor removed
 }
 
 void PushVertex(VisorVertex* vertsOut, uint32_t& v, uint32_t vertCapacity, float x, float y, float alpha = 1.0f) {
@@ -925,8 +925,9 @@ uint32_t BuildVisorBorderVerts(
     const float bboxH = bboxMaxY - bboxMinY;
     if (bboxW < 0.001f || bboxH < 0.001f || vertCapacity < 6) return 0;
 
-    const float sw  = std::clamp(static_cast<float>(visorSize * visorWidth),  0.01f, 1.0f);
-    const float sh  = std::clamp(static_cast<float>(visorSize * visorHeight), 0.01f, 1.0f);
+    // Hardcoded maximum corner coverage: opening fills the full bbox, mask extends to edges
+    const float sw  = std::clamp(static_cast<float>(visorWidth),  0.01f, 1.0f);
+    const float sh  = std::clamp(static_cast<float>(visorHeight), 0.01f, 1.0f);
     const float hw  = bboxW * 0.5f * sw;
     const float hh  = bboxH * 0.5f * sh;
     const float cx  = (bboxMinX + bboxMaxX) * 0.5f
@@ -1050,8 +1051,9 @@ uint32_t BuildOpenInnerEyeVisorVerts(
     const float bboxH = bboxMaxY - bboxMinY;
     if (bboxW < 0.001f || bboxH < 0.001f || vertCapacity < 18) return 0;
 
-    const float sw  = std::clamp(static_cast<float>(visorSize * visorWidth),  0.01f, 1.0f);
-    const float sh  = std::clamp(static_cast<float>(visorSize * visorHeight), 0.01f, 1.0f);
+    // Hardcoded maximum corner coverage: opening fills the full bbox, mask extends to edges
+    const float sw  = std::clamp(static_cast<float>(visorWidth),  0.01f, 1.0f);
+    const float sh  = std::clamp(static_cast<float>(visorHeight), 0.01f, 1.0f);
     const float hw  = bboxW * 0.5f * sw;
     const float hh  = bboxH * 0.5f * sh;
     const float cx  = (bboxMinX + bboxMaxX) * 0.5f;
@@ -1194,8 +1196,9 @@ uint32_t BuildProjectedPartnerVisorVerts(
         if (projectedEdgeX >= bboxMaxX - threshold) return 0;
     }
 
-    const float sw = std::clamp(static_cast<float>(visorSize * visorWidth), 0.01f, 1.0f);
-    const float sh = std::clamp(static_cast<float>(visorSize * visorHeight), 0.01f, 1.0f);
+    // Hardcoded maximum corner coverage: opening fills the full bbox, mask extends to edges
+    const float sw = std::clamp(static_cast<float>(visorWidth), 0.01f, 1.0f);
+    const float sh = std::clamp(static_cast<float>(visorHeight), 0.01f, 1.0f);
     const float bboxW = bboxMaxX - bboxMinX;
     const float bboxH = bboxMaxY - bboxMinY;
     const float hw = bboxW * 0.5f * sw;
@@ -1713,46 +1716,6 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
     // at which the app side legitimately owns the image, so the write cannot be
     // overwritten by the app and is guaranteed present when the runtime composites.
     // Independent of the visibility-mask path; that path must never suppress this.
-    if (enabled && edgeSmearFix &&
-        g_d3d11Mask.initialized && g_d3d11Mask.context) {
-        ID3D11Texture2D* tex = nullptr;
-        uint32_t arrSize = 1;
-        int64_t scFormat = 0;
-        std::vector<EyeView> views;
-        std::vector<ID3D11RenderTargetView*> rtvs;
-        {
-            std::lock_guard<std::mutex> lk(g_swapchainMutex);
-            auto it = g_swapchains.find(swapchain);
-            if (it != g_swapchains.end()) {
-                const TrackedSwapchain& ts = it->second;
-                if (ts.session == g_d3d11Mask.session && ts.lastAcquiredIndex < ts.textures.size()) {
-                    tex = ts.textures[ts.lastAcquiredIndex];
-                    if (tex) tex->AddRef();
-                    arrSize = ts.arraySize;
-                    scFormat = ts.format;
-                    views = ts.eyeViews;
-                    rtvs.reserve(views.size());
-                    for (const EyeView& ev : views) {
-                        rtvs.push_back(CachedRtvFor(ts, ts.lastAcquiredIndex, ev.arraySlice));
-                    }
-                }
-            }
-        }
-        for (size_t i = 0; i < views.size(); ++i) {
-            DrawEdgeGuardToTexture(tex, arrSize, scFormat, views[i].arraySlice, views[i].rect,
-                edgeSmearPixels, i < rtvs.size() ? rtvs[i] : nullptr);
-        }
-        for (ID3D11RenderTargetView* rtv : rtvs) {
-            if (rtv) rtv->Release();
-        }
-        if (!views.empty() && !g_diagEdgeSmearInset.exchange(true)) {
-            Log("edge-smear fix: drew %d px black guard bands into projection edges\n", edgeSmearPixels);
-        }
-        if (!views.empty()) {
-            g_releaseDrewEdgeGuardThisFrame.store(true);
-        }
-        if (tex) tex->Release();
-    }
 
     if (enabled && maskEnabled &&
         g_d3d11Mask.initialized && g_d3d11Mask.context) {
@@ -1833,14 +1796,10 @@ void LoadConfig() {
     enabled = ReadBoolSetting(L"enabled", true);
     verboseLogging = ReadBoolSetting(L"verbose_logging", false);
     splitMode = ReadBoolSetting(L"split_mode", false);
-    foveatedCenterCompensation = ReadBoolSetting(L"foveated_center_compensation", false);
-    cropOuterEdgesOnly = ReadBoolSetting(L"crop_outer_edges_only", true);
+    // foveated_center_compensation, crop_outer_edges_only, and stencil_outer_edges_only are
+    // permanently enabled; config keys are ignored.
     visualMaskOnly = ReadBoolSetting(L"visual_mask_only", false);
     horizontalVisualMaskOnly = ReadBoolSetting(L"horizontal_visual_mask_only", false);
-    // UI checkbox writes stencil_outer_edges_only; older builds used
-    // outer_edge_visibility_mask_only. Read the UI key first, legacy key as fallback.
-    outerEdgeVisibilityMaskOnly = ReadBoolSetting(L"stencil_outer_edges_only",
-        ReadBoolSetting(L"outer_edge_visibility_mask_only", true));
     // There is exactly ONE visor renderer (D3D11 draw into the game's eye textures).
     // The old hidden-mesh reshaper is gone: visibility_mask_visor=1 is retired. Old
     // inis may still carry the key; it is read only to warn, never to reshape.
@@ -1849,9 +1808,7 @@ void LoadConfig() {
         Log("config: visibility_mask_visor=1 is retired and ignored; the visor draws into eye textures only\n");
     }
     visibilityMaskVisor = false;
-    edgeSmearFix = ReadBoolSetting(L"edge_smear_fix", false);
-    lodPopInFix = ReadBoolSetting(L"lod_popin_fix", false);
-    edgeSmearPixels = static_cast<int>(std::clamp(ReadDoubleSetting(L"edge_smear_pixels", 2.0), 1.0, 16.0));
+    // edge_smear_fix, lod_popin_fix, and edge_smear_pixels are removed; edge-smear code is disabled.
     const double legacyTotal = ReadDoubleSetting(L"vertical_tangent", DefaultTotalTangent);
     totalTangent = std::clamp(
         ReadDoubleSetting(L"total_render_height", ReadDoubleSetting(L"total_share", legacyTotal)),
@@ -1875,8 +1832,7 @@ void LoadConfig() {
     maskTopCurve = std::clamp(ReadDoubleSetting(L"mask_top_curve", 0.0), -1.0, 1.0);
     maskBottomCurve = std::clamp(ReadDoubleSetting(L"mask_bottom_curve", 0.0), -1.0, 1.0);
     renderScale = std::clamp(ReadDoubleSetting(L"render_scale", 1.0), 0.1, 3.0);
-    visorHD = ReadBoolSetting(L"visor_hd", false);
-    visorAntialiasing = ReadBoolSetting(L"visor_antialiasing", true);
+    // HD visor and anti-aliasing are permanently disabled.
 
     // Visor shape controls (ranges identical to the UI sliders).
     visorOuterApexY = std::clamp(ReadDoubleSetting(L"mask_outer_apex_y", 0.0), -0.5, 0.5);
@@ -2004,10 +1960,9 @@ void LoadConfig() {
         }
     }
 
-    // Fallback MUST be a visible visor opening (0.82), not the legacy OpeningFromMask
-    // formula which clamps to 1.0 for cropped views (= full opening = invisible mask).
-    // A missing mask_size (e.g. wiped from the ini) previously silently disabled the mask.
-    visorSize = std::clamp(ReadDoubleSetting(L"mask_size", 0.82), 0.05, 1.0);
+    // Size now controls mask thickness (1.0 = full mask, 0.0 = no mask).
+    // Default to full mask (1.0) for maximum effect.
+    visorSize = std::clamp(ReadDoubleSetting(L"mask_size", 1.0), 0.05, 1.0);
     visorWidth = std::clamp(ReadDoubleSetting(L"mask_width_scale", 1.0), 0.25, 2.0);
     visorHeight = std::clamp(ReadDoubleSetting(L"mask_height_scale", 1.0), 0.25, 2.0);
     if (profileVisorSize > 0)
@@ -2022,7 +1977,7 @@ void LoadConfig() {
     visorOffsetX = 0.0;
     visorOffsetY = 0.0;
 
-    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d crop_outer_edges_only=%d edge_smear_fix=%d edge_smear_pixels=%d lod_popin_fix=%d visor_enabled=%d visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_hd=%d visor_antialiasing=%d visor_offset_x=%.3f visor_offset_y=%.3f visor_outer_apex_y=%.3f visor_inner_lower_y=%.3f visor_inner_bridge_w/r/px/s=%.3f/%.3f/%.3f/%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
+    Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d crop_outer_edges_only=%d visor_enabled=%d visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_offset_x=%.3f visor_offset_y=%.3f visor_outer_apex_y=%.3f visor_inner_lower_y=%.3f visor_inner_bridge_w/r/px/s=%.3f/%.3f/%.3f/%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
         enabled ? 1 : 0,
         currentAppKey.empty() ? L"<global>" : currentAppKey.c_str(),
         splitMode ? "split" : "total",
@@ -2037,16 +1992,11 @@ void LoadConfig() {
         horizontalVisualMaskOnly ? 1 : 0,
         outerEdgeVisibilityMaskOnly ? 1 : 0,
         cropOuterEdgesOnly ? 1 : 0,
-        edgeSmearFix ? 1 : 0,
-        edgeSmearPixels,
-        lodPopInFix ? 1 : 0,
         maskEnabled ? 1 : 0,
         visorSize,
         visorWidth,
         visorHeight,
         visorCurve,
-        visorHD ? 1 : 0,
-        visorAntialiasing ? 1 : 0,
         visorOffsetX,
         visorOffsetY,
         visorOuterApexY,
@@ -2221,16 +2171,13 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrLocateViews(
         const XrView originalView = views[i];
         bool compensated = false;
         float pitchOffset = 0.0f;
-        if (lodPopInFix && !g_diagLodFullFov.exchange(true)) {
-            Log("lod pop-in fix: disabled for safety in this build; preserving ViewLab vertical/horizontal FOV crop\n");
-        }
         ApplyXRViewLabFov(i, views[i], compensated, pitchOffset);
         if (i < g_d3d11Mask.latestViewCount) {
             g_d3d11Mask.latestOriginalViews[i] = originalView;
             g_d3d11Mask.latestViews[i] = views[i];
         }
         if (verboseLogging && (logCount < 20 || logCount % 300 == 0)) {
-            LogVerbose("xrLocateViews[%u]: up %.5f -> %.5f down %.5f -> %.5f left %.5f -> %.5f right %.5f -> %.5f original_fov=(L %.5f R %.5f U %.5f D %.5f valid=%d) horizontal_render_width=%.3f crop_outer_edges_only=%d foveated_center=%d pitch_offset=%.5f lod_full_fov=%d\n",
+            LogVerbose("xrLocateViews[%u]: up %.5f -> %.5f down %.5f -> %.5f left %.5f -> %.5f right %.5f -> %.5f original_fov=(L %.5f R %.5f U %.5f D %.5f valid=%d) horizontal_render_width=%.3f crop_outer_edges_only=%d foveated_center=%d pitch_offset=%.5f\n",
                 i,
                 before.angleUp,
                 views[i].fov.angleUp,
@@ -2248,8 +2195,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrLocateViews(
                 horizontalRenderWidth,
                 cropOuterEdgesOnly ? 1 : 0,
                 compensated ? 1 : 0,
-                pitchOffset,
-                lodPopInFix ? 1 : 0);
+                pitchOffset);
         }
     }
 
@@ -2320,7 +2266,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     // xrReleaseSwapchainImage, which runs earlier in the frame loop, so the layout
     // captured here is consumed by the NEXT frame's release. Layout is stable frame to
     // frame. Not gated on the visibility-mask path — the D3D11 visor runs regardless.
-    if (enabled && (edgeSmearFix || maskEnabled) &&
+    if (enabled && maskEnabled &&
         g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
         bool foundProj = false;
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
@@ -2409,9 +2355,6 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
     const uint32_t logCount = enumerateViewsLogCount.fetch_add(1);
     const double requestedHeightScale = std::clamp(topTangent + bottomTangent, 0.01, 1.0);
     const double requestedWidthScale = EffectiveOuterEdgeHorizontalScale();
-    if (edgeSmearFix && logCount == 0) {
-        Log("edge-smear fix: using FOV-weighted recommended image scale when original FOV is available\n");
-    }
     for (uint32_t i = 0; i < *viewCountOutput; ++i) {
         const double perViewHeightScale = visualMaskOnly ? 1.0 : EffectiveVerticalScaleForView(i, requestedHeightScale);
         const double perViewWidthScale = horizontalVisualMaskOnly ? 1.0 : EffectiveHorizontalScaleForView(i, requestedWidthScale);
@@ -2493,9 +2436,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
     // D3D11 visor is active: the visor only draws pixels, but the game stencils whatever
     // this mask returns — an unfiltered mask blacks out the inner edges regardless of the
     // visor shape, with the runtime's curve instead of the user's apex-y curve.
-    if (!outerEdgeVisibilityMaskOnly || uevrLikeProcess) {
+    if (uevrLikeProcess) {
         if (!g_diagVisorSkipsVisibilityEdgeFilter.exchange(true)) {
-            Log("visibility mask: outer-edge filtering OFF (stencil_outer_edges_only=0); runtime mask passed through unmodified\n");
+            Log("visibility mask: outer-edge filtering OFF for UEVR-like process; runtime mask passed through unmodified\n");
         }
         return result;
     }

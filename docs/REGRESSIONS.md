@@ -41,7 +41,18 @@ and wrong crop values; Pistol Whip broke immediately; the build was pushed to Gi
 **Never again:** never publish untested builds (agents.md rule 2). Defaults changes are
 high-risk — they interact with the MSI ini overwrite (R6).
 
-## R6 — MSI install wipes/drops live ini keys (standing hazard)
+## R6 — Visor mask size slider confused opening size with mask thickness (4.1.55–4.1.117; fixed 4.1.118)
+**What:** visor mask worked at small size values but became invisible at full size (1.0).
+**Why:** `mask_size` controlled the opening size (clear area). When size=1.0, the opening filled
+the entire bounding box, leaving zero space for black mask triangles. The visor draws black
+triangles OUTSIDE the opening, so a full opening = no mask.
+**Detected:** user reported visor works at extreme small values but not at normal/full size.
+**Never again:** the size slider is removed and the opening is hardcoded to fill the full crop
+bounding box (mask_width_scale/height_scale fixed at 1.0). The visor mask only rounds corners;
+shape controls (curve, apex, bridge) are the only tunable geometry. If an opening-size concept
+returns, it must be explicitly named "opening" or "mask" and not conflated with the other.
+
+## R7 — MSI install wipes/drops live ini keys (standing hazard)
 **What:** installing an MSI overwrote `%LOCALAPPDATA%`-adjacent config; keys not present in the
 bundled default ini (e.g. `mask_enabled`, `mask_size`, `mask_corner`) were dropped, silently
 changing behavior after "just an update".
@@ -50,7 +61,7 @@ defaults) and include it in the MSI/package output as a fresh-install template. 
 preserve the live `%LOCALAPPDATA%` ini and per-app HKCU profiles. The OpenXR layer must never
 rewrite settings from inside a game. Contract tests pin packaging and the absence of reset hooks.
 
-## R7 — The 2026-07-10 spiral: 14 blind builds, features lost (4.1.88→4.1.101)
+## R8 — The 2026-07-10 spiral: 14 blind builds, features lost (4.1.88→4.1.101)
 **What:** 12+ hours of guess-edit-build cycles on the inner-low/stencil symptoms; five failed
 "fixes" for pin dragging alone; multiple full-file reverts (4.1.88 → 4.1.89 → 4.1.55) that threw
 away working features (apex-y, inner-low, bridge, jitter AA, 4.1.64/65 perf work) while the
@@ -64,7 +75,7 @@ constants once, carefully — both root causes were visible in the code the whol
 without running the test; when two consecutive fixes fail, stop editing and read the whole
 subsystem; reverts are for known-good states, not exploration.
 
-## R8 — Pin click-drag: five threshold tweaks, zero fixes (open, Pass 2)
+## R9 — Pin click-drag: five threshold tweaks, zero fixes (open, Pass 2)
 **What:** preview pins can't be dragged; repeated "fixes" adjusted hit thresholds/Focusable.
 **Why (diagnosed, unverified):** `OnMouseLeftButtonDown` never calls `CaptureMouse()`, so the
 drag dies as soon as the cursor leaves the small canvas; thresholds were never the problem.
@@ -83,7 +94,7 @@ and the editor uses preview mouse events plus full-rectangle hit testing.
 pin band centre. That made the centred pin map to `0.5` and clamped negative drags away. The
 drag code now uses the same centre-origin formula as `PinPositions`; contract tests pin it.
 
-## R9 - Per-version upgrade reset would erase user tuning (caught before headset release, 2026-07-11)
+## R10 - Per-version upgrade reset would erase user tuning (caught before headset release, 2026-07-11)
 **What:** the MSI wrote its changing product version as a reset marker; the next UI or game launch
 deleted visor and per-app visor settings. Every upgrade therefore behaved like a factory reset.
 **Why:** a workaround for elevated-installer user context preserved the reset policy rather than
@@ -101,7 +112,7 @@ lookup searched BaseDirectory and CWD only. MainWindow already had the correct p
 **Never again:** anything locating files next to the installed exe must use
 `Environment.ProcessPath`, never `AppContext.BaseDirectory`. Contract test pins it.
 
-## R10 - Crop toggle read but not applied; enabled visor could be invisible (caught in headset testing, 2026-07-11)
+## R12 - Crop toggle read but not applied; enabled visor could be invisible (caught in headset testing, 2026-07-11)
 **What:** “Crop outer edges only” always behaved as enabled even when unchecked. Separately, an
 enabled visor with legacy `mask_size=1` drew no border, making the visor checkbox look broken.
 **Why:** `LoadConfig()` read the crop key, but the FOV calculator unconditionally retained the

@@ -197,8 +197,9 @@ public sealed class BeanMaskEditor : FrameworkElement
 
 	private StreamGeometry BuildGeometry(Rect area)
 	{
-		double halfW = area.Width * 0.5 * Math.Clamp(Size * WidthScale, 0.01, 1.0);
-		double halfH = area.Height * 0.5 * Math.Clamp(Size * HeightScale, 0.01, 1.0);
+		// Hardcoded maximum corner coverage: opening fills the full bbox, mask extends to edges
+		double halfW = area.Width * 0.5 * Math.Clamp(WidthScale, 0.01, 1.0);
+		double halfH = area.Height * 0.5 * Math.Clamp(HeightScale, 0.01, 1.0);
 		double centerX = area.Left + area.Width * 0.5 + (area.Width * 0.5 - halfW) * OffsetX;
 		double centerY = area.Top + area.Height * 0.5 + (area.Height * 0.5 - halfH) * OffsetY;
 		double exponent = CurveExponent(Curve);
@@ -243,8 +244,9 @@ public sealed class BeanMaskEditor : FrameworkElement
 			return;
 		}
 
-		double halfW = area.Width * 0.5 * Math.Clamp(Size * WidthScale, 0.01, 1.0);
-		double halfH = area.Height * 0.5 * Math.Clamp(Size * HeightScale, 0.01, 1.0);
+		// Hardcoded maximum corner coverage: opening fills the full bbox, mask extends to edges
+		double halfW = area.Width * 0.5 * Math.Clamp(WidthScale, 0.01, 1.0);
+		double halfH = area.Height * 0.5 * Math.Clamp(HeightScale, 0.01, 1.0);
 		double centerX = area.Left + area.Width * 0.5;
 		double centerY = area.Top + area.Height * 0.5 + (area.Height * 0.5 - halfH) * OffsetY;
 		double exponent = CurveExponent(Curve);
@@ -359,8 +361,9 @@ public sealed class BeanMaskEditor : FrameworkElement
 
 	private (Point outerApex, Point innerLower, Point innerBridge, double y0, double y1, double bridgeStartX, double bridgeStartY, double bridgeEndX, double bridgeEndY) PinPositions(Rect area)
 	{
-		double halfW = area.Width * 0.5 * Math.Clamp(Size * WidthScale, 0.01, 1.0);
-		double halfH = area.Height * 0.5 * Math.Clamp(Size * HeightScale, 0.01, 1.0);
+		// Hardcoded maximum corner coverage: opening fills the full bbox, mask extends to edges
+		double halfW = area.Width * 0.5 * Math.Clamp(WidthScale, 0.01, 1.0);
+		double halfH = area.Height * 0.5 * Math.Clamp(HeightScale, 0.01, 1.0);
 		double centerX = area.Left + area.Width * 0.5;
 		double centerY = area.Top + area.Height * 0.5 + (area.Height * 0.5 - halfH) * OffsetY;
 		double y0 = Math.Clamp(centerY - halfH, area.Top, area.Bottom);

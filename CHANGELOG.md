@@ -2,6 +2,34 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## 4.1.123 - 2026-07-11 (ReShade Remote: Robust Install + Live Controls)
+
+- Rebuilt the bundled `ReShadePayload/ReShade64.dll` from `ReshadeAI/reshade` source so the
+  `heartbeat` field is incremented every frame; `ReShadeRemote` can now detect that ReShade is
+  running and enable controls.
+- ReShade Remote controls are no longer disabled when the game is not running. They can be used
+  before launch, and settings take effect when the game opens the shared-memory control block.
+- `Install component` now waits for the elevated installer and reports a clear error if the
+  `ReShade64.dll` is locked by a running game, instead of silently doing nothing.
+- `ReShadeRemote` status now distinguishes `Not installed`, `Ready`, and `Connected` instead of
+  the previous "controls locked until heartbeat" behavior.
+
+## 4.1.122 - 2026-07-11 (UI Cleanup: Baked-in Options, Removed Broken Features)
+
+- Removed the visor mask size slider from the main window and per-app profile editor. The mask
+  is now hardcoded to maximum corner coverage: it always extends to the full edges of the
+  cropped view and only rounds the corners. Crop values (vertical/horizontal render height)
+  continue to control the full render dimensions from the center.
+- `mask_size`/`visor_size` is deprecated and no longer affects geometry. The geometry builders
+  now use `mask_width_scale`/`mask_height_scale` fixed at 1.0 so the opening always fills the
+  crop bounding box.
+- Removed experimental LOD pop-in fix and edge-smear fix: the UI checkboxes and their native code
+  paths are gone, and the config keys are ignored.
+- Removed HD visor and anti-aliasing checkboxes: their code paths are disabled and config keys
+  ignored.
+- `foveated_center_compensation`, `stencil_outer_edges_only`, and `crop_outer_edges_only` are now
+  permanently enabled. Their UI checkboxes are removed and the config keys are ignored.
+
 ## 4.1.113 - 2026-07-11 (Headset Regression Fixes)
 
 - Fixed `Crop outer edges only`: the native FOV crop now scales only the outer edge when enabled

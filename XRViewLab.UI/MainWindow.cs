@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -37,8 +37,6 @@ public partial class MainWindow : Window
 
 	// Render options
 	private const string MaskEnabledKey = "mask_enabled";
-	private const string VisorHDKey = "visor_hd";
-	private const string VisorAntiAliasingKey = "visor_antialiasing";
 	private const string MaskRoundedKey = "mask_rounded";
 	private const string MaskCornerKey = "mask_corner";
 	private const string MaskOffsetYKey = "mask_offset_y";
@@ -48,18 +46,12 @@ public partial class MainWindow : Window
 	private const string MaskRightBiasKey = "mask_right_bias";
 	private const string MaskTopCurveKey = "mask_top_curve";
 	private const string MaskBottomCurveKey = "mask_bottom_curve";
-	private const string MaskSizeKey = "mask_size";
 	private const string MaskOuterApexYKey = "mask_outer_apex_y";
 	private const string MaskInnerLowerYKey = "mask_inner_lower_y";
 	private const string MaskInnerBridgeWidthKey = "mask_inner_bridge_width";
 	private const string MaskInnerBridgeRiseKey = "mask_inner_bridge_rise";
 	private const string MaskInnerBridgePeakXKey = "mask_inner_bridge_peak_x";
 	private const string MaskInnerBridgeSteepnessKey = "mask_inner_bridge_steepness";
-	private const string FoveatedCenterKey = "foveated_center_compensation";
-	private const string StencilOuterEdgesKey = "stencil_outer_edges_only";
-	private const string CropOuterEdgesKey = "crop_outer_edges_only";
-	private const string EdgeSmearFixKey = "edge_smear_fix";
-	private const string LodPopInFixKey = "lod_popin_fix";
 	private const string HorizVisualMaskBothKey = "horizontal_visual_mask_only";
 	private const string HorizOuterEyeMaskKey = "horizontal_outer_eye_mask";
 	private const string HorizInnerEyeMaskKey = "horizontal_inner_eye_mask";
@@ -67,14 +59,14 @@ public partial class MainWindow : Window
 	private const string VertTopMaskKey = "vertical_top_mask_only";
 	private const string VertBottomMaskKey = "vertical_bottom_mask_only";
 
-	// ReShade MENU — OpenXR
+	// ReShade MENU � OpenXR
 	private const string XrHmdMenuKey = "reshade_xr_hmd_menu";
 	private const string Xr3dMenuKey = "reshade_xr_3d_menu";
 	private const string XrHeadLockedKey = "reshade_xr_head_locked";
 	private const string Xr3dCursorKey = "reshade_xr_3d_cursor";
 	private const string XrOxrtkColorsKey = "reshade_xr_oxrtk_colors";
 
-	// ReShade MENU — OpenVR
+	// ReShade MENU � OpenVR
 	private const string VrDesktopDupKey = "reshade_vr_desktop_dup";
 	private const string VrAlwaysOnTopKey = "reshade_vr_always_on_top";
 	private const string VrLockPositionKey = "reshade_vr_lock_position";
@@ -164,7 +156,7 @@ public partial class MainWindow : Window
 	private void VisualMasksButton_Click(object sender, RoutedEventArgs e)
 	{
 		// StaysOpen=False closes the popup on MouseDown before this Click fires.
-		// If it closed within the last 200ms the click was the close — don't reopen.
+		// If it closed within the last 200ms the click was the close � don't reopen.
 		if ((DateTime.UtcNow - _visualMasksPopupClosedAt).TotalMilliseconds < 200)
 			return;
 		VisualMasksPopup.PlacementTarget = (UIElement)sender;
@@ -540,7 +532,7 @@ public partial class MainWindow : Window
 			WideGapColumn2.Width = threeCol  ? new GridLength(14.0) : new GridLength(0.0);
 			RightColumn.Width    = threeCol  ? new GridLength(1.0, GridUnitType.Star) : new GridLength(0.0);
 
-			// EnabledCard and RenderCard live in LeftColumnPanel (always left col) — see XAML.
+			// EnabledCard and RenderCard live in LeftColumnPanel (always left col) � see XAML.
 			// LeftColumnPanel is a single top-aligned StackPanel spanning the grid rows, so the
 			// tall RowSpan side panels (cols 2/4) cannot inject blank space between the left cards.
 
@@ -882,28 +874,13 @@ public partial class MainWindow : Window
 		return TryReadTextBox(HorizontalBox, out var horizontal) ? Math.Clamp(horizontal, 0.01, 1.0) : 1.0;
 	}
 
-	private static double OpeningFromMask(double maskVertical, double maskHorizontal, double cropVertical, double cropHorizontal)
-	{
-		double verticalOpening = cropVertical > 0.0 ? maskVertical / cropVertical : maskVertical;
-		double horizontalOpening = cropHorizontal > 0.0 ? maskHorizontal / cropHorizontal : maskHorizontal;
-		return Math.Clamp((verticalOpening + horizontalOpening) * 0.5, 0.05, 1.0);
-	}
-
-	private void ApplyMaskOpening(double opening)
-	{
-		double clamped = Math.Clamp(opening, 0.05, 1.0);
-		MaskBeanEditor.Opening = clamped;
-		MaskVerticalBox.Text = FormatScale(CurrentVerticalCrop() * Math.Clamp(clamped, 0.01, 1.0));
-		MaskHorizontalBox.Text = FormatScale(CurrentHorizontalCrop() * Math.Clamp(clamped, 0.01, 1.0));
-	}
-
 	private void SyncMaskEditorFromSliders()
 	{
 		if (MaskBeanEditor == null)
 		{
 			return;
 		}
-		MaskBeanEditor.Opening = MaskOpeningSlider?.Value ?? 1.0;
+		MaskBeanEditor.Size = 1.0; // Hardcoded maximum corner coverage
 		MaskBeanEditor.Curve = MaskRoundnessSlider?.Value ?? 0.5;
 		MaskBeanEditor.OffsetX = MaskOffsetXSlider?.Value ?? 0.0;
 		MaskBeanEditor.OffsetY = MaskOffsetYSlider?.Value ?? 0.0;
@@ -913,7 +890,7 @@ public partial class MainWindow : Window
 		MaskBeanEditor.InnerBridgeRise = MaskInnerBridgeRiseSlider?.Value ?? 0.0;
 		MaskBeanEditor.InnerBridgePeakX = MaskInnerBridgePeakXSlider?.Value ?? 0.5;
 		MaskBeanEditor.InnerBridgeSteepness = MaskInnerBridgeSteepnessSlider?.Value ?? 0.5;
-		MaskBeanEditor.OpenInnerPreview = StencilOuterEdgesCheck?.IsChecked == true;
+		MaskBeanEditor.OpenInnerPreview = true; // Stencil outer edges only is permanently enabled
 	}
 
 	private void LoadSettings()
@@ -930,13 +907,10 @@ public partial class MainWindow : Window
 		HorizontalBox.Text = FormatScale(value);
 		// Mask (visor): absolute bounds, default 1.0 = no mask on that axis.
 		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
-		VisorHDCheck.IsChecked = ReadBoolSetting(VisorHDKey, fallback: false);
-		VisorAntiAliasingCheck.IsChecked = ReadBoolSetting(VisorAntiAliasingKey, fallback: true);
 		MaskRoundedCheck.IsChecked = ReadBoolSetting(MaskRoundedKey, fallback: true);
 		MaskVerticalBox.Text = FormatScale(ReadScaleSetting("mask_vertical", 1.0));
 		MaskHorizontalBox.Text = FormatScale(ReadScaleSetting("mask_horizontal", 1.0));
 		MaskRoundnessSlider.Value = 1.0 - ReadScaleSetting(MaskCornerKey, 0.5);
-		MaskOpeningSlider.Value = ReadScaleSetting(MaskSizeKey, 0.82);
 
 		MaskApexYSlider.Value = ReadRangeSetting(MaskOuterApexYKey, 0.0, -0.5, 0.5);
 		MaskInnerLowerSlider.Value = ReadRangeSetting(MaskInnerLowerYKey, 0.0, 0.0, 0.333);
@@ -947,13 +921,8 @@ public partial class MainWindow : Window
 		MaskOffsetXSlider.Value = 0.0;
 		MaskOffsetYSlider.Value = 0.0;
 		SyncMaskEditorFromSliders();
-		// Render options
-		FoveatedCenterCheck.IsChecked = ReadBoolSetting(FoveatedCenterKey, fallback: false);
-		StencilOuterEdgesCheck.IsChecked = ReadBoolSetting(StencilOuterEdgesKey, fallback: true);
-		MaskBeanEditor.OpenInnerPreview = StencilOuterEdgesCheck.IsChecked == true;
-		CropOuterEdgesCheck.IsChecked = ReadBoolSetting(CropOuterEdgesKey, fallback: true);
-		EdgeSmearFixCheck.IsChecked = ReadBoolSetting(EdgeSmearFixKey, fallback: false);
-		LodPopInFixCheck.IsChecked = ReadBoolSetting(LodPopInFixKey, fallback: false);
+		// Render options: foveated center, stencil outer edges, and crop outer edges are permanently enabled.
+		MaskBeanEditor.OpenInnerPreview = true;
 		HorizVisualMaskBothCheck.IsChecked = ReadBoolSetting(HorizVisualMaskBothKey, fallback: false);
 		HorizOuterEyeMaskCheck.IsChecked = ReadBoolSetting(HorizOuterEyeMaskKey, fallback: false);
 		HorizInnerEyeMaskCheck.IsChecked = ReadBoolSetting(HorizInnerEyeMaskKey, fallback: false);
@@ -1067,8 +1036,6 @@ public partial class MainWindow : Window
 			if (MaskBeanEditor != null && MaskRoundnessSlider != null)
 			{
 				SyncMaskEditorFromSliders();
-				MaskBeanEditor.Opening = OpeningFromMask(maskV, maskH, CurrentVerticalCrop(), CurrentHorizontalCrop());
-				SetSliderValue(MaskOpeningSlider, MaskBeanEditor.Opening);
 			}
 			_syncingControls = false;
 		}
@@ -1090,12 +1057,6 @@ public partial class MainWindow : Window
 		if (!_loading && !_syncingControls)
 		{
 			UpdateHints();
-			if (MaskOpeningSlider != null && MaskVerticalBox != null && MaskHorizontalBox != null)
-			{
-				_syncingControls = true;
-				ApplyMaskOpening(MaskOpeningSlider.Value);
-				_syncingControls = false;
-			}
 			SaveGlobalSettings();
 		}
 	}
@@ -1116,19 +1077,6 @@ public partial class MainWindow : Window
 		{
 			_syncingControls = true;
 			SyncMaskEditorFromSliders();
-			ApplyMaskOpening(MaskOpeningSlider.Value);
-			_syncingControls = false;
-			SaveGlobalSettings();
-		}
-	}
-
-	private void MaskOpeningSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-	{
-		if (!_loading && !_syncingControls && MaskBeanEditor != null && MaskVerticalBox != null && MaskHorizontalBox != null)
-		{
-			_syncingControls = true;
-			double opening = Math.Clamp(MaskOpeningSlider.Value, 0.05, 1.0);
-			ApplyMaskOpening(opening);
 			_syncingControls = false;
 			SaveGlobalSettings();
 		}
@@ -1145,7 +1093,6 @@ public partial class MainWindow : Window
 			SetSliderValue(MaskInnerBridgeRiseSlider, MaskBeanEditor.InnerBridgeRise);
 			SetSliderValue(MaskInnerBridgePeakXSlider, MaskBeanEditor.InnerBridgePeakX);
 			SetSliderValue(MaskInnerBridgeSteepnessSlider, MaskBeanEditor.InnerBridgeSteepness);
-			ApplyMaskOpening(MaskBeanEditor.Opening);
 			_syncingControls = false;
 			SaveGlobalSettings();
 		}
@@ -1210,9 +1157,7 @@ public partial class MainWindow : Window
 		if (_loading) return;
 		e.Handled = true;
 		_syncingControls = true;
-		if (sender == MaskOpeningSlider)   MaskOpeningSlider.Value   = 0.82;
-
-		else if (sender == MaskRoundnessSlider) MaskRoundnessSlider.Value = 0.5;
+		if (sender == MaskRoundnessSlider) MaskRoundnessSlider.Value = 0.5;
 		else if (sender == MaskApexYSlider)     MaskApexYSlider.Value     = 0.0;
 		else if (sender == MaskInnerLowerSlider) MaskInnerLowerSlider.Value = 0.0;
 		else if (sender == MaskInnerBridgeSlider) MaskInnerBridgeSlider.Value = 0.5;
@@ -1220,7 +1165,6 @@ public partial class MainWindow : Window
 		else if (sender == MaskInnerBridgePeakXSlider) MaskInnerBridgePeakXSlider.Value = 0.5;
 		else if (sender == MaskInnerBridgeSteepnessSlider) MaskInnerBridgeSteepnessSlider.Value = 0.5;
 		SyncMaskEditorFromSliders();
-		ApplyMaskOpening(MaskOpeningSlider.Value);
 		_syncingControls = false;
 		SaveGlobalSettings();
 	}
@@ -1270,13 +1214,9 @@ public partial class MainWindow : Window
 			{
 				SyncTextFromSlider(MaskHorizontalBox, MaskHorizontalSlider);
 			}
-			if (MaskOpeningSlider != null && TryReadTextBox(MaskVerticalBox, out var maskV) && TryReadTextBox(MaskHorizontalBox, out var maskH))
+			if (MaskBeanEditor != null)
 			{
-				SetSliderValue(MaskOpeningSlider, OpeningFromMask(maskV, maskH, CurrentVerticalCrop(), CurrentHorizontalCrop()));
-				if (MaskBeanEditor != null)
-				{
-					SyncMaskEditorFromSliders();
-				}
+				SyncMaskEditorFromSliders();
 			}
 			SaveGlobalSettings();
 		}
@@ -1321,28 +1261,11 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		StatusText.Text = "Render options saved. Restart the VR game.";
 	}
 
-	private void StencilOuterEdgesCheck_Changed(object sender, RoutedEventArgs e)
-	{
-		if (_loading) return;
-		if (MaskBeanEditor != null)
-		{
-			MaskBeanEditor.OpenInnerPreview = StencilOuterEdgesCheck.IsChecked == true;
-		}
-		SaveExperimentalSettings();
-	}
-
 	private void SaveExperimentalSettings()
 	{
 		Directory.CreateDirectory(ConfigDirectory);
 		WritePrivateProfileString("Settings", MaskEnabledKey, MaskEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", VisorHDKey, VisorHDCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", VisorAntiAliasingKey, VisorAntiAliasingCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskRoundedKey, MaskRoundedCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", FoveatedCenterKey, FoveatedCenterCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", StencilOuterEdgesKey, StencilOuterEdgesCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", CropOuterEdgesKey, CropOuterEdgesCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", EdgeSmearFixKey, EdgeSmearFixCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", LodPopInFixKey, LodPopInFixCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HorizVisualMaskBothKey, HorizVisualMaskBothCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HorizOuterEyeMaskKey, HorizOuterEyeMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HorizInnerEyeMaskKey, HorizInnerEyeMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
@@ -1420,7 +1343,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		LogToFile($"Applied launch xr_mode={(gameplay ? 0 : 1)}");
 	}
 
-	// Old ReShade checkbox handlers removed — these controls now live in ReShadeRemoteWindow.
+	// Old ReShade checkbox handlers removed � these controls now live in ReShadeRemoteWindow.
 
 
 	private DateTime _vrQuadPopupClosedAt = DateTime.MinValue;
@@ -1580,7 +1503,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		double maskH = TryReadTextBox(MaskHorizontalBox, out var mh) ? Math.Clamp(mh, 0.01, 1.0) : 1.0;
 		WritePrivateProfileString("Settings", "mask_vertical", FormatStorageScale(maskV), ConfigPath);
 		WritePrivateProfileString("Settings", "mask_horizontal", FormatStorageScale(maskH), ConfigPath);
-		WritePrivateProfileString("Settings", MaskSizeKey, FormatStorageScale(MaskOpeningSlider.Value), ConfigPath);
+		
 
 		WritePrivateProfileString("Settings", MaskCornerKey, FormatStorageScale(1.0 - MaskRoundnessSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", MaskOuterApexYKey, FormatStorageScale(MaskApexYSlider.Value), ConfigPath);
@@ -1869,8 +1792,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		double maskRightBias = FromSignedMillis(appKey.GetValue("mask_right_bias"), fallbackMaskRightBias);
 		double maskTopCurve = FromSignedMillis(appKey.GetValue("mask_top_curve"), fallbackMaskTopCurve);
 		double maskBottomCurve = FromSignedMillis(appKey.GetValue("mask_bottom_curve"), fallbackMaskBottomCurve);
-		double visorSize = FromMillis(appKey.GetValue("visor_size"), 0.0);
-		double visorOuterApexY = FromSignedMillis(appKey.GetValue("mask_outer_apex_y"), 0.0);
+				double visorOuterApexY = FromSignedMillis(appKey.GetValue("mask_outer_apex_y"), 0.0);
 		double visorInnerLowerY = FromMillis(appKey.GetValue("mask_inner_lower_y"), 0.0);
 		double visorInnerBridgeWidth = FromMillis(appKey.GetValue("mask_inner_bridge_width"), 0.5);
 		double visorInnerBridgeRise = FromMillis(appKey.GetValue("mask_inner_bridge_rise"), 0.0, 0.5);
@@ -1902,7 +1824,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			MaskRightBias = maskRightBias,
 			MaskTopCurve = maskTopCurve,
 			MaskBottomCurve = maskBottomCurve,
-			VisorSize = visorSize,
+			VisorSize = 1.0, // Size slider removed; always maximum corner coverage
 			VisorOuterApexY = visorOuterApexY,
 			VisorInnerLowerY = visorInnerLowerY,
 			VisorInnerBridgeWidth = visorInnerBridgeWidth,
@@ -2087,7 +2009,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			0.0,
 			0.0,
 			0.0,
-			MaskOpeningSlider?.Value ?? 0.82,
+			1.0,
 			MaskApexYSlider?.Value ?? 0.0,
 			MaskInnerLowerSlider?.Value ?? 0.0,
 			MaskInnerBridgeSlider?.Value ?? 0.5,
@@ -2134,7 +2056,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 
 		var globalMask = CurrentGlobalMaskValues();
-		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, appProfile.VisorSize, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, globalMask.visorSize, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness, StencilOuterEdgesCheck?.IsChecked == true)
+		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, 1.0, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, 1.0, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness, true) // Stencil outer edges only is permanently enabled
 		{
 			Owner = this
 		};

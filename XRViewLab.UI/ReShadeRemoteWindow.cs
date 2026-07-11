@@ -383,8 +383,21 @@ public sealed class ReShadeRemoteWindow : Window
 
         try
         {
-            Process.Start(psi);
-            _setup.Text = "Installer launched. Approve Windows permission, then restart the VR game.";
+            using Process? p = Process.Start(psi);
+            if (p == null)
+            {
+                _setup.Text = "Install failed: Windows did not start the installer.";
+                return;
+            }
+            p.WaitForExit();
+            if (p.ExitCode == 0)
+            {
+                _setup.Text = "ReShade installed. Launch the game and ReShade Remote will connect.";
+            }
+            else
+            {
+                _setup.Text = "Install failed: ReShade is in use. Close the game and click Install again.";
+            }
         }
         catch
         {
@@ -395,30 +408,39 @@ public sealed class ReShadeRemoteWindow : Window
     void UpdateSetupText(bool live)
     {
         bool hasPayload = HasBundledPayload();
-        SetButtonEnabled(_btnInstall, hasPayload && !live);
-        SetButtonEnabled(_gameplay, live);
-        SetButtonEnabled(_tuning, live);
-        SetButtonEnabled(_btnReposition, live);
-        SetButtonEnabled(_btnTransform, live);
-        _menu.IsEnabled = live;
-        _headless.IsEnabled = live;
-        _onTop.IsEnabled = live;
+        bool deployed = IsBundledPayloadDeployed();
 
-        if (live)
+        // Controls are always usable once a payload is present. The remote should behave like a TV
+        // remote: buttons can be pressed even if the game is not currently running. Settings apply
+        // when the game starts.
+        SetButtonEnabled(_btnInstall, hasPayload && !live);
+        SetButtonEnabled(_gameplay, hasPayload);
+        SetButtonEnabled(_tuning, hasPayload);
+        SetButtonEnabled(_btnReposition, hasPayload);
+        SetButtonEnabled(_btnTransform, hasPayload);
+        _menu.IsEnabled = hasPayload;
+        _headless.IsEnabled = hasPayload;
+        _onTop.IsEnabled = hasPayload;
+
+        if (!_svc.Connected)
         {
-            _setup.Text = "Connected: ReShade Remote component is running.";
+            _setup.Text = "Control channel failed. Close and reopen ReShade Remote.";
+        }
+        else if (live)
+        {
+            _setup.Text = "Connected: ReShade is running in the game.";
         }
         else if (!hasPayload)
         {
-            _setup.Text = "Unavailable: this build does not include the ReShade Remote component.";
+            _setup.Text = "Unavailable: this ViewLab build does not include the ReShade Remote component.";
         }
-        else if (!IsBundledPayloadDeployed())
+        else if (!deployed)
         {
-            _setup.Text = "Remote payload is not installed. Click Install component, approve Windows permission, then restart the VR game.";
+            _setup.Text = "ReShade is not installed yet. Click Install, approve Windows permission, then launch the game.";
         }
         else
         {
-            _setup.Text = "Remote payload is installed. Start or restart the VR game; controls unlock once ReShade reports in.";
+            _setup.Text = "Ready: ReShade is installed. Launch your game to connect.";
         }
     }
 
@@ -436,8 +458,28 @@ public sealed class ReShadeRemoteWindow : Window
         var b = _svc.ReadBlock();
         if (b.heartbeat != _lastHb) { _lastHb = b.heartbeat; _lastHbChange = DateTime.Now; }
         bool live = (DateTime.Now - _lastHbChange).TotalSeconds < 2.0;
-        _status.Text = live ? "[Connected] ReShade running" : (HasBundledPayload() ? "[Ready] Install or start game" : "[Unavailable] Component missing");
-        _status.Foreground = live ? Green : Amber;
+
+        if (live)
+        {
+            _status.Text = "[Connected] ReShade running";
+            _status.Foreground = Green;
+        }
+        else if (IsBundledPayloadDeployed())
+        {
+            _status.Text = "[Ready] Install complete — launch game";
+            _status.Foreground = Amber;
+        }
+        else if (HasBundledPayload())
+        {
+            _status.Text = "[Not installed] Click Install";
+            _status.Foreground = Amber;
+        }
+        else
+        {
+            _status.Text = "[Unavailable] Component missing";
+            _status.Foreground = Muted;
+        }
+
         UpdateSetupText(live);
 
         _applying = true;

@@ -16,8 +16,8 @@ Per-app registry: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>` — DWORD encod
 | `total_render_height` | 0..1 / 0.18 | `totalTangent` | millis | legacy fallbacks `total_share`, `vertical_tangent` |
 | `split_mode` + `top_tangent` / `bottom_tangent` | 0.09/0.09 | `topTangent`/`bottomTangent` | millis | split top/bottom crop |
 | `horizontal_render_width` | 0..1 / 0.80 | `horizontalRenderWidth` | millis | |
-| `crop_outer_edges_only` | 1 | `cropOuterEdgesOnly` | — | horizontal crop takes from outer edges only when on; full-width symmetric horizontal crop when off |
-| `foveated_center_compensation` | 0 | `foveatedCenterCompensation` | dword | |
+| `crop_outer_edges_only` | 1 | `cropOuterEdgesOnly` | — | **Permanently enabled** — config key ignored. Horizontal crop takes from outer edges only. |
+| `foveated_center_compensation` | 1 | `foveatedCenterCompensation` | dword | **Permanently enabled** — config key ignored. |
 | `visual_mask_only`, `horizontal_visual_mask_only` | 0 | same names | — | mask instead of crop (loses GPU savings); Edge Masks popup "Both" controls write these keys |
 | `render_scale` | 0.1..3 / 1.0 | `renderScale` | ×1e6 dword | per-game supersampling |
 
@@ -26,7 +26,7 @@ Per-app registry: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>` — DWORD encod
 | ini key | range/default | DLL global | per-app | UI control |
 |---|---|---|---|---|
 | `mask_enabled` | 0 | `maskEnabled` | global-only (per-app enable deliberately ignored — DECISIONS D6) | Visor mask checkbox |
-| `mask_size` | 0.05..1 / **0.82 fallback** | `visorSize` | `visor_size` millis | Size slider (single source of truth — REGRESSIONS R4) |
+| `mask_size` | 0.05..1 / **1.0** | `visorSize` | `visor_size` millis | **Deprecated** — no longer used. The visor mask is always maximum corner coverage. |
 | `mask_corner` | 0..1 | `visorCurve = 1 − maskCorner` | `mask_corner` millis | Curve slider (stored inverted) |
 | `mask_outer_apex_y` | −0.5..0.5 / 0 | `visorOuterApexY` | signed millis | Apex Y slider + red pin |
 | `mask_inner_lower_y` | 0..0.333 / 0 | `visorInnerLowerY` | millis | Inner low slider + orange pin |
@@ -34,16 +34,16 @@ Per-app registry: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>` — DWORD encod
 | `mask_inner_bridge_rise` | 0..0.5 / 0 | `visorInnerBridgeRise` | millis | Rise slider |
 | `mask_inner_bridge_peak_x` | 0..1 / 0.5 | `visorInnerBridgePeakX` | millis | Peak X slider |
 | `mask_inner_bridge_steepness` | 0..1 / 0.5 | `visorInnerBridgeSteepness` | millis | Steepness slider |
-| `mask_width_scale` / `mask_height_scale` | 1.0 | `visorWidth`/`visorHeight` | `visor_width`/`visor_height` | neutralized in product (kept 1.0) |
+| `mask_width_scale` / `mask_height_scale` | 1.0 | `visorWidth`/`visorHeight` | `visor_width`/`visor_height` | Fixed at 1.0; the visor mask always fills the crop opening and only affects corners. |
 | `visor_technique` | `c` | `visorTechnique` | — | a/b hidden; DirectWrite is the product path |
-| `visor_hd` | 0 | `visorHD` | — | HD visor checkbox; doubles curve tessellation |
-| `visor_antialiasing` | 1 | `visorAntialiasing` | — | Anti-aliasing checkbox; controls aperture feather strips |
+| `visor_hd` | 0 | — | — | **Removed** — code disabled; key ignored. |
+| `visor_antialiasing` | 0 | — | — | **Removed** — code disabled; key ignored. |
 
 ## Stencil / visibility mask
 
 | ini key | default | DLL global | Notes |
 |---|---|---|---|
-| `stencil_outer_edges_only` | 1 | `outerEdgeVisibilityMaskOnly` | THE checkbox key; legacy fallback `outer_edge_visibility_mask_only`. Drives the 3-part stencil pipeline (ARCHITECTURE) |
+| `stencil_outer_edges_only` | 1 | `outerEdgeVisibilityMaskOnly` | **Permanently enabled** — config keys ignored. Legacy fallback `outer_edge_visibility_mask_only` also ignored. Drives the 3-part stencil pipeline (ARCHITECTURE) |
 | `visibility_mask_visor` | 0 | ignored/retired | retired legacy hidden-mesh reshaper; `1` is logged and ignored |
 
 ## Diagnostics / misc
@@ -51,8 +51,8 @@ Per-app registry: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>` — DWORD encod
 | ini key | default | DLL global |
 |---|---|---|
 | `verbose_logging` | 0 | `verboseLogging` |
-| `edge_smear_fix`, `edge_smear_pixels` | 0 / 2 | `edgeSmearFix`, `edgeSmearPixels` |
-| `lod_popin_fix` | 0 | `lodPopInFix` — diagnostic-only; the full-FOV path it once enabled causes stretch and must stay disabled (DECISIONS D5) |
+| `edge_smear_fix`, `edge_smear_pixels` | 0 / 2 | — | **Removed** — code disabled; keys ignored. |
+| `lod_popin_fix` | 0 | — | **Removed** — code disabled; key ignored. |
 
 Dead keys (removed 4.1.65, do not resurrect): `mask_vertical`/`mask_horizontal` as opening source,
 `mask_rounded`, `mask_offset_y`, `mask_*_bias`, `mask_*_curve` as visor inputs, `reshade_hmd_menu`,

@@ -53,21 +53,18 @@ public partial class ProfileWindow : Window
 	private readonly double _globalMaskCorner;
 	private readonly double _globalOffsetX;
 	private readonly double _globalOffsetY;
-	private readonly double _globalVisorSize;
 	private readonly double _globalVisorOuterApexY;
 	private readonly double _globalVisorInnerLowerY;
 	private readonly double _globalVisorInnerBridgeWidth;
 	private readonly double _globalVisorInnerBridgeRise;
 	private readonly double _globalVisorInnerBridgePeakX;
 	private readonly double _globalVisorInnerBridgeSteepness;
-	private readonly bool _globalStencilOuterEdges;
 	private readonly bool _customMaskEnabled;
 	private readonly double _customMaskVertical;
 	private readonly double _customMaskHorizontal;
 	private readonly double _customMaskCorner;
 	private readonly double _customOffsetX;
 	private readonly double _customOffsetY;
-	private readonly double _customVisorSize;
 	private readonly double _customVisorOuterApexY;
 	private readonly double _customVisorInnerLowerY;
 	private readonly double _customVisorInnerBridgeWidth;
@@ -103,21 +100,18 @@ public partial class ProfileWindow : Window
 		_globalMaskCorner = globalMaskCorner;
 		_globalOffsetX = globalOffsetX;
 		_globalOffsetY = globalOffsetY;
-		_globalVisorSize = globalVisorSize;
 		_globalVisorOuterApexY = globalVisorOuterApexY;
 		_globalVisorInnerLowerY = globalVisorInnerLowerY;
 		_globalVisorInnerBridgeWidth = globalVisorInnerBridgeWidth;
 		_globalVisorInnerBridgeRise = globalVisorInnerBridgeRise;
 		_globalVisorInnerBridgePeakX = globalVisorInnerBridgePeakX;
 		_globalVisorInnerBridgeSteepness = globalVisorInnerBridgeSteepness;
-		_globalStencilOuterEdges = globalStencilOuterEdges;
 		_customMaskEnabled = maskEnabled;
 		_customMaskVertical = maskVertical;
 		_customMaskHorizontal = maskHorizontal;
 		_customMaskCorner = maskCorner;
 		_customOffsetX = Math.Clamp((maskLeftBias + maskRightBias) * 0.5, -1.0, 1.0);
 		_customOffsetY = Math.Clamp((maskTopBias + maskBottomBias) * 0.5, -1.0, 1.0);
-		_customVisorSize = Math.Clamp(visorSize, 0.05, 1.0);
 		_customVisorOuterApexY = Math.Clamp(visorOuterApexY, -0.5, 0.5);
 		_customVisorInnerLowerY = Math.Clamp(visorInnerLowerY, 0.0, 0.333);
 		_customVisorInnerBridgeWidth = Math.Clamp(visorInnerBridgeWidth, 0.0, 1.0);
@@ -138,7 +132,6 @@ public partial class ProfileWindow : Window
 		MaskHorizontalValue = maskHorizontal;
 		MaskVerticalBox.Text = FormatScale(maskVertical);
 		MaskHorizontalBox.Text = FormatScale(maskHorizontal);
-		double legacyOpening = OpeningFromMask(maskVertical, maskHorizontal, top + bottom, horizontal);
 		MaskRoundedValue = maskRounded;
 		MaskCornerValue = maskCorner;
 		MaskTopBiasValue = maskTopBias;
@@ -150,7 +143,6 @@ public partial class ProfileWindow : Window
 
 		bool useGlobal = visorSize <= 0;
 		UseGlobalVisorCheck.IsChecked = useGlobal;
-		StencilOuterEdgesCheck.IsChecked = _globalStencilOuterEdges;
 		if (useGlobal) LoadGlobalVisorValues();
 		else LoadCustomVisorValues();
 		SetVisorSlidersEnabled(!useGlobal);
@@ -207,40 +199,13 @@ public partial class ProfileWindow : Window
 		return TryRead(HorizontalBox.Text, out var horizontal) ? Math.Clamp(horizontal, 0.01, 1.0) : 1.0;
 	}
 
-	private static double OpeningFromMask(double maskVertical, double maskHorizontal, double cropVertical, double cropHorizontal)
-	{
-		double verticalOpening = cropVertical > 0.0 ? maskVertical / cropVertical : maskVertical;
-		double horizontalOpening = cropHorizontal > 0.0 ? maskHorizontal / cropHorizontal : maskHorizontal;
-		return Math.Clamp((verticalOpening + horizontalOpening) * 0.5, 0.05, 1.0);
-	}
-
-	private static double WidthScaleFromMask(double maskHorizontal, double cropHorizontal, double size)
-	{
-		return Math.Clamp(cropHorizontal > 0.0 && size > 0.0 ? maskHorizontal / cropHorizontal / size : 1.0, 0.5, 1.5);
-	}
-
-	private static double HeightScaleFromMask(double maskVertical, double cropVertical, double size)
-	{
-		return Math.Clamp(cropVertical > 0.0 && size > 0.0 ? maskVertical / cropVertical / size : 1.0, 0.5, 1.5);
-	}
-
-	private void ApplyMaskOpening(double opening)
-	{
-		if (!_initialized) return;
-		double clamped = Math.Clamp(opening, 0.05, 1.0);
-		MaskBeanEditor.Opening = clamped;
-		MaskVerticalBox.Text = FormatScale(CurrentVerticalCrop() * Math.Clamp(clamped, 0.01, 1.0));
-		MaskHorizontalBox.Text = FormatScale(CurrentHorizontalCrop() * Math.Clamp(clamped, 0.01, 1.0));
-		SyncMaskEditorFromSliders();
-	}
-
 	private void SyncMaskEditorFromSliders()
 	{
 		if (MaskBeanEditor == null)
 		{
 			return;
 		}
-		MaskBeanEditor.Opening = VisorSizeSlider?.Value ?? 1.0;
+		MaskBeanEditor.Size = 1.0; // Hardcoded maximum corner coverage
 		MaskBeanEditor.Curve = VisorCurveSlider?.Value ?? 0.5;
 		MaskBeanEditor.OuterApexY = VisorApexYSlider?.Value ?? 0.0;
 		MaskBeanEditor.InnerLowerY = VisorInnerLowerSlider?.Value ?? 0.0;
@@ -250,13 +215,12 @@ public partial class ProfileWindow : Window
 		MaskBeanEditor.InnerBridgeSteepness = VisorInnerBridgeSteepnessSlider?.Value ?? 0.5;
 		MaskBeanEditor.OffsetX = VisorOffsetXSlider?.Value ?? 0.0;
 		MaskBeanEditor.OffsetY = VisorOffsetYSlider?.Value ?? 0.0;
-		MaskBeanEditor.OpenInnerPreview = StencilOuterEdgesCheck?.IsChecked == true;
+		MaskBeanEditor.OpenInnerPreview = true; // Stencil outer edges only is permanently enabled
 	}
 
 	private void SetVisorSlidersEnabled(bool enabled)
 	{
 		VisorEnabledCheck.IsEnabled = false;
-		VisorSizeSlider.IsEnabled = enabled;
 		VisorCurveSlider.IsEnabled = enabled;
 		VisorApexYSlider.IsEnabled = enabled;
 		VisorInnerLowerSlider.IsEnabled = enabled;
@@ -297,25 +261,10 @@ public partial class ProfileWindow : Window
 	private void Values_Changed(object sender, TextChangedEventArgs e)
 	{
 		if (!_initialized) return;
-		if (MaskBeanEditor != null && TryRead(MaskVerticalBox.Text, out var maskV) && TryRead(MaskHorizontalBox.Text, out var maskH))
+		if (MaskBeanEditor != null)
 		{
-			MaskBeanEditor.Opening = OpeningFromMask(maskV, maskH, CurrentVerticalCrop(), CurrentHorizontalCrop());
+			MaskBeanEditor.Size = 1.0;
 		}
-		if (sender != RenderBox)
-		{
-			ApplyMaskOpening(VisorSizeSlider?.Value ?? 0.82);
-		}
-		UpdateHints();
-	}
-
-	private void MaskOpeningSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-	{
-		if (!_initialized || _syncingControls || VisorSizeSlider == null)
-		{
-			return;
-		}
-		double opening = Math.Clamp(VisorSizeSlider.Value, 0.05, 1.0);
-		ApplyMaskOpening(opening);
 		UpdateHints();
 	}
 
@@ -354,7 +303,7 @@ public partial class ProfileWindow : Window
 		MaskRightBiasValue = offsetX;
 		MaskTopCurveValue = 0.0;
 		MaskBottomCurveValue = 0.0;
-		VisorSizeValue = VisorSizeSlider.Value;
+		VisorSizeValue = 1.0;
 		VisorCurveValue = VisorCurveSlider.Value;
 		VisorOuterApexYValue = VisorApexYSlider.Value;
 		VisorInnerLowerYValue = VisorInnerLowerSlider.Value;
@@ -381,7 +330,6 @@ public partial class ProfileWindow : Window
 		MaskVerticalBox.Text = FormatScale(_globalMaskVertical);
 		MaskHorizontalBox.Text = FormatScale(_globalMaskHorizontal);
 		VisorEnabledCheck.IsChecked = _globalMaskEnabled;
-		VisorSizeSlider.Value = _globalVisorSize;
 		VisorCurveSlider.Value = Math.Clamp(1.0 - _globalMaskCorner, 0.0, 1.0);
 		VisorApexYSlider.Value = _globalVisorOuterApexY;
 		VisorInnerLowerSlider.Value = _globalVisorInnerLowerY;
@@ -398,7 +346,6 @@ public partial class ProfileWindow : Window
 		MaskVerticalBox.Text = FormatScale(_customMaskVertical);
 		MaskHorizontalBox.Text = FormatScale(_customMaskHorizontal);
 		VisorEnabledCheck.IsChecked = _customMaskEnabled;
-		VisorSizeSlider.Value = _customVisorSize;
 		VisorCurveSlider.Value = Math.Clamp(1.0 - _customMaskCorner, 0.0, 1.0);
 		VisorApexYSlider.Value = _customVisorOuterApexY;
 		VisorInnerLowerSlider.Value = _customVisorInnerLowerY;
@@ -428,13 +375,6 @@ public partial class ProfileWindow : Window
 	}
 
 	private void MaskShapeSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-	{
-		if (!_initialized || _syncingControls || MaskBeanEditor == null) return;
-		SyncMaskEditorFromSliders();
-		ApplyMaskOpening(VisorSizeSlider?.Value ?? 0.82);
-	}
-
-	private void StencilOuterEdgesCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		if (!_initialized || _syncingControls || MaskBeanEditor == null) return;
 		SyncMaskEditorFromSliders();
@@ -495,8 +435,6 @@ public partial class ProfileWindow : Window
 		VisorInnerBridgeRiseSlider.Value = MaskBeanEditor.InnerBridgeRise;
 		VisorInnerBridgePeakXSlider.Value = MaskBeanEditor.InnerBridgePeakX;
 		VisorInnerBridgeSteepnessSlider.Value = MaskBeanEditor.InnerBridgeSteepness;
-		VisorSizeSlider.Value = MaskBeanEditor.Opening;
-		ApplyMaskOpening(MaskBeanEditor.Opening);
 		_syncingControls = false;
 	}
 

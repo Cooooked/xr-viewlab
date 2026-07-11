@@ -3,12 +3,13 @@
 > Why things are the way they are. Append-only; add an entry when a decision becomes permanent.
 > Format: decision, reasoning, alternatives rejected, consequences.
 
-## D1 — Crop lives in `xrLocateViews` + recommended-size reduction (2026-07)
+## D1 — Crop lives in `xrLocateViews` + recommended-size reduction (2026-07; updated 2026-07-11)
 Real GPU savings require the game to render fewer pixels, so ViewLab crops the FOV tangents the
 game sees AND reduces the recommended image size. Rejected: reporting full FOV while rendering
 reduced size (the `lod_popin_fix` experiment) — projection/culling and submitted geometry
-disagree, producing stretched output. Consequence: aggressive crops can cause LOD pop-in;
-`lod_popin_fix` stays diagnostic-only.
+disagree, producing stretched output. Consequence: aggressive crops can cause LOD pop-in.
+`lod_popin_fix` and `edge_smear_fix` were removed from UI and code in 4.1.122; they were never
+productized and only produced noise. Both config keys are ignored.
 
 ## D2 — Technique C Direct is the product visor path (2026-07, v4.1.61+)
 Draw the mask directly into the game's eye texture at `xrReleaseSwapchainImage` (last legal write
@@ -53,13 +54,11 @@ the DLL must read that key (it read a different name for months — R3).
 only") mode that's exactly the inner-edge stenciling the user is turning OFF — so it draws only
 when the checkbox is unchecked. Both visor geometry and this boundary key off the same flag.
 
-## D10 — Edge AA = feathered edge strips, not supersampling (2026-07-10, Pass 3 design)
-The mask interior is flat black; only the boundary aliases. Chosen: per-vertex coverage strip
-along the boundary (~1–1.5 texels, alpha 1→0), single pass, continuous gradient, ~zero cost.
-Rejected: 2× offscreen supersample (extra RT + composite for the same 4 samples/px) and the
-historical 4-pass JitterCB approach (4.1.68 — worked, but 4× fill for 4 quantized coverage
-levels; see `docs/history/dllmain_features_4.1.68.md`). `visor_hd` becomes double tessellation
-(curvature facets), not resolution.
+## D10 — Visor edge AA and HD were removed (2026-07-11)
+The previous feathered-edge anti-aliasing implementation broke the visor mask in practice and
+the HD checkbox (2× tessellation) had no visible benefit. Both checkboxes and their code paths
+were removed; `visor_hd` and `visor_antialiasing` config keys are ignored. The visor is drawn
+with opaque geometry at the default tessellation level.
 
 ## D11 — Repository is the canonical memory (2026-07-10)
 `agents.md` = operating manual, `STATE.md` = live state, `docs/` = deep knowledge, updated in
@@ -77,3 +76,10 @@ The packaged ini supplies safe defaults for a fresh install. Ordinary upgrades d
 live `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini` or per-app HKCU overrides. A changing MSI-version
 reset marker was rejected because it made every update a factory reset, and running that cleanup
 from the native OpenXR layer also put file/registry mutation inside a game's startup path.
+
+## D13 — Foveated center, stencil outer edges, and crop outer edges are permanently on (2026-07-11)
+The user never toggles these off and the product is simpler with fewer switches. `foveated_center_compensation`,
+`stencil_outer_edges_only`/`outer_edge_visibility_mask_only`, and `crop_outer_edges_only` are now
+hardcoded on and their config keys are ignored. UI checkboxes removed. Consequence: `crop_outer_edges_only`
+always applies the horizontal crop from the outer edges, preserving the inner edge for the nose/bridge.
+`stencil_outer_edges_only` keeps the open-inner (single-eye) shape in the visibility mask and preview.

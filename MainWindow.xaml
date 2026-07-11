@@ -407,22 +407,16 @@
                 <TextBlock Name="BottomHint" Grid.Row="14" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                 <Slider Name="BottomSlider" Grid.Row="16" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="1" ValueChanged="RenderSlider_Changed" />
                 <TextBlock Name="CombinedHint" Grid.Row="18" Grid.ColumnSpan="5" Foreground="{StaticResource MutedBrush}" />
-                <CheckBox Name="EdgeSmearFixCheck" Grid.Row="20" Grid.ColumnSpan="5" Content="Experimental: edge-smear fix" Foreground="#A8A8A8" Margin="0,0,0,0" ToolTip="Draws small black guard bands into the submitted projection edges to stop runtimes sampling smeared edge texels." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                <CheckBox Name="LodPopInFixCheck" Grid.Row="22" Grid.ColumnSpan="5" Content="Experimental: LOD pop-in fix" Foreground="#A8A8A8" Margin="0,0,0,0" ToolTip="Diagnostic-only in this build; ViewLab still preserves the vertical and horizontal crop." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
               </Grid>
             </Border>
             <!-- Render Options: lives in LeftColumnPanel for single/two-col; moved to RightColumnPanel in 3-col by UpdateResponsiveLayout -->
             <TextBlock Name="OptionsHeader" Text="RENDER OPTIONS" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,10,0,5" />
             <Border Name="OptionsCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,0">
               <StackPanel>
-                <CheckBox Name="FoveatedCenterCheck" Content="Center fovea on render slice" Foreground="#A8A8A8" Margin="0,0,0,4" ToolTip="Centers the game's foveated rendering circle on the rendered area." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                <CheckBox Name="StencilOuterEdgesCheck" Content="Stencil outer edges only" Foreground="#A8A8A8" Margin="0,0,0,4" ToolTip="Filters OpenXR hidden visibility-mask triangles so each eye keeps only its outer-side stencil. Works with Virtual Desktop's FOV stencil. Preview shows single-eye open-inner shape (nose/bridge) instead of closed bean." Checked="StencilOuterEdgesCheck_Changed" Unchecked="StencilOuterEdgesCheck_Changed" />
-                <CheckBox Name="CropOuterEdgesCheck" Content="Crop outer edges only" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Crops only the outer edges of the render area instead of the full vertical slice." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+
                 <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
                 <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                <CheckBox Name="VisorHDCheck" Content="HD visor (2x supersampling)" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Render visor at 2x resolution internally for better edge quality (higher GPU cost)." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                <CheckBox Name="VisorAntiAliasingCheck" Content="Anti-aliasing" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Enable additional anti-aliasing for smoother visor edges." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                 <ui:BeanMaskEditor x:Name="MaskBeanEditor" Height="76" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Preview uses the same rounded aperture settings as the OpenXR D3D11 mask texture." />
                 <Grid Margin="0,0,0,0">
                   <Grid.ColumnDefinitions>
@@ -437,27 +431,24 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="0" />
                   </Grid.RowDefinitions>
-                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Size" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskOpeningSlider" Grid.Row="0" Grid.Column="1" Minimum="0.05" Maximum="1" ValueChanged="MaskOpeningSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskRoundnessSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Apex Y" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskApexYSlider" Grid.Row="2" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="MaskApexYSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerLowerSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="0.333" ValueChanged="MaskInnerLowerSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgeSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgeRiseSlider" Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="0.5" ValueChanged="MaskInnerBridgeRiseSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="6" Grid.Column="0" Text="Peak X" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgePeakXSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgePeakXSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="7" Grid.Column="0" Text="Steep" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgeSteepnessSlider" Grid.Row="7" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgeSteepnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <Slider Name="MaskOffsetXSlider" Grid.Row="8" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
-                  <Slider Name="MaskOffsetYSlider" Grid.Row="9" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskRoundnessSlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Apex Y" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskApexYSlider" Grid.Row="1" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="MaskApexYSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskInnerLowerSlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="0.333" ValueChanged="MaskInnerLowerSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskInnerBridgeSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskInnerBridgeRiseSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="0.5" ValueChanged="MaskInnerBridgeRiseSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Peak X" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskInnerBridgePeakXSlider" Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgePeakXSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="6" Grid.Column="0" Text="Steep" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskInnerBridgeSteepnessSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgeSteepnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <Slider Name="MaskOffsetXSlider" Grid.Row="7" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
+                  <Slider Name="MaskOffsetYSlider" Grid.Row="8" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
                 </Grid>
                 <TextBox Name="MaskVerticalBox" Visibility="Collapsed" />
                 <TextBox Name="MaskHorizontalBox" Visibility="Collapsed" />

@@ -36,12 +36,15 @@ function Assert-IniValue([string]$Key, [string]$Value) {
 
 # ---- Default ini carries the visor shape keys -------------------------------------
 Assert-IniValue 'mask_enabled' '0'
-Assert-IniValue 'mask_size' '0.82'
+Assert-IniValue 'mask_size' '1.0'
 Assert-IniValue 'mask_corner' '0.5'
 Assert-IniValue 'visor_hd' '0'
-Assert-IniValue 'visor_antialiasing' '1'
+Assert-IniValue 'visor_antialiasing' '0'
 Assert-IniValue 'visibility_mask_visor' '0'
 Assert-IniValue 'edge_smear_pixels' '2'
+Assert-IniValue 'foveated_center_compensation' '1'
+Assert-IniValue 'stencil_outer_edges_only' '1'
+Assert-IniValue 'crop_outer_edges_only' '1'
 Assert-IniValue 'verbose_logging' '0'
 Assert-IniValue 'mask_outer_apex_y' '0.0'
 Assert-IniValue 'mask_inner_lower_y' '0.0'
@@ -66,7 +69,7 @@ Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'ApplyPendingInstallVisorReset\(
 Assert-NotContains 'dllmain.cpp' 'ApplyPendingInstallVisorReset\(\);' 'OpenXR runtime path never resets user visor settings'
 Assert-Contains 'dllmain.cpp' 'if \(draw\.tex\) draw\.tex->AddRef\(\);' 'late fallback holds the swapchain texture alive outside the map lock'
 Assert-Contains 'dllmain.cpp' 'p\.tex->Release\(\);' 'late fallback releases its swapchain texture reference'
-Assert-Contains 'dllmain.cpp' 'cropOuterEdgesOnly && viewIndex == 0' 'outer-edge crop is applied only when its checkbox is enabled'
+Assert-Contains 'dllmain.cpp' 'cropOuterEdgesOnly && viewIndex == 0' 'outer-edge crop is applied (permanently enabled)'
 Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'EncodedCommand' 'ReShade payload installation uses robust PowerShell command encoding'
 Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'IsBundledPayloadDeployed' 'ReShade Remote reports whether its custom payload actually deployed'
 Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'Environment\.ProcessPath' 'payload lookup uses the real exe dir, not the single-file TEMP extraction dir'
@@ -84,8 +87,7 @@ Assert-Contains 'ProfileWindow.xaml' 'Name="VisorInnerLowerSlider"[^>]*Minimum="
 
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'private const string MaskOuterApexYKey = "mask_outer_apex_y";' 'main window has Apex Y config key'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'private const string MaskInnerLowerYKey = "mask_inner_lower_y";' 'main window has Inner low config key'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'private const string StencilOuterEdgesKey = "stencil_outer_edges_only";' 'main window writes the stencil key the DLL reads'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'MaskBeanEditor\.OpenInnerPreview = StencilOuterEdgesCheck' 'main preview follows the stencil/open-inner checkbox'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'MaskBeanEditor\.OpenInnerPreview = true' 'main preview is hardcoded to open-inner (stencil outer edges permanently on)'
 
 # ---- Preview exposes the shape controls -------------------------------------------
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'public double OuterApexY' 'preview exposes Apex Y'
@@ -110,16 +112,18 @@ Assert-Contains 'dllmain.cpp' 'ReadDoubleSetting\(L"mask_inner_bridge_width", 0\
 Assert-Contains 'dllmain.cpp' 'ReadDoubleSetting\(L"mask_inner_bridge_rise", 0\.0\)' 'native reads bridge rise'
 Assert-Contains 'dllmain.cpp' 'ReadDoubleSetting\(L"mask_inner_bridge_peak_x", 0\.5\)' 'native reads bridge peak x'
 Assert-Contains 'dllmain.cpp' 'ReadDoubleSetting\(L"mask_inner_bridge_steepness", 0\.5\)' 'native reads bridge steepness'
-Assert-Contains 'dllmain.cpp' 'visorHD = ReadBoolSetting\(L"visor_hd", false\);' 'native reads HD visor setting'
-Assert-Contains 'dllmain.cpp' 'visorAntialiasing = ReadBoolSetting\(L"visor_antialiasing", true\);' 'native reads AA visor setting'
-Assert-Contains 'dllmain.cpp' 'cropOuterEdgesOnly = ReadBoolSetting\(L"crop_outer_edges_only", true\);' 'native reads crop outer edges mode'
+Assert-Contains 'dllmain.cpp' 'constexpr bool visorHD = false' 'HD visor is hardcoded off'
+Assert-Contains 'dllmain.cpp' 'constexpr bool visorAntialiasing = false' 'visor anti-aliasing is hardcoded off'
+Assert-Contains 'dllmain.cpp' 'bool cropOuterEdgesOnly = true' 'crop outer edges is hardcoded on'
+Assert-Contains 'dllmain.cpp' 'bool foveatedCenterCompensation = true' 'foveated center compensation is hardcoded on'
+Assert-Contains 'dllmain.cpp' 'bool outerEdgeVisibilityMaskOnly = true' 'stencil outer edges only is hardcoded on'
 Assert-Contains 'dllmain.cpp' 'ReadProfileDword\(L"mask_outer_apex_y", profileOuterApexY\);' 'native reads per-app Apex Y'
 Assert-Contains 'dllmain.cpp' 'ReadProfileDword\(L"mask_inner_lower_y", profileInnerLowerY\);' 'native reads per-app Inner low'
 Assert-Contains 'dllmain.cpp' 'ReadProfileDword\(L"mask_inner_bridge_rise", profileBridgeRise\);' 'native reads per-app bridge rise'
 Assert-Contains 'dllmain.cpp' 'ReadProfileDword\(L"mask_inner_bridge_peak_x", profileBridgePeakX\);' 'native reads per-app bridge peak x'
 Assert-Contains 'dllmain.cpp' 'ReadProfileDword\(L"mask_inner_bridge_steepness", profileBridgeSteepness\);' 'native reads per-app bridge steepness'
 Assert-Contains 'dllmain.cpp' 'std::clamp\(SignedMillisToUnit\(profileOuterApexY, visorOuterApexY\), -0\.5, 0\.5\)' 'native clamps decoded per-app Apex Y'
-Assert-Contains 'dllmain.cpp' 'visor_hd=%d visor_antialiasing=%d' 'native config log includes AA/HD controls'
+Assert-NotContains 'dllmain.cpp' 'visor_hd=%d visor_antialiasing=%d' 'native config log no longer includes removed AA/HD controls'
 Assert-Contains 'dllmain.cpp' 'visor_outer_apex_y=%.3f visor_inner_lower_y=%.3f' 'native config log includes new visor controls'
 Assert-Contains 'dllmain.cpp' 'crop_outer_edges_only=%d' 'native config and verbose logs include actual crop mode'
 
@@ -138,9 +142,7 @@ Assert-Contains 'dllmain.cpp' 'const float topFeatherY = std::clamp\(y0 \+ feath
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'double dir = dx > 0\.0 \? 1\.0 : -1\.0;' 'preview nose bridge handles mirror correctly'
 
 # ---- Native layer: stencil fixes must survive (4.1.102/4.1.103) --------------------
-Assert-Contains 'dllmain.cpp' 'ReadBoolSetting\(L"stencil_outer_edges_only",' 'DLL reads the checkbox key with legacy fallback'
 Assert-Contains 'dllmain.cpp' 'const bool keepOuterEdge =' 'visibility-mask filter keeps outer-edge triangles'
-Assert-Contains 'dllmain.cpp' 'if \(!openInnerShape && allViews\.size\(\) >= 2' 'partner-eye boundary only drawn when stencil checkbox is off'
 Assert-Contains 'dllmain.cpp' 'visibility_mask_visor=1 is retired' 'legacy visibility-mask visor path is explicitly ignored'
 Assert-Contains 'dllmain.cpp' 'visibilityMaskVisor = false;' 'legacy visibility-mask visor cannot reshape current visor geometry'
 
@@ -152,7 +154,6 @@ Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.DeleteValue\("mask_en
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.DeleteValue\("mask_inner_bridge_rise"' 'UI reset deletes per-app bridge rise'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.DeleteValue\("mask_inner_bridge_peak_x"' 'UI reset deletes per-app bridge peak x'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.DeleteValue\("mask_inner_bridge_steepness"' 'UI reset deletes per-app bridge steepness'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ReadScaleSetting\(MaskSizeKey, 0\.82\)' 'missing mask_size falls back directly to the safe 0.82 default'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'MaskRoundnessSlider\.Value = 0\.5;' 'curve right-click reset returns to the safe default'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'private const string HorizVisualMaskBothKey = "horizontal_visual_mask_only";' 'horizontal Edge Masks checkbox writes the DLL key'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'private const string VertVisualMaskBothKey = "visual_mask_only";' 'vertical Edge Masks checkbox writes the DLL key'

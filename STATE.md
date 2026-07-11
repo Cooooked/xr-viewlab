@@ -4,9 +4,16 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-11
-**Current version:** 4.1.117 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.117.msi`
+**Current version:** 4.1.123 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.123.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
 **Publish state:** local commits ahead of origin/master; DO NOT push until user confirms current work in-headset.
+
+## ReShade Remote (4.1.123)
+
+- ReShade payload rebuilt from `ReshadeAI/reshade` source to fix the missing `heartbeat` signal that kept `ReShadeRemote` controls disabled.
+- `ReShadeRemote` controls are no longer disabled when the game is not running; they behave like a remote that pre-configures settings before the game starts.
+- `Install component` now waits for the installer to finish and reports a clear "in use" error if ReShade is locked by a running game.
+- Pistol Whip compatibility with the custom payload is still pending headset confirmation.
 
 ## Context: the 2026-07-10 recovery
 
@@ -19,10 +26,15 @@ boundary gated to closed-bean mode (details in `docs/DECISIONS.md` D7–D9).
 
 ## Current implementation status
 
-4.1.117 completes the **single-visor consolidation**: Technique A/B machinery, the
-`visor_technique` selector, and the legacy `visibility_mask_visor` reshaper are fully removed.
-There is exactly ONE visor renderer — the D3D11 draw into the game's eye textures at swapchain
-release, with the late `xrEndFrame` fallback. The retired ini key is read only to log a warning.
+4.1.122 removes the **visor mask size slider** entirely and hardcodes the mask to maximum
+corner coverage. It also removes the experimental LOD pop-in fix, edge-smear fix, HD visor, and
+anti-aliasing toggles and their code paths. `foveated_center_compensation`, `stencil_outer_edges_only`,
+and `crop_outer_edges_only` are now permanently on; their UI checkboxes are removed and config
+keys are ignored. The visor mask now only rounds the corners of the cropped view; the crop
+values (vertical/horizontal render height) still control the full render dimensions from the
+center. `mask_size`/`visor_size` is deprecated and no longer affects geometry. The size slider
+has been removed from the main window and per-app profile editor, and the preview geometry uses
+`WidthScale`/`HeightScale` fixed at 1.0 so the mask always extends to the edges of the crop.
 Everything below is NOT headset-confirmed; last confirmed-good remains 4.1.103.
 
 ## Current headset blockers (2026-07-11)
