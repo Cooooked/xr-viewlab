@@ -199,6 +199,14 @@ public sealed class BeanMaskEditor : FrameworkElement
 		}
 	}
 
+	// The canvas represents the full uncropped binocular render (two square-ish eye views
+	// side by side, ~2:1), so it sizes itself to that aspect from the available width.
+	protected override Size MeasureOverride(Size availableSize)
+	{
+		double width = double.IsInfinity(availableSize.Width) ? 240.0 : availableSize.Width;
+		return new Size(width, width * 0.5);
+	}
+
 	protected override void OnRender(DrawingContext dc)
 	{
 		base.OnRender(dc);
@@ -232,6 +240,8 @@ public sealed class BeanMaskEditor : FrameworkElement
 		DrawPins(dc, leftEye);
 	}
 
+	// One-to-one reference: the canvas is the full uncropped binocular render, so the crop
+	// values map directly — Vertical 0.2 occupies 20% of the reference height. No zoom/fit.
 	private Rect CropRect(Rect area)
 	{
 		double w = Math.Max(0.0, area.Width * CropHorizontal);

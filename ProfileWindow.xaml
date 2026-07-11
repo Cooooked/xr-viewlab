@@ -237,7 +237,7 @@
               <TextBlock Grid.Row="18" Grid.Column="0" Text="Y" VerticalAlignment="Center" FontSize="12" />
               <Slider Name="VisorOffsetYSlider" Grid.Row="18" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
             </Grid>
-            <ui:BeanMaskEditor x:Name="MaskBeanEditor" Height="120" Margin="0,8,0,0" ShapeChanged="MaskBeanEditor_ShapeChanged" />
+            <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,8,0,0" ShapeChanged="MaskBeanEditor_ShapeChanged" />
           </StackPanel>
           <TextBlock Name="CombinedHint" Grid.Row="19" Grid.ColumnSpan="3" Foreground="{StaticResource MutedBrush}" />
           <StackPanel Grid.Row="21" Grid.ColumnSpan="3" Orientation="Horizontal">

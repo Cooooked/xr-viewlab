@@ -4,19 +4,22 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-12
-**Current version:** 4.1.146 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.146.msi`
+**Current version:** 4.1.148 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.148.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
 **Publish state:** 4.1.142 published. New installer-safety repair is local; DO NOT publish until the user confirms it in-headset.
 
-## Binocular WYSIWYG preview + inner-eye controls hidden (4.1.146, 2026-07-12)
+## Binocular WYSIWYG preview + inner-eye controls hidden (4.1.146–4.1.148, 2026-07-12)
 
 UI-only pass, not yet headset-validated:
 
-- `BeanMaskEditor` now renders a binocular preview: left and right eye halves side by side inside
-  a crop rect that scales with the current Vertical/Horizontal crop values (`CropVertical`/
-  `CropHorizontal`, view-only properties that do not raise `ShapeChanged`). The open-inner mode
-  reuses `AddOpenInnerHalf` mirrored per eye; closed mode draws `AddClosedFigure` (the former
-  `BuildGeometry`) once per eye. Pins and drag math operate on the left-eye rect.
+- `BeanMaskEditor` now renders a binocular preview at a fixed one-to-one reference: the canvas
+  sizes itself to the full uncropped binocular render (2:1 via `MeasureOverride`), and the crop
+  rect maps the Vertical/Horizontal crop values directly inside it (Vertical 0.2 occupies 20% of
+  the reference height — no zoom/fit; an earlier aspect-fit approach was rejected for destroying
+  the sense of scale). `CropVertical`/`CropHorizontal` are view-only properties that do not raise
+  `ShapeChanged`. The open-inner mode reuses `AddOpenInnerHalf` mirrored per eye; closed mode
+  draws `AddClosedFigure` (the former `BuildGeometry`) once per eye. Pins and drag math operate
+  on the left-eye rect.
 - Main window and profile popup feed crop values into the preview on load and on every crop
   slider/text/split change, so the preview aspect tracks the actual post-crop render area.
 - Inner-eye notch controls (Inner low, Bridge, Rise, Peak X, Steep) are hidden in both windows
