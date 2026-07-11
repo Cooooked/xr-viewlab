@@ -6,7 +6,7 @@
 **Updated:** 2026-07-12
 **Current version:** 4.1.148 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.148.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
-**Publish state:** 4.1.142 published. New installer-safety repair is local; DO NOT publish until the user confirms it in-headset.
+**Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
 
 ## Binocular WYSIWYG preview + inner-eye controls hidden (4.1.146–4.1.148, 2026-07-12)
 
