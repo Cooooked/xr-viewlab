@@ -2,6 +2,67 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## Unreleased - 2026-07-12 (Fixed-Foveation Visor Coverage)
+
+- Restored the unified visor Size control (`0.05..1.0`, default `1.0`). It shrinks only the
+  exposed aperture, leaving ViewLab crop tangents, submitted FOV, and render resolution intact.
+- Curve `0` now emits an exact rectangular aperture, including the open-inner per-eye geometry.
+- Extended Peak X from `0..1` to `-0.5..1`; values left of zero move the mirrored per-eye peak
+  twice as far from the binocular centre as the old minimum. Existing per-app Peak X values keep
+  their legacy encoding and meaning.
+
+## Unreleased - 2026-07-12 (Visor Shape Range Pass)
+
+- Replaced the Curve-zero geometry branch with a continuous near-square curve shoulder, so the
+  first slider movement no longer jumps shape or disables Inner low.
+- Expanded Size minimum to `0.1`, Inner low maximum to `0.666`, Rise to `-0.5..1`, Peak X to
+  `-1..2`, and Steep to `-1..2`. Bridge handle response is strengthened at both ends; all defaults
+  retain their previous geometry.
+- Moved the ReShade Remote entry beside Edge Masks above the visor controls, and added draggable
+  preview pins for every visor shape slider.
+- Removed redundant Applications/Render Options sub-headers to align responsive dual/triple-column
+  cards, and restored the beta-testers credit in triple-column mode.
+- Shortened the app-list instruction, removed the redundant combined render-height readout, and
+  moved the triple-column beta-testers credit directly below the right-column card.
+- Retuned responsive client-width cutovers to 280px (mini), 720px (two columns), and 1200px
+  (three columns), preventing squeezed multi-column layouts during resize.
+- The PowerUp/per-app profile popup now has a themed, reserved-column scrollbar that cannot overlap
+  visor controls.
+- Added a prominent "WARNING — DO NOT USE" banner to the experimental ReShade Remote.
+- Global visor size/shape controls now update live after the UI commits a visor-only revision;
+  crop/FOV/resolution and per-app profiles deliberately remain restart-required.
+- Forefront discovery now targets `Forefront_Internal.exe`, and the native layer emits a precise
+  Forefront process-entry diagnostic to distinguish loader, instance-chain, and crop-hook failures.
+
+## Unreleased - 2026-07-11 (Experimental Crop-Fix Purge)
+
+- Removed all experimental crop-fix and edge-smear diagnostic code from the native layer:
+  crop experiment modes (visibility-mask passthrough / disable hidden-area culling / crop-aware
+  mask mapping / edge-source probe), the black edge-guard frame (`edge_smear_fix`/
+  `edge_smear_pixels`), the edge-guard/probe draw paths, and all crop-contract diagnostic
+  logging and snapshot machinery. Config keys are ignored if present.
+- Removed the "EXPERIMENTAL CROP FIXES" checkbox group from the UI.
+- Root cause of the edge smear is documented in `docs/FIXED_FOVEATION.md` (Virtual Desktop
+  fixed foveated encoding; not fixable in ViewLab). Full record: `docs/EDGE_SMEAR_INVESTIGATION.md`.
+
+## Unreleased - 2026-07-11 (Crop Resolution A/B)
+
+- Added hidden default-off `crop_boundary_full_resolution_experiment`. It preserves ViewLab's
+  cropped FOV while returning the runtime's original recommended swapchain dimensions for an
+  isolated Virtual Desktop boundary-smear comparison.
+
+## Unreleased - 2026-07-11 (Crop Boundary Diagnostics)
+
+- Added rate-limited OpenXR crop-contract diagnostics. They compare each submitted primary-stereo
+  projection frame with its exact same-session, same-display-time `xrLocateViews` snapshot and
+  log FOV and sub-image bounds without modifying rendering behaviour.
+
+## Unreleased - 2026-07-11 (Visor Curve Fidelity)
+
+- Increased the fixed native visor curve tessellation from 96 to 512 segments. This removes the
+  long straight chords that made curved mask edges appear blocky in headset, without restoring
+  the removed HD or anti-aliasing controls.
+
 ## 4.1.123 - 2026-07-11 (ReShade Remote: Robust Install + Live Controls)
 
 - Rebuilt the bundled `ReShadePayload/ReShade64.dll` from `ReshadeAI/reshade` source so the

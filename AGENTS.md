@@ -69,6 +69,7 @@ symbol search, never end-to-end "to get familiar":
 | What does config key X do? Who reads/writes it? | `docs/CONFIG.md` |
 | Why is it built this way? | `docs/DECISIONS.md` |
 | What broke before and must never break again? | `docs/REGRESSIONS.md` |
+| Why do crop edges smear? (closed: VD fixed foveation) | `docs/FIXED_FOVEATION.md` (summary), `docs/EDGE_SMEAR_INVESTIGATION.md` (full record) |
 | How do I verify behavior in the headset? | `docs/VERIFICATION.md` |
 | What shipped when? | `CHANGELOG.md` |
 | Older research/plans/journals (rarely needed) | `docs/history/` |

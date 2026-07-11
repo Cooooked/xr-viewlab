@@ -63,6 +63,12 @@ public sealed class ReShadeRemoteWindow : Window
         dock.Children.Add(TitleBar());
         var body = new StackPanel { Margin = new Thickness(16, 2, 16, 14) };
 
+        body.Children.Add(new TextBlock {
+            Text = "WARNING — DO NOT USE",
+            Foreground = B("#FF4B55"), FontSize = 20, FontWeight = FontWeights.Bold,
+            TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 4, 0, 8)
+        });
+
         _status = new TextBlock { Foreground = Muted, FontSize = 12, Margin = new Thickness(0, 0, 0, 8) };
         body.Children.Add(_status);
         _setup = new TextBlock { Foreground = Muted, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
@@ -365,7 +371,9 @@ public sealed class ReShadeRemoteWindow : Window
             "Copy-Item -LiteralPath (Join-Path $src 'ReShade64.dll') -Destination (Join-Path $dest 'ReShade64.dll') -Force;" +
             "Copy-Item -LiteralPath (Join-Path $src 'ReShade64_XR.json') -Destination (Join-Path $dest 'ReShade64_XR.json') -Force;" +
             "$key='HKLM:\\SOFTWARE\\Khronos\\OpenXR\\1\\ApiLayers\\Implicit';" +
-            "New-Item -Path $key -Force | Out-Null;" +
+            // NEVER use New-Item -Force here: on an existing registry key it recreates the
+            // key and deletes every other implicit OpenXR layer registered on the machine.
+            "if(-not(Test-Path $key)){New-Item -Path $key | Out-Null};" +
             "$json='C:\\ProgramData\\ReShade\\ReShade64_XR.json';" +
             "New-ItemProperty -Path $key -Name $json -PropertyType DWord -Value 0 -Force | Out-Null;";
 

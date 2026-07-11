@@ -51,11 +51,13 @@ double visorOffsetY = 0.0;
 // change here must be mirrored there. Values are authored in the UI's coordinate
 // convention (y grows DOWN); the UI-to-NDC flip happens ONLY in ApexYFromConfigNdc.
 double visorOuterApexY = 0.0;          // mask_outer_apex_y: -0.5..0.5, outer-curve apex offset
-double visorInnerLowerY = 0.0;         // mask_inner_lower_y: 0..0.333, nose-divot band height (0 = off)
+double visorInnerLowerY = 0.0;         // mask_inner_lower_y: 0..0.666, nose-divot band height (0 = off)
 double visorInnerBridgeWidth = 0.5;    // mask_inner_bridge_width: 0..1, bezier handle width
-double visorInnerBridgeRise = 0.0;     // mask_inner_bridge_rise: 0..0.5, endpoint tangent rise
-double visorInnerBridgePeakX = 0.5;    // mask_inner_bridge_peak_x: 0..1, handle horizontal shift
-double visorInnerBridgeSteepness = 0.5;// mask_inner_bridge_steepness: 0..1, handle length scale
+double visorInnerBridgeRise = 0.0;     // mask_inner_bridge_rise: -0.5..1, endpoint tangent rise
+double visorInnerBridgePeakX = 0.5;    // mask_inner_bridge_peak_x: -1..2, handle horizontal shift
+double visorInnerBridgeSteepness = 0.5;// mask_inner_bridge_steepness: -1..2, handle length scale
+double liveVisorRevision = 0.0;
+bool liveVisorUsesProfileOverride = false;
 constexpr bool visorHD = false;          // HD visor removed
 constexpr bool visorAntialiasing = false; // anti-aliasing removed
 // There is one product visor: a ViewLab-owned curved corner mask drawn into the
@@ -69,10 +71,9 @@ bool splitMode = false;
 bool foveatedCenterCompensation = true;   // permanently enabled
 bool visualMaskOnly = false;
 bool horizontalVisualMaskOnly = false;
+void Log(const char* fmt, ...);
 bool outerEdgeVisibilityMaskOnly = true;  // permanently enabled
-constexpr bool edgeSmearFix = false;       // edge-smear fix removed
 constexpr bool lodPopInFix = false;        // LOD pop-in fix removed
-int edgeSmearPixels = 2;                   // unused; kept to avoid changing DrawEdgeGuardToTexture signature
 bool uevrLikeProcess = false;
 double totalTangent = DefaultTotalTangent;
 double topTangent = DefaultTopTangent;
@@ -176,6 +177,7 @@ struct D3D11MaskState {
 };
 
 D3D11MaskState g_d3d11Mask;
+
 
 void ReleaseTrackedSwapchainResources(TrackedSwapchain& ts) {
     for (ID3D11RenderTargetView* rtv : ts.rtvs) {
@@ -530,6 +532,13 @@ void RememberApplication(const char* openXrAppName, const char* openXrEngineName
         modulePath.empty() ? L"<unknown>" : modulePath.c_str(),
         createResult,
         runtime.empty() ? L"<unknown>" : runtime.c_str());
+    if (_wcsicmp(CurrentProcessFileName().c_str(), L"Forefront_Internal.exe") == 0 ||
+        _wcsicmp(CurrentProcessFileName().c_str(), L"Forefront.exe") == 0) {
+        Log("forefront diag: VIEWLAB_LOADED process=%ls app_key=%ls create_instance_result=%d runtime=%ls; "
+            "this marker proves the implicit layer entered Forefront's OpenXR process\n",
+            modulePath.empty() ? L"<unknown>" : modulePath.c_str(), currentAppKey.c_str(), createResult,
+            runtime.empty() ? L"<unknown>" : runtime.c_str());
+    }
     if (uevrLikeProcess) {
         Log("app profile: UEVR-like Unreal process detected, enabling conservative runtime guards\n");
     }
@@ -647,6 +656,7 @@ XrQuaternionf PitchQuaternion(float radians) {
 
 void ReleaseD3D11MaskRenderer() {
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
+    const XrSession releasedSession = g_d3d11Mask.session;
     {
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
         for (auto& kv : g_swapchains) {
@@ -700,19 +710,22 @@ struct VisorVertex {
     float x;
     float y;
     float alpha;
+    float r;
+    float g;
+    float b;
 };
 
 static const char kVisorVS[] =
-    "struct VSIn { float2 pos : POSITION; float alpha : ALPHA; };"
-    "struct VSOut { float4 pos : SV_POSITION; float alpha : ALPHA; };"
+    "struct VSIn { float2 pos : POSITION; float alpha : ALPHA; float3 color : COLOR; };"
+    "struct VSOut { float4 pos : SV_POSITION; float alpha : ALPHA; float3 color : COLOR; };"
     "VSOut main(VSIn input) {"
     " VSOut output;"
     " output.pos = float4(input.pos.x, input.pos.y, 0.0f, 1.0f);"
-    " output.alpha = input.alpha;"
+    " output.alpha = input.alpha; output.color = input.color;"
     " return output; }";
 
 static const char kVisorPS[] =
-    "float4 main(float alpha : ALPHA) : SV_TARGET { return float4(0.0f, 0.0f, 0.0f, alpha); }";
+    "float4 main(float alpha : ALPHA, float3 color : COLOR) : SV_TARGET { return float4(color, alpha); }";
 
 bool InitD3D11MaskRenderer() {
     if (g_d3d11Mask.initialized) return true;
@@ -791,9 +804,10 @@ bool InitD3D11MaskRenderer() {
     D3D11_INPUT_ELEMENT_DESC elems[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"ALPHA", 0, DXGI_FORMAT_R32_FLOAT, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     hr = g_d3d11Mask.device->CreateInputLayout(
-        elems, 2, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &g_d3d11Mask.layout);
+        elems, 3, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &g_d3d11Mask.layout);
     vsBlob->Release();
     FreeLibrary(dxcLib);
     if (FAILED(hr)) {
@@ -873,11 +887,12 @@ bool InitD3D11MaskRenderer() {
     return true;
 }
 
-// Curve slider -> superellipse exponent. Geometric interpolation from exp=32 (flat
-// rounded-rect) to exp=2 (full lemon). MUST stay identical to the UI's
-// BeanMaskEditor.CurveExponent: 32 * (2/32)^curve.
+// Curve slider -> superellipse exponent. A near-zero exponential shoulder makes the
+// opening visually rectangular without a separate geometry mode. MUST stay identical
+// to BeanMaskEditor.CurveExponent.
 float VisorCurveExponent(double curve) {
-    return 32.0f * std::pow(2.0f / 32.0f, static_cast<float>(std::clamp(curve, 0.0, 1.0)));
+    const float c = static_cast<float>(std::clamp(curve, 0.0, 1.0));
+    return 32.0f * std::pow(2.0f / 32.0f, c) + 1024.0f * std::exp(-50.0f * c);
 }
 
 // The UI authors apex-y in screen coordinates (y grows DOWN); D3D NDC y grows UP.
@@ -887,8 +902,12 @@ float ApexYFromConfigNdc(double configApexY) {
     return -static_cast<float>(std::clamp(configApexY, -0.5, 0.5));
 }
 
-uint32_t VisorCurveSegments(uint32_t requested = 96u) {
-    return requested; // HD visor removed
+// Fixed high-density tessellation. The retired HD setting previously left the base
+// curve at 96 straight chords, which is visibly faceted on modern HMD eye textures.
+// 512 segments keeps each chord below the visible stepping threshold while remaining
+// within the existing 4096-vertex draw buffer.
+uint32_t VisorCurveSegments(uint32_t requested = 512u) {
+    return requested;
 }
 
 void PushVertex(VisorVertex* vertsOut, uint32_t& v, uint32_t vertCapacity, float x, float y, float alpha = 1.0f) {
@@ -925,9 +944,9 @@ uint32_t BuildVisorBorderVerts(
     const float bboxH = bboxMaxY - bboxMinY;
     if (bboxW < 0.001f || bboxH < 0.001f || vertCapacity < 6) return 0;
 
-    // Hardcoded maximum corner coverage: opening fills the full bbox, mask extends to edges
-    const float sw  = std::clamp(static_cast<float>(visorWidth),  0.01f, 1.0f);
-    const float sh  = std::clamp(static_cast<float>(visorHeight), 0.01f, 1.0f);
+    // Size uniformly shrinks the exposed aperture without affecting render crop/FOV.
+    const float sw  = std::clamp(static_cast<float>(visorSize * visorWidth),  0.01f, 1.0f);
+    const float sh  = std::clamp(static_cast<float>(visorSize * visorHeight), 0.01f, 1.0f);
     const float hw  = bboxW * 0.5f * sw;
     const float hh  = bboxH * 0.5f * sh;
     const float cx  = (bboxMinX + bboxMaxX) * 0.5f
@@ -1002,13 +1021,13 @@ void BuildNoseBridgeCurve(
     if (std::abs(dx) < 0.0005f || yTop - yBase < 0.0005f) return;
 
     const float w  = static_cast<float>(std::clamp(visorInnerBridgeWidth, 0.0, 1.0));
-    const float st = static_cast<float>(std::clamp(visorInnerBridgeSteepness, 0.0, 1.0));
-    const float rs = static_cast<float>(std::clamp(visorInnerBridgeRise, 0.0, 0.5));
-    const float px = static_cast<float>(std::clamp(visorInnerBridgePeakX, 0.0, 1.0));
+    const float st = static_cast<float>(std::clamp(visorInnerBridgeSteepness, -1.0, 2.0));
+    const float rs = static_cast<float>(std::clamp(visorInnerBridgeRise, -0.5, 1.0));
+    const float px = static_cast<float>(std::clamp(visorInnerBridgePeakX, -1.0, 2.0));
 
     // Handle length proportional to the horizontal span, bridge width, and steepness
     // (same formula as the UI preview).
-    const float handleLength = std::abs(dx) * (0.3f + w * 0.4f) * (0.5f + st * 0.5f);
+    const float handleLength = std::abs(dx) * (0.1f + w * 0.8f) * (0.5f + st * 0.5f);
     const float dir = dx > 0.0f ? 1.0f : -1.0f;
     const float dy  = yTop - yBase;
 
@@ -1051,9 +1070,9 @@ uint32_t BuildOpenInnerEyeVisorVerts(
     const float bboxH = bboxMaxY - bboxMinY;
     if (bboxW < 0.001f || bboxH < 0.001f || vertCapacity < 18) return 0;
 
-    // Hardcoded maximum corner coverage: opening fills the full bbox, mask extends to edges
-    const float sw  = std::clamp(static_cast<float>(visorWidth),  0.01f, 1.0f);
-    const float sh  = std::clamp(static_cast<float>(visorHeight), 0.01f, 1.0f);
+    // Size uniformly shrinks the exposed aperture without affecting render crop/FOV.
+    const float sw  = std::clamp(static_cast<float>(visorSize * visorWidth),  0.01f, 1.0f);
+    const float sh  = std::clamp(static_cast<float>(visorSize * visorHeight), 0.01f, 1.0f);
     const float hw  = bboxW * 0.5f * sw;
     const float hh  = bboxH * 0.5f * sh;
     const float cx  = (bboxMinX + bboxMaxX) * 0.5f;
@@ -1077,6 +1096,7 @@ uint32_t BuildOpenInnerEyeVisorVerts(
     // visible-corner leak from the closed oval path.
     quad(bboxMinX, bboxMinY, bboxMaxX, y0);
     quad(bboxMinX, y1, bboxMaxX, bboxMaxY);
+
     if (visorAntialiasing && featherY > 0.0f) {
         const float topFeatherY = std::clamp(y0 + featherY, y0, y1);
         const float bottomFeatherY = std::clamp(y1 - featherY, y0, y1);
@@ -1429,121 +1449,11 @@ void DrawVisorBorderToTexture(
     g_d3d11Mask.context->Flush();
 }
 
-void DrawEdgeGuardToTexture(
-    ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
-    uint32_t arrayIndex, const XrRect2Di& rect, int pixels,
-    ID3D11RenderTargetView* cachedRtv = nullptr) {
-    if (!g_d3d11Mask.initialized || !g_d3d11Mask.context || !tex || pixels <= 0 || rect.extent.width <= 0 || rect.extent.height <= 0) return;
-
-    D3D11_TEXTURE2D_DESC texDesc{};
-    tex->GetDesc(&texDesc);
-    if (texDesc.Width == 0 || texDesc.Height == 0) return;
-
-    const float minX = std::clamp((2.0f * static_cast<float>(rect.offset.x) / static_cast<float>(texDesc.Width)) - 1.0f, -1.0f, 1.0f);
-    const float maxX = std::clamp((2.0f * static_cast<float>(rect.offset.x + rect.extent.width) / static_cast<float>(texDesc.Width)) - 1.0f, -1.0f, 1.0f);
-    const float maxY = std::clamp(1.0f - (2.0f * static_cast<float>(rect.offset.y) / static_cast<float>(texDesc.Height)), -1.0f, 1.0f);
-    const float minY = std::clamp(1.0f - (2.0f * static_cast<float>(rect.offset.y + rect.extent.height) / static_cast<float>(texDesc.Height)), -1.0f, 1.0f);
-    if (maxX <= minX || maxY <= minY) return;
-
-    const float dx = (2.0f * static_cast<float>(pixels)) / static_cast<float>(texDesc.Width);
-    const float dy = (2.0f * static_cast<float>(pixels)) / static_cast<float>(texDesc.Height);
-    VisorVertex verts[24]{};
-    uint32_t v = 0;
-    auto tri = [&](float ax, float ay, float bx, float by, float cx, float cy) {
-        PushTri(verts, v, 24, ax, ay, bx, by, cx, cy);
-    };
-    auto quad = [&](float x0, float y0, float x1, float y1) {
-        if (x1 <= x0 || y1 <= y0 || v + 6 > 24) return;
-        tri(x0, y0, x1, y0, x1, y1);
-        tri(x0, y0, x1, y1, x0, y1);
-    };
-    quad(minX, minY, (std::min)(minX + dx, maxX), maxY);
-    quad((std::max)(maxX - dx, minX), minY, maxX, maxY);
-    quad(minX, minY, maxX, (std::min)(minY + dy, maxY));
-    quad(minX, (std::max)(maxY - dy, minY), maxX, maxY);
-    if (v == 0) return;
-
-    D3D11_MAPPED_SUBRESOURCE mapped{};
-    if (FAILED(g_d3d11Mask.context->Map(g_d3d11Mask.vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
-    memcpy(mapped.pData, verts, v * sizeof(VisorVertex));
-    g_d3d11Mask.context->Unmap(g_d3d11Mask.vb, 0);
-
-    DXGI_FORMAT rtvFormat = GetNonSRGBFormat(static_cast<DXGI_FORMAT>(scFormat));
-    if (rtvFormat == DXGI_FORMAT_UNKNOWN) rtvFormat = GetNonSRGBFormat(texDesc.Format);
-
-    D3D11_RENDER_TARGET_VIEW_DESC rtvDesc{};
-    rtvDesc.Format = rtvFormat;
-    if (arrSize > 1) {
-        rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
-        rtvDesc.Texture2DArray.MipSlice = 0;
-        rtvDesc.Texture2DArray.FirstArraySlice = arrayIndex;
-        rtvDesc.Texture2DArray.ArraySize = 1;
-    } else {
-        rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-        rtvDesc.Texture2D.MipSlice = 0;
-    }
-    const bool ownsRtv = (cachedRtv == nullptr);
-    ID3D11RenderTargetView* rtv = cachedRtv;
-    if (!rtv && (FAILED(g_d3d11Mask.device->CreateRenderTargetView(tex, &rtvDesc, &rtv)) || !rtv)) {
-        return;
-    }
-
-    ID3D11RenderTargetView* sRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
-    ID3D11DepthStencilView* sDSV = nullptr;
-    g_d3d11Mask.context->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, &sDSV);
-    UINT sVPCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
-    D3D11_VIEWPORT sVPs[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
-    g_d3d11Mask.context->RSGetViewports(&sVPCount, sVPs);
-    ID3D11RasterizerState* sRS = nullptr; g_d3d11Mask.context->RSGetState(&sRS);
-    ID3D11BlendState* sBS = nullptr; FLOAT sBF[4]{}; UINT sSM = 0; g_d3d11Mask.context->OMGetBlendState(&sBS, sBF, &sSM);
-    ID3D11DepthStencilState* sDSS = nullptr; UINT sSRef = 0; g_d3d11Mask.context->OMGetDepthStencilState(&sDSS, &sSRef);
-    ID3D11VertexShader* sVS = nullptr; g_d3d11Mask.context->VSGetShader(&sVS, nullptr, nullptr);
-    ID3D11PixelShader* sPS = nullptr; g_d3d11Mask.context->PSGetShader(&sPS, nullptr, nullptr);
-    ID3D11InputLayout* sLayout = nullptr; g_d3d11Mask.context->IAGetInputLayout(&sLayout);
-    D3D11_PRIMITIVE_TOPOLOGY sTopo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED; g_d3d11Mask.context->IAGetPrimitiveTopology(&sTopo);
-    ID3D11Buffer* sVB = nullptr; UINT sStride = 0, sOff = 0; g_d3d11Mask.context->IAGetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
-
-    D3D11_VIEWPORT vp{}; vp.Width = static_cast<float>(texDesc.Width); vp.Height = static_cast<float>(texDesc.Height); vp.MaxDepth = 1.0f;
-    static const FLOAT kBF[] = {0.f, 0.f, 0.f, 0.f};
-    UINT stride = sizeof(VisorVertex), offset = 0;
-    g_d3d11Mask.context->OMSetRenderTargets(1, &rtv, nullptr);
-    g_d3d11Mask.context->RSSetViewports(1, &vp);
-    g_d3d11Mask.context->RSSetState(g_d3d11Mask.rs);
-    g_d3d11Mask.context->OMSetBlendState(
-        visorAntialiasing ? g_d3d11Mask.bs : g_d3d11Mask.bsOpaque, kBF, 0xFFFFFFFF);
-    g_d3d11Mask.context->OMSetDepthStencilState(g_d3d11Mask.dss, 0);
-    g_d3d11Mask.context->VSSetShader(g_d3d11Mask.vs, nullptr, 0);
-    g_d3d11Mask.context->PSSetShader(g_d3d11Mask.ps, nullptr, 0);
-    g_d3d11Mask.context->IASetInputLayout(g_d3d11Mask.layout);
-    g_d3d11Mask.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    g_d3d11Mask.context->IASetVertexBuffers(0, 1, &g_d3d11Mask.vb, &stride, &offset);
-    g_d3d11Mask.context->Draw(v, 0);
-
-    g_d3d11Mask.context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, sDSV);
-    if (sVPCount > 0) g_d3d11Mask.context->RSSetViewports(sVPCount, sVPs);
-    g_d3d11Mask.context->RSSetState(sRS);
-    g_d3d11Mask.context->OMSetBlendState(sBS, sBF, sSM);
-    g_d3d11Mask.context->OMSetDepthStencilState(sDSS, sSRef);
-    g_d3d11Mask.context->VSSetShader(sVS, nullptr, 0);
-    g_d3d11Mask.context->PSSetShader(sPS, nullptr, 0);
-    g_d3d11Mask.context->IASetInputLayout(sLayout);
-    g_d3d11Mask.context->IASetPrimitiveTopology(sTopo);
-    g_d3d11Mask.context->IASetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
-
-    if (ownsRtv) rtv->Release();
-    for (ID3D11RenderTargetView* savedRtv : sRTVs) { if (savedRtv) savedRtv->Release(); }
-    if (sDSV) sDSV->Release();
-    if (sRS) sRS->Release(); if (sBS) sBS->Release();
-    if (sDSS) sDSS->Release(); if (sVS) sVS->Release();
-    if (sPS) sPS->Release(); if (sLayout) sLayout->Release();
-    if (sVB) sVB->Release();
-    g_d3d11Mask.context->Flush();
-}
 
 ID3D11RenderTargetView* CachedRtvFor(const TrackedSwapchain& ts, uint32_t imageIndex, uint32_t arraySlice);
 
-void DrawCapturedProjectionTextures(bool drawEdgeGuard, bool drawVisor, const char* tag) {
-    if ((!drawEdgeGuard && !drawVisor) || !g_d3d11Mask.initialized || !g_d3d11Mask.context) return;
+void DrawCapturedProjectionTextures(bool drawVisor, const char* tag) {
+    if (!drawVisor || !g_d3d11Mask.initialized || !g_d3d11Mask.context) return;
 
     struct PendingDraw {
         ID3D11Texture2D* tex = nullptr;
@@ -1583,10 +1493,6 @@ void DrawCapturedProjectionTextures(bool drawEdgeGuard, bool drawVisor, const ch
         if (p.tex == nullptr) continue;
         for (size_t i = 0; i < p.views.size(); ++i) {
             const EyeView& ev = p.views[i];
-            if (drawEdgeGuard) {
-                DrawEdgeGuardToTexture(p.tex, p.arrSize, p.format, ev.arraySlice, ev.rect, edgeSmearPixels,
-                    i < p.rtvs.size() ? p.rtvs[i] : nullptr);
-            }
             if (drawVisor) {
                 DrawVisorBorderToTexture(p.tex, p.arrSize, p.format, ev, p.views,
                     i < p.rtvs.size() ? p.rtvs[i] : nullptr);
@@ -1705,7 +1611,6 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrAcquireSwapchainImage(
 std::atomic<bool> g_diagReleaseSeen{false};
 std::atomic<bool> g_diagReleaseNoLayout{false};
 std::atomic<uint32_t> g_releaseDrawLogCount{0};
-std::atomic<bool> g_releaseDrewEdgeGuardThisFrame{false};
 std::atomic<bool> g_releaseDrewVisorThisFrame{false};
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
@@ -1717,8 +1622,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
     // overwritten by the app and is guaranteed present when the runtime composites.
     // Independent of the visibility-mask path; that path must never suppress this.
 
-    if (enabled && maskEnabled &&
-        g_d3d11Mask.initialized && g_d3d11Mask.context) {
+    if (enabled && maskEnabled && g_d3d11Mask.initialized && g_d3d11Mask.context) {
         ID3D11Texture2D* tex = nullptr;
         uint32_t arrSize = 1;
         int64_t  scFormat = 0;
@@ -1808,7 +1712,8 @@ void LoadConfig() {
         Log("config: visibility_mask_visor=1 is retired and ignored; the visor draws into eye textures only\n");
     }
     visibilityMaskVisor = false;
-    // edge_smear_fix, lod_popin_fix, and edge_smear_pixels are removed; edge-smear code is disabled.
+    // edge_smear_fix, edge_smear_pixels, lod_popin_fix, and crop_experiment_mode are removed;
+    // the experimental crop-fix code paths are gone and these keys are ignored.
     const double legacyTotal = ReadDoubleSetting(L"vertical_tangent", DefaultTotalTangent);
     totalTangent = std::clamp(
         ReadDoubleSetting(L"total_render_height", ReadDoubleSetting(L"total_share", legacyTotal)),
@@ -1836,11 +1741,11 @@ void LoadConfig() {
 
     // Visor shape controls (ranges identical to the UI sliders).
     visorOuterApexY = std::clamp(ReadDoubleSetting(L"mask_outer_apex_y", 0.0), -0.5, 0.5);
-    visorInnerLowerY = std::clamp(ReadDoubleSetting(L"mask_inner_lower_y", 0.0), 0.0, 0.333);
+    visorInnerLowerY = std::clamp(ReadDoubleSetting(L"mask_inner_lower_y", 0.0), 0.0, 0.666);
     visorInnerBridgeWidth = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_width", 0.5), 0.0, 1.0);
-    visorInnerBridgeRise = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_rise", 0.0), 0.0, 0.5);
-    visorInnerBridgePeakX = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_peak_x", 0.5), 0.0, 1.0);
-    visorInnerBridgeSteepness = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_steepness", 0.5), 0.0, 1.0);
+    visorInnerBridgeRise = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_rise", 0.0), -0.5, 1.0);
+    visorInnerBridgePeakX = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_peak_x", 0.5), -1.0, 2.0);
+    visorInnerBridgeSteepness = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_steepness", 0.5), -1.0, 2.0);
 
     if (splitMode) {
         topTangent = std::clamp(
@@ -1862,11 +1767,13 @@ void LoadConfig() {
         enabled = false;
     }
 
+    liveVisorUsesProfileOverride = false;
     DWORD profileEnabled = 0;
     DWORD profileVisorSize = 0;
     DWORD profileVisorWidth = 0;
     DWORD profileVisorHeight = 0;
     if (ReadProfileDword(L"profile_enabled", profileEnabled) && profileEnabled != 0) {
+        liveVisorUsesProfileOverride = true;
         DWORD profileSplitMode = splitMode ? 1u : 0u;
         DWORD profileTotal = static_cast<DWORD>(std::lround(totalTangent * 1000.0));
         DWORD profileTop = static_cast<DWORD>(std::lround(topTangent * 1000.0));
@@ -1914,9 +1821,15 @@ void LoadConfig() {
         DWORD profileOuterApexY = static_cast<DWORD>(std::lround((std::clamp(visorOuterApexY, -1.0, 1.0) + 1.0) * 1000.0));
         DWORD profileInnerLowerY = static_cast<DWORD>(std::lround(visorInnerLowerY * 1000.0));
         DWORD profileBridgeWidth = static_cast<DWORD>(std::lround(visorInnerBridgeWidth * 1000.0));
-        DWORD profileBridgeRise = static_cast<DWORD>(std::lround(visorInnerBridgeRise * 1000.0));
-        DWORD profileBridgePeakX = static_cast<DWORD>(std::lround(visorInnerBridgePeakX * 1000.0));
-        DWORD profileBridgeSteepness = static_cast<DWORD>(std::lround(visorInnerBridgeSteepness * 1000.0));
+        DWORD profileBridgeRise = (visorInnerBridgeRise < 0.0 || visorInnerBridgeRise > 0.5)
+            ? static_cast<DWORD>(std::lround(20000.0 + (visorInnerBridgeRise + 0.5) * 1000.0))
+            : static_cast<DWORD>(std::lround(visorInnerBridgeRise * 1000.0));
+        DWORD profileBridgePeakX = (visorInnerBridgePeakX < 0.0 || visorInnerBridgePeakX > 1.0)
+            ? static_cast<DWORD>(std::lround(10000.0 + (visorInnerBridgePeakX + 1.0) * 1000.0))
+            : static_cast<DWORD>(std::lround(visorInnerBridgePeakX * 1000.0));
+        DWORD profileBridgeSteepness = (visorInnerBridgeSteepness < 0.0 || visorInnerBridgeSteepness > 1.0)
+            ? static_cast<DWORD>(std::lround(30000.0 + (visorInnerBridgeSteepness + 1.0) * 1000.0))
+            : static_cast<DWORD>(std::lround(visorInnerBridgeSteepness * 1000.0));
         ReadProfileDword(L"mask_outer_apex_y", profileOuterApexY);
         ReadProfileDword(L"mask_inner_lower_y", profileInnerLowerY);
         ReadProfileDword(L"mask_inner_bridge_width", profileBridgeWidth);
@@ -1924,11 +1837,19 @@ void LoadConfig() {
         ReadProfileDword(L"mask_inner_bridge_peak_x", profileBridgePeakX);
         ReadProfileDword(L"mask_inner_bridge_steepness", profileBridgeSteepness);
         visorOuterApexY = std::clamp(SignedMillisToUnit(profileOuterApexY, visorOuterApexY), -0.5, 0.5);
-        visorInnerLowerY = std::clamp(static_cast<double>(profileInnerLowerY) / 1000.0, 0.0, 0.333);
+        visorInnerLowerY = std::clamp(static_cast<double>(profileInnerLowerY) / 1000.0, 0.0, 0.666);
         visorInnerBridgeWidth = std::clamp(static_cast<double>(profileBridgeWidth) / 1000.0, 0.0, 1.0);
-        visorInnerBridgeRise = std::clamp(static_cast<double>(profileBridgeRise) / 1000.0, 0.0, 0.5);
-        visorInnerBridgePeakX = std::clamp(static_cast<double>(profileBridgePeakX) / 1000.0, 0.0, 1.0);
-        visorInnerBridgeSteepness = std::clamp(static_cast<double>(profileBridgeSteepness) / 1000.0, 0.0, 1.0);
+        visorInnerBridgeRise = profileBridgeRise >= 20000u
+            ? std::clamp((static_cast<double>(profileBridgeRise) - 20000.0) / 1000.0 - 0.5, -0.5, 1.0)
+            : std::clamp(static_cast<double>(profileBridgeRise) / 1000.0, 0.0, 0.5);
+        // Values below 10000 are the legacy 0..1 encoding. The 10000 marker lets new
+        // profiles represent the extended negative range without reinterpreting old tuning.
+        visorInnerBridgePeakX = profileBridgePeakX >= 10000u
+            ? std::clamp((static_cast<double>(profileBridgePeakX) - 10000.0) / 1000.0 - 1.0, -1.0, 2.0)
+            : std::clamp(static_cast<double>(profileBridgePeakX) / 1000.0, 0.0, 1.0);
+        visorInnerBridgeSteepness = profileBridgeSteepness >= 30000u
+            ? std::clamp((static_cast<double>(profileBridgeSteepness) - 30000.0) / 1000.0 - 1.0, -1.0, 2.0)
+            : std::clamp(static_cast<double>(profileBridgeSteepness) / 1000.0, 0.0, 1.0);
         if (!ReadProfileDouble(L"render_scale", renderScale)) {
             ReadProfileDword(L"render_scale", profileRenderScale);
             renderScale = DwordToRenderScale(profileRenderScale, renderScale);
@@ -1960,8 +1881,7 @@ void LoadConfig() {
         }
     }
 
-    // Size now controls mask thickness (1.0 = full mask, 0.0 = no mask).
-    // Default to full mask (1.0) for maximum effect.
+    // Size controls only the exposed aperture (1.0 preserves the previous full opening).
     visorSize = std::clamp(ReadDoubleSetting(L"mask_size", 1.0), 0.05, 1.0);
     visorWidth = std::clamp(ReadDoubleSetting(L"mask_width_scale", 1.0), 0.25, 2.0);
     visorHeight = std::clamp(ReadDoubleSetting(L"mask_height_scale", 1.0), 0.25, 2.0);
@@ -1976,6 +1896,7 @@ void LoadConfig() {
     // per-app bias values so old profiles cannot reintroduce binocular mismatch.
     visorOffsetX = 0.0;
     visorOffsetY = 0.0;
+    liveVisorRevision = ReadDoubleSetting(L"visor_live_revision", 0.0);
 
     Log("config: enabled=%d app=%ls mode=%s total_render_height=%.3f top_render_height=%.3f bottom_render_height=%.3f horizontal_render_width=%.3f top_scale=%.3f bottom_scale=%.3f foveated_center_compensation=%d visual_mask_only=%d horizontal_visual_mask_only=%d outer_edge_visibility_mask_only=%d crop_outer_edges_only=%d visor_enabled=%d visor_size=%.3f visor_width=%.3f visor_height=%.3f visor_curve=%.3f visor_offset_x=%.3f visor_offset_y=%.3f visor_outer_apex_y=%.3f visor_inner_lower_y=%.3f visor_inner_bridge_w/r/px/s=%.3f/%.3f/%.3f/%.3f render_scale=%.6f uevr_like=%d verbose_logging=%d\n",
         enabled ? 1 : 0,
@@ -2008,6 +1929,30 @@ void LoadConfig() {
         renderScale,
         uevrLikeProcess ? 1 : 0,
         verboseLogging ? 1 : 0);
+}
+
+// Only visor values are refreshed, and only at the end-of-frame safe point while the
+// renderer lock is held. Crop/FOV/resolution and per-app profiles stay startup snapshots.
+void RefreshLiveVisorConfig() {
+    if (liveVisorUsesProfileOverride) return;
+
+    const double revision = ReadDoubleSetting(L"visor_live_revision", liveVisorRevision);
+    if (revision <= liveVisorRevision) return;
+
+    maskEnabled = ReadBoolSetting(L"mask_enabled", maskEnabled);
+    maskCorner = std::clamp(ReadDoubleSetting(L"mask_corner", maskCorner), 0.0, 1.0);
+    visorSize = std::clamp(ReadDoubleSetting(L"mask_size", visorSize), 0.1, 1.0);
+    visorOuterApexY = std::clamp(ReadDoubleSetting(L"mask_outer_apex_y", visorOuterApexY), -0.5, 0.5);
+    visorInnerLowerY = std::clamp(ReadDoubleSetting(L"mask_inner_lower_y", visorInnerLowerY), 0.0, 0.666);
+    visorInnerBridgeWidth = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_width", visorInnerBridgeWidth), 0.0, 1.0);
+    visorInnerBridgeRise = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_rise", visorInnerBridgeRise), -0.5, 1.0);
+    visorInnerBridgePeakX = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_peak_x", visorInnerBridgePeakX), -1.0, 2.0);
+    visorInnerBridgeSteepness = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_steepness", visorInnerBridgeSteepness), -1.0, 2.0);
+    visorCurve = std::clamp(1.0 - maskCorner, 0.0, 1.0);
+    liveVisorRevision = revision;
+    Log("visor: live settings refreshed revision=%.0f size=%.3f curve=%.3f apex=%.3f inner=%.3f bridge=%.3f/%.3f/%.3f/%.3f\n",
+        revision, visorSize, visorCurve, visorOuterApexY, visorInnerLowerY,
+        visorInnerBridgeWidth, visorInnerBridgeRise, visorInnerBridgePeakX, visorInnerBridgeSteepness);
 }
 
 void EnsureInitialized() {
@@ -2086,6 +2031,7 @@ double EffectiveVerticalScaleForView(uint32_t viewIndex, double requestedHeightS
     }
     return ConservativeRecommendedScale(std::clamp(croppedHeight / originalHeight, MinRenderScale, 1.0));
 }
+
 
 void ApplyXRViewLabFov(uint32_t viewIndex, XrView& view, bool& compensated, float& pitchOffset) {
     const double topScale = std::clamp(topTangent * 2.0, 0.0, 1.0);
@@ -2251,6 +2197,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
 
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
 
+    RefreshLiveVisorConfig();
+
     if (!g_diagEndFrameCalled.exchange(true)) {
         Log("d3d11 mask DIAG: xrEndFrame hook called (enabled=%d maskEnabled=%d visMaskCalled=%d "
             "sessionMatch=%d d3d11Init=%d layerCount=%u)\n",
@@ -2266,14 +2214,11 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     // xrReleaseSwapchainImage, which runs earlier in the frame loop, so the layout
     // captured here is consumed by the NEXT frame's release. Layout is stable frame to
     // frame. Not gated on the visibility-mask path — the D3D11 visor runs regardless.
-    if (enabled && maskEnabled &&
-        g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
+    if (enabled && maskEnabled && g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
         bool foundProj = false;
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
         // Reset captured layouts so stale eyes don't linger if the app changes layers.
         for (auto& kv : g_swapchains) kv.second.eyeViews.clear();
-        // Capture the app's original projection rect. Edge smear is handled by
-        // writing guard pixels into that texture, not by changing submitted rects.
         for (uint32_t l = 0; l < frameEndInfo->layerCount; ++l) {
             const XrCompositionLayerBaseHeader* hdr = frameEndInfo->layers[l];
             if (hdr == nullptr || hdr->type != XR_TYPE_COMPOSITION_LAYER_PROJECTION) continue;
@@ -2302,15 +2247,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     }
 
     if (enabled && g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
-        const bool drawLateEdgeGuard = edgeSmearFix;
-        const bool drawLateVisor = maskEnabled;
-        const bool releaseDrewEdgeGuard = g_releaseDrewEdgeGuardThisFrame.exchange(false);
         const bool releaseDrewVisor = g_releaseDrewVisorThisFrame.exchange(false);
-        const bool needsLateEdgeGuard = drawLateEdgeGuard && !releaseDrewEdgeGuard;
-        const bool needsLateVisor = drawLateVisor && !releaseDrewVisor;
-        if (needsLateEdgeGuard || needsLateVisor) {
-            DrawCapturedProjectionTextures(needsLateEdgeGuard, needsLateVisor,
-                needsLateVisor ? "visor" : "edge-smear fix");
+        if (maskEnabled && !releaseDrewVisor) {
+            DrawCapturedProjectionTextures(true, "visor");
         }
     }
 

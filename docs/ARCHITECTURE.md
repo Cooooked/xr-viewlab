@@ -10,9 +10,12 @@ XRViewLab.UI (WPF, .NET 8)                    dllmain.cpp (native OpenXR implici
   MainWindow writes ──► %LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini ──► LoadConfig() reads
   ProfileWindow writes ─► HKCU\Software\cooooked\xr-viewlab\Apps\<exe> ─► ReadProfileDword()
 ```
-There is no live IPC between UI and layer (except ReShade Remote, below). Games read a stable
-config snapshot at startup; restart the game after changing settings. Mid-frame hot reload was
-removed because it raced native render hooks. The full key contract is `docs/CONFIG.md`.
+There is no live IPC between UI and layer (except ReShade Remote, below). Crop/FOV/resolution and
+per-app profiles remain a stable startup snapshot; restart the game after changing those settings.
+Global visor controls are the deliberate exception: the UI commits `visor_live_revision` last, and
+the layer reloads only visor geometry values at the locked `xrEndFrame` safe point. Mid-frame hot
+reload remains forbidden because it raced native render hooks. The full key contract is
+`docs/CONFIG.md`.
 
 ## Native layer anatomy (dllmain.cpp — grep these symbols)
 
@@ -22,10 +25,11 @@ removed because it raced native render hooks. The full key contract is `docs/CON
 | Config read (ini) | `LoadConfig`, `ReadBoolSetting`, `ReadDoubleSetting`, `ReadStringSetting` |
 | Config read (per-app registry) | `ReadProfileDword`, `ReadProfileDouble`, `SignedMillisToUnit` (encoding: signed = (v+1)*1000, unsigned = v*1000) |
 | FOV / resolution crop (the perf feature) | `XRViewLab_xrLocateViews` (crops FOV tangents), `XRViewLab_xrEnumerateViewConfigurationViews` (reduces recommended size) |
+| Crop-boundary diagnostics | `LocateViewsSnapshot`, `StoreLocateViewsSnapshot`, `TakeLocateViewsSnapshot`, `ValidateSubImage` (read-only exact session/display-time submission comparison) |
 | D3D11 mask renderer init | `InitD3D11MaskRenderer` (compiles shaders via d3dcompiler; FreeLibrary ordering is load-bearing — REGRESSIONS R1) |
 | Visor draw entry (Technique C Direct) | `XRViewLab_xrReleaseSwapchainImage` → `DrawVisorBorderToTexture` |
-| Visor geometry — open-inner arch | `BuildOpenInnerEyeVisorVerts` (per-eye, apex-aware superellipse cap + full-width top/bottom bands) |
-| Visor geometry — closed bean | `BuildVisorBorderVerts` (apex-aware superellipse ring fill) |
+| Visor geometry — open-inner arch | `BuildOpenInnerEyeVisorVerts` (per-eye, apex-aware superellipse cap + full-width top/bottom bands; exact rectangle at Curve 0) |
+| Visor geometry — closed bean | `BuildVisorBorderVerts` (apex-aware superellipse ring fill; exact rectangle at Curve 0) |
 | Visor geometry — nose divot | `BuildNoseBridgeCurve` (cubic bezier trapezoid fill, band-clamped to NDC bottom) |
 | Visor geometry — partner-eye boundary | `BuildProjectedPartnerVisorVerts` (only in closed-bean mode) |
 | Shape helpers | `VisorCurveExponent` (geometric 32·(2/32)^curve), `ApexYFromConfigNdc` (THE one y-flip) |
@@ -48,6 +52,24 @@ removed because it raced native render hooks. The full key contract is `docs/CON
 `BuildVisorBorderVerts`, `BuildNoseBridgeCurve`, `VisorCurveExponent`) must stay formula-identical
 to the preview (`AddOpenInnerHalf`, `BuildGeometry`, `AddNoseBridgeCurve`, `CurveExponent`),
 modulo the documented y-flip. The contract test pins parts of this.
+
+`mask_size` uniformly scales only the exposed aperture. Its compatibility default is `1.0`, which
+preserves the full existing opening; lowering it hides an outer band without changing crop
+tangents, submitted FOV, or recommended render resolution. Peak X is mirrored by passing the
+same sign-aware Bezier formula to each eye; its extended `-0.5..1` range is intentionally stronger
+on the left end.
+
+The main visor card keeps the Edge Masks and ReShade Remote pop-outs together above the visor
+toggle. `BeanMaskEditor` exposes a draggable preview pin for every shape slider, so slider and
+preview editing remain bidirectionally synchronised.
+
+Responsive layout omits the Applications and Render Options sub-headers so the three primary cards
+start on the same line in dual- and triple-column layouts. The beta-testers line remains visible
+at every width; in triple-column mode it sits directly below the third-column card rather than
+extending the applications column.
+
+The responsive client-width cutovers are 280px (mini), 720px (two columns), and 1200px (three
+columns). They intentionally favour fewer usable columns over three compressed cards.
 
 ### The stencil pipeline ("Stencil outer edges only")
 
@@ -79,6 +101,9 @@ not merely a saved preference.
 | ReShade Remote | `ReShadeRemoteWindow.cs` + `ReShadeControlService.cs`: shared-memory control block + `openxr_quad_transform.ini` under ProgramData, controls the bundled payload in `ReShadePayload/` (payload internals: `ReShadePayload/Docs/`) |
 | Update check | `UpdateRelease.cs` + GitHub releases endpoint in `MainWindow.cs` |
 
+`ProfileWindow.xaml` owns the PowerUp/profile popup chrome, including its dedicated ViewLab-themed
+scroll viewer. The scrollbar occupies a separate grid column, never an overlay on visor controls.
+
 ## Build & packaging
 
 `build.ps1` (the only build entry): bumps version in `Properties/AssemblyInfo.cs` +
@@ -90,11 +115,15 @@ manifests under HKLM Khronos ApiLayers (x64 + WOW6432Node), and installs the app
 default ini, and ReShadePayload. Upgrades leave the live config in `%LOCALAPPDATA%` and per-app
 HKCU profiles untouched.
 
-## 2026-07-10 visor quality / robustness update
+## 2026-07-11 visor quality / robustness update
 
-- The D3D11 visor vertex format is now `{x, y, alpha}`. `visor_antialiasing=1` adds feather
-  strips on the aperture boundary and draws with `SRC_ALPHA`; `visor_hd=1` doubles curve
-  tessellation from 96 to 192 segments.
+- Crop-boundary diagnosis is read-only: a bounded mutex-protected queue correlates primary-stereo
+  `xrLocateViews` results to `xrEndFrame` only when both session and display time match. Verbose
+  logs compare tangent-space FOVs and submitted sub-image bounds; no submitted data is rewritten.
+
+- The D3D11 visor vertex format is `{x, y, alpha}`. The current opaque path uses fixed
+  512-segment curve tessellation, so curved visor boundaries remain smooth at HMD eye-texture
+  resolutions without restoring the removed HD or anti-aliasing controls.
 - Direct C draws at `xrReleaseSwapchainImage` using cached per-image/per-slice RTVs. The
   `xrEndFrame` draw is fallback-only when release-time drawing did not run for that frame, with
   independent release flags for edge guard and Direct C visor paths.

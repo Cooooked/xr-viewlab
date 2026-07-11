@@ -9,6 +9,7 @@
 #include <cstdarg>
 #include <cmath>
 #include <cstdint>
+#include <deque>
 #include <cstdio>
 #include <cwctype>
 #include <cstring>

@@ -3,10 +3,74 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-07-11
-**Current version:** 4.1.123 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.123.msi`
+**Updated:** 2026-07-12
+**Current version:** 4.1.142 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.142.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
 **Publish state:** local commits ahead of origin/master; DO NOT push until user confirms current work in-headset.
+
+## Fixed-foveation visor coverage controls (in progress, 2026-07-12)
+
+Restoring the unified visor `Size` aperture scale with a compatibility default of `1.0`, adding
+an exact rectangular geometry branch at Curve `0`, and extending Peak X from `0..1` to `-0.5..1`.
+These are mask-only changes: crop tangents, submitted FOV, and recommended render resolution stay
+unchanged. Curve now uses a continuous near-square shoulder (not a zero-only geometry branch),
+with Inner low still active. Shape ranges are expanded for headset tuning, each shape slider has a
+draggable preview pin, and ReShade now sits next to Edge Masks above the visor controls. Build and
+headset validation are pending.
+
+The responsive dual/triple-column layout now hides its redundant Applications and Render Options
+sub-headers so the primary cards align at the top; the beta-testers credit remains visible in all
+layouts. Backend audit confirms the expanded visor controls persist to the live INI and feed the
+native open-inner D3D11 visor geometry at the next game start.
+
+The app-list instruction is shortened to "Checked apps use ViewLab. Double-click for per-game
+customization." The redundant combined render-height hint is hidden. In triple-column mode, the
+beta-testers credit sits directly below the right-column card, preserving a cleaner applications
+column.
+
+The PowerUp/per-app profile popup now uses a ViewLab-themed scrollbar in a reserved layout column,
+preventing the Windows default scrollbar from covering visor settings.
+
+Responsive client-width thresholds are now deliberately conservative: mini below 280px, two
+columns from 720px, and three columns only from 1200px. This prevents compressed three-column
+layouts and delays the one-column mini presentation until it is genuinely needed.
+
+Global visor controls now also refresh live: the UI writes a revision marker only after all visor
+keys are saved, and the native layer consumes it at the renderer-locked `xrEndFrame` safe point.
+Crop/FOV/resolution and per-app profile values remain startup snapshots. ReShade Remote now begins
+with a prominent "WARNING — DO NOT USE" development notice.
+
+Forefront compatibility diagnostics now target the actual reported runtime executable,
+`Forefront_Internal.exe`, and emit `forefront diag: VIEWLAB_LOADED` only after ViewLab enters its
+OpenXR process. See `docs/VERIFICATION.md` for the exact log-capture handoff.
+
+## Edge smear CLOSED + experimental crop-fix purge (4.1.134, 2026-07-11)
+
+The "edge smear" at crop boundaries is **Virtual Desktop's fixed foveated encoding** —
+center-weighted stream quality baked into VD, codec/bitrate-independent, not user-modifiable
+(confirmed by VD support staff in Discord). Not a ViewLab bug; not fixable in ViewLab.
+Summary: `docs/FIXED_FOVEATION.md`. Full record: `docs/EDGE_SMEAR_INVESTIGATION.md`.
+Practical mitigation: pull the visor opening inward (`mask_horizontal`/`mask_vertical`) so the
+worst boundary band sits under visor black.
+
+All experimental crop-fix code purged in 4.1.134 at the user's direction: crop experiment modes
+1–4 (visibility-mask passthrough / disable hidden-area culling / crop-aware mask / edge-source
+probe), the black edge-guard frame (`edge_smear_fix`/`edge_smear_pixels`), and the crop-contract
+diagnostic logging/snapshot machinery. The "EXPERIMENTAL CROP FIXES" UI group is gone; contract
+test updated to pin the removal. Note: the 8px edge guard measurably sharpened the boundary in
+screenshot scanlines (63px→3px) but the user reports no noticeable in-headset difference; it was
+removed with the rest.
+
+## CRITICAL regression fixed (4.1.124): Install component wiped all OpenXR layers
+
+`InstallPayload()` in `XRViewLab.UI\ReShadeRemoteWindow.cs` used `New-Item -Path $key -Force`
+on `HKLM\...\ApiLayers\Implicit`. On an EXISTING registry key, `New-Item -Force` recreates the
+key and deletes every value in it — so each press of "Install component" deleted ALL of the
+user's implicit OpenXR layers (~10 on this machine: OpenXR Toolkit, OBSMirror, Racelab, Virtual
+Desktop oculus-compat, XRFrameTools ×3, OpenKneeboard, ViewLab) and re-added only ReShade's.
+Fixed 2026-07-11: guarded with `if(-not(Test-Path $key)){New-Item ...}`. User's layers were
+restored from disk scan via `fix_profile.ps1` (repo root). RULE: never `New-Item -Force` a
+registry key that may exist; never delete the Implicit key wholesale.
 
 ## ReShade Remote (4.1.123)
 
@@ -26,18 +90,32 @@ boundary gated to closed-bean mode (details in `docs/DECISIONS.md` D7–D9).
 
 ## Current implementation status
 
-4.1.122 removes the **visor mask size slider** entirely and hardcodes the mask to maximum
-corner coverage. It also removes the experimental LOD pop-in fix, edge-smear fix, HD visor, and
+4.1.122 removed the experimental LOD pop-in fix, edge-smear fix, HD visor, and
 anti-aliasing toggles and their code paths. `foveated_center_compensation`, `stencil_outer_edges_only`,
 and `crop_outer_edges_only` are now permanently on; their UI checkboxes are removed and config
 keys are ignored. The visor mask now only rounds the corners of the cropped view; the crop
 values (vertical/horizontal render height) still control the full render dimensions from the
-center. `mask_size`/`visor_size` is deprecated and no longer affects geometry. The size slider
-has been removed from the main window and per-app profile editor, and the preview geometry uses
-`WidthScale`/`HeightScale` fixed at 1.0 so the mask always extends to the edges of the crop.
+center. `mask_size`/`visor_size` controls only the unified visor opening scale: its default `1.0`
+preserves the full existing opening, and lower values cover more of the already-rendered image.
+It does not affect crop tangents, submitted FOV, render resolution, or GPU savings.
 Everything below is NOT headset-confirmed; last confirmed-good remains 4.1.103.
 
 ## Current headset blockers (2026-07-11)
+
+- Hidden A/B `crop_boundary_full_resolution_experiment=1` keeps the crop FOV but returns the
+  runtime's original recommended swapchain dimensions. It is default-off and pending headset
+  comparison against the normal crop-resolution path; no rendering-submission data is altered.
+
+- Crop-boundary diagnostics now correlate each primary-stereo `xrEndFrame` projection submission
+  only with an `xrLocateViews` snapshot carrying the same session and display time. They log FOV
+  tangents, submitted sub-image/texture bounds, and resolution scaling to `ViewLab.verbose.log`
+  without changing any submitted rendering data. Headset log capture is pending before any
+  rendering correction is considered.
+
+- The visor's fixed 96-segment curve tessellation produced long, visible straight chords at
+  headset eye-texture resolutions, even though the underlying game image was sharp. The native
+  renderer now uses fixed 512-segment tessellation within its existing 4096-vertex buffer;
+  headset verification is pending.
 
 - 4.1.112 proved that `crop_outer_edges_only` was read but not applied: the FOV hook always used
   outer-edge-only crop. Corrected in-tree; requires headset retest.

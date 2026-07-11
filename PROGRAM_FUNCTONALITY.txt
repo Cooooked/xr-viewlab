@@ -1,0 +1,122 @@
+# ViewLab — Functionality Overview
+
+ViewLab has three main functions, supported by an application profile system.
+
+## 1. Render Crop
+
+The left column controls the horizontal and vertical render tangents.
+
+This reduces the VR image to a smaller forward-facing rectangle instead of rendering the full headset view.
+
+In the shown setup:
+
+- Horizontal: 53.9% total render width
+- Vertical: 20.4% total render height
+
+This creates a narrow central view suitable for sim racing, where the important area is directly ahead.
+
+The optional split control allows the top and bottom vertical values to be adjusted separately.
+
+## 2. Application Profiles
+
+The centre column lists detected VR applications.
+
+Each application can be enabled or disabled for ViewLab.
+
+Applications can use:
+
+- Global ViewLab settings
+- Their own per-application crop, visor and render settings
+
+The list also shows whether the application uses OpenXR or OpenVR and whether ViewLab is currently hooked.
+
+These profiles do not currently manage ReShade presets or ReShade Remote settings.
+
+## 3. Visor Mask
+
+The right column contains Render Options.
+
+The visible option is Edge Masks, including the Visor Mask.
+
+The render crop first creates a rectangular view.
+
+The visor mask then shapes that rectangle into a curved visor-like opening.
+
+Visible shape controls include:
+
+- Curve
+- Apex Y
+- Inner low
+- Bridge
+- Rise
+- Peak X
+- Steep
+
+These controls affect the shape of the mask, not the render crop itself.
+
+## ReShade Remote
+
+The ReShade Remote is opened from the lower-right section of the main window.
+
+It installs and communicates with a modified ReShade OpenXR component.
+
+Its main purpose is to expose the ReShade menu belonging to the VR runtime.
+
+That VR-specific menu can be displayed as:
+
+- An independent desktop window
+- A quad inside the VR headset
+
+The actual ReShade effects, presets and shader settings are configured through the ReShade menu.
+
+Each game may have its own ReShade setup, but ViewLab does not currently provide its own preset selector.
+
+## Gameplay Mode
+
+Gameplay mode allows the ReShade instance affecting the VR headset to run while blocking the additional ReShade instance affecting the desktop mirror.
+
+This reduces the extra CPU and GPU overhead from processing both views.
+
+Gameplay mode is intended for normal play after the effects have been configured.
+
+## Tuning Mode
+
+Tuning mode allows ReShade to run on both:
+
+- The VR headset view
+- The desktop mirror
+
+ReShade can then synchronise changes between those runtimes.
+
+This allows the user to adjust ReShade effects using the desktop interface while the changes also affect the VR runtime.
+
+After tuning is complete, the user can return to Gameplay mode to avoid the additional desktop processing overhead.
+
+## ReShade Menu Controls
+
+The ReShade Remote includes controls for:
+
+- Installing the component
+- Switching between Gameplay and Tuning
+- Showing or hiding the ReShade menu
+- Making the desktop menu window borderless
+- Keeping the desktop menu window always on top
+- Repositioning the in-headset menu quad
+- Scaling the in-headset menu quad
+- Rotating the in-headset menu quad
+- Adjusting its opacity
+- Resetting its transform
+
+## Overall Result
+
+ViewLab combines:
+
+1. A reduced VR render area
+2. A shaped visor mask
+3. Access to the VR-specific ReShade runtime
+
+The crop reduces the rendered view.
+
+The visor mask shapes that view.
+
+The ReShade Remote allows the user to configure the visual effects applied to the VR image.

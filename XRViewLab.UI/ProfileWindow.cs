@@ -58,6 +58,7 @@ public partial class ProfileWindow : Window
 	private readonly double _globalVisorInnerBridgeWidth;
 	private readonly double _globalVisorInnerBridgeRise;
 	private readonly double _globalVisorInnerBridgePeakX;
+	private readonly double _globalVisorSize;
 	private readonly double _globalVisorInnerBridgeSteepness;
 	private readonly bool _customMaskEnabled;
 	private readonly double _customMaskVertical;
@@ -70,6 +71,7 @@ public partial class ProfileWindow : Window
 	private readonly double _customVisorInnerBridgeWidth;
 	private readonly double _customVisorInnerBridgeRise;
 	private readonly double _customVisorInnerBridgePeakX;
+	private readonly double _customVisorSize;
 	private readonly double _customVisorInnerBridgeSteepness;
 
 	// In-memory boxes feed the legacy mask_vertical/horizontal calculation (not shown in UI).
@@ -100,6 +102,7 @@ public partial class ProfileWindow : Window
 		_globalMaskCorner = globalMaskCorner;
 		_globalOffsetX = globalOffsetX;
 		_globalOffsetY = globalOffsetY;
+		_globalVisorSize = Math.Clamp(globalVisorSize, 0.05, 1.0);
 		_globalVisorOuterApexY = globalVisorOuterApexY;
 		_globalVisorInnerLowerY = globalVisorInnerLowerY;
 		_globalVisorInnerBridgeWidth = globalVisorInnerBridgeWidth;
@@ -112,12 +115,13 @@ public partial class ProfileWindow : Window
 		_customMaskCorner = maskCorner;
 		_customOffsetX = Math.Clamp((maskLeftBias + maskRightBias) * 0.5, -1.0, 1.0);
 		_customOffsetY = Math.Clamp((maskTopBias + maskBottomBias) * 0.5, -1.0, 1.0);
+		_customVisorSize = Math.Clamp(visorSize, 0.1, 1.0);
 		_customVisorOuterApexY = Math.Clamp(visorOuterApexY, -0.5, 0.5);
-		_customVisorInnerLowerY = Math.Clamp(visorInnerLowerY, 0.0, 0.333);
+		_customVisorInnerLowerY = Math.Clamp(visorInnerLowerY, 0.0, 0.666);
 		_customVisorInnerBridgeWidth = Math.Clamp(visorInnerBridgeWidth, 0.0, 1.0);
-		_customVisorInnerBridgeRise = Math.Clamp(visorInnerBridgeRise, 0.0, 0.5);
-		_customVisorInnerBridgePeakX = Math.Clamp(visorInnerBridgePeakX, 0.0, 1.0);
-		_customVisorInnerBridgeSteepness = Math.Clamp(visorInnerBridgeSteepness, 0.0, 1.0);
+		_customVisorInnerBridgeRise = Math.Clamp(visorInnerBridgeRise, -0.5, 1.0);
+		_customVisorInnerBridgePeakX = Math.Clamp(visorInnerBridgePeakX, -1.0, 2.0);
+		_customVisorInnerBridgeSteepness = Math.Clamp(visorInnerBridgeSteepness, -1.0, 2.0);
 		DisplayName = appName;
 		HiddenValue = hidden;
 		NameBox.Text = appName;
@@ -205,7 +209,7 @@ public partial class ProfileWindow : Window
 		{
 			return;
 		}
-		MaskBeanEditor.Size = 1.0; // Hardcoded maximum corner coverage
+		MaskBeanEditor.Size = VisorSizeSlider?.Value ?? 1.0;
 		MaskBeanEditor.Curve = VisorCurveSlider?.Value ?? 0.5;
 		MaskBeanEditor.OuterApexY = VisorApexYSlider?.Value ?? 0.0;
 		MaskBeanEditor.InnerLowerY = VisorInnerLowerSlider?.Value ?? 0.0;
@@ -221,6 +225,7 @@ public partial class ProfileWindow : Window
 	private void SetVisorSlidersEnabled(bool enabled)
 	{
 		VisorEnabledCheck.IsEnabled = false;
+		VisorSizeSlider.IsEnabled = enabled;
 		VisorCurveSlider.IsEnabled = enabled;
 		VisorApexYSlider.IsEnabled = enabled;
 		VisorInnerLowerSlider.IsEnabled = enabled;
@@ -263,7 +268,7 @@ public partial class ProfileWindow : Window
 		if (!_initialized) return;
 		if (MaskBeanEditor != null)
 		{
-			MaskBeanEditor.Size = 1.0;
+			MaskBeanEditor.Size = VisorSizeSlider?.Value ?? 1.0;
 		}
 		UpdateHints();
 	}
@@ -303,7 +308,7 @@ public partial class ProfileWindow : Window
 		MaskRightBiasValue = offsetX;
 		MaskTopCurveValue = 0.0;
 		MaskBottomCurveValue = 0.0;
-		VisorSizeValue = 1.0;
+		VisorSizeValue = VisorSizeSlider.Value;
 		VisorCurveValue = VisorCurveSlider.Value;
 		VisorOuterApexYValue = VisorApexYSlider.Value;
 		VisorInnerLowerYValue = VisorInnerLowerSlider.Value;
@@ -330,6 +335,7 @@ public partial class ProfileWindow : Window
 		MaskVerticalBox.Text = FormatScale(_globalMaskVertical);
 		MaskHorizontalBox.Text = FormatScale(_globalMaskHorizontal);
 		VisorEnabledCheck.IsChecked = _globalMaskEnabled;
+		VisorSizeSlider.Value = _globalVisorSize;
 		VisorCurveSlider.Value = Math.Clamp(1.0 - _globalMaskCorner, 0.0, 1.0);
 		VisorApexYSlider.Value = _globalVisorOuterApexY;
 		VisorInnerLowerSlider.Value = _globalVisorInnerLowerY;
@@ -346,6 +352,7 @@ public partial class ProfileWindow : Window
 		MaskVerticalBox.Text = FormatScale(_customMaskVertical);
 		MaskHorizontalBox.Text = FormatScale(_customMaskHorizontal);
 		VisorEnabledCheck.IsChecked = _customMaskEnabled;
+		VisorSizeSlider.Value = _customVisorSize;
 		VisorCurveSlider.Value = Math.Clamp(1.0 - _customMaskCorner, 0.0, 1.0);
 		VisorApexYSlider.Value = _customVisorOuterApexY;
 		VisorInnerLowerSlider.Value = _customVisorInnerLowerY;
@@ -430,6 +437,8 @@ public partial class ProfileWindow : Window
 		}
 		_syncingControls = true;
 		VisorApexYSlider.Value = MaskBeanEditor.OuterApexY;
+		VisorSizeSlider.Value = MaskBeanEditor.Size;
+		VisorCurveSlider.Value = MaskBeanEditor.Curve;
 		VisorInnerLowerSlider.Value = MaskBeanEditor.InnerLowerY;
 		VisorInnerBridgeSlider.Value = MaskBeanEditor.InnerBridgeWidth;
 		VisorInnerBridgeRiseSlider.Value = MaskBeanEditor.InnerBridgeRise;

@@ -406,15 +406,18 @@
                 <TextBox Name="BottomBox" Grid.Row="14" Grid.Column="2" TextChanged="RenderValue_Changed" />
                 <TextBlock Name="BottomHint" Grid.Row="14" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                 <Slider Name="BottomSlider" Grid.Row="16" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="1" ValueChanged="RenderSlider_Changed" />
-                <TextBlock Name="CombinedHint" Grid.Row="18" Grid.ColumnSpan="5" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Name="CombinedHint" Grid.Row="18" Grid.ColumnSpan="5" Visibility="Collapsed" />
               </Grid>
             </Border>
             <!-- Render Options: lives in LeftColumnPanel for single/two-col; moved to RightColumnPanel in 3-col by UpdateResponsiveLayout -->
-            <TextBlock Name="OptionsHeader" Text="RENDER OPTIONS" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,10,0,5" />
+            <TextBlock Name="OptionsHeader" Visibility="Collapsed" Height="0" Margin="0" />
             <Border Name="OptionsCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,0">
               <StackPanel>
 
-                <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
+                <WrapPanel>
+                  <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
+                  <Button Name="ReShadeButton" Content="ReShade ▾" Style="{StaticResource RedButton}" Padding="10,4" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
+                </WrapPanel>
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
                 <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                 <ui:BeanMaskEditor x:Name="MaskBeanEditor" Height="76" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Preview uses the same rounded aperture settings as the OpenXR D3D11 mask texture." />
@@ -431,24 +434,27 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="0" />
                   </Grid.RowDefinitions>
-                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskRoundnessSlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Apex Y" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskApexYSlider" Grid.Row="1" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="MaskApexYSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerLowerSlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="0.333" ValueChanged="MaskInnerLowerSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgeSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgeRiseSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="0.5" ValueChanged="MaskInnerBridgeRiseSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Peak X" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgePeakXSlider" Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgePeakXSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="6" Grid.Column="0" Text="Steep" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskInnerBridgeSteepnessSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgeSteepnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <Slider Name="MaskOffsetXSlider" Grid.Row="7" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
-                  <Slider Name="MaskOffsetYSlider" Grid.Row="8" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Size" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskSizeSlider" Grid.Row="0" Grid.Column="1" Minimum="0.1" Maximum="1" ValueChanged="MaskSizeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Shrinks the visible opening without changing FOV, render resolution, or GPU savings." />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskRoundnessSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Apex Y" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskApexYSlider" Grid.Row="2" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="MaskApexYSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskInnerLowerSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="0.666" ValueChanged="MaskInnerLowerSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskInnerBridgeSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskInnerBridgeRiseSlider" Grid.Row="5" Grid.Column="1" Minimum="-0.5" Maximum="1" ValueChanged="MaskInnerBridgeRiseSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="6" Grid.Column="0" Text="Peak X" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskInnerBridgePeakXSlider" Grid.Row="6" Grid.Column="1" Minimum="-1" Maximum="2" ValueChanged="MaskInnerBridgePeakXSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="7" Grid.Column="0" Text="Steep" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskInnerBridgeSteepnessSlider" Grid.Row="7" Grid.Column="1" Minimum="-1" Maximum="2" ValueChanged="MaskInnerBridgeSteepnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <Slider Name="MaskOffsetXSlider" Grid.Row="8" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
+                  <Slider Name="MaskOffsetYSlider" Grid.Row="9" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
                 </Grid>
                 <TextBox Name="MaskVerticalBox" Visibility="Collapsed" />
                 <TextBox Name="MaskHorizontalBox" Visibility="Collapsed" />
@@ -464,9 +470,10 @@
               <TextBlock Name="ReShadeOpenXRHeader2" Text="ReShade Remote" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenXRCard2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
                 <StackPanel>
-                  <Button Content="Remote ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
+                  <Button Content="ReShade ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
                 </StackPanel>
               </Border>
+              <TextBlock Name="ThanksTextRight" Text="Thanks to Beta Testers: Kinder, hkguy6" HorizontalAlignment="Right" Foreground="#5F6064" FontSize="12" Margin="0,2,4,0" Visibility="Collapsed" />
             </StackPanel>
             <!-- Hidden checkboxes for Edge Masks (state lives here, popup will reference by name) -->
             <Canvas Width="0" Height="0" Grid.Row="0">
@@ -556,7 +563,7 @@
               </Popup>
             </Canvas>
             <StackPanel Name="SidePanel" Grid.Row="8">
-              <TextBlock Name="AppsHeader" Text="APPLICATIONS" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
+              <TextBlock Name="AppsHeader" Visibility="Collapsed" Height="0" Margin="0" />
               <Border Name="AppsCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,10">
                 <Grid>
                   <Grid.RowDefinitions>
@@ -566,7 +573,7 @@
                     <RowDefinition Height="7" />
                     <RowDefinition Height="Auto" />
                   </Grid.RowDefinitions>
-                  <TextBlock Text="Checked apps use ViewLab. Double-click for per-game crop, visor, and render %." Foreground="{StaticResource MutedBrush}" />
+                  <TextBlock Text="Checked apps use ViewLab. Double-click for per-game customization." Foreground="{StaticResource MutedBrush}" />
                   <Grid Grid.Row="2">
                     <DataGrid Name="AppsGrid" IsReadOnly="False" CanUserResizeColumns="True" MouseDoubleClick="AppsGrid_DoubleClick" PreviewKeyDown="AppsGrid_KeyDown">
                       <DataGrid.Columns>
@@ -598,7 +605,7 @@
               <TextBlock Name="ReShadeOpenXRHeader" Text="ReShade Remote" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
               <Border Name="ReShadeOpenXRCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
                 <StackPanel>
-                  <Button Content="Remote ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
+                  <Button Content="ReShade ▾" Style="{StaticResource RedButton}" HorizontalAlignment="Left" Padding="10,4" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
                 </StackPanel>
               </Border>
               <TextBlock Name="ThanksText" Text="Thanks to Beta Testers: Kinder, hkguy6" HorizontalAlignment="Right" Foreground="#5F6064" FontSize="12" Margin="0,6,4,4" />

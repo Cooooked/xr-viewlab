@@ -34,7 +34,12 @@ public sealed class BeanMaskEditor : FrameworkElement
 		None,
 		OuterApex,
 		InnerLower,
-		InnerBridge
+		InnerBridge,
+		Size,
+		Curve,
+		InnerRise,
+		InnerPeakX,
+		InnerSteepness
 	}
 
 	public event EventHandler? ShapeChanged;
@@ -48,7 +53,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 	public double Size
 	{
 		get => _size;
-		set => SetValue(ref _size, value, 0.05, 1.0);
+		set => SetValue(ref _size, value, 0.10, 1.0);
 	}
 
 	public double WidthScale
@@ -132,7 +137,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 	public double InnerLowerY
 	{
 		get => _innerLowerY;
-		set => SetValue(ref _innerLowerY, value, 0.0, 0.333);
+		set => SetValue(ref _innerLowerY, value, 0.0, 0.666);
 	}
 
 	public double InnerBridgeWidth
@@ -144,19 +149,19 @@ public sealed class BeanMaskEditor : FrameworkElement
 	public double InnerBridgeRise
 	{
 		get => _innerBridgeRise;
-		set => SetValue(ref _innerBridgeRise, value, 0.0, 0.5);
+		set => SetValue(ref _innerBridgeRise, value, -0.5, 1.0);
 	}
 
 	public double InnerBridgePeakX
 	{
 		get => _innerBridgePeakX;
-		set => SetValue(ref _innerBridgePeakX, value, 0.0, 1.0);
+		set => SetValue(ref _innerBridgePeakX, value, -1.0, 2.0);
 	}
 
 	public double InnerBridgeSteepness
 	{
 		get => _innerBridgeSteepness;
-		set => SetValue(ref _innerBridgeSteepness, value, 0.0, 1.0);
+		set => SetValue(ref _innerBridgeSteepness, value, -1.0, 2.0);
 	}
 
 	public bool OpenInnerPreview
@@ -193,13 +198,17 @@ public sealed class BeanMaskEditor : FrameworkElement
 		DrawPins(dc, area);
 	}
 
-	internal static double CurveExponent(double curve) => 32.0 * Math.Pow(2.0 / 32.0, Math.Clamp(curve, 0.0, 1.0));
+	// A steep near-zero shoulder keeps the rectangle visually square while remaining continuous:
+	// there is no separate geometry mode for the first non-zero slider step.
+	internal static double CurveExponent(double curve) =>
+		32.0 * Math.Pow(2.0 / 32.0, Math.Clamp(curve, 0.0, 1.0)) +
+		1024.0 * Math.Exp(-50.0 * Math.Clamp(curve, 0.0, 1.0));
 
 	private StreamGeometry BuildGeometry(Rect area)
 	{
-		// Hardcoded maximum corner coverage: opening fills the full bbox, mask extends to edges
-		double halfW = area.Width * 0.5 * Math.Clamp(WidthScale, 0.01, 1.0);
-		double halfH = area.Height * 0.5 * Math.Clamp(HeightScale, 0.01, 1.0);
+		// Size uniformly shrinks the exposed aperture without touching render crop/FOV.
+		double halfW = area.Width * 0.5 * Math.Clamp(Size * WidthScale, 0.01, 1.0);
+		double halfH = area.Height * 0.5 * Math.Clamp(Size * HeightScale, 0.01, 1.0);
 		double centerX = area.Left + area.Width * 0.5 + (area.Width * 0.5 - halfW) * OffsetX;
 		double centerY = area.Top + area.Height * 0.5 + (area.Height * 0.5 - halfH) * OffsetY;
 		double exponent = CurveExponent(Curve);
@@ -244,9 +253,9 @@ public sealed class BeanMaskEditor : FrameworkElement
 			return;
 		}
 
-		// Hardcoded maximum corner coverage: opening fills the full bbox, mask extends to edges
-		double halfW = area.Width * 0.5 * Math.Clamp(WidthScale, 0.01, 1.0);
-		double halfH = area.Height * 0.5 * Math.Clamp(HeightScale, 0.01, 1.0);
+		// Size uniformly shrinks the exposed aperture without touching render crop/FOV.
+		double halfW = area.Width * 0.5 * Math.Clamp(Size * WidthScale, 0.01, 1.0);
+		double halfH = area.Height * 0.5 * Math.Clamp(Size * HeightScale, 0.01, 1.0);
 		double centerX = area.Left + area.Width * 0.5;
 		double centerY = area.Top + area.Height * 0.5 + (area.Height * 0.5 - halfH) * OffsetY;
 		double exponent = CurveExponent(Curve);
@@ -307,12 +316,12 @@ public sealed class BeanMaskEditor : FrameworkElement
 		}
 
 		double clampedBridgeWidth = Math.Clamp(bridgeWidth, 0.0, 1.0);
-		double clampedSteepness = Math.Clamp(InnerBridgeSteepness, 0.0, 1.0);
-		double clampedRise = Math.Clamp(InnerBridgeRise, 0.0, 0.5);
-		double clampedPeakX = Math.Clamp(InnerBridgePeakX, 0.0, 1.0);
+		double clampedSteepness = Math.Clamp(InnerBridgeSteepness, -1.0, 2.0);
+		double clampedRise = Math.Clamp(InnerBridgeRise, -0.5, 1.0);
+		double clampedPeakX = Math.Clamp(InnerBridgePeakX, -1.0, 2.0);
 
 		// Handle length is proportional to the horizontal span, bridge width, and steepness.
-		double baseHandleLength = Math.Abs(dx) * (0.3 + clampedBridgeWidth * 0.4);
+		double baseHandleLength = Math.Abs(dx) * (0.1 + clampedBridgeWidth * 0.8);
 		double handleLength = baseHandleLength * (0.5 + clampedSteepness * 0.5);
 
 		// Control points: P1 and P2 sit at the SAME Y-level as their respective endpoints
@@ -346,6 +355,11 @@ public sealed class BeanMaskEditor : FrameworkElement
 		var pins = PinPositions(area);
 		DrawPin(dc, pins.outerApex, Color.FromRgb(255, 96, 105));
 		DrawPin(dc, pins.innerLower, Color.FromRgb(255, 180, 90));
+		DrawPin(dc, pins.size, Color.FromRgb(180, 255, 120));
+		DrawPin(dc, pins.curve, Color.FromRgb(210, 120, 255));
+		DrawPin(dc, pins.innerRise, Color.FromRgb(100, 225, 220));
+		DrawPin(dc, pins.innerPeakX, Color.FromRgb(80, 160, 255));
+		DrawPin(dc, pins.innerSteepness, Color.FromRgb(255, 210, 100));
 		if (InnerLowerY > 0.0)
 		{
 			DrawPin(dc, pins.innerBridge, Color.FromRgb(120, 200, 255));
@@ -359,11 +373,10 @@ public sealed class BeanMaskEditor : FrameworkElement
 		dc.DrawEllipse(fill, stroke, p, 5.5, 5.5);
 	}
 
-	private (Point outerApex, Point innerLower, Point innerBridge, double y0, double y1, double bridgeStartX, double bridgeStartY, double bridgeEndX, double bridgeEndY) PinPositions(Rect area)
+	private (Point outerApex, Point innerLower, Point innerBridge, Point size, Point curve, Point innerRise, Point innerPeakX, Point innerSteepness, double y0, double y1, double bridgeStartX, double bridgeStartY, double bridgeEndX, double bridgeEndY) PinPositions(Rect area)
 	{
-		// Hardcoded maximum corner coverage: opening fills the full bbox, mask extends to edges
-		double halfW = area.Width * 0.5 * Math.Clamp(WidthScale, 0.01, 1.0);
-		double halfH = area.Height * 0.5 * Math.Clamp(HeightScale, 0.01, 1.0);
+		double halfW = area.Width * 0.5 * Math.Clamp(Size * WidthScale, 0.01, 1.0);
+		double halfH = area.Height * 0.5 * Math.Clamp(Size * HeightScale, 0.01, 1.0);
 		double centerX = area.Left + area.Width * 0.5;
 		double centerY = area.Top + area.Height * 0.5 + (area.Height * 0.5 - halfH) * OffsetY;
 		double y0 = Math.Clamp(centerY - halfH, area.Top, area.Bottom);
@@ -379,6 +392,11 @@ public sealed class BeanMaskEditor : FrameworkElement
 			new Point(centerX - halfW, outerY),
 			new Point(area.Right, innerY),
 			new Point(bridgeX, bridgeY),
+			new Point(centerX - halfW, centerY),
+			new Point(centerX - halfW * 0.7, y0),
+			new Point(centerX + dx * 0.25, y1 + dy * 0.25),
+			new Point(centerX + dx * Math.Clamp((InnerBridgePeakX + 1.0) / 3.0, 0.0, 1.0), y1 + dy * 0.5),
+			new Point(centerX + dx * 0.75, y1 + dy * 0.75),
 			y0, y1,
 			centerX, y1, area.Right, innerY);
 	}
@@ -399,7 +417,17 @@ public sealed class BeanMaskEditor : FrameworkElement
 		var area = new Rect(2.0, 2.0, Math.Max(0.0, ActualWidth - 4.0), Math.Max(0.0, ActualHeight - 4.0));
 		var pins = PinPositions(area);
 		Point p = e.GetPosition(this);
-		if (DistanceSquared(p, pins.outerApex) <= 144.0)
+		if (DistanceSquared(p, pins.size) <= 144.0)
+			_dragTarget = DragTarget.Size;
+		else if (DistanceSquared(p, pins.curve) <= 144.0)
+			_dragTarget = DragTarget.Curve;
+		else if (DistanceSquared(p, pins.innerRise) <= 144.0)
+			_dragTarget = DragTarget.InnerRise;
+		else if (DistanceSquared(p, pins.innerPeakX) <= 144.0)
+			_dragTarget = DragTarget.InnerPeakX;
+		else if (DistanceSquared(p, pins.innerSteepness) <= 144.0)
+			_dragTarget = DragTarget.InnerSteepness;
+		else if (DistanceSquared(p, pins.outerApex) <= 144.0)
 		{
 			_dragTarget = DragTarget.OuterApex;
 		}
@@ -446,13 +474,33 @@ public sealed class BeanMaskEditor : FrameworkElement
 		}
 		else if (_dragTarget == DragTarget.InnerLower)
 		{
-			InnerLowerY = Math.Clamp((pins.y1 - mouse.Y) / span, 0.0, 0.333);
+			InnerLowerY = Math.Clamp((pins.y1 - mouse.Y) / span, 0.0, 0.666);
 		}
 		else if (_dragTarget == DragTarget.InnerBridge)
 		{
 			double dxSpan = pins.bridgeEndX - pins.bridgeStartX;
 			double split = Math.Abs(dxSpan) > 0.001 ? Math.Clamp((mouse.X - pins.bridgeStartX) / dxSpan, 0.0, 1.0) : 0.5;
 			InnerBridgeWidth = Math.Clamp(1.0 - split, 0.0, 1.0);
+		}
+		else if (_dragTarget == DragTarget.Size)
+		{
+			Size = Math.Clamp(Math.Abs(mouse.X - ActualWidth * 0.5) / Math.Max(1.0, ActualWidth * 0.5), 0.1, 1.0);
+		}
+		else if (_dragTarget == DragTarget.Curve)
+		{
+			Curve = Math.Clamp((pins.y1 - mouse.Y) / Math.Max(1.0, span), 0.0, 1.0);
+		}
+		else if (_dragTarget == DragTarget.InnerRise)
+		{
+			InnerBridgeRise = Math.Clamp((mouse.Y - pins.y0) / Math.Max(1.0, span) * 1.5 - 0.5, -0.5, 1.0);
+		}
+		else if (_dragTarget == DragTarget.InnerPeakX)
+		{
+			InnerBridgePeakX = Math.Clamp((mouse.X - pins.bridgeStartX) / Math.Max(1.0, pins.bridgeEndX - pins.bridgeStartX) * 3.0 - 1.0, -1.0, 2.0);
+		}
+		else if (_dragTarget == DragTarget.InnerSteepness)
+		{
+			InnerBridgeSteepness = Math.Clamp((pins.y1 - mouse.Y) / Math.Max(1.0, span) * 3.0 - 1.0, -1.0, 2.0);
 		}
 		e.Handled = true;
 	}

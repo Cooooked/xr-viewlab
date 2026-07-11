@@ -79,6 +79,45 @@
           </Setter.Value>
         </Setter>
       </Style>
+      <Style x:Key="ProfileScrollBar" TargetType="{x:Type ScrollBar}">
+        <Setter Property="Background" Value="#0B0C0D" />
+        <Setter Property="Width" Value="8" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type ScrollBar}">
+              <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                <Track Name="PART_Track" IsDirectionReversed="True" Margin="1,4">
+                  <Track.Thumb>
+                    <Thumb>
+                      <Thumb.Template>
+                        <ControlTemplate TargetType="{x:Type Thumb}">
+                          <Border Background="#C90012" BorderBrush="#FF5960" BorderThickness="1" CornerRadius="4" MinHeight="24" />
+                        </ControlTemplate>
+                      </Thumb.Template>
+                    </Thumb>
+                  </Track.Thumb>
+                </Track>
+              </Border>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="ProfileScrollViewer" TargetType="{x:Type ScrollViewer}">
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type ScrollViewer}">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="8" />
+                </Grid.ColumnDefinitions>
+                <ScrollContentPresenter Grid.Column="0" Name="PART_ScrollContentPresenter" Content="{TemplateBinding ContentControl.Content}" ContentTemplate="{TemplateBinding ContentControl.ContentTemplate}" CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}" />
+                <ScrollBar Grid.Column="1" Name="PART_VerticalScrollBar" Orientation="Vertical" Visibility="{TemplateBinding ScrollViewer.ComputedVerticalScrollBarVisibility}" Maximum="{TemplateBinding ScrollViewer.ScrollableHeight}" ViewportSize="{TemplateBinding ScrollViewer.ViewportHeight}" Value="{TemplateBinding ScrollViewer.VerticalOffset}" Style="{StaticResource ProfileScrollBar}" />
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
     </ResourceDictionary>
   </FrameworkElement.Resources>
   <Border Background="#171819" BorderBrush="#303236" BorderThickness="1" CornerRadius="10">
@@ -94,7 +133,7 @@
         </Grid>
       </Border>
       <Border Grid.Row="1" Margin="16" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="18">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Style="{StaticResource ProfileScrollViewer}">
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="90" />
@@ -172,25 +211,29 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="4" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="4" />
+                <RowDefinition Height="Auto" />
               </Grid.RowDefinitions>
-              <TextBlock Grid.Row="0" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorCurveSlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" />
-              <TextBlock Grid.Row="2" Grid.Column="0" Text="Apex Y" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorApexYSlider" Grid.Row="2" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="VisorApexYSlider_Changed" />
-              <TextBlock Grid.Row="4" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorInnerLowerSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="0.333" ValueChanged="VisorInnerLowerSlider_Changed" />
-              <TextBlock Grid.Row="6" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorInnerBridgeSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="VisorInnerBridgeSlider_Changed" />
-              <TextBlock Grid.Row="8" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorInnerBridgeRiseSlider" Grid.Row="8" Grid.Column="1" Minimum="0" Maximum="0.5" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
-              <TextBlock Grid.Row="10" Grid.Column="0" Text="Peak X" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorInnerBridgePeakXSlider" Grid.Row="10" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
-              <TextBlock Grid.Row="12" Grid.Column="0" Text="Steep" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorInnerBridgeSteepnessSlider" Grid.Row="12" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
-              <TextBlock Grid.Row="14" Grid.Column="0" Text="X" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorOffsetXSlider" Grid.Row="14" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
-              <TextBlock Grid.Row="16" Grid.Column="0" Text="Y" VerticalAlignment="Center" FontSize="12" />
-              <Slider Name="VisorOffsetYSlider" Grid.Row="16" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Size" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorSizeSlider" Grid.Row="0" Grid.Column="1" Minimum="0.1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorCurveSlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" />
+              <TextBlock Grid.Row="4" Grid.Column="0" Text="Apex Y" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorApexYSlider" Grid.Row="4" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="VisorApexYSlider_Changed" />
+              <TextBlock Grid.Row="6" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorInnerLowerSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="0.666" ValueChanged="VisorInnerLowerSlider_Changed" />
+              <TextBlock Grid.Row="8" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorInnerBridgeSlider" Grid.Row="8" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="VisorInnerBridgeSlider_Changed" />
+              <TextBlock Grid.Row="10" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorInnerBridgeRiseSlider" Grid.Row="10" Grid.Column="1" Minimum="-0.5" Maximum="1" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
+              <TextBlock Grid.Row="12" Grid.Column="0" Text="Peak X" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorInnerBridgePeakXSlider" Grid.Row="12" Grid.Column="1" Minimum="-1" Maximum="2" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
+              <TextBlock Grid.Row="14" Grid.Column="0" Text="Steep" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorInnerBridgeSteepnessSlider" Grid.Row="14" Grid.Column="1" Minimum="-1" Maximum="2" ValueChanged="VisorInnerBridgeDetailSlider_Changed" />
+              <TextBlock Grid.Row="16" Grid.Column="0" Text="X" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorOffsetXSlider" Grid.Row="16" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
+              <TextBlock Grid.Row="18" Grid.Column="0" Text="Y" VerticalAlignment="Center" FontSize="12" />
+              <Slider Name="VisorOffsetYSlider" Grid.Row="18" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
             </Grid>
             <ui:BeanMaskEditor x:Name="MaskBeanEditor" Height="120" Margin="0,8,0,0" ShapeChanged="MaskBeanEditor_ShapeChanged" />
           </StackPanel>

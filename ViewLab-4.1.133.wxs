@@ -1,0 +1,107 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="{99718221-2E10-483A-83EA-6BB5EB40BFB4}" Codepage="1252" Language="1033" Manufacturer="cooooked" Name="ViewLab" UpgradeCode="{1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87}" Version="4.1.133">
+        <Package Comments="This installer database contains the logic and data required to install ViewLab." Compressed="yes" Description="ViewLab" InstallerVersion="500" Languages="1033" Manufacturer="cooooked" Platform="x64" />
+        <Binary Id="CreateDesktopShortcutVbs" SourceFile="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\Binary\CreateDesktopShortcutVbs" />
+        <Binary Id="PreserveConfigVbs" SourceFile="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\Binary\PreserveConfigVbs" />
+        <CustomAction Id="PromptDesktopShortcut" BinaryKey="CreateDesktopShortcutVbs" VBScriptCall="PromptDesktopShortcut" Return="ignore" Win64="yes" />
+        <CustomAction Id="PromptLaunchXRViewLab" BinaryKey="CreateDesktopShortcutVbs" VBScriptCall="PromptLaunchXRViewLab" Return="ignore" Win64="yes" />
+        <CustomAction Id="CleanupApiLayerRegistry" BinaryKey="PreserveConfigVbs" VBScriptCall="CleanupApiLayerRegistry" Return="ignore" Execute="deferred" Impersonate="no" Win64="yes" />
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFiles64Folder">
+                <Directory Id="INSTALLFOLDER" Name="xr-viewlab" ShortName="shzdabkh">
+                    <Component Id="LayerFiles" Guid="{A3E0E51C-45C2-45AA-B458-2F37F261C40A}" Win64="yes">
+                        <File Id="LayerDll" Name="XR_APILAYER_cooooked_xrviewlab.dll" KeyPath="yes" ShortName="h3zusyl3.dll" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\LayerDll" />
+                        <File Id="LayerJson" Name="XR_APILAYER_cooooked_xrviewlab.json" ShortName="xagnmkp9.jso" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\LayerJson" />
+                        <RemoveFile Id="RemoveLayerDll" Directory="INSTALLFOLDER" Name="XR_APILAYER_cooooked_xrviewlab.dll" ShortName="_qmwdsl-.dll" On="uninstall" />
+                        <RemoveFile Id="RemoveLayerJson" Directory="INSTALLFOLDER" Name="XR_APILAYER_cooooked_xrviewlab.json" ShortName="kaecqon_.jso" On="uninstall" />
+                        <RemoveFile Id="RemoveLogFile" Directory="INSTALLFOLDER" Name="xr-viewlab.log" ShortName="30vvqkk7.log" On="uninstall" />
+                        <RemoveFile Id="RemoveOldLayerDll" Directory="INSTALLFOLDER" Name="XR_APILAYER_cooooked_verticaltangent.dll" ShortName="7trkit6i.dll" On="both" />
+                        <RemoveFile Id="RemoveOldLayerJson" Directory="INSTALLFOLDER" Name="XR_APILAYER_cooooked_verticaltangent.json" ShortName="kybun3l2.jso" On="both" />
+                        <RemoveFolder Id="RemoveInstallDirFromLayerFiles" Directory="INSTALLFOLDER" On="uninstall" />
+                    </Component>
+                    <Component Id="AppFiles" Guid="{B5EC7B3F-8094-43B8-A6B4-9E4D48B8281A}" Win64="yes">
+                        <File Id="SettingsApp" Name="xr-viewlab.exe" KeyPath="yes" ShortName="gvp1t9cn.exe" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\SettingsApp" />
+                        <File Id="AppIconFile" Name="xr-viewlab.ico" ShortName="vmdfwf4d.ico" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\AppIconFile" />
+                        <File Id="DefaultConfigFile" Name="xr-viewlab.ini" ShortName="lz3lj7mt.ini" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\DefaultConfigFile" />
+                        <RemoveFile Id="RemoveSettingsApp" Directory="INSTALLFOLDER" Name="xr-viewlab.exe" ShortName="6r6sfd4i.exe" On="uninstall" />
+                        <RemoveFile Id="RemoveDefaultConfigFile" Directory="INSTALLFOLDER" Name="xr-viewlab.ini" ShortName="ppwxyidw.ini" On="uninstall" />
+                        <RemoveFile Id="RemoveReShadeMenuMirrorApp" Directory="INSTALLFOLDER" Name="reshade-vr-menu.exe" ShortName="igujhnmq.exe" On="both" />
+                        <RemoveFile Id="RemoveReShadePackageZip" Directory="INSTALLFOLDER" Name="reshade-package.zip" ShortName="ehxuhgo4.zip" On="both" />
+                        <RemoveFile Id="RemoveAppIconFile" Directory="INSTALLFOLDER" Name="xr-viewlab.ico" ShortName="mjrw4jgj.ico" On="uninstall" />
+                    </Component>
+                    <Component Id="RegEnable" Guid="{7CFF3A28-702B-49EB-BD2C-CFD2B2A7FA77}" Win64="yes">
+                        <RegistryValue Id="reg5997592E253B872718654EC36C82CF6B" Root="HKLM" Key="Software\Khronos\OpenXR\1\ApiLayers\Implicit" Name="[#LayerJson]" Value="0" Type="integer" KeyPath="yes" />
+                    </Component>
+                    <Component Id="RegEnable32" Guid="{9C2F1A77-4B3E-4D2A-8E1F-AB12CD34EF56}">
+                        <RegistryValue Id="reg5416BF868033743577F545D040E6E8D6" Root="HKLM" Key="Software\Khronos\OpenXR\1\ApiLayers\Implicit" Name="[#Layer32Json]" Value="0" Type="integer" KeyPath="yes" />
+                    </Component>
+                    <Directory Id="ReShadePayloadFolder" Name="ReShadePayload" ShortName="0wb2cjpm">
+                        <Component Id="ReShadePayloadFiles" Guid="{D73B2F3B-0F6A-4EB5-A9B6-78F0E51F37E5}" Win64="yes">
+                            <File Id="ReShadePayloadDll" Name="ReShade64.dll" KeyPath="yes" ShortName="mg-mcslg.dll" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\ReShadePayloadDll" />
+                            <File Id="ReShadePayloadJson" Name="ReShade64_XR.json" ShortName="3nre8wu7.jso" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\ReShadePayloadJson" />
+                            <File Id="ReShadePayloadReadme" Name="README_ViewLab.txt" ShortName="97yelvo7.txt" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\ReShadePayloadReadme" />
+                            <RemoveFolder Id="RemoveReShadePayloadFolder" Directory="ReShadePayloadFolder" On="uninstall" />
+                        </Component>
+                        <Directory Id="ReShadePayloadDocsFolder" Name="Docs">
+                            <Component Id="ReShadePayloadDocs" Guid="{92FDE26A-D9D7-4454-95FF-BD2B04DD097A}" Win64="yes">
+                                <File Id="ReShadePayloadDocsOverview" Name="ReshadeAIO_OVERVIEW.md" KeyPath="yes" ShortName="igrjdv3e.md" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\ReShadePayloadDocsOverview" />
+                                <File Id="ReShadePayloadDocsMemory" Name="ReshadeAIO_MEMORY.md" ShortName="amhlsipy.md" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\ReShadePayloadDocsMemory" />
+                                <File Id="ReShadePayloadDocsStatus" Name="ReshadeAIO_STATUS.md" ShortName="z5hpaelj.md" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\ReShadePayloadDocsStatus" />
+                                <File Id="ReShadePayloadDocsOpenComposite" Name="OpenComposite_ReShade_fix.md" ShortName="mpmibo_o.md" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\ReShadePayloadDocsOpenComposite" />
+                                <File Id="ReShadePayloadDocsDeployReference" Name="Deploy-ReShade.reference.ps1" ShortName="vmzrjdsa.ps1" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\ReShadePayloadDocsDeployReference" />
+                                <File Id="ReShadePayloadDocsAddGameReference" Name="Add-Game.reference.ps1" ShortName="da1ej7a5.ps1" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\ReShadePayloadDocsAddGameReference" />
+                                <RemoveFolder Id="RemoveReShadePayloadDocsFolder" Directory="ReShadePayloadDocsFolder" On="uninstall" />
+                            </Component>
+                        </Directory>
+                    </Directory>
+                </Directory>
+            </Directory>
+            <Directory Id="ProgramFilesFolder">
+                <Directory Id="INSTALLFOLDER32" Name="xr-viewlab" ShortName="rp-sv5l_">
+                    <Component Id="LayerFiles32" Guid="{5F8AE758-6D85-4A0C-9D1B-1849B7F1ED55}">
+                        <File Id="Layer32Dll" Name="XR_APILAYER_cooooked_xrviewlab32.dll" KeyPath="yes" ShortName="iprhnet-.dll" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\Layer32Dll" />
+                        <File Id="Layer32Json" Name="XR_APILAYER_cooooked_xrviewlab32.json" ShortName="ulmoanft.jso" DiskId="1" Source="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\File\Layer32Json" />
+                        <RemoveFile Id="RemoveLayer32Dll" Directory="INSTALLFOLDER32" Name="XR_APILAYER_cooooked_xrviewlab32.dll" ShortName="ncpprpj7.dll" On="uninstall" />
+                        <RemoveFile Id="RemoveLayer32Json" Directory="INSTALLFOLDER32" Name="XR_APILAYER_cooooked_xrviewlab32.json" ShortName="o12_jxkc.jso" On="uninstall" />
+                        <RemoveFolder Id="RemoveInstallDir32FromLayerFiles" Directory="INSTALLFOLDER32" On="uninstall" />
+                    </Component>
+                </Directory>
+            </Directory>
+            <Directory Id="ProgramMenuFolder">
+                <Directory Id="ApplicationProgramsFolder" Name="ViewLab">
+                    <Component Id="StartMenuShortcut" Guid="{3AE9AB79-5298-4921-B099-9F98E8383356}" Win64="yes">
+                        <RegistryValue Id="reg260ABC4F2244F832945FC82DF50E1539" Root="HKLM" Key="Software\cooooked\xr-viewlab" Name="StartMenuShortcutInstalled" Value="1" Type="integer" KeyPath="yes" />
+                        <RemoveFolder Id="ApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+                        <Shortcut Id="StartMenuShortcut" Directory="ApplicationProgramsFolder" Name="ViewLab" Target="[#SettingsApp]" Description="Configure OpenXR VR render height and width" Icon="ProductIcon" WorkingDirectory="INSTALLFOLDER" />
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+        <Feature Id="Main" Level="1" Title="ViewLab">
+            <ComponentRef Id="LayerFiles" />
+            <ComponentRef Id="AppFiles" />
+            <ComponentRef Id="ReShadePayloadFiles" />
+            <ComponentRef Id="ReShadePayloadDocs" />
+            <ComponentRef Id="RegEnable" />
+            <ComponentRef Id="RegEnable32" />
+            <ComponentRef Id="LayerFiles32" />
+            <ComponentRef Id="StartMenuShortcut" />
+        </Feature>
+        <Icon Id="ProductIcon" SourceFile="C:\Users\strif\AppData\Local\Temp\ViewLabMsi133\Icon\ProductIcon" />
+        <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version is already installed." RemoveFeatures="all" Schedule="afterInstallFinalize" />
+        <Media Id="1" Cabinet="cab1.cab" EmbedCab="yes" />
+        <Property Id="ALLUSERS" Value="1" />
+        <Property Id="ARPCOMMENTS" Value="Tunes OpenXR VR render height and width" />
+        <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
+        <Property Id="REBOOT" Value="ReallySuppress" />
+        <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
+        <Property Id="MsiLogging" Value="voicewarmupx" />
+        <Property Id="WIX_DOWNGRADE_DETECTED" Secure="yes" />
+        <Property Id="WIX_UPGRADE_DETECTED" Secure="yes" />
+        <UIRef Id="WixUI_InstallDir" />
+        <InstallExecuteSequence>
+            <Custom Action="CleanupApiLayerRegistry" Before="InstallFinalize">1</Custom>
+        </InstallExecuteSequence>
+    </Product>
+</Wix>

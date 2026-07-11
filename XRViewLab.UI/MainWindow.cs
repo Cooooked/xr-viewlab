@@ -37,6 +37,7 @@ public partial class MainWindow : Window
 
 	// Render options
 	private const string MaskEnabledKey = "mask_enabled";
+	private const string MaskSizeKey = "mask_size";
 	private const string MaskRoundedKey = "mask_rounded";
 	private const string MaskCornerKey = "mask_corner";
 	private const string MaskOffsetYKey = "mask_offset_y";
@@ -522,9 +523,11 @@ public partial class MainWindow : Window
 		if (MainColumn != null && SideColumn != null && WideGapColumn != null && WideGapColumn2 != null && RightColumn != null && EnabledCard != null && SidePanel != null && RightColumnPanel != null && LeftColumnPanel != null && RenderLabelColumn != null && RenderValueColumn != null && RenderHintColumn != null && RenderHintGapColumn != null && OptionsGapRow != null)
 		{
 			if (w < 0) w = base.ActualWidth;
-			bool compact  = w > 0.0 && w < 360.0;  // min: sliders collapse
-			bool twoCol   = w >= 600.0;             // medium: two columns
-			bool threeCol = w >= 900.0;             // large: three columns
+			// These thresholds are client widths, not nominal window widths. Three card columns
+			// need substantially more room than the old 900px cutover allowed.
+			bool compact  = w > 0.0 && w < 280.0;   // mini: sliders collapse only when genuinely narrow
+			bool twoCol   = w >= 720.0;              // medium: two usable card columns
+			bool threeCol = w >= 1200.0;             // large: three full-width card columns
 
 			MainColumn.Width     = new GridLength(1.0, GridUnitType.Star);
 			WideGapColumn.Width  = twoCol    ? new GridLength(14.0) : new GridLength(0.0);
@@ -558,7 +561,7 @@ public partial class MainWindow : Window
 			Grid.SetColumn(RightColumnPanel, 4);
 			Grid.SetRow(RightColumnPanel, 0);
 			Grid.SetRowSpan(RightColumnPanel, 9);
-			OptionsHeader.Visibility    = Visibility.Visible;
+			OptionsHeader.Visibility    = Visibility.Collapsed;
 			OptionsCard.Visibility      = Visibility.Visible;
 			OptionsGapRow.Height        = threeCol ? new GridLength(0) : new GridLength(10);
 
@@ -568,9 +571,12 @@ public partial class MainWindow : Window
 			Grid.SetRowSpan(SidePanel, twoCol ? 9 : 1);
 
 			// ReShade cards in SidePanel: visible in single/two-col only
-			ReShadeOpenXRHeader.Visibility = threeCol ? Visibility.Collapsed : Visibility.Visible;
-			ReShadeOpenXRCard.Visibility   = threeCol ? Visibility.Collapsed : Visibility.Visible;
+			ReShadeOpenXRHeader.Visibility = Visibility.Collapsed;
+			ReShadeOpenXRCard.Visibility   = Visibility.Collapsed;
+			ReShadeOpenXRHeader2.Visibility = Visibility.Collapsed;
+			ReShadeOpenXRCard2.Visibility   = Visibility.Collapsed;
 			ThanksText.Visibility          = threeCol ? Visibility.Collapsed : Visibility.Visible;
+			ThanksTextRight.Visibility     = threeCol ? Visibility.Visible : Visibility.Collapsed;
 
 			AppsGridRow.Height = new GridLength(twoCol ? 260.0 : 180.0);
 
@@ -760,6 +766,15 @@ public partial class MainWindow : Window
 		return (uint)Math.Round((Math.Clamp(value, -1.0, 1.0) + 1.0) * 1000.0);
 	}
 
+	// 10000 distinguishes the extended Peak X range from existing 0..1000 profiles.
+	private static uint ToPeakXMillis(double value)
+	{
+		return (uint)Math.Round(10000.0 + (Math.Clamp(value, -1.0, 2.0) + 1.0) * 1000.0);
+	}
+
+	private static uint ToRiseMillis(double value) => (uint)Math.Round(20000.0 + (Math.Clamp(value, -0.5, 1.0) + 0.5) * 1000.0);
+	private static uint ToSteepMillis(double value) => (uint)Math.Round(30000.0 + (Math.Clamp(value, -1.0, 2.0) + 1.0) * 1000.0);
+
 	private static double ReadWindowSizeSetting(string key, double fallback)
 	{
 		if (!double.TryParse(ReadSetting(key, ""), NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
@@ -880,7 +895,7 @@ public partial class MainWindow : Window
 		{
 			return;
 		}
-		MaskBeanEditor.Size = 1.0; // Hardcoded maximum corner coverage
+		MaskBeanEditor.Size = MaskSizeSlider?.Value ?? 1.0;
 		MaskBeanEditor.Curve = MaskRoundnessSlider?.Value ?? 0.5;
 		MaskBeanEditor.OffsetX = MaskOffsetXSlider?.Value ?? 0.0;
 		MaskBeanEditor.OffsetY = MaskOffsetYSlider?.Value ?? 0.0;
@@ -907,17 +922,18 @@ public partial class MainWindow : Window
 		HorizontalBox.Text = FormatScale(value);
 		// Mask (visor): absolute bounds, default 1.0 = no mask on that axis.
 		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
+		MaskSizeSlider.Value = ReadRangeSetting(MaskSizeKey, 1.0, 0.1, 1.0);
 		MaskRoundedCheck.IsChecked = ReadBoolSetting(MaskRoundedKey, fallback: true);
 		MaskVerticalBox.Text = FormatScale(ReadScaleSetting("mask_vertical", 1.0));
 		MaskHorizontalBox.Text = FormatScale(ReadScaleSetting("mask_horizontal", 1.0));
 		MaskRoundnessSlider.Value = 1.0 - ReadScaleSetting(MaskCornerKey, 0.5);
 
 		MaskApexYSlider.Value = ReadRangeSetting(MaskOuterApexYKey, 0.0, -0.5, 0.5);
-		MaskInnerLowerSlider.Value = ReadRangeSetting(MaskInnerLowerYKey, 0.0, 0.0, 0.333);
+		MaskInnerLowerSlider.Value = ReadRangeSetting(MaskInnerLowerYKey, 0.0, 0.0, 0.666);
 		MaskInnerBridgeSlider.Value = ReadRangeSetting(MaskInnerBridgeWidthKey, 0.5, 0.0, 1.0);
-		MaskInnerBridgeRiseSlider.Value = ReadRangeSetting(MaskInnerBridgeRiseKey, 0.0, 0.0, 0.5);
-		MaskInnerBridgePeakXSlider.Value = ReadRangeSetting(MaskInnerBridgePeakXKey, 0.5, 0.0, 1.0);
-		MaskInnerBridgeSteepnessSlider.Value = ReadRangeSetting(MaskInnerBridgeSteepnessKey, 0.5, 0.0, 1.0);
+		MaskInnerBridgeRiseSlider.Value = ReadRangeSetting(MaskInnerBridgeRiseKey, 0.0, -0.5, 1.0);
+		MaskInnerBridgePeakXSlider.Value = ReadRangeSetting(MaskInnerBridgePeakXKey, 0.5, -1.0, 2.0);
+		MaskInnerBridgeSteepnessSlider.Value = ReadRangeSetting(MaskInnerBridgeSteepnessKey, 0.5, -1.0, 2.0);
 		MaskOffsetXSlider.Value = 0.0;
 		MaskOffsetYSlider.Value = 0.0;
 		SyncMaskEditorFromSliders();
@@ -1071,6 +1087,43 @@ public partial class MainWindow : Window
 		}
 	}
 
+	private static double FromPeakXMillis(object? value, double fallback)
+	{
+		if (value is int num)
+		{
+			return num >= 10000
+				? Math.Clamp((num - 10000) / 1000.0 - 1.0, -1.0, 2.0)
+				: Math.Clamp(num / 1000.0, 0.0, 1.0);
+		}
+		return fallback;
+	}
+
+	private static double FromRiseMillis(object? value, double fallback)
+	{
+		if (value is int num)
+		{
+			return num >= 20000 ? Math.Clamp((num - 20000) / 1000.0 - 0.5, -0.5, 1.0) : Math.Clamp(num / 1000.0, 0.0, 0.5);
+		}
+		return fallback;
+	}
+
+	private static double FromSteepMillis(object? value, double fallback)
+	{
+		if (value is int num)
+		{
+			return num >= 30000 ? Math.Clamp((num - 30000) / 1000.0 - 1.0, -1.0, 2.0) : Math.Clamp(num / 1000.0, 0.0, 1.0);
+		}
+		return fallback;
+	}
+
+	private void MaskSizeSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (!_loading && !_syncingControls && MaskBeanEditor != null)
+		{
+			SyncMaskEditorFromSliders();
+		}
+	}
+
 	private void MaskShapeSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
 		if (!_loading && !_syncingControls && MaskBeanEditor != null)
@@ -1088,6 +1141,8 @@ public partial class MainWindow : Window
 		{
 			_syncingControls = true;
 			SetSliderValue(MaskApexYSlider, MaskBeanEditor.OuterApexY);
+			SetSliderValue(MaskSizeSlider, MaskBeanEditor.Size);
+			SetSliderValue(MaskRoundnessSlider, MaskBeanEditor.Curve);
 			SetSliderValue(MaskInnerLowerSlider, MaskBeanEditor.InnerLowerY);
 			SetSliderValue(MaskInnerBridgeSlider, MaskBeanEditor.InnerBridgeWidth);
 			SetSliderValue(MaskInnerBridgeRiseSlider, MaskBeanEditor.InnerBridgeRise);
@@ -1157,7 +1212,8 @@ public partial class MainWindow : Window
 		if (_loading) return;
 		e.Handled = true;
 		_syncingControls = true;
-		if (sender == MaskRoundnessSlider) MaskRoundnessSlider.Value = 0.5;
+		if (sender == MaskSizeSlider) MaskSizeSlider.Value = 1.0;
+		else if (sender == MaskRoundnessSlider) MaskRoundnessSlider.Value = 0.5;
 		else if (sender == MaskApexYSlider)     MaskApexYSlider.Value     = 0.0;
 		else if (sender == MaskInnerLowerSlider) MaskInnerLowerSlider.Value = 0.0;
 		else if (sender == MaskInnerBridgeSlider) MaskInnerBridgeSlider.Value = 0.5;
@@ -1503,6 +1559,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		double maskH = TryReadTextBox(MaskHorizontalBox, out var mh) ? Math.Clamp(mh, 0.01, 1.0) : 1.0;
 		WritePrivateProfileString("Settings", "mask_vertical", FormatStorageScale(maskV), ConfigPath);
 		WritePrivateProfileString("Settings", "mask_horizontal", FormatStorageScale(maskH), ConfigPath);
+		WritePrivateProfileString("Settings", MaskSizeKey, FormatStorageScale(MaskSizeSlider.Value), ConfigPath);
 		
 
 		WritePrivateProfileString("Settings", MaskCornerKey, FormatStorageScale(1.0 - MaskRoundnessSlider.Value), ConfigPath);
@@ -1519,6 +1576,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", MaskRightBiasKey, "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskTopCurveKey, "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskBottomCurveKey, "0", ConfigPath);
+		// Written last: the native layer only live-reloads visor values after this revision changes.
+		WritePrivateProfileString("Settings", "visor_live_revision", DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture), ConfigPath);
 		SaveReShadeMenuSettings();
 		SaveExperimentalSettings();
 		WriteRegistryEnabled(valueOrDefault2);
@@ -1562,7 +1621,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private static readonly KnownSteamVrApp[] KnownSteamVrApps =
 	{
-		new("2981220", "Forefront.exe", "Forefront", "OpenXR"),
+		new("2981220", "Forefront_Internal.exe", "Forefront", "OpenXR"),
 	};
 
 	private void LoadAppProfiles()
@@ -1795,9 +1854,9 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 				double visorOuterApexY = FromSignedMillis(appKey.GetValue("mask_outer_apex_y"), 0.0);
 		double visorInnerLowerY = FromMillis(appKey.GetValue("mask_inner_lower_y"), 0.0);
 		double visorInnerBridgeWidth = FromMillis(appKey.GetValue("mask_inner_bridge_width"), 0.5);
-		double visorInnerBridgeRise = FromMillis(appKey.GetValue("mask_inner_bridge_rise"), 0.0, 0.5);
-		double visorInnerBridgePeakX = FromMillis(appKey.GetValue("mask_inner_bridge_peak_x"), 0.5);
-		double visorInnerBridgeSteepness = FromMillis(appKey.GetValue("mask_inner_bridge_steepness"), 0.5);
+		double visorInnerBridgeRise = FromRiseMillis(appKey.GetValue("mask_inner_bridge_rise"), 0.0);
+		double visorInnerBridgePeakX = FromPeakXMillis(appKey.GetValue("mask_inner_bridge_peak_x"), 0.5);
+		double visorInnerBridgeSteepness = FromSteepMillis(appKey.GetValue("mask_inner_bridge_steepness"), 0.5);
 		return new AppProfile
 		{
 			Key = keyName,
@@ -1824,7 +1883,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			MaskRightBias = maskRightBias,
 			MaskTopCurve = maskTopCurve,
 			MaskBottomCurve = maskBottomCurve,
-			VisorSize = 1.0, // Size slider removed; always maximum corner coverage
+			VisorSize = FromMillis(appKey.GetValue("visor_size"), 0.0),
 			VisorOuterApexY = visorOuterApexY,
 			VisorInnerLowerY = visorInnerLowerY,
 			VisorInnerBridgeWidth = visorInnerBridgeWidth,
@@ -1920,7 +1979,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private string? ForefrontStatusMessage()
 	{
-		AppProfile? forefront = _apps.FirstOrDefault(a => a.Key.Equals("Forefront.exe", StringComparison.OrdinalIgnoreCase));
+		AppProfile? forefront = _apps.FirstOrDefault(a => a.Key.Equals("Forefront_Internal.exe", StringComparison.OrdinalIgnoreCase))
+			?? _apps.FirstOrDefault(a => a.Key.Equals("Forefront.exe", StringComparison.OrdinalIgnoreCase));
 		if (forefront == null)
 		{
 			return null;
@@ -1929,7 +1989,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		{
 			"Hooked" => "Forefront found and hooked by ViewLab.",
 			"Failed" => "Forefront found, but OpenXR instance creation failed while ViewLab was in the layer chain. Check the log.",
-			_ => "Forefront found, but ViewLab has not hooked it yet. Launch Forefront, then reload apps; if it stays here, the OpenXR layer is not loading into Forefront."
+			_ => "Forefront found, but ViewLab has not hooked it yet. Launch it, then send ViewLab.log so the Forefront diagnostic marker can show where startup stopped."
 		};
 	}
 
@@ -2009,7 +2069,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			0.0,
 			0.0,
 			0.0,
-			1.0,
+			MaskSizeSlider?.Value ?? 1.0,
 			MaskApexYSlider?.Value ?? 0.0,
 			MaskInnerLowerSlider?.Value ?? 0.0,
 			MaskInnerBridgeSlider?.Value ?? 0.5,
@@ -2056,7 +2116,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 
 		var globalMask = CurrentGlobalMaskValues();
-		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, 1.0, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, 1.0, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness, true) // Stencil outer edges only is permanently enabled
+		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, appProfile.VisorSize, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, globalMask.visorSize, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness, true) // Stencil outer edges only is permanently enabled
 		{
 			Owner = this
 		};
@@ -2160,9 +2220,9 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		registryKey.SetValue("mask_outer_apex_y", ToSignedMillis(visorOuterApexY), RegistryValueKind.DWord);
 		registryKey.SetValue("mask_inner_lower_y", ToMillis(visorInnerLowerY), RegistryValueKind.DWord);
 		registryKey.SetValue("mask_inner_bridge_width", ToMillis(visorInnerBridgeWidth), RegistryValueKind.DWord);
-		registryKey.SetValue("mask_inner_bridge_rise", ToMillis(visorInnerBridgeRise, 0.5), RegistryValueKind.DWord);
-		registryKey.SetValue("mask_inner_bridge_peak_x", ToMillis(visorInnerBridgePeakX), RegistryValueKind.DWord);
-		registryKey.SetValue("mask_inner_bridge_steepness", ToMillis(visorInnerBridgeSteepness), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_inner_bridge_rise", ToRiseMillis(visorInnerBridgeRise), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_inner_bridge_peak_x", ToPeakXMillis(visorInnerBridgePeakX), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_inner_bridge_steepness", ToSteepMillis(visorInnerBridgeSteepness), RegistryValueKind.DWord);
 	}
 
 	private static void ResetAppCustomProfile(AppProfile profile)

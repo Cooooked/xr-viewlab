@@ -43,3 +43,17 @@
 6. Judge against the expectation (e.g. divot bottom-inner only; smooth edges; arch vs bean).
 Screenshots capture ONE eye's submitted image — good for shape/stencil checks; lens-warp
 artifacts (edge smear, blockiness magnification) still need a human in the headset.
+## Forefront diagnostic capture
+
+Use this only with a build that contains the `forefront diag: VIEWLAB_LOADED` marker.
+
+1. Close Forefront and ViewLab, then launch ViewLab and start Forefront normally through Steam/VD.
+2. If Forefront launches, wait until the VR scene has attempted to start; then exit it and reload the
+   app list in ViewLab.
+3. Send `%LOCALAPPDATA%\XR ViewLab\ViewLab.log` plus the exact text (or a screenshot) of any EAC
+   warning. Do not edit the log.
+
+Interpretation: no `VIEWLAB_LOADED` marker means the OpenXR layer never entered the actual Forefront
+process; the marker plus `xrCreateApiLayerInstance result` identifies layer-chain failure; the marker
+plus `render: FOV adjustment active` means ViewLab's crop hook ran and the remaining issue is visual
+or runtime-side.

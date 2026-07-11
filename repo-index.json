@@ -37,9 +37,9 @@
     "renderCrop": {
       "what": "Core perf feature: crops FOV tangents + recommended render size the game sees",
       "files": ["dllmain.cpp"],
-      "symbols": ["XRViewLab_xrLocateViews", "XRViewLab_xrEnumerateViewConfigurationViews", "totalTangent", "horizontalRenderWidth", "topTangent", "bottomTangent"],
+      "symbols": ["XRViewLab_xrLocateViews", "XRViewLab_xrEnumerateViewConfigurationViews", "LocateViewsSnapshot", "StoreLocateViewsSnapshot", "TakeLocateViewsSnapshot", "ValidateSubImage", "totalTangent", "horizontalRenderWidth", "topTangent", "bottomTangent"],
       "docs": ["docs/ARCHITECTURE.md", "docs/CONFIG.md#render-crop-core-perf-feature", "docs/DECISIONS.md#d1"],
-      "keywords": ["projection crop", "FOV", "tangent", "render height", "horizontal crop", "recommended resolution", "GPU savings", "split mode", "foveated"]
+      "keywords": ["projection crop", "FOV", "tangent", "render height", "horizontal crop", "recommended resolution", "GPU savings", "split mode", "foveated", "crop-contract", "display time", "sub-image bounds"]
     },
     "visorMask": {
       "what": "Black visor drawn into game eye textures via D3D11 at swapchain release (Technique C Direct)",
@@ -48,7 +48,7 @@
       "previewSpecSymbols": ["BeanMaskEditor.AddOpenInnerHalf", "BeanMaskEditor.BuildGeometry", "BeanMaskEditor.AddNoseBridgeCurve", "BeanMaskEditor.CurveExponent"],
       "tests": ["Tests/Verify-ViewLabContracts.ps1"],
       "docs": ["docs/ARCHITECTURE.md#native-layer-anatomy", "docs/CONFIG.md#visor-mask", "docs/DECISIONS.md#d2", "docs/REGRESSIONS.md#r1", "docs/REGRESSIONS.md#r2"],
-      "invariants": ["preview and native geometry formula-identical (D5)", "y-flip ONLY in ApexYFromConfigNdc", "nose divot anchored to NDC y0, band-clamped", "FreeLibrary after all shader blob use (R1)", "AA uses per-vertex alpha feather strips", "enabled visor must not accept invisible mask_size=1 legacy state", "late xrEndFrame draw is fallback-only with independent edge-guard and Direct C visor flags"],
+      "invariants": ["preview and native geometry formula-identical (D5)", "y-flip ONLY in ApexYFromConfigNdc", "nose divot anchored to NDC y0, band-clamped", "FreeLibrary after all shader blob use (R1)", "Curve 0 emits an exact rectangular aperture", "mask_size scales only the aperture; it never changes crop/FOV/recommended resolution", "late xrEndFrame draw is fallback-only (visor only; experimental edge-guard/crop-experiment paths removed 2026-07-11, see docs/FIXED_FOVEATION.md)"],
       "keywords": ["visor", "mask", "bean", "arch", "open-inner", "nose bridge", "divot", "apex", "superellipse", "D3D11", "eye texture", "kidney", "antialiasing", "HD", "RTV cache", "late draw"]
     },
     "stencilPipeline": {
