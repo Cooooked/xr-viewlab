@@ -14,6 +14,7 @@ if ([string]::IsNullOrWhiteSpace($DistDir)) {
     $DistDir = Join-Path $Root "dist"
 }
 $DotnetProject = Join-Path $Root "xr-viewlab.csproj"
+$BrokerProject = Join-Path $Root "NotificationBroker\ViewLab.NotificationBroker.csproj"
 $LayerProject = Join-Path $Root "XRViewLabLayer.vcxproj"
 $InstallerProject = Join-Path $Root "Installer\Installer.wixproj"
 $MsiSource = Join-Path $Root "Installer\bin\$Configuration\xr-viewlab-setup.msi"
@@ -22,6 +23,13 @@ if ([string]::IsNullOrWhiteSpace($TargetFramework)) {
     throw "TargetFramework was not found in $DotnetProject"
 }
 $PublishDir = Join-Path $Root "bin\$Configuration\$TargetFramework\win-x64\publish"
+$BrokerTargetFramework = ([xml](Get-Content -Raw $BrokerProject)).Project.PropertyGroup.TargetFramework | Where-Object { $_ } | Select-Object -First 1
+$BrokerPublishDir = Join-Path $Root "NotificationBroker\bin\$Configuration\$BrokerTargetFramework\win-x64\publish"
+$BrokerPackageBuildDir = Join-Path $Root "NotificationBroker\package-build"
+$BrokerPackageContentDir = Join-Path $BrokerPackageBuildDir "content"
+$BrokerPackagePath = Join-Path $BrokerPackageBuildDir "ViewLab.NotificationIdentity.msix"
+$BrokerCertificatePath = Join-Path $BrokerPackageBuildDir "ViewLab.NotificationIdentity.cer"
+$BrokerLogoPath = Join-Path $BrokerPackageBuildDir "xr-viewlab.png"
 $ExpectedWixSource = "..\bin\$Configuration\$TargetFramework\win-x64\publish\xr-viewlab.exe"
 
 # --- Auto-increment version (major.minor.build) ---
@@ -98,6 +106,9 @@ $GeneratedPaths = @(
     (Join-Path $Root "Installer\bin\$Configuration"),
     (Join-Path $Root "Installer\obj\$Configuration"),
     (Join-Path $Root "Installer\verify-build")
+    (Join-Path $Root "NotificationBroker\bin\$Configuration")
+    (Join-Path $Root "NotificationBroker\obj\$Configuration")
+    $BrokerPackageBuildDir
 )
 foreach ($GeneratedPath in $GeneratedPaths) {
     if (Test-Path $GeneratedPath) { Remove-Item -Recurse -Force $GeneratedPath }
@@ -110,6 +121,72 @@ if ($WixText -notmatch [regex]::Escape("Source=`"$ExpectedWixSource`"")) {
 
 Write-Host "Building WPF app..."
 Invoke-Native dotnet publish $DotnetProject -c $Configuration -r win-x64 --self-contained true /p:PublishSingleFile=true
+
+Write-Host "Building medium-integrity notification broker..."
+Invoke-Native dotnet publish $BrokerProject -c $Configuration -r win-x64 --self-contained true /p:PublishSingleFile=true
+
+Write-Host "Building signed notification identity package..."
+$WindowsSdkBinRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+$WindowsSdkVersionDir = Get-ChildItem $WindowsSdkBinRoot -Directory -ErrorAction Stop |
+    Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
+    Sort-Object { [version]$_.Name } -Descending |
+    Where-Object { Test-Path (Join-Path $_.FullName "x64\makeappx.exe") } |
+    Select-Object -First 1
+if (!$WindowsSdkVersionDir) { throw "Windows SDK MakeAppx.exe was not found." }
+$MakeAppx = Join-Path $WindowsSdkVersionDir.FullName "x64\makeappx.exe"
+$SignTool = Join-Path $WindowsSdkVersionDir.FullName "x64\signtool.exe"
+
+$SigningDir = Join-Path $Root ".viewlab-signing"
+New-Item -ItemType Directory -Path $SigningDir -Force | Out-Null
+$PfxPath = $env:VIEWLAB_MSIX_PFX
+$PfxPassword = $env:VIEWLAB_MSIX_PFX_PASSWORD
+if ([string]::IsNullOrWhiteSpace($PfxPath)) {
+    $PfxPath = Join-Path $SigningDir "ViewLab.NotificationIdentity.pfx"
+    $PasswordPath = Join-Path $SigningDir "ViewLab.NotificationIdentity.password.txt"
+    if (!(Test-Path $PfxPath) -or !(Test-Path $PasswordPath)) {
+        $randomBytes = New-Object byte[] 32
+        $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+        try { $rng.GetBytes($randomBytes) } finally { $rng.Dispose() }
+        $PfxPassword = [Convert]::ToBase64String($randomBytes)
+        Set-Content -Path $PasswordPath -Value $PfxPassword -NoNewline -Encoding UTF8
+        $secure = ConvertTo-SecureString $PfxPassword -AsPlainText -Force
+        $certificate = New-SelfSignedCertificate -Type Custom -Subject "CN=cooooked ViewLab" `
+            -FriendlyName "ViewLab local MSIX signing" -KeyUsage DigitalSignature `
+            -CertStoreLocation "Cert:\CurrentUser\My" -NotAfter ([DateTime]::UtcNow.AddYears(3)) `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3")
+        Export-PfxCertificate -Cert $certificate -FilePath $PfxPath -Password $secure | Out-Null
+    } else {
+        $PfxPassword = Get-Content -Raw $PasswordPath
+    }
+}
+if (!(Test-Path $PfxPath) -or [string]::IsNullOrWhiteSpace($PfxPassword)) {
+    throw "MSIX signing requires VIEWLAB_MSIX_PFX + VIEWLAB_MSIX_PFX_PASSWORD or the local development certificate."
+}
+
+New-Item -ItemType Directory -Path $BrokerPackageContentDir -Force | Out-Null
+$securePfxPassword = ConvertTo-SecureString $PfxPassword -AsPlainText -Force
+$PfxData = Get-PfxData -FilePath $PfxPath -Password $securePfxPassword
+Export-Certificate -Cert $PfxData.EndEntityCertificates[0] -FilePath $BrokerCertificatePath -Force | Out-Null
+Add-Type -AssemblyName PresentationCore
+$iconStream = [IO.File]::OpenRead((Join-Path $Root "app.ico"))
+try {
+    $decoder = [Windows.Media.Imaging.BitmapDecoder]::Create($iconStream, [Windows.Media.Imaging.BitmapCreateOptions]::PreservePixelFormat, [Windows.Media.Imaging.BitmapCacheOption]::OnLoad)
+    $encoder = New-Object Windows.Media.Imaging.PngBitmapEncoder
+    $encoder.Frames.Add($decoder.Frames[0])
+    $logoStream = [IO.File]::Create($BrokerLogoPath)
+    try { $encoder.Save($logoStream) } finally { $logoStream.Dispose() }
+} finally { $iconStream.Dispose() }
+$ManifestTemplate = Get-Content -Raw (Join-Path $Root "NotificationBroker\AppxManifest.xml.template")
+$PackageManifest = $ManifestTemplate.Replace("__VERSION__", $newVersion)
+Set-Content -Path (Join-Path $BrokerPackageContentDir "AppxManifest.xml") -Value $PackageManifest -Encoding UTF8
+Invoke-Native $MakeAppx pack /o /d $BrokerPackageContentDir /nv /p $BrokerPackagePath
+Invoke-Native $SignTool sign /fd SHA256 /f $PfxPath /p $PfxPassword $BrokerPackagePath
+
+$BrokerExe = Join-Path $BrokerPublishDir "ViewLab.NotificationBroker.exe"
+if (!(Test-Path $BrokerExe)) { throw "Notification broker executable missing: $BrokerExe" }
+Copy-Item $BrokerPackagePath (Join-Path $BrokerPublishDir "ViewLab.NotificationIdentity.msix") -Force
+Copy-Item $BrokerCertificatePath (Join-Path $BrokerPublishDir "ViewLab.NotificationIdentity.cer") -Force
+Copy-Item $BrokerLogoPath (Join-Path $BrokerPublishDir "xr-viewlab.png") -Force
 
 # Copy ReShadePayload to publish directory for development/testing
 $PayloadSrc = Join-Path $Root "ReShadePayload"
@@ -187,7 +264,7 @@ $PublishVersion = (Get-Item $PublishExe).VersionInfo.ProductVersion
 if ($PublishVersion -ne $version) {
     throw "Published executable version $PublishVersion does not match build version $version"
 }
-foreach ($FreshOutput in @($PublishExe, $Dll64Src, $Dll32Src, $MsiSource)) {
+foreach ($FreshOutput in @($PublishExe, $BrokerExe, $BrokerPackagePath, $BrokerCertificatePath, $Dll64Src, $Dll32Src, $MsiSource)) {
     if (!(Test-Path $FreshOutput)) { throw "Required fresh build output missing: $FreshOutput" }
     if ((Get-Item $FreshOutput).LastWriteTimeUtc -lt $BuildStartedUtc) {
         throw "Build output predates this build and may be stale: $FreshOutput"
@@ -230,6 +307,23 @@ if (!$PayloadDll64 -or (Get-FileHash $PayloadDll64.FullName -Algorithm SHA256).H
 if (!$PayloadDll32 -or (Get-FileHash $PayloadDll32.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $Dll32Src -Algorithm SHA256).Hash) {
     throw "MSI Win32 layer payload does not match the fresh native build"
 }
+$PayloadBroker = Get-ChildItem $VerifyDir -Recurse -Filter ViewLab.NotificationBroker.exe | Select-Object -First 1
+$PayloadIdentityPackage = Get-ChildItem $VerifyDir -Recurse -Filter ViewLab.NotificationIdentity.msix | Select-Object -First 1
+$PayloadIdentityCertificate = Get-ChildItem $VerifyDir -Recurse -Filter ViewLab.NotificationIdentity.cer | Select-Object -First 1
+if (!$PayloadBroker -or (Get-FileHash $PayloadBroker.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $BrokerExe -Algorithm SHA256).Hash) {
+    throw "MSI notification broker payload does not match the fresh broker build"
+}
+if (!$PayloadIdentityPackage -or (Get-FileHash $PayloadIdentityPackage.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $BrokerPackagePath -Algorithm SHA256).Hash) {
+    throw "MSI notification identity package does not match the freshly signed package"
+}
+if (!$PayloadIdentityCertificate -or (Get-FileHash $PayloadIdentityCertificate.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $BrokerCertificatePath -Algorithm SHA256).Hash) {
+    throw "MSI notification identity certificate does not match the package signer certificate"
+}
+$PackageSignature = Get-AuthenticodeSignature $BrokerPackagePath
+$PublicCertificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2($BrokerCertificatePath)
+if (!$PackageSignature.SignerCertificate -or $PackageSignature.SignerCertificate.Thumbprint -ne $PublicCertificate.Thumbprint) {
+    throw "Notification identity package signer does not match the MSI public certificate"
+}
 
 # These generated members/types prove the compiled application includes the Overlays XAML and all
 # four overlay feature implementations, rather than merely carrying the expected version resource.
@@ -238,7 +332,7 @@ $RequiredOverlayMarkers = @(
     'OverlaysButton_Click',
     'BoundaryDrag_End',
     'CrosshairEnabledCheck',
-    'NotificationService',
+    'NotificationBrokerClient',
     'IRacingEnabledCheck'
 )
 foreach ($Marker in $RequiredOverlayMarkers) {
@@ -248,6 +342,6 @@ foreach ($Marker in $RequiredOverlayMarkers) {
 $MsiDest = Join-Path $DistDir "ViewLab-$version.msi"
 Copy-Item -Path $MsiSource -Destination $MsiDest -Force
 
-Write-Host "Validated MSI payload: app $PayloadVersion; fresh WPF/native hashes match; Overlays markers present."
+Write-Host "Validated MSI payload: app $PayloadVersion; fresh WPF/native/broker hashes, signed identity certificate and Overlays markers match."
 Write-Host "Built MSI:"
 Write-Host $MsiDest

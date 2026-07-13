@@ -1,8 +1,9 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
-     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
+     xmlns:iis="http://schemas.microsoft.com/wix/IIsExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.195"
+           Language="1033" Version="4.1.202"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -21,6 +22,7 @@
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
     <Binary Id="CreateDesktopShortcutVbs" SourceFile="CreateDesktopShortcut.vbs" />
+    <Binary Id="NotificationIdentityCertificate" SourceFile="..\NotificationBroker\package-build\ViewLab.NotificationIdentity.cer" />
     <CustomAction Id="PromptDesktopShortcut"
                   BinaryKey="CreateDesktopShortcutVbs"
                   VBScriptCall="PromptDesktopShortcut"
@@ -31,6 +33,21 @@
                   VBScriptCall="PromptLaunchXRViewLab"
                   Execute="immediate"
                   Return="ignore" />
+    <CustomAction Id="SetRemoveNotificationIdentityCommand"
+                  Property="RemoveNotificationIdentity"
+                  Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command &quot;&amp; { Get-Process 'ViewLab.NotificationBroker' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Get-AppxPackage -AllUsers -Name 'cooooked.ViewLab.NotificationBroker' | ForEach-Object { Remove-AppxPackage -Package $_.PackageFullName -AllUsers -ErrorAction SilentlyContinue } }&quot;"
+                  Execute="immediate" />
+    <CustomAction Id="RemoveNotificationIdentity"
+                  BinaryKey="WixCA"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Return="ignore"
+                  Impersonate="no" />
+
+    <InstallExecuteSequence>
+      <Custom Action="SetRemoveNotificationIdentityCommand" Before="RemoveNotificationIdentity">REMOVE~=&quot;ALL&quot;</Custom>
+      <Custom Action="RemoveNotificationIdentity" Before="RemoveFiles">REMOVE~=&quot;ALL&quot;</Custom>
+    </InstallExecuteSequence>
 
     <UI>
       <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
@@ -81,6 +98,7 @@
       <ComponentRef Id="LayerFiles"/>
       <ComponentRef Id="LayerFiles32"/>
       <ComponentRef Id="AppFiles"/>
+      <ComponentRef Id="NotificationBrokerFiles"/>
       <ComponentRef Id="RegEnable"/>
       <ComponentRef Id="RegEnable32"/>
       <ComponentRef Id="StartMenuShortcut"/>
@@ -110,6 +128,23 @@
             <RemoveFile Id="RemoveReShadeMenuMirrorApp" Name="reshade-vr-menu.exe" On="both"/>
             <RemoveFile Id="RemoveReShadePackageZip" Name="reshade-package.zip" On="both"/>
             <RemoveFile Id="RemoveAppIconFile" Name="xr-viewlab.ico" On="uninstall"/>
+          </Component>
+          <Component Id="NotificationBrokerFiles" Guid="8E1F7C42-8E72-4E11-91C5-5988AB4AD119" Win64="yes">
+            <File Id="NotificationBrokerExe" Source="..\NotificationBroker\bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\ViewLab.NotificationBroker.exe" Name="ViewLab.NotificationBroker.exe" KeyPath="yes"/>
+            <File Id="NotificationIdentityPackage" Source="..\NotificationBroker\package-build\ViewLab.NotificationIdentity.msix" Name="ViewLab.NotificationIdentity.msix"/>
+            <File Id="NotificationIdentityPublicCertificate" Source="..\NotificationBroker\package-build\ViewLab.NotificationIdentity.cer" Name="ViewLab.NotificationIdentity.cer"/>
+            <File Id="NotificationBrokerLogo" Source="..\NotificationBroker\package-build\xr-viewlab.png" Name="xr-viewlab.png"/>
+            <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="ViewLab Notification Broker" Type="string" Value="&quot;[#NotificationBrokerExe]&quot; --start"/>
+            <iis:Certificate Id="NotificationIdentityTrustedCertificate"
+                             Name="ViewLab Notification Identity"
+                             StoreLocation="localMachine"
+                             StoreName="trustedPeople"
+                             Request="no"
+                             BinaryKey="NotificationIdentityCertificate" />
+            <RemoveFile Id="RemoveNotificationBrokerExe" Name="ViewLab.NotificationBroker.exe" On="uninstall"/>
+            <RemoveFile Id="RemoveNotificationIdentityPackage" Name="ViewLab.NotificationIdentity.msix" On="uninstall"/>
+            <RemoveFile Id="RemoveNotificationIdentityPublicCertificate" Name="ViewLab.NotificationIdentity.cer" On="uninstall"/>
+            <RemoveFile Id="RemoveNotificationBrokerLogo" Name="xr-viewlab.png" On="uninstall"/>
           </Component>
           <Directory Id="ReShadePayloadFolder" Name="ReShadePayload">
             <Component Id="ReShadePayloadFiles" Guid="D73B2F3B-0F6A-4EB5-A9B6-78F0E51F37E5" Win64="yes">

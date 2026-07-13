@@ -58,6 +58,7 @@ internal sealed class NotificationService : IDisposable
     private sealed class Card
     {
         public uint Id;
+        public string? SourceKey;
         public byte[] Rgba = Array.Empty<byte>();
         public int Width, Height;
         public uint ContentSerial;
@@ -69,7 +70,7 @@ internal sealed class NotificationService : IDisposable
     private readonly Dispatcher _ui;
     private readonly object _lock = new();
     private readonly List<Card> _cards = new();
-    private readonly Dictionary<uint, uint> _seen = new(); // listener id hash -> our card id
+    private readonly Dictionary<string, uint> _seen = new(StringComparer.Ordinal); // package + listener id -> our card id
     private uint _nextId = 1;
     private uint _generation;
 
@@ -79,6 +80,11 @@ internal sealed class NotificationService : IDisposable
     private UserNotificationListener? _listener;
     private volatile NotificationSettings _settings = new();
     private volatile bool _listenerReady;
+    private bool _baselineComplete;
+    private int _refreshActive;
+    private int _refreshFailures;
+    private volatile bool _listenerFaulted;
+    private long _lastRefreshTick;
     private bool _disposed;
 
     public string Status { get; private set; } = "Notifications idle.";
@@ -103,39 +109,43 @@ internal sealed class NotificationService : IDisposable
     }
 
     // Called whenever settings change. Starts/stops the listener and the animation timer.
-    public void Update(NotificationSettings settings)
+    public void Update(NotificationSettings settings, bool requestAccess = false)
     {
         _settings = settings;
         if (settings.Enabled)
         {
-            EnsureListener();
+            EnsureListener(requestAccess);
             if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 33);
         }
         else
         {
             _timer?.Dispose(); _timer = null;
-            lock (_lock) { _cards.Clear(); _seen.Clear(); }
+            lock (_lock) { _cards.Clear(); _seen.Clear(); _baselineComplete = false; }
             WriteBlock(); // publish an empty block so nothing renders
         }
     }
 
-    private async void EnsureListener()
+    private async void EnsureListener(bool requestAccess)
     {
+        if (requestAccess) _listenerFaulted = false;
+        if (_listenerFaulted) return;
         if (_listenerReady || _listener != null) return;
         try
         {
             _listener = UserNotificationListener.Current;
-            var access = await _listener.RequestAccessAsync();
+            var access = _listener.GetAccessStatus();
+            if (access != UserNotificationListenerAccessStatus.Allowed && requestAccess)
+                access = await _listener.RequestAccessAsync();
             if (access != UserNotificationListenerAccessStatus.Allowed)
             {
-                SetStatus(ServiceState.PermissionNotGranted, $"UserNotificationListenerAccessStatus={access}. Windows did not grant listener access.");
+                SetStatus(ServiceState.PermissionNotGranted, $"UserNotificationListenerAccessStatus={access}. Open ViewLab and enable notifications to request Windows permission.");
                 _listener = null;
                 return;
             }
             _listener.NotificationChanged += (s, a) => { _ = RefreshAsync(); };
             _listenerReady = true;
             SetStatus(ServiceState.Ready, $"UserNotificationListenerAccessStatus={access}; listener active.");
-            await RefreshAsync();
+            await RefreshAsync(); // first successful snapshot becomes the stale-notification baseline
         }
         catch (Exception ex)
         {
@@ -143,7 +153,7 @@ internal sealed class NotificationService : IDisposable
             int hr = ex.HResult;
             var state = hr == unchecked((int)0x80070490) || hr == unchecked((int)0x80040154)
                 ? ServiceState.UnsupportedDeployment : ServiceState.ListenerInitializationFailure;
-            SetStatus(state, $"{ex.GetType().Name} (0x{hr:X8}): {ex.Message}. Unpackaged Win32 identity/AppUserModelID may not satisfy UserNotificationListener.");
+            SetStatus(state, $"{ex.GetType().Name} (0x{hr:X8}): {ex.Message}. Notification broker package identity is unavailable or damaged.");
             _listener = null;
         }
     }
@@ -180,15 +190,41 @@ internal sealed class NotificationService : IDisposable
 
     private async System.Threading.Tasks.Task RefreshAsync()
     {
-        if (_listener == null) return;
+        if (_listener == null || Interlocked.Exchange(ref _refreshActive, 1) != 0) return;
+        try
+        {
         IReadOnlyList<UserNotification> current;
         try { current = await _listener.GetNotificationsAsync(NotificationKinds.Toast); }
-        catch { return; }
+        catch (Exception ex)
+        {
+            if (++_refreshFailures >= 5)
+            {
+                _listenerFaulted = true;
+                _listenerReady = false;
+            }
+            SetStatus(ServiceState.ListenerInitializationFailure, $"Notification refresh failed: {ex.GetType().Name} (0x{ex.HResult:X8}).");
+            return;
+        }
 
         var settings = _settings;
+        var currentKeys = new HashSet<string>(current.Select(NotificationKey), StringComparer.Ordinal);
+        lock (_lock)
+        {
+            if (!_baselineComplete)
+            {
+                foreach (string key in currentKeys) _seen[key] = 0;
+                _baselineComplete = true;
+                _lastRefreshTick = Environment.TickCount64;
+                return;
+            }
+
+            foreach (string missing in _seen.Keys.Where(k => !currentKeys.Contains(k)).ToArray())
+                _seen.Remove(missing);
+            _cards.RemoveAll(c => c.SourceKey != null && !currentKeys.Contains(c.SourceKey));
+        }
         foreach (var n in current)
         {
-            uint key = unchecked((uint)n.Id);
+            string key = NotificationKey(n);
             lock (_lock) { if (_seen.ContainsKey(key)) continue; }
 
             string appName = Safe(() => n.AppInfo?.DisplayInfo?.DisplayName) ?? "Notification";
@@ -217,8 +253,25 @@ internal sealed class NotificationService : IDisposable
             uint id;
             lock (_lock) { id = _nextId++; _seen[key] = id; }
             // Composition touches WPF imaging → marshal to the UI dispatcher.
-            _ui.Invoke(() => AddComposedCard(id, appName, title, body, icon, settings));
+            _ui.Invoke(() => AddComposedCard(id, appName, title, body, icon, settings, key));
         }
+        _refreshFailures = 0;
+        _lastRefreshTick = Environment.TickCount64;
+        }
+        catch (Exception ex)
+        {
+            SetStatus(ServiceState.ListenerInitializationFailure, $"Notification processing failed: {ex.GetType().Name} (0x{ex.HResult:X8}).");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _refreshActive, 0);
+        }
+    }
+
+    private static string NotificationKey(UserNotification n)
+    {
+        string family = Safe(() => n.AppInfo?.PackageFamilyName) ?? Safe(() => n.AppInfo?.AppUserModelId) ?? "unknown";
+        return family + ":" + n.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static bool PassesFilter(string appName, NotificationSettings s)
@@ -247,10 +300,10 @@ internal sealed class NotificationService : IDisposable
     }
 
     // Composite one card to straight-alpha RGBA and enqueue it. Runs on the UI dispatcher.
-    private void AddComposedCard(uint id, string appName, string title, string body, BitmapSource? icon, NotificationSettings s)
+    private void AddComposedCard(uint id, string appName, string title, string body, BitmapSource? icon, NotificationSettings s, string? sourceKey = null)
     {
         var (rgba, w, h) = ComposeCard(appName, title, body, icon, s);
-        var card = new Card { Id = id, Rgba = rgba, Width = w, Height = h, ContentSerial = id, BornTick = Environment.TickCount64, PixelsDirty = true };
+        var card = new Card { Id = id, SourceKey = sourceKey, Rgba = rgba, Width = w, Height = h, ContentSerial = id, BornTick = Environment.TickCount64, PixelsDirty = true };
         lock (_lock)
         {
             _cards.Add(card);
@@ -325,20 +378,21 @@ internal sealed class NotificationService : IDisposable
     {
         var s = _settings;
         long now = Environment.TickCount64;
+        if (_listenerReady && now - Interlocked.Read(ref _lastRefreshTick) >= 2000)
+            _ = RefreshAsync(); // bounded safety poll in case NotificationChanged is missed
         lock (_lock)
         {
             int max = Math.Clamp(s.MaxVisible, 1, MaxCards);
             // The newest `max` cards are visible; older ones wait (independent expiry).
             var ordered = _cards.OrderBy(c => c.BornTick).ToList();
-            var visible = ordered.Skip(Math.Max(0, ordered.Count - max)).ToList();
             var toRemove = new List<Card>();
-            foreach (var c in visible)
+            foreach (var c in ordered)
             {
                 long age = now - c.BornTick;
                 if (c.LeaveTick == 0 && age >= RiseMs + (long)s.DurationMs) c.LeaveTick = now;
                 if (c.LeaveTick != 0 && now - c.LeaveTick >= LeaveMs) toRemove.Add(c);
             }
-            foreach (var c in toRemove) { _cards.Remove(c); }
+            foreach (var c in toRemove) _cards.Remove(c);
         }
         WriteBlock();
     }

@@ -96,9 +96,9 @@ remain startup-owned and are never overwritten by the global live snapshot.
 | `crosshair_color` | 65280 | crosshair | Colour as a decimal `0xRRGGBB` integer (65280 = `00FF00`). The UI parses `cl_crosshair*` configs and CS2 `CSGO-` share codes into all of the above. |
 | `notify_enabled` | 0 | `notifyEnabled` | Mirror supported Windows notifications into the visor (both eyes, bottom-right of the cropped region). |
 | `notify_x`, `notify_y`, `notify_scale`, `notify_opacity` | 0.98, 0.98, 1.0, 1.0 | notify render | Card anchor within the binocular overlap, card scale, and opacity — the render-side settings the DLL reads. |
-| `notify_duration_ms`, `notify_max_visible`, `notify_privacy` | 3000, 3, 0 | notify (UI) | Hold time, max concurrent cards, and privacy mode (0 full / 1 title-only / 2 app-only). Consumed by the UI-side queue manager (off the render thread), not the DLL. |
-| `notify_show_icon`, `notify_show_image` | 1, 1 | notify (UI) | Whether cards composite the source app icon and the image/thumbnail (app logo where the payload exposes one). |
-| `notify_allowlist_mode`, `notify_app_filters` | 0, (empty) | notify (UI) | Comma-separated app-name filter; `allowlist_mode=1` shows only matches, otherwise it is a blocklist. |
+| `notify_duration_ms`, `notify_max_visible`, `notify_privacy` | 3000, 3, 0 | notification broker | Hold time, max concurrent cards, and privacy mode (0 full / 1 title-only / 2 app-only). Consumed by the independent medium-integrity broker, not the DLL/settings lifetime. |
+| `notify_show_icon`, `notify_show_image` | 1, 1 | notification broker | Whether cards composite the source app icon and the image/thumbnail where Windows exposes one. |
+| `notify_allowlist_mode`, `notify_app_filters` | 0, (empty) | notification broker | Comma-separated source-app filter; `allowlist_mode=1` shows only matches, otherwise it is a blocklist. Permission remains global. |
 | `iracing_enabled`, `iracing_lap_popup`, `iracing_spotter_glow`, `iracing_flag_border` | 0,0,0,0 | iRacing provider | Gates the optional background `IRSDKMemMapFileName` reader and generic lap/spotter/flag event consumers. Raw iRacing fields never enter the native renderer. UI simulations work without iRacing. |
 | `crop_experiment_mode` | — | — | **Removed 2026-07-11** (experimental crop-fix purge) — code and UI gone; key ignored. Root cause of the edge smear was VD fixed foveated encoding: `docs/FIXED_FOVEATION.md`. |
 | `edge_smear_fix`, `edge_smear_pixels` | — | — | **Removed 2026-07-11** — edge-guard code deleted; keys ignored. |

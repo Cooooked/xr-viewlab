@@ -170,7 +170,7 @@ public partial class MainWindow : Window
 	private readonly LiveStateService _liveState = new();
 	private readonly TelemetryConfigService _telemetryConfig = new();
 	private readonly CrosshairSettings _crosshair = new();
-	private NotificationService? _notifications;
+	private readonly NotificationBrokerClient _notificationBroker = new();
 	private IRacingTelemetryProvider? _iracingProvider;
 	private bool _boundaryDragActive;
 	private System.Windows.Threading.DispatcherTimer _xrPollTimer;
@@ -286,7 +286,6 @@ public partial class MainWindow : Window
 	protected override void OnClosing(CancelEventArgs e)
 	{
 		SaveWindowSize();
-		_notifications?.Dispose();
 		_iracingProvider?.Dispose();
 		base.OnClosing(e);
 	}
@@ -1779,41 +1778,31 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	}
 
 	// ---- Feature 3: notifications UI -----------------------------------------------------------
-	private void ApplyNotificationSettings()
+	private void ApplyNotificationSettings(bool requestAccess = false)
 	{
-		_notifications ??= new NotificationService(Dispatcher);
-		_notifications.StatusChanged -= NotificationStatusChanged;
-		_notifications.StatusChanged += NotificationStatusChanged;
-		var s = new NotificationSettings
-		{
-			Enabled = NotifyEnabledCheck.IsChecked == true,
-			X = NotifyXSlider.Value, Y = NotifyYSlider.Value,
-			Scale = NotifyScaleSlider.Value, Opacity = NotifyOpacitySlider.Value,
-			DurationMs = NotifyDurationSlider.Value,
-			MaxVisible = (int)Math.Round(NotifyMaxSlider.Value),
-			Privacy = Math.Max(0, NotifyPrivacyCombo.SelectedIndex),
-			ShowIcon = NotifyShowIconCheck.IsChecked == true,
-			ShowImage = NotifyShowImageCheck.IsChecked == true,
-			AllowlistMode = NotifyAllowlistModeCheck.IsChecked == true,
-			AppFilters = (NotifyFiltersBox.Text ?? string.Empty)
-				.Split(new[] { ',', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-		};
-		_notifications.Update(s);
-		if (NotifyStatusText != null) NotifyStatusText.Text = _notifications.Status;
+		if (NotifyEnabledCheck.IsChecked == true || requestAccess)
+			_notificationBroker.Start(requestAccess);
+		if (NotifyStatusText != null) NotifyStatusText.Text = _notificationBroker.RefreshStatus();
 	}
 
-	private void NotificationStatusChanged()
+	private static string Manifest32Path
 	{
-		Dispatcher.BeginInvoke(() => { if (NotifyStatusText != null && _notifications != null) NotifyStatusText.Text = _notifications.Status; });
+		get
+		{
+			string localManifest = Path.Combine(ProcessDirectory, "XR_APILAYER_cooooked_xrviewlab32.json");
+			if (File.Exists(localManifest)) return localManifest;
+			string installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "xr-viewlab", "XR_APILAYER_cooooked_xrviewlab32.json");
+			return File.Exists(installed) ? installed : localManifest;
+		}
 	}
 
 	private void TestNotification_Click(object sender, RoutedEventArgs e)
 	{
 		NotifyEnabledCheck.IsChecked = true;
-		ApplyNotificationSettings();
-		_notifications?.EnqueueTestNotification();
+		SaveNotificationSettings();
+		_notificationBroker.SendTest(requestAccess: true);
 		PublishLiveState();
-		if (NotifyStatusText != null && _notifications != null) NotifyStatusText.Text = _notifications.Status;
+		if (NotifyStatusText != null) NotifyStatusText.Text = "Test presentation requested through the notification broker.";
 	}
 
 	private void NotifyControl_Changed(object sender, RoutedEventArgs e)
@@ -1821,7 +1810,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if (_loading) return;
 		SaveNotificationSettings();
 		PublishLiveState();
-		ApplyNotificationSettings();
+		ApplyNotificationSettings(requestAccess: sender == NotifyEnabledCheck && NotifyEnabledCheck.IsChecked == true);
 		StatusText.Text = "Notification settings applied.";
 	}
 
@@ -1878,13 +1867,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private void IRacingEventPublished(object? sender, ViewLabEvent e)
 	{
-		Dispatcher.BeginInvoke(() => {
-			bool enabled = e.Kind switch { ViewLabEventKind.LapTime => IRacingLapPopupCheck.IsChecked==true, ViewLabEventKind.SpotterGlow => IRacingSpotterGlowCheck.IsChecked==true, ViewLabEventKind.FlagState => IRacingFlagBorderCheck.IsChecked==true, _=>false };
-			if (!enabled) return;
-			if (NotifyEnabledCheck.IsChecked != true) { NotifyEnabledCheck.IsChecked=true; ApplyNotificationSettings(); PublishLiveState(); }
-			_notifications ??= new NotificationService(Dispatcher);
-			_notifications.EnqueueEvent(e); // visible generic-event consumer; native iRacing coupling remains zero
-		});
+		// Racing events use their own generic presentation channels. They must never enable or
+		// persist the unrelated global Windows-notification feature.
 	}
 
 	private void SimulateIRacing(string kind){EnsureIRacingProvider();_iracingProvider?.Simulate(kind);}
@@ -1973,6 +1957,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private void XrPollTimer_Tick(object? sender, EventArgs e)
 	{
+		if (NotifyStatusText != null && NotifyEnabledCheck.IsChecked == true)
+			NotifyStatusText.Text = _notificationBroker.RefreshStatus();
 		if (!_xrControl.Connected)
 		{
 			if (_xrControl.TryConnect())
@@ -2206,16 +2192,35 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private static void WriteRegistryEnabled(bool enabled)
 	{
-		using RegistryKey registryKey = Registry.LocalMachine.CreateSubKey(OpenXrRegistryRoot, writable: true) ?? throw new InvalidOperationException("Could not open OpenXR registry key.");
-		foreach (string valueName in registryKey.GetValueNames())
+		if (LayerRegistrationMatches(RegistryView.Registry64, ManifestPath, enabled) &&
+			LayerRegistrationMatches(RegistryView.Registry32, Manifest32Path, enabled)) return;
+
+		string exe = Environment.ProcessPath ?? throw new InvalidOperationException("ViewLab executable path is unavailable.");
+		using Process? helper = Process.Start(new ProcessStartInfo
 		{
-			if (valueName.Contains("XR_APILAYER_cooooked_xrviewlab.json", StringComparison.OrdinalIgnoreCase) &&
-				!valueName.Equals(ManifestPath, StringComparison.OrdinalIgnoreCase))
-			{
-				registryKey.DeleteValue(valueName, throwOnMissingValue: false);
-			}
+			FileName = exe,
+			Arguments = $"--set-layer-enabled {(enabled ? 1 : 0)} \"{ManifestPath}\" \"{Manifest32Path}\"",
+			UseShellExecute = true,
+			Verb = "runas",
+			WorkingDirectory = ProcessDirectory
+		});
+		helper?.WaitForExit();
+		if (helper == null || helper.ExitCode != 0 ||
+			!LayerRegistrationMatches(RegistryView.Registry64, ManifestPath, enabled) ||
+			!LayerRegistrationMatches(RegistryView.Registry32, Manifest32Path, enabled))
+			throw new InvalidOperationException("ViewLab layer registration was not changed. Windows administrator approval is required.");
+	}
+
+	private static bool LayerRegistrationMatches(RegistryView view, string manifestPath, bool enabled)
+	{
+		try
+		{
+			using RegistryKey baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+			using RegistryKey? key = baseKey.OpenSubKey(OpenXrRegistryRoot, writable: false);
+			if (key == null || Convert.ToInt32(key.GetValue(manifestPath, -1), CultureInfo.InvariantCulture) != (enabled ? 0 : 1)) return false;
+			return !key.GetValueNames().Any(name => name.Contains("XR_APILAYER_cooooked_xrviewlab", StringComparison.OrdinalIgnoreCase) && !name.Equals(manifestPath, StringComparison.OrdinalIgnoreCase));
 		}
-		registryKey.SetValue(ManifestPath, (!enabled) ? 1 : 0, RegistryValueKind.DWord);
+		catch { return false; }
 	}
 
 	private static readonly HashSet<string> AppKeyBlacklist = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

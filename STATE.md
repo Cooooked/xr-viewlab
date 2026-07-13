@@ -4,13 +4,30 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.195 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.195.msi`
+**Current version:** 4.1.202 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.202.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
-`VIEWLAB_VALIDATION_HISTORY.md`; latest 4.1.195 integration baseline has contracts/build validation
-only and still needs risk-based headset checks for affected recent systems.
+`VIEWLAB_VALIDATION_HISTORY.md`; latest 4.1.202 has contracts/build/installer and real packaged-
+notification desktop validation. Headset presentation and affected recent systems still need
+risk-based checks.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Windows notification broker (implementation complete; headset presentation pending, 2026-07-13)
+
+ViewLab now ships a signed package-with-external-location identity and an independent medium-
+integrity `ViewLab.NotificationBroker.exe`. The broker owns global Windows listener consent,
+collection, deduplication, removals, filtering, privacy shaping, card composition and bounded expiry;
+the settings UI may close without ending collection. The ordinary UI runs `asInvoker`, with a narrow
+elevated helper used only when machine-wide OpenXR layer registration genuinely changes.
+
+Installed build 4.1.202 registered `cooooked.ViewLab.NotificationBroker` successfully and Windows
+reported `UserNotificationListenerAccessStatus=Allowed`. A disposable separately packaged fixture
+then sent a real Windows toast; the production broker observed it and published card ID 1 to
+`Local\XRViewLabNotifications`. This proves the Windows-to-ViewLab collection path independently of
+the synthetic presentation test. Final in-headset card appearance remains to be checked. Development
+packages use the ignored local self-signed certificate; production builds should provide the
+release PFX through the documented build environment. See `NOTIFICATION_IMPLEMENTATION.md`.
 
 ## Hardware telemetry platform (implementation complete; build/headset validation pending, 2026-07-13)
 

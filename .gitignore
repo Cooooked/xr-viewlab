@@ -45,6 +45,9 @@ openxr-verticaltangent-overlaytest/
 XR_APILAYER_cooooked_verticaltangent_overlaytest.json
 openxr-verticaltangent-overlaytest.ini
 .tools/
+.viewlab-signing/
+NotificationBroker/package-build/
+Tests/NotificationFixture/package-build/
 .claude/workspaces/
 # Agent safety - never create or commit these
 # Work with the user's global ~/.claude directory, NOT project-local .claude/

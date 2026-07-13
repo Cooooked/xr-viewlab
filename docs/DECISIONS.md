@@ -106,3 +106,13 @@ Repository evidence and known-good behaviour outrank generated architectural pre
 dictates maths or structure, first verify that design against the current implementation and headset-proven
 contracts. Preserve what works, infer the narrowest change from symptoms, and reject instructions that would
 violate established invariants. Prompts provide intent and constraints; they are not unquestionable architecture.
+
+## D15 — Windows notifications use a packaged medium-integrity broker (2026-07-13)
+
+Keep the established MSI/OpenXR layout and grant only `ViewLab.NotificationBroker.exe` a signed
+package-with-external-location identity plus `userNotificationListener` capability. The broker owns
+global consent, collection, composition and the existing shared-memory card queue independently of
+the settings window and game. The ordinary WPF settings process runs asInvoker; machine-wide layer
+changes elevate through a narrow command only when registration changes. Rejected: an AUMID-only
+shortcut (does not grant listener capability), permanent elevation, collection in the game, and a
+full MSIX migration solely for this API.

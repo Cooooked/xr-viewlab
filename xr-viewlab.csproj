@@ -28,16 +28,23 @@
     <Compile Remove="backups\**" />
     <Compile Remove="ReshadeAI\**" />
     <Compile Remove="OpenVRBridge\**" />
+    <Compile Remove="NotificationBroker\**" />
+    <Compile Remove="Tests\**" />
+    <Compile Remove="XRViewLab.UI\NotificationService.cs" />
     <Page Remove="temp_repo\**" />
     <Page Remove="ReShadeSource\**" />
     <Page Remove="backups\**" />
     <Page Remove="ReshadeAI\**" />
     <Page Remove="OpenVRBridge\**" />
+    <Page Remove="NotificationBroker\**" />
+    <Page Remove="Tests\**" />
     <None Remove="temp_repo\**" />
     <None Remove="ReShadeSource\**" />
     <None Remove="backups\**" />
     <None Remove="ReshadeAI\**" />
     <None Remove="OpenVRBridge\**" />
+    <None Remove="NotificationBroker\**" />
+    <None Remove="Tests\**" />
   </ItemGroup>
   <ItemGroup>
     <None Include="xr-viewlab.ini" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

@@ -2,6 +2,21 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## Unreleased - 2026-07-13 (Packaged Windows notification collection)
+
+- Added a signed package-with-external-location identity and dedicated medium-integrity notification
+  broker with the required `userNotificationListener` capability and global consent flow.
+- Moved collection, filtering, privacy shaping, card composition, expiry and shared-memory publishing
+  out of the settings window; collection now survives settings exit and never enters the game thread.
+- Added source/notification-ID deduplication, authoritative removal, stale-history baselining, bounded
+  safety polling and a five-failure latch that requires an explicit access retry.
+- Changed the ordinary WPF interface to `asInvoker`; machine-wide OpenXR registration now uses a
+  narrow elevated self-command only when the x64 or Win32 registry state needs changing.
+- Extended MSI install, upgrade and uninstall handling for the broker, signed identity package,
+  trusted signer certificate and logon startup.
+- Added a disposable separately packaged Windows-notification fixture. Installed build 4.1.202
+  received its real toast through Windows and published it into the production ViewLab card queue.
+
 ## Unreleased - 2026-07-13 (Hardware telemetry platform)
 
 - Expanded the HUD from four fixed choices to twelve functional widgets: CPU, peak logical CPU,

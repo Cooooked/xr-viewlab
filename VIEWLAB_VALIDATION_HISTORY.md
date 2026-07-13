@@ -30,6 +30,7 @@ not preserve the exact build number for every observation. Do not invent finer p
 | 4.1.187 incident range | 2026-07-13 | DiRT Rally 2 / OpenComposite | Desktop/runtime diagnostics and headset/game-session incident | Topmost menu-to-car transition, device loss, shutdown | Unsafe Topmost swapchain churn and 193 retry attempts accompanied a D3D device/display-stack failure. This is a failed validation, not a successful build claim. See `INCIDENT_REPORT.md`. |
 | 4.1.191–4.1.194 | 2026-07-13 | Repository and packaged payload | Contracts, build, MSI extraction; manual headset testing occurred during the broader recent cycle | Topmost fail-closed work, unified coordinates, calibration repair, modular HUD/trace, hardware telemetry | Automated suites and packaging passed. The exact post-safety-repair headset matrix was not recorded well enough to claim every new behaviour accepted in 4.1.194. Hardware telemetry overhead/provider checks still require targeted headset comparison. |
 | 4.1.195 | 2026-07-13 | Integrated `master` baseline | Contracts and full build | WPF, x64 layer, Win32 layer, WiX MSI, packaged payload hashes | Passed with zero warnings/errors. No new headset test yet; behaviour matches integrated 4.1.194 source apart from version metadata and documentation. |
+| 4.1.202 | 2026-07-13 | Windows 11 desktop / packaged notification broker | Contracts, build, installer, desktop/runtime | Sparse identity registration, medium-integrity broker lifetime, listener permission, real external Windows toast, production card mapping | Passed: signature valid, package status OK, listener Allowed, broker remained alive without settings, and a separately packaged fixture reached `Local\XRViewLabNotifications` as exactly one card (ID 1). In-headset card rendering not yet checked. |
 
 ## Recording the next test
 
@@ -47,4 +48,3 @@ Use risk-based scope:
 - Perform the broader Pistol Whip and DiRT Rally regression matrix for a release candidate or a
   change to shared projection, rendering, device lifetime, installer, or profile state.
 - Record “not tested” for omitted areas rather than converting a narrow pass into a global one.
-

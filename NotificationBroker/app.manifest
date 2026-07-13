@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.0.0.0" name="cooooked.xr-viewlab.app"/>
+  <assemblyIdentity version="1.0.0.0" name="cooooked.ViewLab.NotificationBroker" />
+  <msix xmlns="urn:schemas-microsoft-com:msix.v1"
+        publisher="CN=cooooked ViewLab"
+        packageName="cooooked.ViewLab.NotificationBroker"
+        applicationId="NotificationBroker" />
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
