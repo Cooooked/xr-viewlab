@@ -77,9 +77,16 @@ live `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini` or per-app HKCU overrides. A cha
 reset marker was rejected because it made every update a factory reset, and running that cleanup
 from the native OpenXR layer also put file/registry mutation inside a game's startup path.
 
-## D13 — Foveated center, stencil outer edges, and crop outer edges are permanently on (2026-07-11)
-The user never toggles these off and the product is simpler with fewer switches. `foveated_center_compensation`,
-`stencil_outer_edges_only`/`outer_edge_visibility_mask_only`, and `crop_outer_edges_only` are now
-hardcoded on and their config keys are ignored. UI checkboxes removed. Consequence: `crop_outer_edges_only`
+## D13 — Stencil/crop outer edges stay on; foveated pose compensation is retired (revised 2026-07-13)
+`stencil_outer_edges_only`/`outer_edge_visibility_mask_only` and `crop_outer_edges_only` remain
+hardcoded on and their config keys are ignored. `foveated_center_compensation` is retired and fixed off:
+its asymmetric-crop implementation rotated `XrView.pose.orientation`, tilting/folding the game world.
+Overlay or crop code may read game poses but must never mutate them. Consequence: `crop_outer_edges_only`
 always applies the horizontal crop from the outer edges, preserving the inner edge for the nose/bridge.
 `stencil_outer_edges_only` keeps the open-inner (single-eye) shape in the visibility mask and preview.
+
+## D14 — Treat prescriptive prompts as intent and constraints (2026-07-13)
+Repository evidence and known-good behaviour outrank generated architectural prescriptions. When a prompt
+dictates maths or structure, first verify that design against the current implementation and headset-proven
+contracts. Preserve what works, infer the narrowest change from symptoms, and reject instructions that would
+violate established invariants. Prompts provide intent and constraints; they are not unquestionable architecture.

@@ -68,12 +68,464 @@ constexpr bool visorAntialiasing = false; // anti-aliasing removed
 // Log button) only ever shows meaningful init/config/error events. OFF by default.
 bool verboseLogging = false;
 bool splitMode = false;
-bool foveatedCenterCompensation = true;   // permanently enabled
+constexpr bool foveatedCenterCompensation = false; // retired: rotating game eye poses tilted asymmetric crops
 bool visualMaskOnly = false;
 bool horizontalVisualMaskOnly = false;
 void Log(const char* fmt, ...);
 bool outerEdgeVisibilityMaskOnly = true;  // permanently enabled
 constexpr bool lodPopInFix = false;        // LOD pop-in fix removed
+// Calibration diagnostics are deliberately rendered into the submitted texture.  They are
+// therefore a reference for the whole downstream runtime/encode/display path, rather than a
+// head-locked UI overlay.
+bool calibrationGrid = false;
+bool calibrationRuler = false;
+bool calibrationGratings = false;
+bool calibrationBars = false;
+bool calibrationBeacon = false;
+bool calibrationEdgeProbes = false;
+bool calibrationCheckerboards = false;
+bool calibrationZonePlate = false;
+bool calibrationClippingSteps = false;
+bool calibrationMotionStrip = false;
+void LogVerbose(const char* format, ...);
+// Native performance HUD. It uses the same submitted-texture path as the visor, never an
+// OpenXR quad layer. Values remain unavailable unless measurable or explicitly debug-supplied.
+bool hudEnabled = false;
+double hudAnchorX = 0.04, hudAnchorY = 0.05, hudScale = 1.0, hudSpacing = 0.018, hudOpacity = 0.70, hudSafeMargin = 0.025;
+bool hudClampToVisible = true;
+double hudGreenThreshold = 75.0, hudRedThreshold = 90.0, hudTraceSensitivityMs = 2.0;
+// Frame-pacing trace layout: X/Y anchor and width are fractions of the shared binocular
+// overlap of the cropped views; scale multiplies the trace height; history is in samples.
+double hudTraceX = 0.05, hudTraceY = 0.75, hudTraceScale = 1.0, hudTraceWidth = 0.42, hudTraceHistory = 120.0;
+bool hudTraceEnabled = false;
+bool hudAlarmOnly = false;
+double hudAlarmHoldMs = 1500.0;
+uint32_t hudUpdateIntervalMs = 100;
+bool hudDebugValues = false;
+double hudDebugCpu = 52.0, hudDebugGpu = 98.0, hudDebugSystem = 44.0, hudDebugVr = 18.0;
+struct HudMetric { double value = 0.0; bool available = false; };
+struct HudFrameSample { double actualMs = 0.0; double targetMs = 0.0; double deviationMs = 0.0; bool overBudget = false; };
+HudMetric g_hudMetrics[4];
+std::array<HudFrameSample, 600> g_hudFrameHistory{};
+size_t g_hudFrameHistoryStart = 0, g_hudFrameHistoryCount = 0;
+uint64_t g_hudNextUpdateTick = 0, g_hudLastIdle100ns = 0, g_hudLastKernel100ns = 0, g_hudLastUser100ns = 0;
+PDH_HQUERY g_hudPdhQuery = nullptr;
+PDH_HCOUNTER g_hudGpuCounter = nullptr;
+LARGE_INTEGER g_hudQpcFrequency{};
+double g_hudSystemRawPercent = 0.0, g_hudSystemSmoothedPercent = 0.0;
+std::mutex g_hudTimingMutex;
+// Effective application cadence detection. The app's real frame interval is the QPC time
+// between successive xrWaitFrame returns (the runtime throttles the app there, so under
+// ASW/SSW/reprojection the interval settles at an integer multiple of the display period).
+// A rolling median plus a consecutive-agreement counter means a single slow frame can
+// never flip the detected cadence.
+LARGE_INTEGER g_hudLastWaitStop{};
+std::array<double, 90> g_hudIntervalRing{};
+size_t g_hudIntervalCount = 0, g_hudIntervalNext = 0;
+int g_hudCadenceMultiple = 1, g_hudCadenceCandidate = 1, g_hudCadenceStable = 0;
+double g_hudDisplayPeriodMs = 0.0, g_hudFrameTimeMs = 0.0, g_hudEffectiveBudgetMs = 0.0;
+int g_hudVrColorState = 0; // 0 green, 1 amber, 2 red
+int g_hudVrAmberSamples = 0, g_hudVrRedSamples = 0;
+std::string g_hudVrColorReason = "initializing";
+// Alarm-only mode: a metric's indicator is shown only while red. Entry uses the normal red
+// threshold on the already-smoothed value; exit uses a lower threshold plus a hold time so
+// indicators do not flicker at the boundary.
+struct HudAlarmState { bool inAlarm = false; uint64_t redHoldUntilTick = 0; };
+HudAlarmState g_hudAlarm[4];
+
+// ---- Render-boundary flash (feature 1) ----
+// The UI raises a drag-active flag while the user drags any HUD/trace layout control. The layer
+// then paints the exact cropped render boundary in both eyes and fades it out ~500 ms after the
+// flag drops. The fade timer lives in native so it survives the UI closing mid-drag.
+bool g_boundaryDragActive = false;
+uint64_t g_boundaryReleaseTick = 0;      // tick when drag last went inactive; 0 = never held
+constexpr uint64_t kBoundaryFadeMs = 500;
+
+// ---- Counter-Strike-style static crosshair (feature 2) ----
+// All values arrive already parsed/normalized from the UI (legacy cl_* commands and CS2 share
+// codes are decoded there). Sizes are CS reference pixels scaled by chScale; the layer maps them
+// into each eye's pixels at the calibrated stereo centre with zero angular disparity.
+bool crosshairEnabled = false, crosshairDot = false, crosshairOutline = true, crosshairTStyle = false;
+double crosshairSize = 5.0, crosshairGap = -2.0, crosshairThickness = 1.0, crosshairOutlineThickness = 1.0;
+double crosshairAlpha = 1.0, crosshairScale = 1.0;
+double crosshairOffsetX = 0.0, crosshairOffsetY = 0.0;
+float crosshairR = 0.0f, crosshairG = 1.0f, crosshairB = 0.0f; // default CS green
+
+// ---- Windows desktop notification mirror (feature 3) ----
+// Native only reads pre-composited RGBA cards from a separate shared mapping; all collection,
+// text layout, image decode, queueing, and animation happen in the UI process off the render
+// thread. These are just the render-side settings.
+bool notifyEnabled = false;
+bool topmostVisorOverlays = false;
+double notifyX = 0.98, notifyY = 0.98, notifyScale = 1.0, notifyOpacity = 1.0;
+
+// ---- iRacing integration scaffold (feature 4) ----
+// Flags are plumbed end-to-end but the layer takes no action on them yet. A later generic event
+// provider publishes ViewLab overlay events; the renderer stays decoupled from iRacing.
+bool iracingEnabled = false, iracingLapPopup = false, iracingSpotterGlow = false, iracingFlagBorder = false;
+struct HudTrackedFrame {
+    XrTime displayTime = 0;
+    XrDuration displayPeriod = 0;
+    LARGE_INTEGER waitStart{}, waitStop{}, beginStart{}, beginStop{}, endStart{}, endStop{};
+    bool canBegin = false, begun = false;
+};
+std::array<HudTrackedFrame, 3> g_hudTrackedFrames{};
+size_t g_hudNextWaitFrame = 0;
+std::atomic<uint64_t> g_calibrationFrameSerial{0};
+inline bool AnyCalibrationPattern() {
+    return calibrationGrid || calibrationRuler || calibrationGratings || calibrationBars ||
+        calibrationBeacon || calibrationEdgeProbes || calibrationCheckerboards ||
+        calibrationZonePlate || calibrationClippingSteps || calibrationMotionStrip;
+}
+// Notifications are "active" only while at least one card is live in the shared queue; that is
+// evaluated per-frame in the draw path, so the coarse gate here simply includes notifyEnabled.
+inline bool BoundaryFlashActive() { return g_boundaryDragActive || g_boundaryReleaseTick != 0; }
+inline bool AnyViewLabOverlay() { return crosshairEnabled || notifyEnabled || BoundaryFlashActive(); }
+inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || hudEnabled || hudTraceEnabled || AnyViewLabOverlay(); }
+
+uint64_t FileTimeToUint64(const FILETIME& time) {
+    ULARGE_INTEGER value{}; value.LowPart = time.dwLowDateTime; value.HighPart = time.dwHighDateTime; return value.QuadPart;
+}
+double SmoothHudPercent(double previous, double raw) {
+    const double clamped = std::clamp(raw, 0.0, 100.0);
+    return previous > 0.0 ? previous * 0.75 + clamped * 0.25 : clamped;
+}
+void InitHudCounters() {
+    if (g_hudPdhQuery || PdhOpenQueryW(nullptr, 0, &g_hudPdhQuery) != ERROR_SUCCESS) return;
+    PdhAddEnglishCounterW(g_hudPdhQuery, L"\\GPU Engine(*)\\Utilization Percentage", 0, &g_hudGpuCounter);
+    PdhCollectQueryData(g_hudPdhQuery);
+    QueryPerformanceFrequency(&g_hudQpcFrequency);
+}
+bool GetHudRenderAdapterLuid(uint64_t& adapterLuid);
+bool ParseGpuEngineInstance(const wchar_t* name, uint64_t& adapterLuid, uint32_t& physicalAdapter, uint32_t& engineId) {
+    if (!name) return false;
+    unsigned long pid = 0, luidHigh = 0, luidLow = 0, phys = 0, engine = 0;
+    wchar_t engineType[64]{};
+    if (swscanf_s(name, L"pid_%lu_luid_0x%lx_0x%lx_phys_%lu_eng_%lu_engtype_%63s",
+        &pid, &luidHigh, &luidLow, &phys, &engine, engineType, static_cast<unsigned>(_countof(engineType))) != 6 ||
+        _wcsicmp(engineType, L"3D") != 0) return false;
+    adapterLuid = (static_cast<uint64_t>(luidHigh) << 32) | luidLow;
+    physicalAdapter = phys;
+    engineId = engine;
+    return true;
+}
+double ReadGpuAdapterUtilization(uint64_t& selectedAdapterLuid) {
+    selectedAdapterLuid = 0;
+    if (!g_hudGpuCounter) return -1.0;
+    DWORD count = 0, bufferSize = 0;
+    if (PdhGetFormattedCounterArrayW(g_hudGpuCounter, PDH_FMT_DOUBLE, &bufferSize, &count, nullptr) != PDH_MORE_DATA || bufferSize == 0) return -1.0;
+    std::vector<uint8_t> buffer(bufferSize);
+    auto* values = reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM_W*>(buffer.data());
+    if (PdhGetFormattedCounterArrayW(g_hudGpuCounter, PDH_FMT_DOUBLE, &bufferSize, &count, values) != ERROR_SUCCESS) return -1.0;
+    std::map<std::pair<uint64_t, uint32_t>, double> engines;
+    for (DWORD i = 0; i < count; ++i) {
+        if (values[i].FmtValue.CStatus != ERROR_SUCCESS || !std::isfinite(values[i].FmtValue.doubleValue)) continue;
+        uint64_t luid = 0; uint32_t phys = 0, engine = 0;
+        if (!ParseGpuEngineInstance(values[i].szName, luid, phys, engine)) continue;
+        engines[{luid, engine}] += (std::max)(0.0, values[i].FmtValue.doubleValue);
+    }
+    std::map<uint64_t, double> adapters;
+    for (const auto& entry : engines) adapters[entry.first.first] = (std::max)(adapters[entry.first.first], std::clamp(entry.second, 0.0, 100.0));
+    if (adapters.empty()) return -1.0;
+    uint64_t renderLuid = 0;
+    if (GetHudRenderAdapterLuid(renderLuid)) {
+        const auto renderAdapter = adapters.find(renderLuid);
+        if (renderAdapter != adapters.end()) { selectedAdapterLuid = renderLuid; return renderAdapter->second; }
+    }
+    const auto busiest = std::max_element(adapters.begin(), adapters.end(), [](const auto& a, const auto& b) { return a.second < b.second; });
+    selectedAdapterLuid = busiest->first;
+    return busiest->second;
+}
+// Frame-pacing trace samples: one per app frame interval, deviation measured against the
+// effective (cadence-aware) frame budget so the baseline is correct under half-rate modes.
+void RecordHudFrameSample(double actualMs, double targetMs) {
+    if (!std::isfinite(actualMs) || !std::isfinite(targetMs) || actualMs < 0.0 || targetMs <= 0.0) return;
+    HudFrameSample sample{actualMs, targetMs, actualMs - targetMs, actualMs > targetMs * 1.03};
+    const size_t index = (g_hudFrameHistoryStart + g_hudFrameHistoryCount) % g_hudFrameHistory.size();
+    if (g_hudFrameHistoryCount == g_hudFrameHistory.size()) {
+        g_hudFrameHistory[g_hudFrameHistoryStart] = sample;
+        g_hudFrameHistoryStart = (g_hudFrameHistoryStart + 1) % g_hudFrameHistory.size();
+    } else {
+        g_hudFrameHistory[index] = sample;
+        ++g_hudFrameHistoryCount;
+    }
+}
+// SYS metric: actual OpenXR frame work (begin->end) as a percentage of the display period.
+void RecordHudSystemSample(double actualMs, double targetMs) {
+    if (!std::isfinite(actualMs) || !std::isfinite(targetMs) || actualMs < 0.0 || targetMs <= 0.0) return;
+    g_hudSystemRawPercent = std::clamp(actualMs / targetMs * 100.0, 0.0, 100.0);
+    g_hudSystemSmoothedPercent = SmoothHudPercent(g_hudSystemSmoothedPercent, g_hudSystemRawPercent);
+}
+// Cadence and pacing update, called under g_hudTimingMutex from xrWaitFrame.
+void UpdateHudCadence(const LARGE_INTEGER& waitStop, XrDuration displayPeriod) {
+    const double periodMs = displayPeriod > 0 ? static_cast<double>(displayPeriod) / 1000000.0 : 0.0;
+    if (periodMs > 0.0) g_hudDisplayPeriodMs = periodMs;
+    if (g_hudLastWaitStop.QuadPart > 0 && g_hudQpcFrequency.QuadPart > 0 && g_hudDisplayPeriodMs > 0.0) {
+        const double intervalMs = 1000.0 * static_cast<double>(waitStop.QuadPart - g_hudLastWaitStop.QuadPart) / g_hudQpcFrequency.QuadPart;
+        // Ignore hitches and pauses far outside plausible cadence so they cannot poison the median.
+        if (intervalMs > g_hudDisplayPeriodMs * 0.3 && intervalMs < g_hudDisplayPeriodMs * 6.0) {
+            g_hudIntervalRing[g_hudIntervalNext] = intervalMs;
+            g_hudIntervalNext = (g_hudIntervalNext + 1) % g_hudIntervalRing.size();
+            if (g_hudIntervalCount < g_hudIntervalRing.size()) ++g_hudIntervalCount;
+            if (g_hudIntervalCount >= 12) {
+                std::array<double, 90> sorted{};
+                std::copy_n(g_hudIntervalRing.begin(), g_hudIntervalCount, sorted.begin());
+                std::nth_element(sorted.begin(), sorted.begin() + g_hudIntervalCount / 2, sorted.begin() + g_hudIntervalCount);
+                const double medianMs = sorted[g_hudIntervalCount / 2];
+                const int rawMultiple = std::clamp(static_cast<int>(std::lround(medianMs / g_hudDisplayPeriodMs)), 1, 4);
+                if (rawMultiple == g_hudCadenceCandidate) ++g_hudCadenceStable;
+                else { g_hudCadenceCandidate = rawMultiple; g_hudCadenceStable = 1; }
+                if (g_hudCadenceStable >= 20 && g_hudCadenceMultiple != g_hudCadenceCandidate) {
+                    g_hudCadenceMultiple = g_hudCadenceCandidate;
+                    Log("HUD cadence: effective app cadence is 1/%d of display rate (period=%.2fms budget=%.2fms)\n",
+                        g_hudCadenceMultiple, g_hudDisplayPeriodMs, g_hudDisplayPeriodMs * g_hudCadenceMultiple);
+                }
+            }
+            g_hudEffectiveBudgetMs = g_hudDisplayPeriodMs * g_hudCadenceMultiple;
+            g_hudFrameTimeMs = g_hudFrameTimeMs > 0.0 ? g_hudFrameTimeMs * 0.8 + intervalMs * 0.2 : intervalMs;
+            RecordHudFrameSample(intervalMs, g_hudEffectiveBudgetMs);
+        }
+    }
+    g_hudLastWaitStop = waitStop;
+}
+// Per-metric red-state with hysteresis and a post-recovery hold, driving alarm-only mode.
+// Uses the already-smoothed metric values, so boundary flicker is absorbed twice.
+void UpdateHudAlarm(int index, bool redNow, uint64_t nowTick) {
+    HudAlarmState& alarm = g_hudAlarm[index];
+    if (redNow) { alarm.inAlarm = true; alarm.redHoldUntilTick = nowTick + static_cast<uint64_t>(std::clamp(hudAlarmHoldMs, 0.0, 10000.0)); }
+    else if (alarm.inAlarm && nowTick >= alarm.redHoldUntilTick) alarm.inAlarm = false;
+}
+void UpdateHudMetrics() {
+    const uint64_t now = GetTickCount64();
+    if (now < g_hudNextUpdateTick) return;
+    g_hudNextUpdateTick = now + (std::max)(uint32_t{50}, hudUpdateIntervalMs);
+    if (hudDebugValues) {
+        g_hudMetrics[0] = { std::clamp(hudDebugCpu, 0.0, 100.0), true };
+        g_hudMetrics[1] = { std::clamp(hudDebugGpu, 0.0, 100.0), true };
+        g_hudMetrics[2] = { std::clamp(hudDebugSystem, 0.0, 100.0), true };
+        // Debug VR value is interpreted as milliseconds of app frame time.
+        g_hudMetrics[3] = { std::clamp(hudDebugVr, 0.0, 999.9), true };
+        if (g_hudEffectiveBudgetMs <= 0.0) g_hudEffectiveBudgetMs = 11.1;
+        for (int i = 0; i < 3; ++i)
+            UpdateHudAlarm(i, g_hudMetrics[i].value >= (g_hudAlarm[i].inAlarm ? hudRedThreshold - 3.0 : hudRedThreshold), now);
+        UpdateHudAlarm(3, g_hudMetrics[3].value > g_hudEffectiveBudgetMs * (g_hudAlarm[3].inAlarm ? 0.97 : 1.0), now);
+        LogVerbose("HUD telemetry: DEBUG raw CPU=%.2f%% GPU=%.2f%% SYS=%.2f%% VRms=%.2f; displayed=%.2f%%/%.2f%%/%.2f%%/%.1fms\n",
+            hudDebugCpu, hudDebugGpu, hudDebugSystem, hudDebugVr, g_hudMetrics[0].value, g_hudMetrics[1].value, g_hudMetrics[2].value, g_hudMetrics[3].value);
+        return;
+    }
+    InitHudCounters();
+    FILETIME idle{}, kernel{}, user{};
+    double cpuRaw = 0.0; uint64_t cpuIdleDelta = 0, cpuTotalDelta = 0; bool cpuAvailable = false;
+    if (GetSystemTimes(&idle, &kernel, &user)) {
+        const uint64_t idleNow = FileTimeToUint64(idle), kernelNow = FileTimeToUint64(kernel), userNow = FileTimeToUint64(user);
+        if (g_hudLastKernel100ns && kernelNow >= g_hudLastKernel100ns && userNow >= g_hudLastUser100ns && idleNow >= g_hudLastIdle100ns) {
+            cpuIdleDelta = idleNow - g_hudLastIdle100ns;
+            cpuTotalDelta = kernelNow - g_hudLastKernel100ns + userNow - g_hudLastUser100ns;
+            if (cpuTotalDelta > 0) {
+                cpuRaw = std::clamp(100.0 * (1.0 - static_cast<double>(cpuIdleDelta) / cpuTotalDelta), 0.0, 100.0);
+                g_hudMetrics[0] = { SmoothHudPercent(g_hudMetrics[0].available ? g_hudMetrics[0].value : 0.0, cpuRaw), true };
+                cpuAvailable = true;
+            }
+        }
+        g_hudLastIdle100ns = idleNow; g_hudLastKernel100ns = kernelNow; g_hudLastUser100ns = userNow;
+    }
+    double gpuRaw = 0.0; uint64_t gpuLuid = 0; bool gpuAvailable = false;
+    if (g_hudPdhQuery && PdhCollectQueryData(g_hudPdhQuery) == ERROR_SUCCESS) {
+        const double gpuSample = ReadGpuAdapterUtilization(gpuLuid);
+        if (gpuSample >= 0.0) {
+            gpuRaw = std::clamp(gpuSample, 0.0, 100.0);
+            g_hudMetrics[1] = { SmoothHudPercent(g_hudMetrics[1].available ? g_hudMetrics[1].value : 0.0, gpuRaw), true };
+            gpuAvailable = true;
+        }
+    }
+    if (!cpuAvailable) g_hudMetrics[0].available = false;
+    if (!gpuAvailable) g_hudMetrics[1].available = false;
+    double systemRaw = 0.0, frameMs = 0.0, budgetMs = 0.0, periodMs = 0.0;
+    int cadence = 1;
+    {
+        std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+        systemRaw = g_hudSystemRawPercent;
+        if (g_hudSystemSmoothedPercent > 0.0 || g_hudSystemRawPercent > 0.0)
+            g_hudMetrics[2] = { std::clamp(g_hudSystemSmoothedPercent, 0.0, 100.0), true };
+        frameMs = g_hudFrameTimeMs; budgetMs = g_hudEffectiveBudgetMs;
+        periodMs = g_hudDisplayPeriodMs; cadence = g_hudCadenceMultiple;
+        if (g_hudIntervalCount >= 2 && frameMs > 0.0 && budgetMs > 0.0)
+            g_hudMetrics[3] = { std::clamp(frameMs, 0.0, 999.9), true };
+        else g_hudMetrics[3].available = false;
+    }
+    for (int i = 0; i < 3; ++i)
+        UpdateHudAlarm(i, g_hudMetrics[i].available && g_hudMetrics[i].value >= (g_hudAlarm[i].inAlarm ? hudRedThreshold - 3.0 : hudRedThreshold), now);
+    int missCount = 0, meaningfulMissCount = 0;
+    double rollingRatio = 0.0;
+    {
+        std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+        const size_t n=(std::min)(g_hudFrameHistoryCount,size_t{60});
+        std::array<double,60> ratios{}; size_t ratioCount=0;
+        for(size_t i=g_hudFrameHistoryCount-n;i<g_hudFrameHistoryCount;++i){const auto&s=g_hudFrameHistory[(g_hudFrameHistoryStart+i)%g_hudFrameHistory.size()];if(s.actualMs>s.targetMs*1.05)++missCount;if(s.actualMs>s.targetMs*1.15)++meaningfulMissCount;if(s.targetMs>0.0)ratios[ratioCount++]=s.actualMs/s.targetMs;}
+        if(ratioCount){std::nth_element(ratios.begin(),ratios.begin()+ratioCount/2,ratios.begin()+ratioCount);rollingRatio=ratios[ratioCount/2];}
+    }
+    const double vrRatio=(g_hudMetrics[3].available&&budgetMs>0.0)?frameMs/budgetMs:0.0;
+    // Stable cadence naturally straddles the theoretical interval by a few tenths. Never warn
+    // from miss count alone: require a degraded rolling median as well, then confirm it across
+    // several HUD updates. This keeps 8.2/8.3 at 120 Hz and 11.1/11.2 at 90 Hz solid green.
+    const bool amberCandidate = rollingRatio > 1.08 || (rollingRatio > 1.05 && missCount >= 24);
+    const bool redCandidate = rollingRatio > 1.20 || (rollingRatio > 1.10 && meaningfulMissCount >= 12);
+    if(amberCandidate)++g_hudVrAmberSamples;else g_hudVrAmberSamples=0;
+    if(redCandidate)++g_hudVrRedSamples;else g_hudVrRedSamples=0;
+    if(g_hudVrColorState==2){if(rollingRatio<1.10&&meaningfulMissCount<6)g_hudVrColorState=1;}
+    else if(g_hudVrRedSamples>=4)g_hudVrColorState=2;
+    else if(g_hudVrColorState==1){if(rollingRatio<1.04)g_hudVrColorState=0;}
+    else if(g_hudVrAmberSamples>=5)g_hudVrColorState=1;
+    g_hudVrColorReason = g_hudVrColorState==2 ? "sustained cadence median >120% or repeated meaningful misses" : g_hudVrColorState==1 ? "sustained cadence median >108% or repeated mild misses" : "stable rolling cadence";
+    UpdateHudAlarm(3, g_hudVrColorState==2, now);
+    LogVerbose("HUD telemetry: CPU source=GetSystemTimes unit=100ns idle_delta=%llu total_delta=%llu conversion=100*(1-idle/total) raw=%.2f%% available=%d displayed=%.2f%%; GPU source=PDH_GPU_Engine unit=percent adapterLuid=0x%016llx conversion=max(group_by_luid_3D_engine) raw=%.2f%% available=%d displayed=%.2f%%; SYS source=OpenXR_QPC unit=ms conversion=begin_to_end/period*100 raw=%.2f%% available=%d displayed=%.2f%%; VR source=xrWaitFrame_QPC_interval unit=ms period=%.3f cadence_multiple=%d budget=%.3f conversion=EMA(interval) frame=%.3f available=%d displayed=%.1fms\n",
+        static_cast<unsigned long long>(cpuIdleDelta), static_cast<unsigned long long>(cpuTotalDelta), cpuRaw, cpuAvailable ? 1 : 0, g_hudMetrics[0].value,
+        static_cast<unsigned long long>(gpuLuid), gpuRaw, gpuAvailable ? 1 : 0, g_hudMetrics[1].value,
+        systemRaw, g_hudMetrics[2].available ? 1 : 0, g_hudMetrics[2].value,
+        periodMs, cadence, budgetMs, frameMs, g_hudMetrics[3].available ? 1 : 0, g_hudMetrics[3].value);
+    LogVerbose("HUD pacing decision: refresh=%.2fHz effective=%.2fHz target=%.4fms raw/latest=%.4fms smoothed=%.4fms rollingRatio=%.4f misses=%d meaningful=%d state=%s reason=%s\n",
+        periodMs>0?1000.0/periodMs:0.0, budgetMs>0?1000.0/budgetMs:0.0,budgetMs,
+        g_hudFrameHistoryCount?g_hudFrameHistory[(g_hudFrameHistoryStart+g_hudFrameHistoryCount-1)%g_hudFrameHistory.size()].actualMs:0.0,
+        frameMs,rollingRatio,missCount,meaningfulMissCount,g_hudVrColorState==2?"red":g_hudVrColorState==1?"amber":"green",g_hudVrColorReason.c_str());
+}
+
+#pragma pack(push, 4)
+struct LiveStateBlock {
+    uint32_t magic, version, size, generation, calibrationMask, flags;
+    float visorSize, maskCorner, apexY, innerLow, bridgeWidth, bridgeRise, bridgePeakX, bridgeSteepness;
+    float hudAnchorX, hudAnchorY, hudScale, hudSafeMargin;
+    uint32_t hudFlags;
+    float traceSensitivityMs, traceX, traceY, traceScale, traceWidth, traceHistory, alarmHoldMs;
+    // v4 additions -------------------------------------------------------------------------------
+    uint32_t interactFlags;   // bit0 = a HUD/trace layout control is being dragged (boundary flash)
+    uint32_t crosshairFlags;  // bit0 enabled, bit1 dot, bit2 outline, bit3 t-style
+    float chSize, chGap, chThickness, chOutlineThickness, chAlpha, chScale;
+    uint32_t chColor;         // 0xAARRGGBB
+    uint32_t notifyFlags;     // bit0 enabled, bit1 show icon, bit2 show image
+    float notifyX, notifyY, notifyScale, notifyOpacity, notifyDurationMs;
+    uint32_t notifyMaxVisible, notifyPrivacy; // privacy: 0 full, 1 title only, 2 app only
+    uint32_t iracingFlags;    // bit0 enabled, bit1 lap popup, bit2 spotter glow, bit3 flag border
+    uint32_t traceFlags;      // v5: bit0 independent performance trace enabled
+    float crosshairOffsetX, crosshairOffsetY; // normalized full-lens tangent coordinates
+    uint32_t topmostFlags;    // v6: bit0 experimental topmost composition layer
+    float reserved[4];
+};
+#pragma pack(pop)
+constexpr uint32_t kLiveStateMagic = 0x534C4C56; // VLLS
+HANDLE g_liveStateMap = nullptr;
+const LiveStateBlock* g_liveState = nullptr;
+uint32_t g_liveStateGeneration = 0;
+uint64_t g_liveStateNextConnectTick = 0;
+
+void ConnectLiveState() {
+    if (g_liveState) return;
+    const uint64_t now = GetTickCount64();
+    if (now < g_liveStateNextConnectTick) return;
+    // The settings app is normally closed while a game runs. Avoid an OpenFileMapping
+    // system call every submitted frame, but reconnect promptly when the app opens.
+    g_liveStateNextConnectTick = now + 1000;
+    g_liveStateMap = OpenFileMappingW(FILE_MAP_READ, FALSE, L"Local\\XRViewLabLiveState");
+    if (!g_liveStateMap) return;
+    g_liveState = static_cast<const LiveStateBlock*>(MapViewOfFile(g_liveStateMap, FILE_MAP_READ, 0, 0, sizeof(LiveStateBlock)));
+    if (!g_liveState) { CloseHandle(g_liveStateMap); g_liveStateMap = nullptr; }
+}
+void DisconnectLiveState() { if (g_liveState) { UnmapViewOfFile(g_liveState); g_liveState = nullptr; } if (g_liveStateMap) { CloseHandle(g_liveStateMap); g_liveStateMap = nullptr; } g_liveStateGeneration = 0; g_liveStateNextConnectTick = 0; }
+
+// ---- Notification content bridge (feature 3, read-only for the layer) ----
+// The UI process composites each notification card (app icon, image/avatar, title/sender, and a
+// shortened body) into a fixed-size top-down RGBA bitmap, and runs the whole queue — arrival,
+// 3 s hold, fade/slide, independent expiry, and stacking — off the render thread. The layer only
+// samples the current frame's cards, so nothing here touches image decoding or window contents.
+constexpr uint32_t kNotifyMagic = 0x314E4C56; // "VLN1"
+constexpr uint32_t kNotifyMaxCards = 6;
+constexpr uint32_t kNotifyCardW = 336;
+constexpr uint32_t kNotifyCardH = 96;
+#pragma pack(push, 4)
+struct NotifyCardBlock {
+    uint32_t active;        // 1 = slot carries a live card this generation
+    uint32_t id;            // stable id so the layer re-uploads pixels only on real change
+    uint32_t width, height; // used pixels within the fixed card texture
+    float alpha;            // animated in the UI: 0..1 (fade)
+    float slideRight;       // 0 = fully docked, 1 = slid fully off the right edge
+    uint32_t stackIndex;    // 0 = bottom card; higher stacks upward
+    uint32_t contentSerial; // bumps whenever the RGBA changes
+    uint8_t rgba[kNotifyCardW * kNotifyCardH * 4]; // top-down BGRA-as-RGBA, straight alpha
+};
+struct NotifyBlock {
+    uint32_t magic, version, generation, count;
+    NotifyCardBlock cards[kNotifyMaxCards];
+};
+#pragma pack(pop)
+HANDLE g_notifyMap = nullptr;
+const NotifyBlock* g_notify = nullptr;
+uint64_t g_notifyNextConnectTick = 0;
+void ConnectNotify() {
+    if (g_notify) return;
+    const uint64_t now = GetTickCount64();
+    if (now < g_notifyNextConnectTick) return;
+    g_notifyNextConnectTick = now + 1000;
+    g_notifyMap = OpenFileMappingW(FILE_MAP_READ, FALSE, L"Local\\XRViewLabNotifications");
+    if (!g_notifyMap) return;
+    g_notify = static_cast<const NotifyBlock*>(MapViewOfFile(g_notifyMap, FILE_MAP_READ, 0, 0, sizeof(NotifyBlock)));
+    if (!g_notify) { CloseHandle(g_notifyMap); g_notifyMap = nullptr; }
+}
+void DisconnectNotify() { if (g_notify) { UnmapViewOfFile(g_notify); g_notify = nullptr; } if (g_notifyMap) { CloseHandle(g_notifyMap); g_notifyMap = nullptr; } g_notifyNextConnectTick = 0; }
+
+void ConsumeLiveState() {
+    if (!g_liveState) { ConnectLiveState(); if (!g_liveState) return; }
+    const LiveStateBlock snapshot = *g_liveState;
+    if (snapshot.magic != kLiveStateMagic || snapshot.version != 6 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
+    MemoryBarrier();
+    const LiveStateBlock stable = *g_liveState;
+    if (stable.generation != snapshot.generation) return;
+    g_liveStateGeneration = stable.generation;
+    calibrationGrid = (stable.calibrationMask & (1u << 0)) != 0; calibrationRuler = (stable.calibrationMask & (1u << 1)) != 0;
+    calibrationGratings = (stable.calibrationMask & (1u << 2)) != 0; calibrationBars = (stable.calibrationMask & (1u << 3)) != 0;
+    calibrationBeacon = (stable.calibrationMask & (1u << 4)) != 0; calibrationEdgeProbes = (stable.calibrationMask & (1u << 5)) != 0;
+    calibrationCheckerboards = (stable.calibrationMask & (1u << 6)) != 0; calibrationZonePlate = (stable.calibrationMask & (1u << 7)) != 0;
+    calibrationClippingSteps = (stable.calibrationMask & (1u << 8)) != 0; calibrationMotionStrip = (stable.calibrationMask & (1u << 9)) != 0;
+    hudEnabled = (stable.hudFlags & 1u) != 0; hudClampToVisible = (stable.hudFlags & 2u) != 0; hudAlarmOnly = (stable.hudFlags & 4u) != 0;
+    hudAnchorX = std::clamp((double)stable.hudAnchorX, 0.0, 1.0); hudAnchorY = std::clamp((double)stable.hudAnchorY, 0.0, 1.0);
+    hudScale = std::clamp((double)stable.hudScale, 0.5, 3.0); hudSafeMargin = std::clamp((double)stable.hudSafeMargin, 0.0, 0.25);
+    hudTraceSensitivityMs = std::clamp((double)stable.traceSensitivityMs, 0.25, 8.0);
+    hudTraceX = std::clamp((double)stable.traceX, 0.0, 1.0); hudTraceY = std::clamp((double)stable.traceY, 0.0, 1.0);
+    hudTraceScale = std::clamp((double)stable.traceScale, 0.25, 3.0); hudTraceWidth = std::clamp((double)stable.traceWidth, 0.10, 1.0);
+    hudTraceHistory = std::clamp((double)stable.traceHistory, 10.0, 600.0);
+    hudAlarmHoldMs = std::clamp((double)stable.alarmHoldMs, 0.0, 10000.0);
+    hudTraceEnabled = (stable.traceFlags & 1u) != 0;
+    topmostVisorOverlays = (stable.topmostFlags & 1u) != 0;
+    // Feature 1: render-boundary flash drag state. A rising edge to inactive stamps the fade start.
+    {
+        const bool dragNow = (stable.interactFlags & 1u) != 0;
+        if (g_boundaryDragActive && !dragNow) g_boundaryReleaseTick = GetTickCount64();
+        else if (dragNow) g_boundaryReleaseTick = 0;
+        g_boundaryDragActive = dragNow;
+    }
+    // Feature 2: crosshair.
+    crosshairEnabled = (stable.crosshairFlags & 1u) != 0; crosshairDot = (stable.crosshairFlags & 2u) != 0;
+    crosshairOutline = (stable.crosshairFlags & 4u) != 0; crosshairTStyle = (stable.crosshairFlags & 8u) != 0;
+    crosshairSize = std::clamp((double)stable.chSize, 0.0, 1000.0); crosshairGap = std::clamp((double)stable.chGap, -50.0, 50.0);
+    crosshairThickness = std::clamp((double)stable.chThickness, 0.1, 50.0); crosshairOutlineThickness = std::clamp((double)stable.chOutlineThickness, 0.0, 10.0);
+    crosshairAlpha = std::clamp((double)stable.chAlpha, 0.0, 1.0); crosshairScale = std::clamp((double)stable.chScale, 0.1, 10.0);
+    crosshairOffsetX = std::clamp((double)stable.crosshairOffsetX, -1.0, 1.0); crosshairOffsetY = std::clamp((double)stable.crosshairOffsetY, -1.0, 1.0);
+    crosshairR = ((stable.chColor >> 16) & 0xFF) / 255.f; crosshairG = ((stable.chColor >> 8) & 0xFF) / 255.f; crosshairB = (stable.chColor & 0xFF) / 255.f;
+    Log("crosshair: live resolve generation=%u enabled=%d size=%.2f gap=%.2f thickness=%.2f outline=%d/%.2f dot=%d tstyle=%d rgba=(%.3f,%.3f,%.3f,%.3f) scale=%.2f\n",
+        stable.generation,crosshairEnabled?1:0,crosshairSize,crosshairGap,crosshairThickness,crosshairOutline?1:0,crosshairOutlineThickness,crosshairDot?1:0,crosshairTStyle?1:0,crosshairR,crosshairG,crosshairB,crosshairAlpha,crosshairScale);
+    // Feature 3: notification render settings (content arrives via the separate mapping).
+    notifyEnabled = (stable.notifyFlags & 1u) != 0;
+    notifyX = std::clamp((double)stable.notifyX, 0.0, 1.0); notifyY = std::clamp((double)stable.notifyY, 0.0, 1.0);
+    notifyScale = std::clamp((double)stable.notifyScale, 0.25, 3.0); notifyOpacity = std::clamp((double)stable.notifyOpacity, 0.1, 1.0);
+    // Feature 4: iRacing scaffold flags (plumbed, not yet acted on).
+    iracingEnabled = (stable.iracingFlags & 1u) != 0; iracingLapPopup = (stable.iracingFlags & 2u) != 0;
+    iracingSpotterGlow = (stable.iracingFlags & 4u) != 0; iracingFlagBorder = (stable.iracingFlags & 8u) != 0;
+    if ((stable.flags & 1u) != 0 && !liveVisorUsesProfileOverride) {
+        maskEnabled = (stable.flags & 4u) != 0;
+        visorSize = std::clamp((double)stable.visorSize, 0.1, 1.0); visorCurve = std::clamp(1.0 - (double)stable.maskCorner, 0.0, 1.0);
+        visorOuterApexY = std::clamp((double)stable.apexY, -0.5, 0.5); visorInnerLowerY = std::clamp((double)stable.innerLow, 0.0, 0.666);
+        visorInnerBridgeWidth = std::clamp((double)stable.bridgeWidth, 0.0, 1.0); visorInnerBridgeRise = std::clamp((double)stable.bridgeRise, -0.5, 1.0);
+        visorInnerBridgePeakX = std::clamp((double)stable.bridgePeakX, -1.0, 2.0); visorInnerBridgeSteepness = std::clamp((double)stable.bridgeSteepness, -1.0, 2.0);
+    }
+}
 bool uevrLikeProcess = false;
 double totalTangent = DefaultTotalTangent;
 double topTangent = DefaultTopTangent;
@@ -87,6 +539,8 @@ PFN_xrDestroySession nextXrDestroySession = nullptr;
 PFN_xrLocateViews nextXrLocateViews = nullptr;
 PFN_xrEnumerateViewConfigurationViews nextXrEnumerateViewConfigurationViews = nullptr;
 PFN_xrGetVisibilityMaskKHR nextXrGetVisibilityMaskKHR = nullptr;
+PFN_xrWaitFrame nextXrWaitFrame = nullptr;
+PFN_xrBeginFrame nextXrBeginFrame = nullptr;
 PFN_xrEndFrame nextXrEndFrame = nullptr;
 PFN_xrEnumerateSwapchainFormats nextXrEnumerateSwapchainFormats = nullptr;
 PFN_xrCreateSwapchain nextXrCreateSwapchain = nullptr;
@@ -129,6 +583,55 @@ struct EyeView {
     uint32_t arraySlice = 0; // texture-array slice for this eye
     uint32_t viewIndex = 0;  // projection view index: 0 = left, 1 = right for primary stereo
     XrFovf fov{};
+    XrFovf fullFov{};
+};
+
+enum class OverlayPlacement { RenderArea, FullLens, LensPinned };
+struct OverlayCoordinateResolver {
+    float left=0, top=0, width=1, height=1;
+    float selectedL=-1, selectedR=1, selectedU=1, selectedD=-1;
+    float fullL=-1, fullR=1, fullU=1, fullD=-1;
+    bool tangentValid=false;
+    static bool Valid(const XrFovf& f) { return f.angleRight>f.angleLeft && f.angleUp>f.angleDown &&
+        fabsf(f.angleLeft)<1.55f && fabsf(f.angleRight)<1.55f && fabsf(f.angleUp)<1.55f && fabsf(f.angleDown)<1.55f; }
+    float sharedSelectedL=-1, sharedSelectedR=1, sharedSelectedU=1, sharedSelectedD=-1;
+    float sharedFullL=-1, sharedFullR=1, sharedFullU=1, sharedFullD=-1;
+    explicit OverlayCoordinateResolver(const EyeView& eye, const std::vector<EyeView>& allViews) {
+        left=(float)eye.rect.offset.x; top=(float)eye.rect.offset.y;
+        width=(float)eye.rect.extent.width; height=(float)eye.rect.extent.height;
+        tangentValid=Valid(eye.fov);
+        if (tangentValid) { selectedL=tanf(eye.fov.angleLeft); selectedR=tanf(eye.fov.angleRight);
+            selectedU=tanf(eye.fov.angleUp); selectedD=tanf(eye.fov.angleDown); }
+        if (Valid(eye.fullFov)) { fullL=tanf(eye.fullFov.angleLeft); fullR=tanf(eye.fullFov.angleRight);
+            fullU=tanf(eye.fullFov.angleUp); fullD=tanf(eye.fullFov.angleDown); }
+        else { fullL=selectedL; fullR=selectedR; fullU=selectedU; fullD=selectedD; }
+        sharedSelectedL=selectedL; sharedSelectedR=selectedR; sharedSelectedU=selectedU; sharedSelectedD=selectedD;
+        sharedFullL=fullL; sharedFullR=fullR; sharedFullU=fullU; sharedFullD=fullD;
+        for (const EyeView& other:allViews) {
+            if (other.viewIndex==eye.viewIndex) continue;
+            if (Valid(other.fov)) { sharedSelectedL=(std::max)(sharedSelectedL,tanf(other.fov.angleLeft)); sharedSelectedR=(std::min)(sharedSelectedR,tanf(other.fov.angleRight)); sharedSelectedU=(std::min)(sharedSelectedU,tanf(other.fov.angleUp)); sharedSelectedD=(std::max)(sharedSelectedD,tanf(other.fov.angleDown)); }
+            if (Valid(other.fullFov)) { sharedFullL=(std::max)(sharedFullL,tanf(other.fullFov.angleLeft)); sharedFullR=(std::min)(sharedFullR,tanf(other.fullFov.angleRight)); sharedFullU=(std::min)(sharedFullU,tanf(other.fullFov.angleUp)); sharedFullD=(std::max)(sharedFullD,tanf(other.fullFov.angleDown)); }
+        }
+        if (!(sharedSelectedR>sharedSelectedL && sharedSelectedU>sharedSelectedD)) { sharedSelectedL=selectedL; sharedSelectedR=selectedR; sharedSelectedU=selectedU; sharedSelectedD=selectedD; }
+        if (!(sharedFullR>sharedFullL && sharedFullU>sharedFullD)) { sharedFullL=fullL; sharedFullR=fullR; sharedFullU=fullU; sharedFullD=fullD; }
+    }
+    float XFromTan(float x) const { return left+(x-selectedL)/(selectedR-selectedL)*width; }
+    float YFromTan(float y) const { return top+(selectedU-y)/(selectedU-selectedD)*height; }
+    std::pair<float,float> Resolve(OverlayPlacement mode, float nx, float ny, float offsetX=0, float offsetY=0) const {
+        if (!tangentValid) return {left+std::clamp(nx,0.f,1.f)*width, top+std::clamp(ny,0.f,1.f)*height};
+        const bool render=mode==OverlayPlacement::RenderArea;
+        const float baseL=render?sharedSelectedL:sharedFullL, baseR=render?sharedSelectedR:sharedFullR;
+        const float baseU=render?sharedSelectedU:sharedFullU, baseD=render?sharedSelectedD:sharedFullD;
+        float tx=baseL+nx*(baseR-baseL)+offsetX*(sharedFullR-sharedFullL)*.5f;
+        float ty=baseU-ny*(baseU-baseD)-offsetY*(sharedFullU-sharedFullD)*.5f;
+        if (mode==OverlayPlacement::LensPinned) { tx=std::clamp(tx,sharedSelectedL,sharedSelectedR); ty=std::clamp(ty,sharedSelectedD,sharedSelectedU); }
+        return {XFromTan(tx),YFromTan(ty)};
+    }
+    std::pair<float,float> ResolveSharedTangent(float tx,float ty,bool pin) const {
+        if(!tangentValid) return {left+width*.5f,top+height*.5f};
+        if(pin){tx=std::clamp(tx,sharedSelectedL,sharedSelectedR);ty=std::clamp(ty,sharedSelectedD,sharedSelectedU);}
+        return {XFromTan(tx),YFromTan(ty)};
+    }
 };
 struct TrackedSwapchain {
     XrSession session = XR_NULL_HANDLE;
@@ -145,6 +648,16 @@ struct TrackedSwapchain {
     // across frames, so the previous frame's layout is used at release time.
     std::vector<EyeView> eyeViews;
 };
+struct TopmostLayerState {
+    XrSession session = XR_NULL_HANDLE;
+    XrSwapchain swapchain = XR_NULL_HANDLE;
+    uint32_t width = 0, height = 0;
+    int64_t format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    std::vector<XrSwapchainImageD3D11KHR> images;
+    bool ready = false, failed = false;
+};
+TopmostLayerState g_topmostLayer;
+bool g_topmostLayerBlocked = false;
 
 std::mutex g_swapchainMutex;
 // Serializes renderer lifetime and immediate-context use across OpenXR hooks. The D3D11
@@ -160,9 +673,22 @@ struct D3D11MaskState {
     ID3D11DeviceContext* context = nullptr;
     ID3D11VertexShader* vs = nullptr;
     ID3D11PixelShader* ps = nullptr;
+    ID3D11PixelShader* calibrationPs = nullptr;
+    ID3D11Buffer* calibrationColorCb = nullptr;
+    ID3D11PixelShader* overlayPs = nullptr;
+    // Textured path — used only for pre-composited notification cards. Samples a per-slot RGBA
+    // texture and multiplies by a straight-alpha tint (for the animated fade).
+    ID3D11PixelShader* texturedPs = nullptr;
+    ID3D11Buffer* tintCb = nullptr;
+    ID3D11SamplerState* linearSampler = nullptr;
+    ID3D11Texture2D* notifyTex[kNotifyMaxCards] = {};
+    ID3D11ShaderResourceView* notifySrv[kNotifyMaxCards] = {};
+    uint32_t notifyTexSerial[kNotifyMaxCards] = {}; // last uploaded contentSerial per slot
+    uint32_t notifyTexId[kNotifyMaxCards] = {};      // last card id occupying each slot
     ID3D11InputLayout* layout = nullptr;
     ID3D11Buffer* vb = nullptr;
     ID3D11RasterizerState* rs = nullptr;
+    ID3D11RasterizerState* calibrationRs = nullptr;
     ID3D11BlendState* bs = nullptr;        // SRC_ALPHA blend — used only when AA is on
     ID3D11BlendState* bsOpaque = nullptr;  // blend disabled — the historically proven visor pipeline
     ID3D11DepthStencilState* dss = nullptr;
@@ -178,6 +704,22 @@ struct D3D11MaskState {
 
 D3D11MaskState g_d3d11Mask;
 
+bool GetHudRenderAdapterLuid(uint64_t& adapterLuid) {
+    adapterLuid = 0;
+    if (!g_d3d11Mask.device) return false;
+    IDXGIDevice* dxgiDevice = nullptr;
+    IDXGIAdapter* adapter = nullptr;
+    if (FAILED(g_d3d11Mask.device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&dxgiDevice))) || !dxgiDevice) return false;
+    const HRESULT adapterResult = dxgiDevice->GetAdapter(&adapter);
+    dxgiDevice->Release();
+    if (FAILED(adapterResult) || !adapter) return false;
+    DXGI_ADAPTER_DESC desc{};
+    const HRESULT descResult = adapter->GetDesc(&desc);
+    adapter->Release();
+    if (FAILED(descResult)) return false;
+    adapterLuid = (static_cast<uint64_t>(static_cast<uint32_t>(desc.AdapterLuid.HighPart)) << 32) | static_cast<uint32_t>(desc.AdapterLuid.LowPart);
+    return true;
+}
 
 void ReleaseTrackedSwapchainResources(TrackedSwapchain& ts) {
     for (ID3D11RenderTargetView* rtv : ts.rtvs) {
@@ -641,19 +1183,6 @@ XrQuaternionf NormalizeQuaternion(const XrQuaternionf& value) {
         value.w / length};
 }
 
-XrQuaternionf MultiplyQuaternion(const XrQuaternionf& a, const XrQuaternionf& b) {
-    return NormalizeQuaternion(XrQuaternionf{
-        a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
-        a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
-        a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
-        a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z});
-}
-
-XrQuaternionf PitchQuaternion(float radians) {
-    const float halfAngle = radians * 0.5f;
-    return XrQuaternionf{std::sin(halfAngle), 0.0f, 0.0f, std::cos(halfAngle)};
-}
-
 void ReleaseD3D11MaskRenderer() {
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
     const XrSession releasedSession = g_d3d11Mask.session;
@@ -669,7 +1198,18 @@ void ReleaseD3D11MaskRenderer() {
     if (g_d3d11Mask.bs)      { g_d3d11Mask.bs->Release();      g_d3d11Mask.bs = nullptr; }
     if (g_d3d11Mask.bsOpaque){ g_d3d11Mask.bsOpaque->Release(); g_d3d11Mask.bsOpaque = nullptr; }
     if (g_d3d11Mask.rs)      { g_d3d11Mask.rs->Release();      g_d3d11Mask.rs = nullptr; }
+    if (g_d3d11Mask.calibrationRs) { g_d3d11Mask.calibrationRs->Release(); g_d3d11Mask.calibrationRs = nullptr; }
     if (g_d3d11Mask.layout)  { g_d3d11Mask.layout->Release();  g_d3d11Mask.layout = nullptr; }
+    if (g_d3d11Mask.calibrationColorCb) { g_d3d11Mask.calibrationColorCb->Release(); g_d3d11Mask.calibrationColorCb = nullptr; }
+    if (g_d3d11Mask.calibrationPs) { g_d3d11Mask.calibrationPs->Release(); g_d3d11Mask.calibrationPs = nullptr; }
+    if (g_d3d11Mask.overlayPs) { g_d3d11Mask.overlayPs->Release(); g_d3d11Mask.overlayPs = nullptr; }
+    for (uint32_t i = 0; i < kNotifyMaxCards; ++i) {
+        if (g_d3d11Mask.notifySrv[i]) { g_d3d11Mask.notifySrv[i]->Release(); g_d3d11Mask.notifySrv[i] = nullptr; }
+        if (g_d3d11Mask.notifyTex[i]) { g_d3d11Mask.notifyTex[i]->Release(); g_d3d11Mask.notifyTex[i] = nullptr; }
+    }
+    if (g_d3d11Mask.linearSampler) { g_d3d11Mask.linearSampler->Release(); g_d3d11Mask.linearSampler = nullptr; }
+    if (g_d3d11Mask.tintCb)  { g_d3d11Mask.tintCb->Release();  g_d3d11Mask.tintCb = nullptr; }
+    if (g_d3d11Mask.texturedPs) { g_d3d11Mask.texturedPs->Release(); g_d3d11Mask.texturedPs = nullptr; }
     if (g_d3d11Mask.ps)      { g_d3d11Mask.ps->Release();      g_d3d11Mask.ps = nullptr; }
     if (g_d3d11Mask.vs)      { g_d3d11Mask.vs->Release();      g_d3d11Mask.vs = nullptr; }
     if (g_d3d11Mask.context) { g_d3d11Mask.context->Release(); g_d3d11Mask.context = nullptr; }
@@ -716,8 +1256,11 @@ struct VisorVertex {
 };
 
 static const char kVisorVS[] =
-    "struct VSIn { float2 pos : POSITION; float alpha : ALPHA; float3 color : COLOR; };"
-    "struct VSOut { float4 pos : SV_POSITION; float alpha : ALPHA; float3 color : COLOR; };"
+    // The visor itself is black, but calibration patterns use this channel for exact colour.
+    // TEXCOORD is the portable interpolant semantic; the old COLOR route produced black-only
+    // diagnostics on the VDXR path despite correct vertex data.
+    "struct VSIn { float2 pos : POSITION; float alpha : ALPHA; float3 color : TEXCOORD0; };"
+    "struct VSOut { float4 pos : SV_POSITION; float alpha : ALPHA; float3 color : TEXCOORD0; };"
     "VSOut main(VSIn input) {"
     " VSOut output;"
     " output.pos = float4(input.pos.x, input.pos.y, 0.0f, 1.0f);"
@@ -725,7 +1268,29 @@ static const char kVisorVS[] =
     " return output; }";
 
 static const char kVisorPS[] =
-    "float4 main(float alpha : ALPHA, float3 color : COLOR) : SV_TARGET { return float4(color, alpha); }";
+    "float4 main(float alpha : ALPHA, float3 color : TEXCOORD0) : SV_TARGET { return float4(color, alpha); }";
+
+// Diagnostics deliberately do not rely on a vertex colour interpolant.  VDXR accepted the
+// geometry but delivered that interpolant as black, so each opaque calibration colour is bound
+// explicitly as a tiny constant buffer before its batch is drawn.
+static const char kCalibrationPS[] =
+    "cbuffer CalibrationColor : register(b0) { float3 color; float pad; };"
+    "float4 main() : SV_TARGET { return float4(color, 1.0f); }";
+
+// Flat overlays use an explicit constant colour. VDXR has previously delivered interpolated
+// vertex colour semantics as black; using that path made a valid green crosshair disappear.
+static const char kOverlayPS[] =
+    "cbuffer OverlayColor : register(b0) { float4 color; };"
+    "float4 main() : SV_TARGET { return color; }";
+
+// Textured pixel shader for pre-composited notification cards. TEXCOORD0.xy carries UV (the third
+// channel is unused here); the card RGBA is straight-alpha and the tint's alpha animates the fade.
+static const char kTexturedPS[] =
+    "Texture2D cardTex : register(t0); SamplerState cardSmp : register(s0);"
+    "cbuffer Tint : register(b0) { float4 tint; };"
+    "float4 main(float4 pos : SV_POSITION, float a : ALPHA, float3 uv : TEXCOORD0) : SV_TARGET {"
+    " float4 c = cardTex.Sample(cardSmp, uv.xy);"
+    " return float4(c.rgb, c.a * a * tint.a); }";
 
 bool InitD3D11MaskRenderer() {
     if (g_d3d11Mask.initialized) return true;
@@ -801,10 +1366,58 @@ bool InitD3D11MaskRenderer() {
         return false;
     }
 
+    hr = D3DCompile(kCalibrationPS, std::strlen(kCalibrationPS), "CalibrationPS", nullptr, nullptr,
+                    "main", "ps_4_0", 0, 0, &psBlob, &errBlob);
+    if (FAILED(hr)) {
+        Log("d3d11 mask: calibration PS compile failed hr=0x%08X\n", static_cast<unsigned>(hr));
+        if (errBlob) errBlob->Release();
+        vsBlob->Release(); FreeLibrary(dxcLib); g_d3d11Mask.failed = true;
+        return false;
+    }
+    if (errBlob) { errBlob->Release(); errBlob = nullptr; }
+    hr = g_d3d11Mask.device->CreatePixelShader(
+        psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &g_d3d11Mask.calibrationPs);
+    psBlob->Release();
+    if (FAILED(hr) || !g_d3d11Mask.calibrationPs) {
+        Log("d3d11 mask: calibration PS create failed hr=0x%08X\n", static_cast<unsigned>(hr));
+        vsBlob->Release(); FreeLibrary(dxcLib); g_d3d11Mask.failed = true;
+        return false;
+    }
+
+    hr = D3DCompile(kOverlayPS, std::strlen(kOverlayPS), "OverlayPS", nullptr, nullptr,
+                    "main", "ps_4_0", 0, 0, &psBlob, &errBlob);
+    if (FAILED(hr)) {
+        Log("d3d11 mask: overlay PS compile failed hr=0x%08X\n", static_cast<unsigned>(hr));
+        if (errBlob) errBlob->Release();
+        vsBlob->Release(); FreeLibrary(dxcLib); g_d3d11Mask.failed = true;
+        return false;
+    }
+    if (errBlob) { errBlob->Release(); errBlob = nullptr; }
+    hr = g_d3d11Mask.device->CreatePixelShader(
+        psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &g_d3d11Mask.overlayPs);
+    psBlob->Release();
+    if (FAILED(hr) || !g_d3d11Mask.overlayPs) {
+        Log("d3d11 mask: overlay PS create failed hr=0x%08X\n", static_cast<unsigned>(hr));
+        vsBlob->Release(); FreeLibrary(dxcLib); g_d3d11Mask.failed = true;
+        return false;
+    }
+
+    // Textured PS for notification cards. Non-fatal: if it fails, notification image cards simply
+    // do not draw; the visor, HUD, calibration, crosshair, and boundary flash are unaffected.
+    hr = D3DCompile(kTexturedPS, std::strlen(kTexturedPS), "TexturedPS", nullptr, nullptr,
+                    "main", "ps_4_0", 0, 0, &psBlob, &errBlob);
+    if (SUCCEEDED(hr)) {
+        g_d3d11Mask.device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &g_d3d11Mask.texturedPs);
+        psBlob->Release();
+    } else {
+        Log("d3d11 mask: textured PS compile failed hr=0x%08X (notification cards disabled)\n", static_cast<unsigned>(hr));
+    }
+    if (errBlob) { errBlob->Release(); errBlob = nullptr; }
+
     D3D11_INPUT_ELEMENT_DESC elems[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"ALPHA", 0, DXGI_FORMAT_R32_FLOAT, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     hr = g_d3d11Mask.device->CreateInputLayout(
         elems, 3, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &g_d3d11Mask.layout);
@@ -828,6 +1441,28 @@ bool InitD3D11MaskRenderer() {
         return false;
     }
 
+    D3D11_BUFFER_DESC cbd{};
+    cbd.ByteWidth = 16;
+    cbd.Usage = D3D11_USAGE_DYNAMIC;
+    cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    if (FAILED(g_d3d11Mask.device->CreateBuffer(&cbd, nullptr, &g_d3d11Mask.calibrationColorCb))) {
+        Log("d3d11 mask: calibration colour buffer create failed\n");
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+
+    // Tint constant buffer and sampler for the textured notification path. Non-fatal.
+    if (g_d3d11Mask.texturedPs) {
+        D3D11_BUFFER_DESC tcbd{}; tcbd.ByteWidth = 16; tcbd.Usage = D3D11_USAGE_DYNAMIC;
+        tcbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER; tcbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(g_d3d11Mask.device->CreateBuffer(&tcbd, nullptr, &g_d3d11Mask.tintCb))) g_d3d11Mask.tintCb = nullptr;
+        D3D11_SAMPLER_DESC smpd{}; smpd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        smpd.AddressU = smpd.AddressV = smpd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+        smpd.MaxLOD = D3D11_FLOAT32_MAX;
+        if (FAILED(g_d3d11Mask.device->CreateSamplerState(&smpd, &g_d3d11Mask.linearSampler))) g_d3d11Mask.linearSampler = nullptr;
+    }
+
     D3D11_RASTERIZER_DESC rsd{};
     rsd.FillMode        = D3D11_FILL_SOLID;
     rsd.CullMode        = D3D11_CULL_NONE;
@@ -835,6 +1470,17 @@ bool InitD3D11MaskRenderer() {
     hr = g_d3d11Mask.device->CreateRasterizerState(&rsd, &g_d3d11Mask.rs);
     if (FAILED(hr) || !g_d3d11Mask.rs) {
         Log("d3d11 mask: rasterizer state create failed hr=0x%08X\n", static_cast<unsigned>(hr));
+        ReleaseD3D11MaskRenderer();
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+    D3D11_RASTERIZER_DESC calibrationRsd = rsd;
+    calibrationRsd.ScissorEnable = TRUE;
+    calibrationRsd.MultisampleEnable = FALSE;
+    calibrationRsd.AntialiasedLineEnable = FALSE;
+    hr = g_d3d11Mask.device->CreateRasterizerState(&calibrationRsd, &g_d3d11Mask.calibrationRs);
+    if (FAILED(hr) || !g_d3d11Mask.calibrationRs) {
+        Log("d3d11 mask: calibration rasterizer state create failed hr=0x%08X\n", static_cast<unsigned>(hr));
         ReleaseD3D11MaskRenderer();
         g_d3d11Mask.failed = true;
         return false;
@@ -1452,6 +2098,795 @@ void DrawVisorBorderToTexture(
 
 ID3D11RenderTargetView* CachedRtvFor(const TrackedSwapchain& ts, uint32_t imageIndex, uint32_t arraySlice);
 
+// Calibration grid (hidden ini key calibration_grid=1): vertical + horizontal lines every
+// 64 texture px across the eye image, every 4th line thicker. Drawn opaque at release time,
+// after the game has finished the frame, so the grid is exactly uniform in the submitted
+// texture — a ground-truth ruler for judging downstream stream/encode quality.
+void DrawCalibrationGridToTexture(
+    ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
+    const EyeView& eye, const std::vector<EyeView>& allViews,
+    ID3D11RenderTargetView* cachedRtv) {
+    const XrRect2Di& rect = eye.rect;
+    const uint32_t arrayIndex = eye.arraySlice;
+    if (!g_d3d11Mask.initialized || !g_d3d11Mask.context || !tex ||
+        rect.extent.width <= 0 || rect.extent.height <= 0) return;
+
+    D3D11_TEXTURE2D_DESC texDesc{};
+    tex->GetDesc(&texDesc);
+    if (texDesc.Width == 0 || texDesc.Height == 0) return;
+
+    constexpr int kSpacing = 64;
+    constexpr uint32_t kMaxVerts = 4096;
+    std::vector<VisorVertex> verts;
+    verts.reserve(512);
+    auto pushQuad = [&](float x0, float y0, float x1, float y1, float shade) {
+        if (verts.size() + 6 > kMaxVerts) return;
+        const float xs[6] = {x0, x1, x1, x0, x1, x0};
+        const float ys[6] = {y0, y0, y1, y0, y1, y1};
+        for (int i = 0; i < 6; ++i) {
+            VisorVertex v{};
+            v.x = xs[i]; v.y = ys[i];
+            v.r = shade; v.g = shade; v.b = shade;
+            v.alpha = 1.0f;
+            verts.push_back(v);
+        }
+    };
+    // Coordinates are integer submitted-image pixels, transformed through an imageRect-local
+    // viewport.  This is D3D11's pixel-centre convention; deliberately no D3D9 half-pixel bias.
+    auto ndcX = [&](int px) { return (2.0f * static_cast<float>(px - rect.offset.x) / static_cast<float>(rect.extent.width)) - 1.0f; };
+    auto ndcY = [&](int py) { return 1.0f - (2.0f * static_cast<float>(py - rect.offset.y) / static_cast<float>(rect.extent.height)); };
+    const float top = ndcY(rect.offset.y);
+    const float bottom = ndcY(rect.offset.y + rect.extent.height);
+    const float left = ndcX(rect.offset.x);
+    const float right = ndcX(rect.offset.x + rect.extent.width);
+    // Keep the ruler literal (one cell is always 64 submitted-texture pixels), but anchor its
+    // origin at the same shared tangent-space centre as the fused crosshair. Crop/resolution
+    // changes can reveal fewer cells; they must neither resize them nor move the origin to an
+    // arbitrary imageRect corner.
+    const OverlayCoordinateResolver coordinates(eye, allViews);
+    const auto sharedCentre = coordinates.ResolveSharedTangent(0.f, 0.f, true);
+    const int centreX = std::clamp(static_cast<int>(std::lround(sharedCentre.first)),
+        rect.offset.x, rect.offset.x + rect.extent.width - 1);
+    const int centreY = std::clamp(static_cast<int>(std::lround(sharedCentre.second)),
+        rect.offset.y, rect.offset.y + rect.extent.height - 1);
+    auto drawVertical = [&](int px, int step) {
+        const bool major = (abs(step) % 4) == 0;
+        const int width = major ? 4 : 2;
+        pushQuad(ndcX(px), bottom, ndcX((std::min)(px + width, rect.offset.x + rect.extent.width)), top,
+            major ? 1.0f : 0.55f);
+    };
+    auto drawHorizontal = [&](int py, int step) {
+        const bool major = (abs(step) % 4) == 0;
+        const int height = major ? 4 : 2;
+        pushQuad(left, ndcY((std::min)(py + height, rect.offset.y + rect.extent.height)), right, ndcY(py),
+            major ? 1.0f : 0.55f);
+    };
+    for (int step = 0, px = centreX; px < rect.offset.x + rect.extent.width; ++step, px += kSpacing)
+        drawVertical(px, step);
+    for (int step = -1, px = centreX - kSpacing; px >= rect.offset.x; --step, px -= kSpacing)
+        drawVertical(px, step);
+    for (int step = 0, py = centreY; py < rect.offset.y + rect.extent.height; ++step, py += kSpacing)
+        drawHorizontal(py, step);
+    for (int step = -1, py = centreY - kSpacing; py >= rect.offset.y; --step, py -= kSpacing)
+        drawHorizontal(py, step);
+    if (verts.empty()) return;
+
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(g_d3d11Mask.context->Map(g_d3d11Mask.vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
+    memcpy(mapped.pData, verts.data(), verts.size() * sizeof(VisorVertex));
+    g_d3d11Mask.context->Unmap(g_d3d11Mask.vb, 0);
+
+    DXGI_FORMAT rtvFormat = GetNonSRGBFormat(static_cast<DXGI_FORMAT>(scFormat));
+    if (rtvFormat == DXGI_FORMAT_UNKNOWN) rtvFormat = GetNonSRGBFormat(texDesc.Format);
+    D3D11_RENDER_TARGET_VIEW_DESC rtvDesc{};
+    rtvDesc.Format = rtvFormat;
+    if (arrSize > 1) {
+        rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+        rtvDesc.Texture2DArray.MipSlice = 0;
+        rtvDesc.Texture2DArray.FirstArraySlice = arrayIndex;
+        rtvDesc.Texture2DArray.ArraySize = 1;
+    } else {
+        rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+        rtvDesc.Texture2D.MipSlice = 0;
+    }
+    const bool ownsRtv = (cachedRtv == nullptr);
+    ID3D11RenderTargetView* rtv = cachedRtv;
+    if (!rtv && (FAILED(g_d3d11Mask.device->CreateRenderTargetView(tex, &rtvDesc, &rtv)) || !rtv)) return;
+
+    ID3D11RenderTargetView* sRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
+    ID3D11DepthStencilView* sDSV = nullptr;
+    g_d3d11Mask.context->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, &sDSV);
+    UINT sVPCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    D3D11_VIEWPORT sVPs[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+    g_d3d11Mask.context->RSGetViewports(&sVPCount, sVPs);
+    UINT sScissorCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    D3D11_RECT sScissors[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+    g_d3d11Mask.context->RSGetScissorRects(&sScissorCount, sScissors);
+    ID3D11RasterizerState* sRS = nullptr; g_d3d11Mask.context->RSGetState(&sRS);
+    ID3D11BlendState* sBS = nullptr; FLOAT sBF[4]{}; UINT sSM = 0; g_d3d11Mask.context->OMGetBlendState(&sBS, sBF, &sSM);
+    ID3D11DepthStencilState* sDSS = nullptr; UINT sSRef = 0; g_d3d11Mask.context->OMGetDepthStencilState(&sDSS, &sSRef);
+    ID3D11VertexShader* sVS = nullptr; g_d3d11Mask.context->VSGetShader(&sVS, nullptr, nullptr);
+    ID3D11PixelShader* sPS = nullptr; g_d3d11Mask.context->PSGetShader(&sPS, nullptr, nullptr);
+    ID3D11InputLayout* sLayout = nullptr; g_d3d11Mask.context->IAGetInputLayout(&sLayout);
+    D3D11_PRIMITIVE_TOPOLOGY sTopo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED; g_d3d11Mask.context->IAGetPrimitiveTopology(&sTopo);
+    ID3D11Buffer* sVB = nullptr; UINT sStride = 0, sOff = 0; g_d3d11Mask.context->IAGetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
+
+    D3D11_VIEWPORT vp{}; vp.TopLeftX = static_cast<float>(rect.offset.x); vp.TopLeftY = static_cast<float>(rect.offset.y); vp.Width = static_cast<float>(rect.extent.width); vp.Height = static_cast<float>(rect.extent.height); vp.MaxDepth = 1.0f;
+    D3D11_RECT scissor{rect.offset.x, rect.offset.y, rect.offset.x + rect.extent.width, rect.offset.y + rect.extent.height};
+    static const FLOAT kBF[] = {0.f, 0.f, 0.f, 0.f};
+    UINT stride = sizeof(VisorVertex), offset = 0;
+    g_d3d11Mask.context->OMSetRenderTargets(1, &rtv, nullptr);
+    g_d3d11Mask.context->RSSetViewports(1, &vp);
+    g_d3d11Mask.context->RSSetState(g_d3d11Mask.calibrationRs);
+    g_d3d11Mask.context->RSSetScissorRects(1, &scissor);
+    g_d3d11Mask.context->OMSetBlendState(g_d3d11Mask.bsOpaque, kBF, 0xFFFFFFFF);
+    g_d3d11Mask.context->OMSetDepthStencilState(g_d3d11Mask.dss, 0);
+    g_d3d11Mask.context->VSSetShader(g_d3d11Mask.vs, nullptr, 0);
+    g_d3d11Mask.context->PSSetShader(g_d3d11Mask.ps, nullptr, 0);
+    g_d3d11Mask.context->IASetInputLayout(g_d3d11Mask.layout);
+    g_d3d11Mask.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_d3d11Mask.context->IASetVertexBuffers(0, 1, &g_d3d11Mask.vb, &stride, &offset);
+    g_d3d11Mask.context->Draw(static_cast<UINT>(verts.size()), 0);
+
+    g_d3d11Mask.context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, sDSV);
+    if (sVPCount > 0) g_d3d11Mask.context->RSSetViewports(sVPCount, sVPs);
+    if (sScissorCount > 0) g_d3d11Mask.context->RSSetScissorRects(sScissorCount, sScissors);
+    g_d3d11Mask.context->RSSetState(sRS);
+    g_d3d11Mask.context->OMSetBlendState(sBS, sBF, sSM);
+    g_d3d11Mask.context->OMSetDepthStencilState(sDSS, sSRef);
+    g_d3d11Mask.context->VSSetShader(sVS, nullptr, 0);
+    g_d3d11Mask.context->PSSetShader(sPS, nullptr, 0);
+    g_d3d11Mask.context->IASetInputLayout(sLayout);
+    g_d3d11Mask.context->IASetPrimitiveTopology(sTopo);
+    g_d3d11Mask.context->IASetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
+
+    if (ownsRtv) rtv->Release();
+    for (ID3D11RenderTargetView* savedRtv : sRTVs) { if (savedRtv) savedRtv->Release(); }
+    if (sDSV) sDSV->Release();
+    if (sRS) sRS->Release(); if (sBS) sBS->Release();
+    if (sDSS) sDSS->Release(); if (sVS) sVS->Release();
+    if (sPS) sPS->Release(); if (sLayout) sLayout->Release();
+    if (sVB) sVB->Release();
+    g_d3d11Mask.context->Flush();
+}
+
+// Stereo-coherent HUD snapshot: metrics, alarm states, and trace samples are captured once
+// when the left eye draws and reused verbatim for the right eye, so both eyes always show
+// identical values and an identical trace (no retinal rivalry between the eyes). Guarded by
+// g_rendererMutex, which every draw path already holds.
+struct HudDrawSnapshot {
+    HudMetric metrics[4]{};
+    bool alarm[4]{};
+    double budgetMs = 0.0;
+    int vrColorState = 0;
+    std::array<HudFrameSample, 600> samples{};
+    size_t sampleCount = 0;
+    bool valid = false;
+};
+HudDrawSnapshot g_hudDrawSnap;
+
+// Draw the non-grid calibration plates in one bounded, pixel-space batch.  The grid retains its
+// original renderer above so its investigation-proven output remains unchanged.
+void DrawCalibrationOverlayToTexture(
+    ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
+    const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv) {
+    if (!g_d3d11Mask.initialized || !g_d3d11Mask.context || !tex ||
+        eye.rect.extent.width <= 0 || eye.rect.extent.height <= 0) return;
+    D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
+    if (texDesc.Width == 0 || texDesc.Height == 0) return;
+
+    constexpr uint32_t kMaxVerts = 4096;
+    std::vector<VisorVertex> verts; verts.reserve(kMaxVerts);
+    auto ndcX = [&](float px) { return (2.f * (px - eye.rect.offset.x) / eye.rect.extent.width) - 1.f; };
+    auto ndcY = [&](float py) { return 1.f - (2.f * (py - eye.rect.offset.y) / eye.rect.extent.height); };
+    auto emit = [&](float x, float y, float r, float g, float b) {
+        VisorVertex v{}; v.x = ndcX(x); v.y = ndcY(y); v.r = r; v.g = g; v.b = b; v.alpha = 1.f; verts.push_back(v);
+    };
+    auto quad = [&](float x0, float y0, float x1, float y1, float r, float g, float b) {
+        if (verts.size() + 6 > kMaxVerts) return false;
+        emit(x0,y0,r,g,b); emit(x1,y0,r,g,b); emit(x1,y1,r,g,b);
+        emit(x0,y0,r,g,b); emit(x1,y1,r,g,b); emit(x0,y1,r,g,b); return true;
+    };
+
+    DXGI_FORMAT rtvFormat = GetNonSRGBFormat(static_cast<DXGI_FORMAT>(scFormat));
+    if (rtvFormat == DXGI_FORMAT_UNKNOWN) rtvFormat = GetNonSRGBFormat(texDesc.Format);
+    D3D11_RENDER_TARGET_VIEW_DESC rtvDesc{}; rtvDesc.Format = rtvFormat;
+    if (arrSize > 1) { rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY; rtvDesc.Texture2DArray.FirstArraySlice = eye.arraySlice; rtvDesc.Texture2DArray.ArraySize = 1; }
+    else rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+    const bool ownsRtv = cachedRtv == nullptr; ID3D11RenderTargetView* rtv = cachedRtv;
+    if (!rtv && (FAILED(g_d3d11Mask.device->CreateRenderTargetView(tex, &rtvDesc, &rtv)) || !rtv)) return;
+
+    ID3D11RenderTargetView* sRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{}; ID3D11DepthStencilView* sDSV = nullptr;
+    g_d3d11Mask.context->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, &sDSV);
+    UINT sVPCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE; D3D11_VIEWPORT sVPs[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{}; g_d3d11Mask.context->RSGetViewports(&sVPCount, sVPs);
+    UINT sScissorCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE; D3D11_RECT sScissors[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{}; g_d3d11Mask.context->RSGetScissorRects(&sScissorCount, sScissors);
+    ID3D11RasterizerState* sRS=nullptr; g_d3d11Mask.context->RSGetState(&sRS); ID3D11BlendState* sBS=nullptr; FLOAT sBF[4]{}; UINT sSM=0; g_d3d11Mask.context->OMGetBlendState(&sBS,sBF,&sSM);
+    ID3D11DepthStencilState* sDSS=nullptr; UINT sSRef=0; g_d3d11Mask.context->OMGetDepthStencilState(&sDSS,&sSRef); ID3D11VertexShader* sVS=nullptr; g_d3d11Mask.context->VSGetShader(&sVS,nullptr,nullptr); ID3D11PixelShader* sPS=nullptr; g_d3d11Mask.context->PSGetShader(&sPS,nullptr,nullptr); ID3D11Buffer* sPSCB=nullptr; g_d3d11Mask.context->PSGetConstantBuffers(0,1,&sPSCB); ID3D11InputLayout* sLayout=nullptr; g_d3d11Mask.context->IAGetInputLayout(&sLayout); D3D11_PRIMITIVE_TOPOLOGY sTopo; g_d3d11Mask.context->IAGetPrimitiveTopology(&sTopo); ID3D11Buffer* sVB=nullptr; UINT sStride=0,sOff=0; g_d3d11Mask.context->IAGetVertexBuffers(0,1,&sVB,&sStride,&sOff);
+    D3D11_VIEWPORT vp{}; vp.TopLeftX=(float)eye.rect.offset.x; vp.TopLeftY=(float)eye.rect.offset.y; vp.Width=(float)eye.rect.extent.width; vp.Height=(float)eye.rect.extent.height; vp.MaxDepth=1.f; D3D11_RECT scissor{eye.rect.offset.x,eye.rect.offset.y,eye.rect.offset.x+eye.rect.extent.width,eye.rect.offset.y+eye.rect.extent.height}; static const FLOAT kBF[] = {0,0,0,0}; UINT stride=sizeof(VisorVertex), offset=0;
+    g_d3d11Mask.context->OMSetRenderTargets(1,&rtv,nullptr); g_d3d11Mask.context->RSSetViewports(1,&vp); g_d3d11Mask.context->RSSetScissorRects(1,&scissor); g_d3d11Mask.context->RSSetState(g_d3d11Mask.calibrationRs); g_d3d11Mask.context->OMSetBlendState(g_d3d11Mask.bsOpaque,kBF,0xFFFFFFFF); g_d3d11Mask.context->OMSetDepthStencilState(g_d3d11Mask.dss,0); g_d3d11Mask.context->VSSetShader(g_d3d11Mask.vs,nullptr,0); g_d3d11Mask.context->PSSetShader(g_d3d11Mask.calibrationPs,nullptr,0); g_d3d11Mask.context->IASetInputLayout(g_d3d11Mask.layout); g_d3d11Mask.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST); g_d3d11Mask.context->IASetVertexBuffers(0,1,&g_d3d11Mask.vb,&stride,&offset);
+    auto flush = [&] { if (verts.empty()) return; std::map<uint32_t, std::vector<VisorVertex>> colours; for(size_t i=0;i+2<verts.size();i+=3) { const VisorVertex& v=verts[i]; uint32_t key=(uint32_t)(v.r*255.f+.5f)<<16 | (uint32_t)(v.g*255.f+.5f)<<8 | (uint32_t)(v.b*255.f+.5f); auto& dst=colours[key]; dst.insert(dst.end(),verts.begin()+i,verts.begin()+i+3); } for(auto& pair:colours) { float c[4]={(float)((pair.first>>16)&255)/255.f,(float)((pair.first>>8)&255)/255.f,(float)(pair.first&255)/255.f,0}; D3D11_MAPPED_SUBRESOURCE cm{}; if(FAILED(g_d3d11Mask.context->Map(g_d3d11Mask.calibrationColorCb,0,D3D11_MAP_WRITE_DISCARD,0,&cm))) continue; memcpy(cm.pData,c,sizeof(c)); g_d3d11Mask.context->Unmap(g_d3d11Mask.calibrationColorCb,0); g_d3d11Mask.context->PSSetConstantBuffers(0,1,&g_d3d11Mask.calibrationColorCb); for(size_t off=0;off<pair.second.size();off+=kMaxVerts) { size_t n=(pair.second.size()-off)<kMaxVerts?(pair.second.size()-off):kMaxVerts; D3D11_MAPPED_SUBRESOURCE m{}; if(SUCCEEDED(g_d3d11Mask.context->Map(g_d3d11Mask.vb,0,D3D11_MAP_WRITE_DISCARD,0,&m))) { memcpy(m.pData,pair.second.data()+off,n*sizeof(VisorVertex)); g_d3d11Mask.context->Unmap(g_d3d11Mask.vb,0); g_d3d11Mask.context->Draw((UINT)n,0); } } } verts.clear(); };
+    auto safeQuad = [&](float x0,float y0,float x1,float y1,float r,float g,float b) { if (!quad(x0,y0,x1,y1,r,g,b)) { flush(); quad(x0,y0,x1,y1,r,g,b); } };
+    auto calibrationLine = [&](float x0,float y0,float x1,float y1,float thickness,float cr,float cg,float cb) {
+        const float dx=x1-x0,dy=y1-y0,len=sqrtf(dx*dx+dy*dy); if(len<.001f)return;
+        const float nx=-dy/len*thickness*.5f,ny=dx/len*thickness*.5f;
+        if(verts.size()+6>kMaxVerts)flush(); emit(x0+nx,y0+ny,cr,cg,cb);emit(x1+nx,y1+ny,cr,cg,cb);emit(x1-nx,y1-ny,cr,cg,cb);emit(x0+nx,y0+ny,cr,cg,cb);emit(x1-nx,y1-ny,cr,cg,cb);emit(x0-nx,y0-ny,cr,cg,cb);
+    };
+    const OverlayCoordinateResolver calibrationCoordinates(eye,allViews);
+    // Pixel diagnostics use the entire submitted eye rectangle. Cropping may remove available
+    // pixels, but must not additionally shrink or inset rulers, probes, gratings, or ladders.
+    const int l=eye.rect.offset.x, t=eye.rect.offset.y, w=eye.rect.extent.width, h=eye.rect.extent.height;
+    const int r=l+w, b=t+h;
+    auto stripeBand = [&](int y, int pitch) { for (int x=l; x<r; x+=pitch) { int x1 = x + pitch < r ? x + pitch : r; float v = ((x-l)/pitch)&1 ? 1.f : 0.f; safeQuad((float)x,(float)y,(float)x1,(float)(y+12),v,v,v); } };
+    auto digit = [&](int x, int y, int scale, int value) {
+        static const unsigned char segments[10] = {0x3f,0x06,0x5b,0x4f,0x66,0x6d,0x7d,0x07,0x7f,0x6f};
+        if (value < 0 || value > 9) return;
+        const unsigned char s = segments[value]; const int q = scale * 3;
+        auto bar = [&](bool on, int x0, int y0, int x1, int y1) { if (on) safeQuad((float)(x+x0),(float)(y+y0),(float)(x+x1),(float)(y+y1),1,1,1); };
+        bar(s&0x01, q,0,2*q,scale); bar(s&0x02, 2*q,scale,2*q+scale,q); bar(s&0x04, 2*q,q+scale,2*q+scale,2*q); bar(s&0x08, q,2*q,2*q,2*q+scale); bar(s&0x10, 0,q+scale,scale,2*q); bar(s&0x20, 0,scale,scale,q); bar(s&0x40, q,q,2*q,q+scale);
+    };
+
+    // Pixel ruler and bars live at the bottom; all values are texture-pixel coordinates.
+    int bottomCursor=b;
+    if (calibrationRuler) { bottomCursor-=14; safeQuad((float)l,(float)bottomCursor,(float)r,(float)b,0,0,0); for(int x=l;x<r;x+=8) { int tall=(x-l)%64==0?14:((x-l)%32==0?10:6); safeQuad((float)x,(float)(b-tall),(float)(x+1),(float)b,1,1,1); } }
+    if (calibrationBars) { bottomCursor-=16; const float c[8][3]={{1,1,1},{1,1,0},{0,1,1},{0,1,0},{1,0,1},{1,0,0},{0,0,1},{0,0,0}}; for(int i=0;i<8;++i) safeQuad((float)(l+i*w/8),(float)bottomCursor,(float)(l+(i+1)*w/8),(float)(bottomCursor+8),c[i][0],c[i][1],c[i][2]); for(int i=0;i<16;++i){float v=i/15.f; safeQuad((float)(l+i*w/16),(float)(bottomCursor+8),(float)(l+(i+1)*w/16),(float)(bottomCursor+16),v,v,v);} }
+    if (calibrationClippingSteps) { bottomCursor-=16; int black[]={0,2,4,6,8,12,16}, white[]={255,253,251,249,247,243,239}; for(int i=0;i<7;++i){float q=black[i]/255.f; safeQuad((float)(l+i*w/7),(float)bottomCursor,(float)(l+(i+1)*w/7),(float)(bottomCursor+8),q,q,q); q=white[i]/255.f; safeQuad((float)(l+i*w/7),(float)(bottomCursor+8),(float)(l+(i+1)*w/7),(float)(bottomCursor+16),q,q,q);} }
+    if (calibrationGratings) for (int row=1;row<=3;++row) { int cy=t+h*row/4-18; stripeBand(cy,1); stripeBand(cy+12,2); stripeBand(cy+24,4); digit(l+4,cy+1,2,1); digit(l+4,cy+13,2,2); digit(l+4,cy+25,2,4); }
+    if (calibrationBeacon) { float v=(g_calibrationFrameSerial.load()&1)?1.f:0.f; safeQuad((float)(l+8),(float)(t+8),(float)(l+32),(float)(t+32),v,v,v); }
+    if (calibrationMotionStrip) { int y=t+40, travel=w-16 > 1 ? w-16 : 1, marker=l+(int)((g_calibrationFrameSerial.load()*8)%travel); safeQuad((float)l,(float)y,(float)r,(float)(y+8),0,0,0); safeQuad((float)marker,(float)y,(float)(marker+16),(float)(y+8),1,1,1); }
+    if (calibrationEdgeProbes) { auto probe=[&](int x,int y,bool vertical){ for(int i=0;i<3;++i){int p=1<<i; for(int q=0;q<48;q+=p) {float v=((q/p)&1)?1.f:0.f; if(vertical) safeQuad((float)(x+q),(float)y,(float)(x+q+p),(float)(y+8),v,v,v); else safeQuad((float)x,(float)(y+q),(float)(x+8),(float)(y+q+p),v,v,v);}}}; probe(l+w/2-24,t,true); probe(l+w/2-24,b-8,true); probe(l,t+h/2-24,false); probe(r-8,t+h/2-24,false); digit(l+w/2-20,t+10,2,1); digit(l+w/2-8,t+10,2,2); digit(l+w/2+4,t+10,2,4); }
+    if (calibrationCheckerboards) { int x=l+32,y=t+h/2-80; for(int p: {1,2,4,8}) { for(int yy=0;yy<48;yy+=p) for(int xx=0;xx<48;xx+=p){float v=(((xx/p)+(yy/p))&1)?1.f:0.f; safeQuad((float)(x+xx),(float)(y+yy),(float)(x+xx+p),(float)(y+yy+p),v,v,v);} digit(x+18,y+50,2,p); x+=56; } }
+    if (calibrationZonePlate) {
+        // A circle is defined in shared tangent space, then projected through each eye. Equal
+        // texture-pixel radii are oval whenever horizontal/vertical pixels-per-tangent differ.
+        const auto centre=calibrationCoordinates.ResolveSharedTangent(0.f,0.f,true);
+        constexpr float pi=3.14159265f; const float radiusTan=(std::min)(calibrationCoordinates.sharedSelectedR-calibrationCoordinates.sharedSelectedL,calibrationCoordinates.sharedSelectedU-calibrationCoordinates.sharedSelectedD)*.16f;
+        for(int i=0;i<32;++i){const float a=i*2*pi/32.f,a2=(i+1)*2*pi/32.f,v=(i&1)?1.f:0.f;const auto p1=calibrationCoordinates.ResolveSharedTangent(cosf(a)*radiusTan,sinf(a)*radiusTan,false);const auto p2=calibrationCoordinates.ResolveSharedTangent(cosf(a2)*radiusTan,sinf(a2)*radiusTan,false);if(verts.size()+3>kMaxVerts)flush();emit(centre.first,centre.second,v,v,v);emit(p1.first,p1.second,v,v,v);emit(p2.first,p2.second,v,v,v);}
+        for(int q=1;q<=8;++q){const float qr=radiusTan*q/8.f;for(int i=0;i<64;++i){const float a=i*2*pi/64.f,a2=(i+1)*2*pi/64.f;const auto p1=calibrationCoordinates.ResolveSharedTangent(cosf(a)*qr,sinf(a)*qr,false);const auto p2=calibrationCoordinates.ResolveSharedTangent(cosf(a2)*qr,sinf(a2)*qr,false);calibrationLine(p1.first,p1.second,p2.first,p2.second,1.f,1,1,1);}}
+    }
+    // The HUD draws in BOTH eyes. Every element is anchored at a shared tangent-space point
+    // inside the binocular overlap of the cropped per-eye FOVs, mapped through this eye's own
+    // tangent bounds into its sub-image pixels. Both eyes therefore see the overlay at the
+    // same angular position (zero angular disparity — it fuses cleanly and never hugs the
+    // opposite lens edge), and it stays positioned relative to the final cropped tangent
+    // bounds at any eye resolution.
+    if ((hudEnabled || hudTraceEnabled) && eye.viewIndex < 2) {
+        if (eye.viewIndex == 0 || !g_hudDrawSnap.valid) {
+            UpdateHudMetrics();
+            for (int i = 0; i < 4; ++i) { g_hudDrawSnap.metrics[i] = g_hudMetrics[i]; g_hudDrawSnap.alarm[i] = g_hudAlarm[i].inAlarm; }
+            std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+            g_hudDrawSnap.budgetMs = g_hudEffectiveBudgetMs;
+            g_hudDrawSnap.vrColorState = g_hudVrColorState;
+            g_hudDrawSnap.sampleCount = g_hudFrameHistoryCount;
+            for (size_t i = 0; i < g_hudFrameHistoryCount; ++i)
+                g_hudDrawSnap.samples[i] = g_hudFrameHistory[(g_hudFrameHistoryStart + i) % g_hudFrameHistory.size()];
+            g_hudDrawSnap.valid = true;
+        }
+        const HudDrawSnapshot& snap = g_hudDrawSnap;
+        XrFovf fovSelf = eye.fov, fovOther = eye.fov; bool haveOther = false;
+        for (const EyeView& v : allViews) if (v.viewIndex != eye.viewIndex) { fovOther = v.fov; haveOther = true; break; }
+        auto fovOk = [](const XrFovf& f) { return f.angleRight > f.angleLeft && f.angleUp > f.angleDown &&
+            fabsf(f.angleLeft) < 1.55f && fabsf(f.angleRight) < 1.55f && fabsf(f.angleUp) < 1.55f && fabsf(f.angleDown) < 1.55f; };
+        const bool stereoAnchor = fovOk(fovSelf) && (!haveOther || fovOk(fovOther));
+        float selfL = 0.f, selfR = 1.f, selfU = 1.f, selfD = 0.f, ovLt = 0.f, ovRt = 1.f, ovUt = 1.f, ovDt = 0.f;
+        if (stereoAnchor) {
+            selfL = tanf(fovSelf.angleLeft); selfR = tanf(fovSelf.angleRight); selfU = tanf(fovSelf.angleUp); selfD = tanf(fovSelf.angleDown);
+            const float oL = tanf(fovOther.angleLeft), oR = tanf(fovOther.angleRight), oU = tanf(fovOther.angleUp), oD = tanf(fovOther.angleDown);
+            ovLt = (std::max)(selfL, oL); ovRt = (std::min)(selfR, oR); ovUt = (std::min)(selfU, oU); ovDt = (std::max)(selfD, oD);
+            if (!(ovRt > ovLt && ovUt > ovDt)) { ovLt = selfL; ovRt = selfR; ovUt = selfU; ovDt = selfD; }
+        }
+        auto xFromTan = [&](float tx) { return l + (tx - selfL) / (selfR - selfL) * w; };
+        auto yFromTan = [&](float ty) { return t + (selfU - ty) / (selfU - selfD) * h; };
+        const OverlayCoordinateResolver coordinates(eye,allViews);
+        auto anchorPxX = [&](double frac) { return coordinates.Resolve(OverlayPlacement::RenderArea,(float)frac,.5f).first; };
+        auto anchorPxY = [&](double frac) { return coordinates.Resolve(OverlayPlacement::RenderArea,.5f,(float)frac).second; };
+        const float obL=(float)l, obR=(float)r, obT=(float)t, obB=(float)b;
+        // Angular-size contract: one reference pixel is a fixed tangent span (2/1080). Project it
+        // independently into this eye. Crop/resolution changes therefore affect clipping and
+        // available placement, not apparent HUD size.
+        const float minDim = (float)(std::min)(w, h);
+        const float pxPerTanX = stereoAnchor ? w / (selfR-selfL) : w*.5f;
+        const float pxPerTanY = stereoAnchor ? h / (selfU-selfD) : h*.5f;
+        const float angularRefPx = (std::min)(pxPerTanX,pxPerTanY) * (2.f/1080.f);
+        const float unit = std::clamp((float)(angularRefPx * 64.f * std::clamp(hudScale, 0.5, 3.0)), 8.f, minDim * 0.45f);
+        const float radius = unit * 0.48f, gap = (std::max)(unit * 0.25f, angularRefPx * 1080.f * (float)hudSpacing);
+        const float margin = std::clamp((float)hudSafeMargin, 0.f, .25f) * minDim;
+        const int pxs = (std::max)(1, (int)std::lround(unit * 0.045));
+        const float numberHeight = (float)(pxs * 7), numberGap = unit * .08f;
+        const float desiredX = anchorPxX(hudAnchorX) + radius;
+        const float desiredY = anchorPxY(hudAnchorY) + radius;
+        const float maxX = obR - margin - (radius * 7.f + gap * 3.f);
+        const float maxY = obB - margin - radius - numberGap - numberHeight;
+        const float startX = hudClampToVisible ? (std::clamp)(desiredX, obL + margin + radius, (std::max)(obL + margin + radius, maxX)) : desiredX;
+        const float startY = hudClampToVisible ? (std::clamp)(desiredY, obT + margin + radius, (std::max)(obT + margin + radius, maxY)) : desiredY;
+        const float intensity = std::clamp((float)hudOpacity, .10f, 1.f);
+        // Item 3 (VR frame time) colours against the effective cadence budget; items 0-2
+        // keep the percentage thresholds.
+        auto hudColour = [&](int item, const HudMetric& m, float& rr, float& gg, float& bb) {
+            if (!m.available) { rr=.42f*intensity; gg=.50f*intensity; bb=.56f*intensity; return; }
+            bool red, amber;
+            if (item == 3) {
+                red = snap.vrColorState == 2; amber = snap.vrColorState == 1;
+            } else {
+                red = m.value >= hudRedThreshold; amber = m.value >= hudGreenThreshold;
+            }
+            if (red) { rr=1.f*intensity; gg=.16f*intensity; bb=.12f*intensity; }
+            else if (amber) { rr=1.f*intensity; gg=.62f*intensity; bb=.10f*intensity; }
+            else { rr=.18f*intensity; gg=1.f*intensity; bb=.48f*intensity; }
+        };
+        auto line = [&](float x0,float y0,float x1,float y1,float thickness,float rr,float gg,float bb) {
+            const float dx=x1-x0, dy=y1-y0, len=sqrtf(dx*dx+dy*dy);
+            if(len<.001f) return; const float nx=-dy/len*thickness*.5f, ny=dx/len*thickness*.5f;
+            if(verts.size()+6>kMaxVerts) flush();
+            emit(x0+nx,y0+ny,rr,gg,bb); emit(x1+nx,y1+ny,rr,gg,bb); emit(x1-nx,y1-ny,rr,gg,bb);
+            emit(x0+nx,y0+ny,rr,gg,bb); emit(x1-nx,y1-ny,rr,gg,bb); emit(x0-nx,y0-ny,rr,gg,bb);
+        };
+        auto rectLine = [&](float x0,float y0,float x1,float y1,float thickness,float rr,float gg,float bb) {
+            line(x0,y0,x1,y0,thickness,rr,gg,bb); line(x1,y0,x1,y1,thickness,rr,gg,bb);
+            line(x1,y1,x0,y1,thickness,rr,gg,bb); line(x0,y1,x0,y0,thickness,rr,gg,bb);
+        };
+        auto circleLine = [&](float cx,float cy,float rradius,float thickness,float cr,float cg,float cb) {
+            constexpr int n=16; constexpr float pi=3.14159265f;
+            for(int i=0;i<n;++i){float a=i*2*pi/n, b2=(i+1)*2*pi/n; line(cx+cosf(a)*rradius,cy+sinf(a)*rradius,cx+cosf(b2)*rradius,cy+sinf(b2)*rradius,thickness,cr,cg,cb);}
+        };
+        // Compact 5x7 pixel HUD font with a dedicated decimal-point glyph. Row bits are
+        // rendered as merged horizontal runs at an integer pixel scale, so digits stay
+        // crisp at small sizes and "13.3" can never collapse into "133".
+        static const unsigned char kHudFont[12][7] = {
+            {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, // 0
+            {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E}, // 1
+            {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}, // 2
+            {0x1F,0x02,0x04,0x02,0x01,0x11,0x0E}, // 3
+            {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02}, // 4
+            {0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E}, // 5
+            {0x06,0x08,0x10,0x1E,0x11,0x11,0x0E}, // 6
+            {0x1F,0x01,0x02,0x04,0x04,0x04,0x04}, // 7
+            {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E}, // 8
+            {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C}, // 9
+            {0x00,0x00,0x00,0x00,0x00,0x0C,0x0C}, // .
+            {0x00,0x00,0x00,0x0E,0x00,0x00,0x00}, // -
+        };
+        auto glyphIdx = [](char c) -> int { if (c >= '0' && c <= '9') return c - '0'; if (c == '.') return 10; if (c == '-') return 11; return -1; };
+        auto glyphAdvance = [&](char c) { return c == '.' ? pxs * 4 : pxs * 6; };
+        auto textWidth = [&](const char* s) { int tw = 0; for (const char* p = s; *p; ++p) tw += glyphAdvance(*p); return (float)(tw - pxs); };
+        auto drawText = [&](float centreX, float topY, const char* s, float rr, float gg, float bb) {
+            float x = centreX - textWidth(s) * 0.5f;
+            for (const char* p = s; *p; ++p) {
+                const int gi = glyphIdx(*p);
+                if (gi >= 0) {
+                    for (int row = 0; row < 7; ++row) {
+                        const unsigned char bits = kHudFont[gi][row];
+                        int col = 0;
+                        while (col < 5) {
+                            if (bits & (0x10 >> col)) {
+                                const int runStart = col;
+                                while (col < 5 && (bits & (0x10 >> col))) ++col;
+                                safeQuad(x + runStart * pxs, topY + row * pxs, x + col * pxs, topY + (row + 1) * pxs, rr, gg, bb);
+                            } else ++col;
+                        }
+                    }
+                }
+                x += glyphAdvance(*p);
+            }
+        };
+        auto ring = [&](float cx,float cy,float fill,float rr,float gg,float bb) {
+            constexpr int segments=32; constexpr float pi=3.14159265f;
+            for(int s=0;s<segments;++s) { float a=-pi*.5f+s*2*pi/segments, b2=a+2*pi/segments*.78f;
+                float fr=s<static_cast<int>(ceilf(fill*segments)) ? rr : .10f*intensity;
+                float fg=s<static_cast<int>(ceilf(fill*segments)) ? gg : .12f*intensity;
+                float fb=s<static_cast<int>(ceilf(fill*segments)) ? bb : .15f*intensity;
+                float ri=radius*.80f; if(verts.size()+6>kMaxVerts) flush();
+                emit(cx+cosf(a)*ri,cy+sinf(a)*ri,fr,fg,fb); emit(cx+cosf(a)*radius,cy+sinf(a)*radius,fr,fg,fb); emit(cx+cosf(b2)*radius,cy+sinf(b2)*radius,fr,fg,fb);
+                emit(cx+cosf(a)*ri,cy+sinf(a)*ri,fr,fg,fb); emit(cx+cosf(b2)*radius,cy+sinf(b2)*radius,fr,fg,fb); emit(cx+cosf(b2)*ri,cy+sinf(b2)*ri,fr,fg,fb);
+            }
+        };
+        if (hudEnabled) for (int item=0; item<4; ++item) {
+            // Alarm-only mode hides each indicator independently unless its metric is red
+            // (with hold-time hysteresis applied in UpdateHudAlarm). Telemetry keeps updating
+            // regardless; only drawing is skipped.
+            if (hudAlarmOnly && !snap.alarm[item]) continue;
+            float cx=startX+item*(radius*2+gap), cy=startY, rr,gg,bb; const HudMetric& metric=snap.metrics[item]; hudColour(item,metric,rr,gg,bb);
+            const float fillFrac = !metric.available ? 0.f
+                : item == 3 ? (snap.budgetMs > 0.0 ? std::clamp((float)(metric.value / snap.budgetMs), 0.f, 1.f) : 0.f)
+                : std::clamp((float)(metric.value/100.0), 0.f, 1.f);
+            ring(cx,cy,fillFrac,rr,gg,bb);
+            const float q=unit*.095f, stroke=(std::max)(1.25f,unit*.022f);
+            if(item==0) {
+                rectLine(cx-q*2.0f,cy-q*2.0f,cx+q*2.0f,cy+q*2.0f,stroke,rr,gg,bb);
+                rectLine(cx-q*.8f,cy-q*.8f,cx+q*.8f,cy+q*.8f,stroke,rr,gg,bb);
+                for(int k=-1;k<=1;++k){line(cx+q*k,cy-q*2.8f,cx+q*k,cy-q*2.0f,stroke,rr,gg,bb);line(cx+q*k,cy+q*2.0f,cx+q*k,cy+q*2.8f,stroke,rr,gg,bb);line(cx-q*2.8f,cy+q*k,cx-q*2.0f,cy+q*k,stroke,rr,gg,bb);line(cx+q*2.0f,cy+q*k,cx+q*2.8f,cy+q*k,stroke,rr,gg,bb);}
+            } else if(item==1) {
+                rectLine(cx-q*2.8f,cy-q*1.8f,cx+q*2.4f,cy+q*1.8f,stroke,rr,gg,bb);
+                circleLine(cx-q*.6f,cy,q*.85f,stroke,rr,gg,bb); line(cx+q*.6f,cy-q*.8f,cx+q*1.7f,cy-q*.8f,stroke,rr,gg,bb); line(cx+q*.6f,cy,cx+q*1.7f,cy,stroke,rr,gg,bb);
+                line(cx+q*2.4f,cy-q*.9f,cx+q*3.0f,cy-q*.9f,stroke,rr,gg,bb); line(cx+q*2.4f,cy+q*.9f,cx+q*3.0f,cy+q*.9f,stroke,rr,gg,bb);
+            } else if(item==2) {
+                rectLine(cx-q*1.8f,cy-q*2.7f,cx+q*1.8f,cy+q*2.7f,stroke,rr,gg,bb);
+                line(cx-q*.9f,cy-q*1.5f,cx+q*.9f,cy-q*1.5f,stroke,rr,gg,bb); line(cx-q*.9f,cy-q*.7f,cx+q*.9f,cy-q*.7f,stroke,rr,gg,bb); circleLine(cx,cy+q*1.4f,q*.25f,stroke,rr,gg,bb);
+            } else {
+                line(cx-q*2.8f,cy-q*.8f,cx-q*2.2f,cy-q*1.8f,stroke,rr,gg,bb); line(cx-q*2.2f,cy-q*1.8f,cx+q*2.2f,cy-q*1.8f,stroke,rr,gg,bb); line(cx+q*2.2f,cy-q*1.8f,cx+q*2.8f,cy-q*.8f,stroke,rr,gg,bb);
+                line(cx+q*2.8f,cy-q*.8f,cx+q*2.1f,cy+q*1.8f,stroke,rr,gg,bb); line(cx+q*2.1f,cy+q*1.8f,cx+q*.7f,cy+q*1.8f,stroke,rr,gg,bb); line(cx+q*.7f,cy+q*1.8f,cx,cy+q*.8f,stroke,rr,gg,bb); line(cx,cy+q*.8f,cx-q*.7f,cy+q*1.8f,stroke,rr,gg,bb); line(cx-q*.7f,cy+q*1.8f,cx-q*2.1f,cy+q*1.8f,stroke,rr,gg,bb); line(cx-q*2.1f,cy+q*1.8f,cx-q*2.8f,cy-q*.8f,stroke,rr,gg,bb);
+                rectLine(cx-q*1.7f,cy-q*.7f,cx-q*.5f,cy+q*.4f,stroke,rr,gg,bb); rectLine(cx+q*.5f,cy-q*.7f,cx+q*1.7f,cy+q*.4f,stroke,rr,gg,bb);
+            }
+            // Values carry no unit suffix. Items 0-2 stay integers; item 3 is the app frame
+            // time in milliseconds with exactly one decimal place (e.g. 8.3, 11.1, 13.9).
+            char text[16];
+            if (!metric.available) { text[0]='-'; text[1]='-'; text[2]='\0'; }
+            else if (item == 3) snprintf(text, sizeof(text), "%.1f", metric.value);
+            else snprintf(text, sizeof(text), "%d", std::clamp(static_cast<int>(std::round(metric.value)),0,100));
+            drawText(cx, cy + radius + numberGap, text, rr, gg, bb);
+        }
+        // Frame-pacing trace: always drawn (alarm-only mode never hides it), with live
+        // position/width/height/history/sensitivity controls. Newest samples sit at the right
+        // edge and scroll left; the baseline is the effective cadence budget, so it stays
+        // correct under half-rate reprojection.
+        if (hudTraceEnabled) {
+        const size_t historyN = (size_t)std::clamp(hudTraceHistory, 10.0, (double)snap.samples.size());
+        const float traceW = std::clamp((float)hudTraceWidth, 0.10f, 1.0f) * (std::max)(32.f, obR - obL - 2.f * margin);
+        const float traceH = unit * .55f * std::clamp((float)hudTraceScale, 0.25f, 3.0f);
+        float traceLeft = anchorPxX(hudTraceX);
+        float traceTop = anchorPxY(hudTraceY);
+        if (hudClampToVisible) {
+            traceLeft = std::clamp(traceLeft, obL + margin, (std::max)(obL + margin, obR - margin - traceW));
+            traceTop = std::clamp(traceTop, obT + margin, (std::max)(obT + margin, obB - margin - traceH));
+        }
+        const float traceRight = traceLeft + traceW, traceCentre = traceTop + traceH * .5f;
+        line(traceLeft,traceCentre,traceRight,traceCentre,(std::max)(1.f,unit*.012f),.20f*intensity,.25f*intensity,.30f*intensity);
+        const size_t visible = (std::min)(snap.sampleCount, historyN);
+        if (visible > 1) {
+            const float sensitivity=(float)(std::max)(0.25,hudTraceSensitivityMs), dx=traceW/(float)(historyN-1);
+            const float firstX=traceRight-dx*(visible-1);
+            const size_t base = snap.sampleCount - visible;
+            for(size_t i=1;i<visible;++i){
+                const HudFrameSample& s0 = snap.samples[base+i-1];
+                const HudFrameSample& s1 = snap.samples[base+i];
+                float x0=firstX+dx*(i-1),x1=firstX+dx*i;
+                float y0=traceCentre-std::clamp((float)(s0.deviationMs/sensitivity),-1.f,1.f)*traceH*.5f;
+                float y1=traceCentre-std::clamp((float)(s1.deviationMs/sensitivity),-1.f,1.f)*traceH*.5f;
+                const bool missed=s1.overBudget;
+                line(x0,y0,x1,y1,(std::max)(1.2f,unit*.018f),missed?1.f*intensity:.36f*intensity,missed?.12f*intensity:.88f*intensity,missed?.10f*intensity:1.f*intensity);
+            }
+        }
+        }
+    }
+    flush();
+    g_d3d11Mask.context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT,sRTVs,sDSV); if(sVPCount) g_d3d11Mask.context->RSSetViewports(sVPCount,sVPs); if(sScissorCount) g_d3d11Mask.context->RSSetScissorRects(sScissorCount,sScissors); g_d3d11Mask.context->RSSetState(sRS); g_d3d11Mask.context->OMSetBlendState(sBS,sBF,sSM); g_d3d11Mask.context->OMSetDepthStencilState(sDSS,sSRef); g_d3d11Mask.context->VSSetShader(sVS,nullptr,0); g_d3d11Mask.context->PSSetShader(sPS,nullptr,0); g_d3d11Mask.context->PSSetConstantBuffers(0,1,&sPSCB); g_d3d11Mask.context->IASetInputLayout(sLayout); g_d3d11Mask.context->IASetPrimitiveTopology(sTopo); g_d3d11Mask.context->IASetVertexBuffers(0,1,&sVB,&sStride,&sOff);
+    if(ownsRtv) rtv->Release(); for(auto p:sRTVs) if(p) p->Release(); if(sDSV)sDSV->Release(); if(sRS)sRS->Release(); if(sBS)sBS->Release(); if(sDSS)sDSS->Release(); if(sVS)sVS->Release(); if(sPS)sPS->Release(); if(sPSCB)sPSCB->Release(); if(sLayout)sLayout->Release(); if(sVB)sVB->Release(); g_d3d11Mask.context->Flush();
+}
+
+// Ensure a per-slot dynamic RGBA texture exists and holds the current card pixels. Returns the
+// SRV to sample, or nullptr if the card has no drawable image or creation failed. Upload happens
+// only when the card's id or contentSerial changed, so steady-state frames do no texture work.
+ID3D11ShaderResourceView* EnsureNotifyCardTexture(uint32_t slot, const NotifyCardBlock& card) {
+    if (slot >= kNotifyMaxCards || !g_d3d11Mask.device || !g_d3d11Mask.context) return nullptr;
+    if (card.width == 0 || card.height == 0 || card.width > kNotifyCardW || card.height > kNotifyCardH) return nullptr;
+    if (!g_d3d11Mask.notifyTex[slot]) {
+        D3D11_TEXTURE2D_DESC td{}; td.Width = kNotifyCardW; td.Height = kNotifyCardH; td.MipLevels = 1; td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM; td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_DYNAMIC;
+        td.BindFlags = D3D11_BIND_SHADER_RESOURCE; td.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(g_d3d11Mask.device->CreateTexture2D(&td, nullptr, &g_d3d11Mask.notifyTex[slot]))) { g_d3d11Mask.notifyTex[slot] = nullptr; return nullptr; }
+        if (FAILED(g_d3d11Mask.device->CreateShaderResourceView(g_d3d11Mask.notifyTex[slot], nullptr, &g_d3d11Mask.notifySrv[slot]))) {
+            g_d3d11Mask.notifyTex[slot]->Release(); g_d3d11Mask.notifyTex[slot] = nullptr; return nullptr;
+        }
+        g_d3d11Mask.notifyTexId[slot] = 0xFFFFFFFFu; // force upload
+    }
+    if (g_d3d11Mask.notifyTexId[slot] != card.id || g_d3d11Mask.notifyTexSerial[slot] != card.contentSerial) {
+        D3D11_MAPPED_SUBRESOURCE m{};
+        if (SUCCEEDED(g_d3d11Mask.context->Map(g_d3d11Mask.notifyTex[slot], 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+            const uint8_t* src = card.rgba; auto* dst = static_cast<uint8_t*>(m.pData);
+            for (uint32_t y = 0; y < card.height; ++y)
+                memcpy(dst + (size_t)y * m.RowPitch, src + (size_t)y * kNotifyCardW * 4, (size_t)card.width * 4);
+            g_d3d11Mask.context->Unmap(g_d3d11Mask.notifyTex[slot], 0);
+            g_d3d11Mask.notifyTexId[slot] = card.id; g_d3d11Mask.notifyTexSerial[slot] = card.contentSerial;
+        }
+    }
+    return g_d3d11Mask.notifySrv[slot];
+}
+
+// Feature 1 (render-boundary flash), 2 (crosshair), and 3 (notification cards). These share one
+// alpha-blended pass and are anchored, like the HUD, in the shared tangent-space binocular overlap
+// so they fuse cleanly in both eyes. Uses the visor colour+alpha PS for flat geometry and the
+// textured PS for pre-composited notification cards.
+void DrawViewLabOverlaysToTexture(
+    ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
+    const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv) {
+    if (!g_d3d11Mask.initialized || !g_d3d11Mask.context || !tex ||
+        eye.rect.extent.width <= 0 || eye.rect.extent.height <= 0 || eye.viewIndex > 1) return;
+
+    // Boundary fade envelope.
+    float boundaryAlpha = 0.f;
+    if (g_boundaryDragActive) boundaryAlpha = 1.f;
+    else if (g_boundaryReleaseTick != 0) {
+        const uint64_t elapsed = GetTickCount64() - g_boundaryReleaseTick;
+        if (elapsed >= kBoundaryFadeMs) { g_boundaryReleaseTick = 0; boundaryAlpha = 0.f; }
+        else boundaryAlpha = 1.f - (float)elapsed / (float)kBoundaryFadeMs;
+    }
+    const bool wantBoundary = boundaryAlpha > 0.001f;
+    const bool wantCrosshair = crosshairEnabled && crosshairAlpha > 0.001f;
+    bool wantNotify = false;
+    if (notifyEnabled && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic) wantNotify = true; }
+    if (!wantBoundary && !wantCrosshair && !wantNotify) return;
+
+    D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
+    if (texDesc.Width == 0 || texDesc.Height == 0) return;
+
+    DXGI_FORMAT rtvFormat = GetNonSRGBFormat(static_cast<DXGI_FORMAT>(scFormat));
+    if (rtvFormat == DXGI_FORMAT_UNKNOWN) rtvFormat = GetNonSRGBFormat(texDesc.Format);
+    D3D11_RENDER_TARGET_VIEW_DESC rtvDesc{}; rtvDesc.Format = rtvFormat;
+    if (arrSize > 1) { rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY; rtvDesc.Texture2DArray.FirstArraySlice = eye.arraySlice; rtvDesc.Texture2DArray.ArraySize = 1; }
+    else rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+    const bool ownsRtv = cachedRtv == nullptr; ID3D11RenderTargetView* rtv = cachedRtv;
+    if (!rtv && (FAILED(g_d3d11Mask.device->CreateRenderTargetView(tex, &rtvDesc, &rtv)) || !rtv)) return;
+
+    // Full pipeline-state save.
+    ID3D11RenderTargetView* sRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{}; ID3D11DepthStencilView* sDSV=nullptr;
+    g_d3d11Mask.context->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, &sDSV);
+    UINT sVPCount=D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE; D3D11_VIEWPORT sVPs[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{}; g_d3d11Mask.context->RSGetViewports(&sVPCount, sVPs);
+    UINT sScissorCount=D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE; D3D11_RECT sScissors[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{}; g_d3d11Mask.context->RSGetScissorRects(&sScissorCount, sScissors);
+    ID3D11RasterizerState* sRS=nullptr; g_d3d11Mask.context->RSGetState(&sRS); ID3D11BlendState* sBS=nullptr; FLOAT sBF[4]{}; UINT sSM=0; g_d3d11Mask.context->OMGetBlendState(&sBS,sBF,&sSM);
+    ID3D11DepthStencilState* sDSS=nullptr; UINT sSRef=0; g_d3d11Mask.context->OMGetDepthStencilState(&sDSS,&sSRef);
+    ID3D11VertexShader* sVS=nullptr; g_d3d11Mask.context->VSGetShader(&sVS,nullptr,nullptr); ID3D11PixelShader* sPS=nullptr; g_d3d11Mask.context->PSGetShader(&sPS,nullptr,nullptr);
+    ID3D11Buffer* sPSCB=nullptr; g_d3d11Mask.context->PSGetConstantBuffers(0,1,&sPSCB); ID3D11ShaderResourceView* sSRV=nullptr; g_d3d11Mask.context->PSGetShaderResources(0,1,&sSRV); ID3D11SamplerState* sSmp=nullptr; g_d3d11Mask.context->PSGetSamplers(0,1,&sSmp);
+    ID3D11InputLayout* sLayout=nullptr; g_d3d11Mask.context->IAGetInputLayout(&sLayout); D3D11_PRIMITIVE_TOPOLOGY sTopo; g_d3d11Mask.context->IAGetPrimitiveTopology(&sTopo); ID3D11Buffer* sVB=nullptr; UINT sStride=0,sOff=0; g_d3d11Mask.context->IAGetVertexBuffers(0,1,&sVB,&sStride,&sOff);
+
+    const int l=eye.rect.offset.x, t=eye.rect.offset.y, w=eye.rect.extent.width, h=eye.rect.extent.height, rr_=l+w, bb_=t+h;
+    D3D11_VIEWPORT vp{}; vp.TopLeftX=(float)l; vp.TopLeftY=(float)t; vp.Width=(float)w; vp.Height=(float)h; vp.MaxDepth=1.f;
+    D3D11_RECT scissor{l,t,rr_,bb_}; static const FLOAT kBF[]={0,0,0,0}; UINT stride=sizeof(VisorVertex), offset=0;
+    g_d3d11Mask.context->OMSetRenderTargets(1,&rtv,nullptr); g_d3d11Mask.context->RSSetViewports(1,&vp); g_d3d11Mask.context->RSSetScissorRects(1,&scissor);
+    g_d3d11Mask.context->RSSetState(g_d3d11Mask.calibrationRs); g_d3d11Mask.context->OMSetBlendState(g_d3d11Mask.bs,kBF,0xFFFFFFFF); g_d3d11Mask.context->OMSetDepthStencilState(g_d3d11Mask.dss,0);
+    g_d3d11Mask.context->IASetInputLayout(g_d3d11Mask.layout); g_d3d11Mask.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST); g_d3d11Mask.context->IASetVertexBuffers(0,1,&g_d3d11Mask.vb,&stride,&offset);
+
+    // Tangent-space anchor frame for this eye (identical model to the HUD).
+    XrFovf fSelf=eye.fov, fOther=eye.fov; bool haveOther=false;
+    for (const EyeView& v : allViews) if (v.viewIndex != eye.viewIndex) { fOther=v.fov; haveOther=true; break; }
+    auto fovOk=[](const XrFovf& f){ return f.angleRight>f.angleLeft && f.angleUp>f.angleDown && fabsf(f.angleLeft)<1.55f && fabsf(f.angleRight)<1.55f && fabsf(f.angleUp)<1.55f && fabsf(f.angleDown)<1.55f; };
+    const bool stereo = fovOk(fSelf) && (!haveOther || fovOk(fOther));
+    float sL=0,sR=1,sU=1,sD=0, oL=0,oR=1,oU=1,oD=0;
+    if (stereo) {
+        sL=tanf(fSelf.angleLeft); sR=tanf(fSelf.angleRight); sU=tanf(fSelf.angleUp); sD=tanf(fSelf.angleDown);
+        const float xL=tanf(fOther.angleLeft), xR=tanf(fOther.angleRight), xU=tanf(fOther.angleUp), xD=tanf(fOther.angleDown);
+        oL=(std::max)(sL,xL); oR=(std::min)(sR,xR); oU=(std::min)(sU,xU); oD=(std::max)(sD,xD);
+        if (!(oR>oL && oU>oD)) { oL=sL; oR=sR; oU=sU; oD=sD; }
+    }
+    auto xFromTan=[&](float tx){ return l + (tx - sL)/(sR - sL) * w; };
+    auto yFromTan=[&](float ty){ return t + (sU - ty)/(sU - sD) * h; };
+    const OverlayCoordinateResolver coordinates(eye,allViews);
+    auto anchorX=[&](double f){ return coordinates.Resolve(OverlayPlacement::RenderArea,(float)f,.5f).first; };
+    auto anchorY=[&](double f){ return coordinates.Resolve(OverlayPlacement::RenderArea,.5f,(float)f).second; };
+    // Fused-overlay contract: tangent (0,0) is the shared straight-ahead angular point. It must be
+    // projected separately through each asymmetric eye FOV; equal normalized eye pixels create
+    // unintended disparity and the two-crosshair failure.
+    const float crosshairTanX=(float)crosshairOffsetX*(coordinates.sharedFullR-coordinates.sharedFullL)*.5f;
+    const float crosshairTanY=-(float)crosshairOffsetY*(coordinates.sharedFullU-coordinates.sharedFullD)*.5f;
+    const auto crosshairPosition = coordinates.ResolveSharedTangent(crosshairTanX,crosshairTanY,true);
+    const float centreX = crosshairPosition.first;
+    const float centreY = crosshairPosition.second;
+    const float minDim = (float)(std::min)(w,h);
+
+    // Flat colour+alpha geometry (boundary + crosshair). Snap to whole pixels for crisp edges.
+    std::vector<VisorVertex> verts; verts.reserve(2048);
+    auto ndcX=[&](float px){ return 2.f*(px-l)/w - 1.f; };
+    auto ndcY=[&](float py){ return 1.f - 2.f*(py-t)/h; };
+    auto emit=[&](float px,float py,float cr,float cg,float cb,float a){ VisorVertex v{}; v.x=ndcX(px); v.y=ndcY(py); v.r=cr; v.g=cg; v.b=cb; v.alpha=a; verts.push_back(v); };
+    auto rectFill=[&](float x0,float y0,float x1,float y1,float cr,float cg,float cb,float a){
+        x0=floorf(x0+.5f); y0=floorf(y0+.5f); x1=floorf(x1+.5f); y1=floorf(y1+.5f);
+        if (x1<=x0||y1<=y0) return;
+        emit(x0,y0,cr,cg,cb,a); emit(x1,y0,cr,cg,cb,a); emit(x1,y1,cr,cg,cb,a);
+        emit(x0,y0,cr,cg,cb,a); emit(x1,y1,cr,cg,cb,a); emit(x0,y1,cr,cg,cb,a);
+    };
+    auto flushFlat=[&](float cr,float cg,float cb,float alpha){
+        if (verts.empty()) return;
+        float color[4]={cr,cg,cb,alpha}; D3D11_MAPPED_SUBRESOURCE cm{};
+        if (FAILED(g_d3d11Mask.context->Map(g_d3d11Mask.calibrationColorCb,0,D3D11_MAP_WRITE_DISCARD,0,&cm))) { verts.clear(); return; }
+        memcpy(cm.pData,color,sizeof(color)); g_d3d11Mask.context->Unmap(g_d3d11Mask.calibrationColorCb,0);
+        g_d3d11Mask.context->VSSetShader(g_d3d11Mask.vs,nullptr,0); g_d3d11Mask.context->PSSetShader(g_d3d11Mask.overlayPs,nullptr,0);
+        g_d3d11Mask.context->PSSetConstantBuffers(0,1,&g_d3d11Mask.calibrationColorCb);
+        for (size_t off=0; off<verts.size(); off+=4096) {
+            const size_t n=(std::min)(verts.size()-off, size_t{4096});
+            D3D11_MAPPED_SUBRESOURCE m{};
+            if (SUCCEEDED(g_d3d11Mask.context->Map(g_d3d11Mask.vb,0,D3D11_MAP_WRITE_DISCARD,0,&m))) {
+                memcpy(m.pData, verts.data()+off, n*sizeof(VisorVertex)); g_d3d11Mask.context->Unmap(g_d3d11Mask.vb,0);
+                g_d3d11Mask.context->Draw((UINT)n,0);
+            }
+        }
+        verts.clear();
+    };
+
+    // Feature 1: exact cropped render boundary in fixed cyan-white, constant screen thickness.
+    if (wantBoundary) {
+        const float boundaryPxPerTan=stereo?(std::min)(w/(sR-sL),h/(sU-sD)):minDim*.5f;
+        const float th=(std::max)(2.f,boundaryPxPerTan*(2.f/1080.f)*4.5f);
+        const float cr=0.55f, cg=1.f, cb=1.f, a=boundaryAlpha;
+        const float inset=floorf(th*.5f)+2.f;
+        const float il=l+inset,it=t+inset,ir=rr_-inset,ib=bb_-inset;
+        rectFill(il,it,ir,it+th,cr,cg,cb,a);          // top, fully inside scissor
+        rectFill(il,ib-th,ir,ib,cr,cg,cb,a);          // bottom
+        rectFill(il,it,il+th,ib,cr,cg,cb,a);          // left
+        rectFill(ir-th,it,ir,ib,cr,cg,cb,a);          // right
+        flushFlat(cr,cg,cb,a);
+    }
+
+    // Feature 2: CS-style static crosshair at the calibrated stereo centre. CS reference pixels
+    // are scaled to eye pixels by the VR scale and eye height, keeping angular size stable across
+    // eye-buffer resolutions; every span is pixel-snapped for sharp edges.
+    if (wantCrosshair) {
+        const float pxPerTanX = stereo ? w/(sR-sL) : w*.5f;
+        const float pxPerTanY = stereo ? h/(sU-sD) : h*.5f;
+        const float unitX = (float)crosshairScale * pxPerTanX * (2.f/1080.f);
+        const float unitY = (float)crosshairScale * pxPerTanY * (2.f/1080.f);
+        const float a = (float)crosshairAlpha;
+        const float armX=floorf((float)crosshairSize*unitX+.5f), armY=floorf((float)crosshairSize*unitY+.5f);
+        const float thickX=(std::max)(1.f,floorf((float)crosshairThickness*unitX+.5f)), thickY=(std::max)(1.f,floorf((float)crosshairThickness*unitY+.5f));
+        const float gapX=floorf((float)crosshairGap*unitX+.5f), gapY=floorf((float)crosshairGap*unitY+.5f);
+        const float outlineX=crosshairOutline?(std::max)(1.f,floorf((float)crosshairOutlineThickness*unitX+.5f)):0.f;
+        const float outlineY=crosshairOutline?(std::max)(1.f,floorf((float)crosshairOutlineThickness*unitY+.5f)):0.f;
+        const float cx = floorf(centreX)+0.5f, cy = floorf(centreY)+0.5f; // centre on a pixel
+        const float halfX=thickX*.5f,halfY=thickY*.5f,innerX=gapX+halfX,innerY=gapY+halfY;
+        // Collect arm rectangles first so the black outline can be drawn behind all of them.
+        struct R { float x0,y0,x1,y1; };
+        std::vector<R> arms;
+        arms.push_back({cx-innerX-armX,cy-halfY,cx-innerX,cy+halfY});
+        arms.push_back({cx+innerX,cy-halfY,cx+innerX+armX,cy+halfY});
+        if(!crosshairTStyle)arms.push_back({cx-halfX,cy-innerY-armY,cx+halfX,cy-innerY});
+        arms.push_back({cx-halfX,cy+innerY,cx+halfX,cy+innerY+armY});
+        R dot{}; const bool hasDot = crosshairDot;
+        if(hasDot)dot={cx-halfX,cy-halfY,cx+halfX,cy+halfY};
+        if(outlineX>0.f||outlineY>0.f){
+            for(const R&r:arms)rectFill(r.x0-outlineX,r.y0-outlineY,r.x1+outlineX,r.y1+outlineY,0,0,0,a);
+            if(hasDot)rectFill(dot.x0-outlineX,dot.y0-outlineY,dot.x1+outlineX,dot.y1+outlineY,0,0,0,a);
+            flushFlat(0.f,0.f,0.f,a);
+        }
+        for (const R& r : arms) rectFill(r.x0, r.y0, r.x1, r.y1, crosshairR, crosshairG, crosshairB, a);
+        if (hasDot) rectFill(dot.x0, dot.y0, dot.x1, dot.y1, crosshairR, crosshairG, crosshairB, a);
+        flushFlat(crosshairR,crosshairG,crosshairB,a);
+        static std::atomic<uint32_t> crosshairDrawLogs{0};
+        if (crosshairDrawLogs.fetch_add(1) < 4)
+            Log("crosshair: draw eye=%u sharedTan=(0,0) projectedPx=(%.1f,%.1f) unitPx=(%.3f,%.3f) armPx=(%.1f,%.1f) gapPx=(%.1f,%.1f) thickPx=(%.1f,%.1f) angularDisparity=0 fovTan=(%.4f,%.4f,%.4f,%.4f) rect=%d,%d %dx%d rgba=(%.3f,%.3f,%.3f,%.3f) executed=1\n",
+                eye.viewIndex,cx,cy,unitX,unitY,armX,armY,gapX,gapY,thickX,thickY,sL,sR,sU,sD,l,t,w,h,crosshairR,crosshairG,crosshairB,a);
+    }
+
+    // Feature 3: notification cards (textured, pre-composited in the UI). Newest cards sit at the
+    // bottom-right and stack upward; each carries its own animated alpha and horizontal slide.
+    if (wantNotify && g_d3d11Mask.linearSampler && g_d3d11Mask.tintCb) {
+        // Read cards in place; avoid copying the multi-hundred-KB pixel payload every frame. The
+        // UI only rewrites a slot's pixels when its contentSerial changes, and EnsureNotifyCard
+        // Texture re-uploads only on that change, so a rare torn read self-corrects next frame.
+        const NotifyBlock* nb = g_notify;
+        g_d3d11Mask.context->VSSetShader(g_d3d11Mask.vs,nullptr,0); g_d3d11Mask.context->PSSetShader(g_d3d11Mask.texturedPs,nullptr,0);
+        g_d3d11Mask.context->PSSetSamplers(0,1,&g_d3d11Mask.linearSampler);
+        const float margin = 0.02f*minDim;
+        const float pxPerTanX=stereo?w/(sR-sL):w*.5f,pxPerTanY=stereo?h/(sU-sD):h*.5f;
+        const float cardTan=(float)notifyScale*(2.f/1080.f)*460.f;
+        const float cardW=std::clamp(cardTan*pxPerTanX,48.f,w*.6f);
+        const float gap=cardTan*pxPerTanY*.05f;
+        const float baseRight = stereo ? std::clamp(anchorX(notifyX), (float)l+margin+cardW, (float)rr_-margin) : (float)rr_-margin;
+        const float baseBottom = stereo ? std::clamp(anchorY(notifyY), (float)t+margin, (float)bb_-margin) : (float)bb_-margin;
+        for (uint32_t i=0;i<kNotifyMaxCards;++i) {
+            const NotifyCardBlock& card = nb->cards[i];
+            if (!card.active || card.width==0 || card.height==0) continue;
+            ID3D11ShaderResourceView* srv = EnsureNotifyCardTexture(i, card);
+            if (!srv) continue;
+            const float aspect = (float)card.height/(float)card.width;
+            const float cardH = cardTan*pxPerTanY*aspect;
+            const float slidePx = std::clamp(card.slideRight,0.f,1.f) * (cardW + margin);
+            const float x1 = baseRight + slidePx;                       // right edge (slides off-right)
+            const float x0 = x1 - cardW;
+            const float y1 = baseBottom - card.stackIndex*(cardH+gap);
+            const float y0 = y1 - cardH;
+            const float u1 = (float)card.width/(float)kNotifyCardW, v1=(float)card.height/(float)kNotifyCardH;
+            const float a = std::clamp(card.alpha,0.f,1.f) * (float)notifyOpacity;
+            if (a <= 0.003f) continue;
+            // Tint alpha animates the fade; RGB unused by the textured PS.
+            float tint[4]={1.f,1.f,1.f,a}; D3D11_MAPPED_SUBRESOURCE tm{};
+            if (SUCCEEDED(g_d3d11Mask.context->Map(g_d3d11Mask.tintCb,0,D3D11_MAP_WRITE_DISCARD,0,&tm))) { memcpy(tm.pData,tint,sizeof(tint)); g_d3d11Mask.context->Unmap(g_d3d11Mask.tintCb,0); }
+            g_d3d11Mask.context->PSSetConstantBuffers(0,1,&g_d3d11Mask.tintCb);
+            g_d3d11Mask.context->PSSetShaderResources(0,1,&srv);
+            // UV packed into TEXCOORD.xy (r,g); alpha carries the per-card fade too.
+            VisorVertex q[6];
+            auto V=[&](float px,float py,float u,float v){ VisorVertex vv{}; vv.x=ndcX(px); vv.y=ndcY(py); vv.r=u; vv.g=v; vv.b=0.f; vv.alpha=a; return vv; };
+            q[0]=V(x0,y0,0,0); q[1]=V(x1,y0,u1,0); q[2]=V(x1,y1,u1,v1);
+            q[3]=V(x0,y0,0,0); q[4]=V(x1,y1,u1,v1); q[5]=V(x0,y1,0,v1);
+            D3D11_MAPPED_SUBRESOURCE m{};
+            if (SUCCEEDED(g_d3d11Mask.context->Map(g_d3d11Mask.vb,0,D3D11_MAP_WRITE_DISCARD,0,&m))) { memcpy(m.pData,q,sizeof(q)); g_d3d11Mask.context->Unmap(g_d3d11Mask.vb,0); g_d3d11Mask.context->Draw(6,0); }
+        }
+        ID3D11ShaderResourceView* nullSrv=nullptr; g_d3d11Mask.context->PSSetShaderResources(0,1,&nullSrv);
+    }
+
+    // Restore.
+    g_d3d11Mask.context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT,sRTVs,sDSV); if(sVPCount) g_d3d11Mask.context->RSSetViewports(sVPCount,sVPs); if(sScissorCount) g_d3d11Mask.context->RSSetScissorRects(sScissorCount,sScissors);
+    g_d3d11Mask.context->RSSetState(sRS); g_d3d11Mask.context->OMSetBlendState(sBS,sBF,sSM); g_d3d11Mask.context->OMSetDepthStencilState(sDSS,sSRef);
+    g_d3d11Mask.context->VSSetShader(sVS,nullptr,0); g_d3d11Mask.context->PSSetShader(sPS,nullptr,0); g_d3d11Mask.context->PSSetConstantBuffers(0,1,&sPSCB); g_d3d11Mask.context->PSSetShaderResources(0,1,&sSRV); g_d3d11Mask.context->PSSetSamplers(0,1,&sSmp);
+    g_d3d11Mask.context->IASetInputLayout(sLayout); g_d3d11Mask.context->IASetPrimitiveTopology(sTopo); g_d3d11Mask.context->IASetVertexBuffers(0,1,&sVB,&sStride,&sOff);
+    if(ownsRtv) rtv->Release(); for(auto p:sRTVs) if(p) p->Release(); if(sDSV)sDSV->Release(); if(sRS)sRS->Release(); if(sBS)sBS->Release(); if(sDSS)sDSS->Release(); if(sVS)sVS->Release(); if(sPS)sPS->Release(); if(sPSCB)sPSCB->Release(); if(sSRV)sSRV->Release(); if(sSmp)sSmp->Release(); if(sLayout)sLayout->Release(); if(sVB)sVB->Release();
+    g_d3d11Mask.context->Flush();
+}
+
+void DrawCalibrationPatternsToTexture(ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
+    const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv) {
+    if (calibrationGrid) DrawCalibrationGridToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv);
+    if (hudEnabled || hudTraceEnabled || calibrationRuler || calibrationGratings || calibrationBars || calibrationBeacon || calibrationEdgeProbes || calibrationCheckerboards || calibrationZonePlate || calibrationClippingSteps || calibrationMotionStrip)
+        DrawCalibrationOverlayToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv);
+    if (AnyViewLabOverlay())
+        DrawViewLabOverlaysToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv);
+}
+
+struct TopmostSubmission {
+    XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+    std::array<XrCompositionLayerProjectionView,2> views{};
+};
+
+void DestroyTopmostLayer() {
+    if (g_topmostLayer.swapchain != XR_NULL_HANDLE && nextXrDestroySwapchain)
+        nextXrDestroySwapchain(g_topmostLayer.swapchain);
+    g_topmostLayer = TopmostLayerState{};
+}
+
+bool EnsureTopmostLayer(XrSession session, uint32_t width, uint32_t height, int64_t preferredFormat) {
+    if (g_topmostLayerBlocked) return false;
+    if (g_topmostLayer.ready && g_topmostLayer.session==session && g_topmostLayer.width==width &&
+        g_topmostLayer.height==height && g_topmostLayer.format==preferredFormat) return true;
+    DestroyTopmostLayer();
+    if (!nextXrCreateSwapchain || !nextXrEnumerateSwapchainImages || width==0 || height==0) return false;
+    XrSwapchainCreateInfo ci{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+    ci.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT|XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+    ci.format=preferredFormat; ci.sampleCount=1; ci.width=width; ci.height=height;
+    ci.faceCount=1; ci.arraySize=2; ci.mipCount=1;
+    XrSwapchain sc=XR_NULL_HANDLE;
+    if (XR_FAILED(nextXrCreateSwapchain(session,&ci,&sc))) {
+        Log("topmost overlays: colour-matched swapchain creation failed format=%lld; normal renderer remains active\n",(long long)preferredFormat);
+        return false;
+    }
+    uint32_t count=0;
+    if (XR_FAILED(nextXrEnumerateSwapchainImages(sc,0,&count,nullptr)) || count==0) { nextXrDestroySwapchain(sc); return false; }
+    std::vector<XrSwapchainImageD3D11KHR> images(count);
+    for(auto& image:images) image.type=XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR;
+    if (XR_FAILED(nextXrEnumerateSwapchainImages(sc,count,&count,reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())))) { nextXrDestroySwapchain(sc); return false; }
+    g_topmostLayer.session=session; g_topmostLayer.swapchain=sc; g_topmostLayer.width=width; g_topmostLayer.height=height;
+    g_topmostLayer.format=ci.format; g_topmostLayer.images=std::move(images); g_topmostLayer.ready=true;
+    Log("topmost overlays: transparent projection swapchain ready %ux%u array=2 format=%lld\n",width,height,(long long)ci.format);
+    return true;
+}
+
+bool RenderTopmostLayer(XrSession session, const XrCompositionLayerProjection* source, TopmostSubmission& out) {
+    if (!source || source->viewCount<1 || !source->views || !g_d3d11Mask.device || !g_d3d11Mask.context) return false;
+    uint32_t width=0,height=0,viewCount=(std::min)(source->viewCount,2u);
+    for(uint32_t i=0;i<viewCount;++i) { width=(std::max)(width,(uint32_t)source->views[i].subImage.imageRect.extent.width); height=(std::max)(height,(uint32_t)source->views[i].subImage.imageRect.extent.height); }
+    // Match the primary projection's transfer-function declaration. The direct renderer writes
+    // through a non-sRGB RTV into that same swapchain format; hard-coding Topmost to linear UNORM
+    // made identical shader RGB values visibly paler than the usual sRGB game projection.
+    int64_t preferredFormat=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    {
+        std::lock_guard<std::mutex> lk(g_swapchainMutex);
+        auto tracked=g_swapchains.find(source->views[0].subImage.swapchain);
+        if(tracked!=g_swapchains.end()) {
+            const int64_t candidate=tracked->second.format;
+            if(candidate==DXGI_FORMAT_R8G8B8A8_UNORM || candidate==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ||
+               candidate==DXGI_FORMAT_B8G8R8A8_UNORM || candidate==DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
+                preferredFormat=candidate;
+        }
+    }
+    if (!EnsureTopmostLayer(session,width,height,preferredFormat)) return false;
+    uint32_t imageIndex=0; XrSwapchainImageAcquireInfo ai{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+    if (XR_FAILED(nextXrAcquireSwapchainImage(g_topmostLayer.swapchain,&ai,&imageIndex))) return false;
+    XrSwapchainImageWaitInfo wi{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO}; wi.timeout=100000000;
+    if (XR_FAILED(nextXrWaitSwapchainImage(g_topmostLayer.swapchain,&wi)) || imageIndex>=g_topmostLayer.images.size()) { XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO}; nextXrReleaseSwapchainImage(g_topmostLayer.swapchain,&ri); return false; }
+    ID3D11Texture2D* tex=g_topmostLayer.images[imageIndex].texture;
+    std::vector<EyeView> eyes; eyes.reserve(viewCount);
+    for(uint32_t i=0;i<viewCount;++i) { XrFovf full=source->views[i].fov; if(i<g_d3d11Mask.latestViewCount) full=g_d3d11Mask.latestOriginalViews[i].fov; eyes.push_back(EyeView{{{0,0},{source->views[i].subImage.imageRect.extent.width,source->views[i].subImage.imageRect.extent.height}},i,i,source->views[i].fov,full}); }
+    bool rendered=true;
+    for(uint32_t i=0;i<viewCount;++i) {
+        D3D11_RENDER_TARGET_VIEW_DESC rd{}; rd.Format=GetNonSRGBFormat((DXGI_FORMAT)g_topmostLayer.format); rd.ViewDimension=D3D11_RTV_DIMENSION_TEXTURE2DARRAY; rd.Texture2DArray.FirstArraySlice=i; rd.Texture2DArray.ArraySize=1;
+        ID3D11RenderTargetView* rtv=nullptr;
+        if(FAILED(g_d3d11Mask.device->CreateRenderTargetView(tex,&rd,&rtv))||!rtv) { rendered=false; break; }
+        const float clear[4]={0,0,0,0}; g_d3d11Mask.context->ClearRenderTargetView(rtv,clear); if(maskEnabled) DrawVisorBorderToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv); DrawCalibrationPatternsToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv); rtv->Release();
+    }
+    g_d3d11Mask.context->Flush(); XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO}; if(XR_FAILED(nextXrReleaseSwapchainImage(g_topmostLayer.swapchain,&ri))) return false;
+    if(!rendered) { Log("topmost overlays: compatible RTV creation failed; normal renderer remains active\n"); return false; }
+    // Overlay shaders output straight (unpremultiplied) RGB + alpha; advertise that convention for
+    // partially transparent visor content while the matched swapchain format preserves RGB transfer.
+    out.layer.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT|XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT; out.layer.space=source->space; out.layer.viewCount=viewCount; out.layer.views=out.views.data();
+    for(uint32_t i=0;i<viewCount;++i) { out.views[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}; out.views[i].pose=source->views[i].pose; out.views[i].fov=source->views[i].fov; out.views[i].subImage.swapchain=g_topmostLayer.swapchain; out.views[i].subImage.imageRect=XrRect2Di{{0,0},{source->views[i].subImage.imageRect.extent.width,source->views[i].subImage.imageRect.extent.height}}; out.views[i].subImage.imageArrayIndex=i; }
+    return true;
+}
+
 void DrawCapturedProjectionTextures(bool drawVisor, const char* tag) {
     if (!drawVisor || !g_d3d11Mask.initialized || !g_d3d11Mask.context) return;
 
@@ -1622,7 +3057,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
     // overwritten by the app and is guaranteed present when the runtime composites.
     // Independent of the visibility-mask path; that path must never suppress this.
 
-    if (enabled && maskEnabled && g_d3d11Mask.initialized && g_d3d11Mask.context) {
+    if (enabled && (maskEnabled || ((!topmostVisorOverlays || !g_topmostLayer.ready) && AnyDirectOverlay())) && g_d3d11Mask.initialized && g_d3d11Mask.context) {
         ID3D11Texture2D* tex = nullptr;
         uint32_t arrSize = 1;
         int64_t  scFormat = 0;
@@ -1659,8 +3094,14 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                     Log("d3d11 mask DIAG: no eye layout yet for this swapchain (captured on first xrEndFrame; mask starts next frame)\n");
             } else {
                 for (size_t i = 0; i < views.size(); ++i) {
-                    DrawVisorBorderToTexture(tex, arrSize, scFormat, views[i], views,
-                        i < rtvs.size() ? rtvs[i] : nullptr);
+                    if (maskEnabled) {
+                        DrawVisorBorderToTexture(tex, arrSize, scFormat, views[i], views,
+                            i < rtvs.size() ? rtvs[i] : nullptr);
+                    }
+                    if ((!topmostVisorOverlays || !g_topmostLayer.ready) && (AnyCalibrationPattern() || hudEnabled || hudTraceEnabled || AnyViewLabOverlay())) {
+                        DrawCalibrationPatternsToTexture(tex, arrSize, scFormat, views[i], views,
+                            i < rtvs.size() ? rtvs[i] : nullptr);
+                    }
                 }
                 for (ID3D11RenderTargetView* rtv : rtvs) {
                     if (rtv) rtv->Release();
@@ -1700,8 +3141,8 @@ void LoadConfig() {
     enabled = ReadBoolSetting(L"enabled", true);
     verboseLogging = ReadBoolSetting(L"verbose_logging", false);
     splitMode = ReadBoolSetting(L"split_mode", false);
-    // foveated_center_compensation, crop_outer_edges_only, and stencil_outer_edges_only are
-    // permanently enabled; config keys are ignored.
+    // Foveated centre compensation is retired: it rotated the game's eye poses and made
+    // asymmetric vertical crops appear as a tilted/folded world. Crop/stencil outer edges remain on.
     visualMaskOnly = ReadBoolSetting(L"visual_mask_only", false);
     horizontalVisualMaskOnly = ReadBoolSetting(L"horizontal_visual_mask_only", false);
     // There is exactly ONE visor renderer (D3D11 draw into the game's eye textures).
@@ -1714,6 +3155,74 @@ void LoadConfig() {
     visibilityMaskVisor = false;
     // edge_smear_fix, edge_smear_pixels, lod_popin_fix, and crop_experiment_mode are removed;
     // the experimental crop-fix code paths are gone and these keys are ignored.
+    calibrationGrid = ReadBoolSetting(L"calibration_grid", false);
+    calibrationRuler = ReadBoolSetting(L"calibration_ruler", false);
+    calibrationGratings = ReadBoolSetting(L"calibration_gratings", false);
+    calibrationBars = ReadBoolSetting(L"calibration_bars", false);
+    calibrationBeacon = ReadBoolSetting(L"calibration_beacon", false);
+    calibrationEdgeProbes = ReadBoolSetting(L"calibration_edge_probes", false);
+    calibrationCheckerboards = ReadBoolSetting(L"calibration_checkerboards", false);
+    calibrationZonePlate = ReadBoolSetting(L"calibration_zone_plate", false);
+    calibrationClippingSteps = ReadBoolSetting(L"calibration_clipping_steps", false);
+    calibrationMotionStrip = ReadBoolSetting(L"calibration_motion_strip", false);
+    hudEnabled = ReadBoolSetting(L"hud_enabled", false);
+    hudAnchorX = std::clamp(ReadDoubleSetting(L"hud_anchor_x", 0.04), 0.0, 1.0);
+    hudAnchorY = std::clamp(ReadDoubleSetting(L"hud_anchor_y", 0.05), 0.0, 1.0);
+    hudScale = std::clamp(ReadDoubleSetting(L"hud_scale", 1.0), 0.5, 3.0);
+    hudSpacing = std::clamp(ReadDoubleSetting(L"hud_spacing", 0.018), 0.0, 0.10);
+    hudOpacity = std::clamp(ReadDoubleSetting(L"hud_opacity", 0.70), 0.10, 1.0);
+    hudSafeMargin = std::clamp(ReadDoubleSetting(L"hud_safe_margin", 0.025), 0.0, 0.25);
+    hudClampToVisible = ReadBoolSetting(L"hud_clamp_to_visible", true);
+    hudUpdateIntervalMs = static_cast<uint32_t>(std::clamp(ReadDoubleSetting(L"hud_update_ms", 100.0), 50.0, 1000.0));
+    hudGreenThreshold = std::clamp(ReadDoubleSetting(L"hud_green_threshold", 75.0), 1.0, 99.0);
+    hudRedThreshold = std::clamp(ReadDoubleSetting(L"hud_red_threshold", 90.0), hudGreenThreshold + 1.0, 100.0);
+    hudTraceSensitivityMs = std::clamp(ReadDoubleSetting(L"hud_trace_sensitivity_ms", 2.0), 0.25, 8.0);
+    hudTraceX = std::clamp(ReadDoubleSetting(L"hud_trace_x", 0.05), 0.0, 1.0);
+    hudTraceY = std::clamp(ReadDoubleSetting(L"hud_trace_y", 0.75), 0.0, 1.0);
+    hudTraceScale = std::clamp(ReadDoubleSetting(L"hud_trace_scale", 1.0), 0.25, 3.0);
+    hudTraceWidth = std::clamp(ReadDoubleSetting(L"hud_trace_width", 0.42), 0.10, 1.0);
+    hudTraceHistory = std::clamp(ReadDoubleSetting(L"hud_trace_history", 120.0), 10.0, 600.0);
+    hudTraceEnabled = ReadBoolSetting(L"hud_trace_enabled", false);
+    topmostVisorOverlays = ReadBoolSetting(L"topmost_visor_overlays", false);
+    hudAlarmOnly = ReadBoolSetting(L"hud_alarm_only", false);
+    hudAlarmHoldMs = std::clamp(ReadDoubleSetting(L"hud_alarm_hold_ms", 1500.0), 0.0, 10000.0);
+    hudDebugValues = ReadBoolSetting(L"hud_debug_values", false);
+    hudDebugCpu = ReadDoubleSetting(L"hud_debug_cpu", 52.0); hudDebugGpu = ReadDoubleSetting(L"hud_debug_gpu", 98.0);
+    hudDebugSystem = ReadDoubleSetting(L"hud_debug_system", 44.0); hudDebugVr = ReadDoubleSetting(L"hud_debug_vr", 18.0);
+    // Feature 2: crosshair defaults (the UI parses legacy cl_* configs / CS2 share codes into these).
+    crosshairEnabled = ReadBoolSetting(L"crosshair_enabled", false);
+    crosshairDot = ReadBoolSetting(L"crosshair_dot", false);
+    crosshairOutline = ReadBoolSetting(L"crosshair_outline", true);
+    crosshairTStyle = ReadBoolSetting(L"crosshair_tstyle", false);
+    crosshairSize = std::clamp(ReadDoubleSetting(L"crosshair_size", 5.0), 0.0, 1000.0);
+    crosshairGap = std::clamp(ReadDoubleSetting(L"crosshair_gap", -2.0), -50.0, 50.0);
+    crosshairThickness = std::clamp(ReadDoubleSetting(L"crosshair_thickness", 1.0), 0.1, 50.0);
+    crosshairOutlineThickness = std::clamp(ReadDoubleSetting(L"crosshair_outline_thickness", 1.0), 0.0, 10.0);
+    crosshairAlpha = std::clamp(ReadDoubleSetting(L"crosshair_alpha", 1.0), 0.0, 1.0);
+    crosshairScale = std::clamp(ReadDoubleSetting(L"crosshair_scale", 1.0), 0.1, 10.0);
+    crosshairOffsetX = std::clamp(ReadDoubleSetting(L"crosshair_offset_x", 0.0), -1.0, 1.0);
+    crosshairOffsetY = std::clamp(ReadDoubleSetting(L"crosshair_offset_y", 0.0), -1.0, 1.0);
+    {
+        const uint32_t chCol = static_cast<uint32_t>(ReadDoubleSetting(L"crosshair_color", (double)0x00FF00));
+        crosshairR = ((chCol >> 16) & 0xFF) / 255.f; crosshairG = ((chCol >> 8) & 0xFF) / 255.f; crosshairB = (chCol & 0xFF) / 255.f;
+    }
+    // Feature 3: notification render settings (content bridge is separate).
+    notifyEnabled = ReadBoolSetting(L"notify_enabled", false);
+    notifyX = std::clamp(ReadDoubleSetting(L"notify_x", 0.98), 0.0, 1.0);
+    notifyY = std::clamp(ReadDoubleSetting(L"notify_y", 0.98), 0.0, 1.0);
+    notifyScale = std::clamp(ReadDoubleSetting(L"notify_scale", 1.0), 0.25, 3.0);
+    notifyOpacity = std::clamp(ReadDoubleSetting(L"notify_opacity", 1.0), 0.1, 1.0);
+    // Feature 4: iRacing scaffold flags.
+    iracingEnabled = ReadBoolSetting(L"iracing_enabled", false);
+    iracingLapPopup = ReadBoolSetting(L"iracing_lap_popup", false);
+    iracingSpotterGlow = ReadBoolSetting(L"iracing_spotter_glow", false);
+    iracingFlagBorder = ReadBoolSetting(L"iracing_flag_border", false);
+    ConnectLiveState();
+    if (AnyCalibrationPattern()) {
+        Log("calibration: grid=%d ruler=%d gratings=%d bars=%d beacon=%d edge_probes=%d checkerboards=%d zone_plate=%d clipping_steps=%d motion_strip=%d\n",
+            calibrationGrid, calibrationRuler, calibrationGratings, calibrationBars, calibrationBeacon,
+            calibrationEdgeProbes, calibrationCheckerboards, calibrationZonePlate, calibrationClippingSteps, calibrationMotionStrip);
+    }
     const double legacyTotal = ReadDoubleSetting(L"vertical_tangent", DefaultTotalTangent);
     totalTangent = std::clamp(
         ReadDoubleSetting(L"total_render_height", ReadDoubleSetting(L"total_share", legacyTotal)),
@@ -2062,19 +3571,6 @@ void ApplyXRViewLabFov(uint32_t viewIndex, XrView& view, bool& compensated, floa
 
     compensated = false;
     pitchOffset = 0.0f;
-    if (foveatedCenterCompensation &&
-        splitMode &&
-        std::abs(desiredTopTan - desiredBottomTan) > 0.00001) {
-        const double symmetricHalfTan = (std::max)(0.00001, (desiredTopTan + desiredBottomTan) * 0.5);
-        const double centerTan = (desiredTopTan - desiredBottomTan) * 0.5;
-        pitchOffset = static_cast<float>(std::atan(centerTan));
-        view.fov.angleUp = static_cast<float>(std::atan(symmetricHalfTan));
-        view.fov.angleDown = -static_cast<float>(std::atan(symmetricHalfTan));
-        view.pose.orientation = MultiplyQuaternion(view.pose.orientation, PitchQuaternion(pitchOffset));
-        compensated = true;
-        return;
-    }
-
     view.fov.angleUp = static_cast<float>(std::atan(desiredTopTan));
     view.fov.angleDown = -static_cast<float>(std::atan(desiredBottomTan));
 }
@@ -2182,10 +3678,64 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
+    if (session == g_topmostLayer.session) DestroyTopmostLayer();
+    g_topmostLayerBlocked=false;
     if (session == g_d3d11Mask.session) {
         ReleaseD3D11MaskRenderer();
+        DisconnectLiveState();
+        DisconnectNotify();
     }
     return nextXrDestroySession(session);
+}
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrWaitFrame(
+    XrSession session,
+    const XrFrameWaitInfo* frameWaitInfo,
+    XrFrameState* frameState) {
+    if (!nextXrWaitFrame) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    LARGE_INTEGER start{}, stop{};
+    if (!g_hudQpcFrequency.QuadPart) QueryPerformanceFrequency(&g_hudQpcFrequency);
+    QueryPerformanceCounter(&start);
+    const XrResult result = nextXrWaitFrame(session, frameWaitInfo, frameState);
+    QueryPerformanceCounter(&stop);
+    if (XR_SUCCEEDED(result) && frameState) {
+        std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+        HudTrackedFrame& frame = g_hudTrackedFrames[g_hudNextWaitFrame++ % g_hudTrackedFrames.size()];
+        frame = HudTrackedFrame{};
+        frame.displayTime = frameState->predictedDisplayTime;
+        frame.displayPeriod = frameState->predictedDisplayPeriod;
+        frame.waitStart = start; frame.waitStop = stop; frame.canBegin = true;
+        // The runtime throttles the app inside xrWaitFrame, so the wait-to-wait interval is
+        // the app's true frame cadence — the input for reprojection-aware budget detection.
+        UpdateHudCadence(stop, frameState->predictedDisplayPeriod);
+    }
+    return result;
+}
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrBeginFrame(
+    XrSession session,
+    const XrFrameBeginInfo* frameBeginInfo) {
+    if (!nextXrBeginFrame) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    size_t frameIndex = g_hudTrackedFrames.size();
+    LARGE_INTEGER start{}, stop{};
+    QueryPerformanceCounter(&start);
+    {
+        std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+        for (size_t i = 0; i < g_hudTrackedFrames.size(); ++i) {
+            if (g_hudTrackedFrames[i].canBegin) {
+                frameIndex = i; g_hudTrackedFrames[i].canBegin = false; g_hudTrackedFrames[i].begun = true; break;
+            }
+        }
+    }
+    const XrResult result = nextXrBeginFrame(session, frameBeginInfo);
+    QueryPerformanceCounter(&stop);
+    if (frameIndex < g_hudTrackedFrames.size()) {
+        std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+        HudTrackedFrame& frame = g_hudTrackedFrames[frameIndex];
+        if (XR_SUCCEEDED(result)) { frame.beginStart = start; frame.beginStop = stop; }
+        else frame = HudTrackedFrame{};
+    }
+    return result;
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
@@ -2195,9 +3745,23 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         return nextXrEndFrame ? nextXrEndFrame(session, frameEndInfo) : XR_ERROR_RUNTIME_FAILURE;
     }
 
+    size_t trackedFrameIndex = g_hudTrackedFrames.size();
+    LARGE_INTEGER endStart{};
+    QueryPerformanceCounter(&endStart);
+    {
+        std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+        for (size_t i = 0; i < g_hudTrackedFrames.size(); ++i) {
+            if (g_hudTrackedFrames[i].begun && g_hudTrackedFrames[i].displayTime == frameEndInfo->displayTime) {
+                trackedFrameIndex = i; g_hudTrackedFrames[i].endStart = endStart; break;
+            }
+        }
+    }
+
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
 
-    RefreshLiveVisorConfig();
+    // One generation check against the UI-published shared snapshot; no ini parsing here.
+    ConsumeLiveState();
+    const XrCompositionLayerProjection* primaryProjection = nullptr;
 
     if (!g_diagEndFrameCalled.exchange(true)) {
         Log("d3d11 mask DIAG: xrEndFrame hook called (enabled=%d maskEnabled=%d visMaskCalled=%d "
@@ -2207,14 +3771,13 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
             frameEndInfo->layerCount);
     }
 
-    const XrFrameEndInfo* submitFrame = frameEndInfo;
-
     // Capture the per-eye layout (swapchain -> imageRect + array
     // slice) from the projection layer. The actual draw happens in
     // xrReleaseSwapchainImage, which runs earlier in the frame loop, so the layout
     // captured here is consumed by the NEXT frame's release. Layout is stable frame to
     // frame. Not gated on the visibility-mask path — the D3D11 visor runs regardless.
-    if (enabled && maskEnabled && g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
+    if (enabled && AnyDirectOverlay() &&
+        g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
         bool foundProj = false;
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
         // Reset captured layouts so stale eyes don't linger if the app changes layers.
@@ -2224,6 +3787,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
             if (hdr == nullptr || hdr->type != XR_TYPE_COMPOSITION_LAYER_PROJECTION) continue;
             foundProj = true;
             const auto* proj = reinterpret_cast<const XrCompositionLayerProjection*>(hdr);
+            primaryProjection = proj;
             if (!g_diagProjFound.exchange(true)) {
                 Log("d3d11 mask DIAG: projection layer found (layer=%u viewCount=%u)\n",
                     l, proj->viewCount);
@@ -2232,13 +3796,25 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
                 const XrCompositionLayerProjectionView& pv = proj->views[v];
                 auto it = g_swapchains.find(pv.subImage.swapchain);
                 if (it != g_swapchains.end()) {
+                    XrFovf fullFov = pv.fov;
+                    if (v < g_d3d11Mask.latestViewCount) fullFov = g_d3d11Mask.latestOriginalViews[v].fov;
                     it->second.eyeViews.push_back(
                         EyeView{pv.subImage.imageRect,
                                 static_cast<uint32_t>(pv.subImage.imageArrayIndex),
                                 v,
-                                pv.fov});
+                                pv.fov,
+                                fullFov});
                 }
             }
+            // The first projection layer is the application's primary stereo submission.
+            // OpenComposite may repeat the same projection texture in additional layers; recording
+            // those made release-time overlays draw twice into one image and produced HUD ghosts.
+            break;
+        }
+        if (foundProj && AnyCalibrationPattern()) {
+            // This serial represents submitted projection frames, never a release-hook count.
+            // The following release calls for both eyes therefore draw the same temporal state.
+            g_calibrationFrameSerial.fetch_add(1);
         }
         if (!foundProj && !g_diagNoProjLayer.exchange(true)) {
             Log("d3d11 mask DIAG: FAIL no projection layer in submitted frame (layerCount=%u)\n",
@@ -2253,7 +3829,34 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         }
     }
 
-    return nextXrEndFrame(session, submitFrame);
+    XrFrameEndInfo submittedInfo=*frameEndInfo;
+    std::vector<const XrCompositionLayerBaseHeader*> submittedLayers;
+    TopmostSubmission topmostSubmission;
+    bool submittedTopmost=false;
+    if (topmostVisorOverlays && primaryProjection) {
+        const bool wasReady=g_topmostLayer.ready;
+        if (RenderTopmostLayer(session,primaryProjection,topmostSubmission)) {
+            // On the initialization frame the established release path has already drawn. Arm the
+            // layer now and begin submitting next frame, avoiding a one-frame duplicate.
+            if (wasReady) { submittedLayers.assign(frameEndInfo->layers,frameEndInfo->layers+frameEndInfo->layerCount); submittedLayers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader*>(&topmostSubmission.layer)); submittedInfo.layerCount=(uint32_t)submittedLayers.size(); submittedInfo.layers=submittedLayers.data(); submittedTopmost=true; }
+        } else DestroyTopmostLayer();
+    } else if (!topmostVisorOverlays) { if(g_topmostLayer.swapchain!=XR_NULL_HANDLE) DestroyTopmostLayer(); g_topmostLayerBlocked=false; }
+    const XrResult result = nextXrEndFrame(session, submittedTopmost ? &submittedInfo : frameEndInfo);
+    if (submittedTopmost && XR_FAILED(result)) { Log("topmost overlays: xrEndFrame rejected experimental layer (%d); falling back to normal renderer\n",result); DestroyTopmostLayer(); g_topmostLayerBlocked=true; }
+    LARGE_INTEGER endStop{};
+    QueryPerformanceCounter(&endStop);
+    if (trackedFrameIndex < g_hudTrackedFrames.size()) {
+        std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+        HudTrackedFrame& frame = g_hudTrackedFrames[trackedFrameIndex];
+        frame.endStop = endStop;
+        if (XR_SUCCEEDED(result) && g_hudQpcFrequency.QuadPart > 0 && frame.beginStart.QuadPart > 0 && frame.endStop.QuadPart >= frame.beginStart.QuadPart && frame.displayPeriod > 0) {
+            const double actualMs = 1000.0 * static_cast<double>(frame.endStop.QuadPart - frame.beginStart.QuadPart) / g_hudQpcFrequency.QuadPart;
+            const double targetMs = static_cast<double>(frame.displayPeriod) / 1000000.0;
+            RecordHudSystemSample(actualMs, targetMs);
+        }
+        frame = HudTrackedFrame{};
+    }
+    return result;
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
@@ -2451,6 +4054,14 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetInstanceProcAddr(
         nextXrDestroySession = reinterpret_cast<PFN_xrDestroySession>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrDestroySession);
         Log("hook installed: xrDestroySession\n");
+    } else if (std::strcmp(name, "xrWaitFrame") == 0) {
+        nextXrWaitFrame = reinterpret_cast<PFN_xrWaitFrame>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrWaitFrame);
+        Log("hook installed: xrWaitFrame\n");
+    } else if (std::strcmp(name, "xrBeginFrame") == 0) {
+        nextXrBeginFrame = reinterpret_cast<PFN_xrBeginFrame>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrBeginFrame);
+        Log("hook installed: xrBeginFrame\n");
     } else if (std::strcmp(name, "xrEndFrame") == 0) {
         nextXrEndFrame = reinterpret_cast<PFN_xrEndFrame>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrEndFrame);

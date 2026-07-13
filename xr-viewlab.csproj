@@ -5,7 +5,9 @@
     <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
     <OutputType>WinExe</OutputType>
     <UseWPF>True</UseWPF>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- 10.0.19041 TFM projects the WinRT UserNotificationListener APIs (desktop notification bridge). -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <PlatformTarget>x64</PlatformTarget>
     <Nullable>enable</Nullable>
   </PropertyGroup>

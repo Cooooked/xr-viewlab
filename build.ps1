@@ -17,6 +17,12 @@ $DotnetProject = Join-Path $Root "xr-viewlab.csproj"
 $LayerProject = Join-Path $Root "XRViewLabLayer.vcxproj"
 $InstallerProject = Join-Path $Root "Installer\Installer.wixproj"
 $MsiSource = Join-Path $Root "Installer\bin\$Configuration\xr-viewlab-setup.msi"
+$TargetFramework = ([xml](Get-Content -Raw $DotnetProject)).Project.PropertyGroup.TargetFramework | Where-Object { $_ } | Select-Object -First 1
+if ([string]::IsNullOrWhiteSpace($TargetFramework)) {
+    throw "TargetFramework was not found in $DotnetProject"
+}
+$PublishDir = Join-Path $Root "bin\$Configuration\$TargetFramework\win-x64\publish"
+$ExpectedWixSource = "..\bin\$Configuration\$TargetFramework\win-x64\publish\xr-viewlab.exe"
 
 # --- Auto-increment version (major.minor.build) ---
 $assemblyInfo = Join-Path $Root "Properties\AssemblyInfo.cs"
@@ -37,6 +43,7 @@ if ($currentVersion -and $currentVersion.Matches[0].Groups.Count -ge 4) {
 
 # --- Build ---
 Write-Host "ViewLab build root: $Root"
+$BuildStartedUtc = [DateTime]::UtcNow
 
 function Find-MSBuild {
     $vswhereCandidates = @(
@@ -84,11 +91,27 @@ function Invoke-Native {
     }
 }
 
+Write-Host "Removing generated outputs that could otherwise satisfy packaging from a stale build..."
+$GeneratedPaths = @(
+    (Join-Path $Root "bin\$Configuration\$TargetFramework"),
+    (Join-Path $Root "obj\$Configuration\$TargetFramework"),
+    (Join-Path $Root "Installer\bin\$Configuration"),
+    (Join-Path $Root "Installer\obj\$Configuration"),
+    (Join-Path $Root "Installer\verify")
+)
+foreach ($GeneratedPath in $GeneratedPaths) {
+    if (Test-Path $GeneratedPath) { Remove-Item -Recurse -Force $GeneratedPath }
+}
+
+$WixText = Get-Content -Raw $productWxs
+if ($WixText -notmatch [regex]::Escape("Source=`"$ExpectedWixSource`"")) {
+    throw "WiX SettingsApp source must match the project TargetFramework: $ExpectedWixSource"
+}
+
 Write-Host "Building WPF app..."
 Invoke-Native dotnet publish $DotnetProject -c $Configuration -r win-x64 --self-contained true /p:PublishSingleFile=true
 
 # Copy ReShadePayload to publish directory for development/testing
-$PublishDir = Join-Path $Root "bin\$Configuration\net8.0-windows\win-x64\publish"
 $PayloadSrc = Join-Path $Root "ReShadePayload"
 $PayloadDest = Join-Path $PublishDir "ReShadePayload"
 if (Test-Path $PayloadSrc) {
@@ -111,6 +134,11 @@ $MSBuild = Find-MSBuild
 Write-Host "Using MSBuild: $MSBuild"
 
 Write-Host "Building OpenXR API layer (x64)..."
+$Dll64Expected = Join-Path $Root "x64\$Configuration\XR_APILAYER_cooooked_xrviewlab.dll"
+$Dll32Expected = Join-Path $Root "$Configuration\XR_APILAYER_cooooked_xrviewlab32.dll"
+foreach ($NativeOutput in @($Dll64Expected, $Dll32Expected)) {
+    if (Test-Path $NativeOutput) { Remove-Item -Force $NativeOutput }
+}
 Invoke-Native $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=x64 /m
 Write-Host "Building OpenXR API layer (Win32 / 32-bit for 32-bit games)..."
 Invoke-Native $MSBuild $LayerProject /p:Configuration=$Configuration /p:Platform=Win32 /m
@@ -144,8 +172,6 @@ if ((Test-Path $Dll64Src) -or (Test-Path $Dll32Src)) {
 }
 
 Write-Host "Building MSI..."
-$WixObjDir = Join-Path $Root "Installer\obj\$Configuration"
-if (Test-Path $WixObjDir) { Remove-Item -Recurse -Force $WixObjDir }
 Invoke-Native $MSBuild $InstallerProject /p:Configuration=$Configuration /p:Platform=$Platform /m
 
 if (!(Test-Path $MsiSource)) {
@@ -155,8 +181,73 @@ if (!(Test-Path $MsiSource)) {
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 $versionLine = Select-String -Path $assemblyInfo -Pattern 'AssemblyInformationalVersion\("(\d+\.\d+\.\d+)(?:\.\d+)?(?:[-+][^"]*)?"\)' | Select-Object -First 1
 $version = if ($versionLine -and $versionLine.Matches.Count -gt 0) { $versionLine.Matches[0].Groups[1].Value } else { "unknown" }
+$PublishExe = Join-Path $PublishDir "xr-viewlab.exe"
+if (!(Test-Path $PublishExe)) { throw "Published executable missing: $PublishExe" }
+$PublishVersion = (Get-Item $PublishExe).VersionInfo.ProductVersion
+if ($PublishVersion -ne $version) {
+    throw "Published executable version $PublishVersion does not match build version $version"
+}
+foreach ($FreshOutput in @($PublishExe, $Dll64Src, $Dll32Src, $MsiSource)) {
+    if (!(Test-Path $FreshOutput)) { throw "Required fresh build output missing: $FreshOutput" }
+    if ((Get-Item $FreshOutput).LastWriteTimeUtc -lt $BuildStartedUtc) {
+        throw "Build output predates this build and may be stale: $FreshOutput"
+    }
+}
+
+# Administrative extraction proves what the MSI actually contains, independently of WiX source intent.
+$VerifyDir = Join-Path $Root "Installer\verify"
+New-Item -ItemType Directory -Path $VerifyDir -Force | Out-Null
+Invoke-Native msiexec.exe /a $MsiSource /qn "TARGETDIR=$VerifyDir"
+$PayloadExe = $null
+$ExtractDeadline = [DateTime]::UtcNow.AddSeconds(30)
+do {
+    $PayloadExe = Get-ChildItem $VerifyDir -Recurse -Filter xr-viewlab.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (!$PayloadExe -or $PayloadExe.Length -ne (Get-Item $PublishExe).Length) {
+        $PayloadExe = $null
+        Start-Sleep -Milliseconds 200
+        continue
+    }
+    $PayloadVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($PayloadExe.FullName).ProductVersion
+    if ([string]::IsNullOrWhiteSpace($PayloadVersion)) {
+        $PayloadExe = $null
+        Start-Sleep -Milliseconds 200
+    }
+} while (!$PayloadExe -and [DateTime]::UtcNow -lt $ExtractDeadline)
+if (!$PayloadExe) { throw "MSI validation could not find xr-viewlab.exe in the extracted payload" }
+$PayloadExe = Get-Item $PayloadExe.FullName
+$PayloadVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($PayloadExe.FullName).ProductVersion
+if ($PayloadVersion -ne $version) {
+    throw "MSI payload executable version $PayloadVersion does not match build version $version"
+}
+if ((Get-FileHash $PayloadExe.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $PublishExe -Algorithm SHA256).Hash) {
+    throw "MSI payload executable is not byte-for-byte identical to the fresh publish output"
+}
+$PayloadDll64 = Get-ChildItem $VerifyDir -Recurse -Filter XR_APILAYER_cooooked_xrviewlab.dll | Select-Object -First 1
+$PayloadDll32 = Get-ChildItem $VerifyDir -Recurse -Filter XR_APILAYER_cooooked_xrviewlab32.dll | Select-Object -First 1
+if (!$PayloadDll64 -or (Get-FileHash $PayloadDll64.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $Dll64Src -Algorithm SHA256).Hash) {
+    throw "MSI x64 layer payload does not match the fresh native build"
+}
+if (!$PayloadDll32 -or (Get-FileHash $PayloadDll32.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $Dll32Src -Algorithm SHA256).Hash) {
+    throw "MSI Win32 layer payload does not match the fresh native build"
+}
+
+# These generated members/types prove the compiled application includes the Overlays XAML and all
+# four overlay feature implementations, rather than merely carrying the expected version resource.
+$PayloadText = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($PayloadExe.FullName))
+$RequiredOverlayMarkers = @(
+    'OverlaysButton_Click',
+    'BoundaryDrag_End',
+    'CrosshairEnabledCheck',
+    'NotificationService',
+    'IRacingEnabledCheck'
+)
+foreach ($Marker in $RequiredOverlayMarkers) {
+    if (!$PayloadText.Contains($Marker)) { throw "MSI payload is missing compiled overlay marker: $Marker" }
+}
+
 $MsiDest = Join-Path $DistDir "ViewLab-$version.msi"
 Copy-Item -Path $MsiSource -Destination $MsiDest -Force
 
+Write-Host "Validated MSI payload: app $PayloadVersion; fresh WPF/native hashes match; Overlays markers present."
 Write-Host "Built MSI:"
 Write-Host $MsiDest

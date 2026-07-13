@@ -3,10 +3,214 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-07-12
-**Current version:** 4.1.148 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.148.msi`
+**Updated:** 2026-07-13
+**Current version:** 4.1.187 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.187.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Overlay coordinate unification (in progress, 2026-07-13)
+
+The first `OverlayCoordinateResolver` pass incorrectly mapped normalized coordinates independently into each eye and used each asymmetric full-FOV midpoint for the crosshair. This produced two monocular stickers and contaminated both direct and topmost output. The resolver now builds shared selected/full tangent bounds from both eyes, chooses one visor-space target, and projects it independently into each eye viewport. Crosshair zero is shared tangent `(0,0)`; normalized offsets and Lens Pinned clamping happen in shared tangent space. HUD and trace both render binocularly. Projection capture still stops after the primary layer to prevent repeated OpenComposite texture draws. Headset validation remains pending and no release is authorised.
+
+Experimental `Topmost Visor Overlays` remains default-off and live-switchable. It draws the same binocular visor scene into a transparent two-eye projection swapchain and appends that layer after game-owned layers. The established direct visor mask remains active independently, and the topmost texture also carries the mask. Swapchain creation, acquisition, wait, release, or submission failure falls back to the eye-texture renderer. Dirt Rally 2/OpenComposite headset validation is pending.
+
+**Core crop regression found:** runtime evidence showed asymmetric split crop applying `pitch_offset=0.31637` radians to both game eye poses even though the live ini requested `foveated_center_compensation=0`. The setting had been made permanently on after the 4.1.81 backup, which defaulted/respected it off. Pose compensation is now retired; split crop changes only FOV tangents. Headset confirmation is required before returning to overlay calibration issues.
+
+**Narrow remaining-repairs pass:** `SplitCheck_Changed` now persists the mode immediately, so
+disabling split writes centred normal-vertical state before the next game launch. The experimental
+topmost projection matches the primary projection's sRGB/UNORM transfer convention and declares
+ViewLab's straight-alpha shader output as unpremultiplied, without changing direct-render colours.
+Calibration tools are divided by purpose: literal-pixel
+patterns use the complete submitted eye rectangle; the 64 px grid retains exact spacing but starts
+at shared tangent zero; radial spokes and rings are constructed in shared tangent space and project
+per eye. Crosshair X/Y sliders reset their own axis on right-click. Deterministic verification passes;
+Pistol Whip and Dirt Rally 2 headset checks remain pending. See `docs/CALIBRATION.md` for the pattern
+contract.
+
+## Visor overlays: boundary flash, crosshair, notifications, iRacing scaffold (in progress, 2026-07-12)
+
+**Build:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.187.msi` (stale split persistence,
+Topmost colour transfer/alpha semantics, calibration geometry classification, and crosshair-slider
+right-click resets repaired; working crop/stereo resolver unchanged; WPF + native x64/Win32 +
+deterministic contracts + extracted MSI payload validated; headset validation pending).
+
+**Packaging mismatch repair:** 4.1.169's MSI metadata/filename were correct, but WiX harvested the
+stale 4.1.168 executable from `bin\Release\net8.0-windows\...` after the WPF project moved to
+`net8.0-windows10.0.19041.0`. Build 4.1.176 derives and checks the TFM publish path, cleans generated
+WPF/WiX outputs, then administratively extracts the MSI and verifies its app version, WPF/native
+hashes, and compiled overlay markers. The extracted payload passed all checks. An attempted silent
+upgrade on this machine returned MSI 1730 because the agent session is not elevated; installed
+4.1.169 registration / 4.1.168 executable therefore remains unchanged pending an administrator-run
+install. No commit or publish was performed.
+
+Four features added on top of the stereo HUD, all sharing the tangent-space binocular-overlap
+anchoring so they fuse cleanly in both eyes. Live-state contract is now v4 (208 bytes).
+
+**Overlay completion pass (source complete, final build below):** crosshair flat colour is moved to
+an explicit constant-buffer shader after tracing the invisible result to the same VDXR interpolant
+failure already proven by calibration. Both live previews mirror the native rectangles and native
+logs final per-eye geometry/draw execution. Notification status preserves the exact WinRT access
+status/HRESULT and a synthetic Test Notification bypasses listener permission. The iRacing baseline
+now reads the SDK shared mapping off-thread, normalizes four core fields into generic events, and has
+full simulations/diagnostics. VR timing colour uses rolling full-precision 105%/115% classification
+with consecutive confirmation and hysteresis; displayed rounding is not used for state.
+
+**User calibration follow-up:** tangent zero did not coincide with the radial calibration centre on
+the active asymmetric eye FOV. Crosshair anchoring now uses the submitted eye-rectangle midpoint,
+identical to the radial zone-plate spokes. HUD amber/red no longer uses miss counts alone: the rolling
+cadence median must be genuinely degraded (>108% amber, >120% red), keeping stable 120 Hz 8.2/8.3 ms
+and 90 Hz 11.1/11.2 ms green. The notification screenshot is the accurately classified unpackaged
+Win32 `UserNotificationListener` identity limitation; Test Notification remains permission-independent.
+
+**Live visor/preview follow-up:** global visor controls are now unconditionally live through the
+generation-stamped mapping; the checkbox/key are removed because unchanged snapshots do no INI work
+and have negligible cost. Per-app overrides remain protected. Both crosshair previews use half the
+former display scale, and the binocular visor preview shows one reference crosshair rather than two.
+
+**Overlay coordinate audit:** the equal-pixel eye-centre change in 4.1.179 was invalid for asymmetric
+FOVs and caused double crosshairs. Fused overlays now start in shared tangent/angular space and
+project into each eye independently. Crosshair `(0,0)` convergence and crosshair/HUD/notification
+sizes use pixels-per-tangent so crop changes do not move, separate, or rescale them. Boundary flash
+is a fully inset per-eye inner outline. The combined preview keeps one centred fused symbol, while
+pixel calibration patterns remain intentionally per-eye diagnostics. Headset validation pending.
+
+- **Render-boundary flash.** While a HUD/trace position/size/width/height/scale slider is dragged
+  (`Thumb.DragStarted/Completed` → `interactFlags` bit0), the layer paints the exact cropped eye
+  rect (= submitted sub-image) as a fixed cyan-white outline at constant screen thickness in both
+  eyes, fading over `kBoundaryFadeMs`=500 ms after release. The fade timer is native, so it
+  completes even if the UI closes mid-drag. Non-layout controls do not trigger it.
+- **Static CS crosshair.** Drawn at the calibrated stereo centre (tan 0,0 per eye). Native reads
+  size/gap(±)/thickness/dot/outline/outline-thickness/alpha/colour/T-style + a ViewLab VR scale;
+  CS reference pixels map to eye pixels via `scale × eyeHeight/1080`, pixel-snapped. `CrosshairConfig`
+  (C#) parses legacy `cl_crosshair*` and CS2 `CSGO-` base-58 share codes into the same settings and
+  exports legacy config. Dynamic/weapon/movement settings are parsed and ignored.
+- **Desktop notifications.** `NotificationService` (C#) uses WinRT `UserNotificationListener` off the
+  render thread, composites each card (icon + title/sender + shortened body) to straight-alpha RGBA,
+  runs the full queue (slide-in / ~3 s hold / fade+slide-out / independent expiry / upward stacking)
+  and writes to `Local\XRViewLabNotifications`. The layer draws each card as one textured quad
+  (new `kTexturedPS` + sampler + per-slot dynamic textures, uploaded only on content change) in both
+  eyes at the bottom-right of the cropped region, inside a safe margin. Live settings: enable, X/Y,
+  scale, opacity, duration, max visible, allow/blocklist, privacy (full/title/app), show icon, show
+  image. **Limitation:** unpackaged Win32 apps often get `RequestAccessAsync` = Denied unless an
+  AppUserModelID is registered; the service fails soft and reports status. Toast payload images are
+  not exposed by the listener, so the "image/thumbnail" is the source app logo where available.
+- **iRacing scaffold (inactive).** `IViewLabEventProvider`/`ViewLabEvent` seam + a labelled UI
+  section (enable, lap popup, spotter glow, flag border) + flags plumbed to the layer, which takes
+  no action on them. No telemetry provider is wired up.
+
+TFM raised to `net8.0-windows10.0.19041.0` for the WinRT projections. New files:
+`XRViewLab.UI/CrosshairConfig.cs`, `NotificationService.cs`, `ViewLabEvents.cs`.
+
+## Native performance HUD (in progress, 2026-07-12)
+
+**HUD build:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.168.msi` (stereo refinement pass; built clean, headset validation pending)
+
+An optional, default-off four-icon CPU/GPU/SYS/VR HUD draws directly into BOTH projection eye
+textures at `xrReleaseSwapchainImage`, after the visor and before runtime submission; it never
+creates an OpenXR overlay layer. Stereo coherence: both eyes render from one per-frame snapshot
+(metrics + trace samples captured when the left eye draws), and every element is anchored at a
+shared tangent-space point inside the binocular overlap of the cropped per-eye FOVs, mapped
+through each eye's own submitted `XrFovf` into its sub-image pixels — zero angular disparity, so
+it fuses at effectively infinite depth and stays clear of the opposite lens edge, while remaining
+positioned relative to the final cropped tangent bounds (rect-fraction fallback if FOVs are
+unavailable).
+
+Metrics: CPU is total system utilisation from `GetSystemTimes`; GPU is the D3D11 render adapter's
+busiest 3D engine from adapter/engine-grouped PDH samples; SYS is actual OpenXR frame work
+(begin→end) divided by the runtime's `predictedDisplayPeriod`. The fourth indicator (headset icon)
+now shows the VR frame time in ms with one decimal, no unit suffix: the QPC interval between
+successive `xrWaitFrame` returns (EMA-smoothed), coloured/ring-filled against the effective budget
+`predictedDisplayPeriod × cadence multiple`. The cadence multiple (1–4) is a rolling median of the
+last ≤90 intervals divided by the period, and only switches after 20 consecutive agreeing
+computations — half-rate reprojection (72→36, 80→40, 90→45, 120→60) is detected without
+hardcoding any refresh rate and can never be triggered by a single slow frame. Cadence
+transitions are logged one-shot per change.
+
+Text renders in a 5×7 pixel font with a dedicated decimal-point glyph at integer pixel scale
+(replacing the seven-segment digits, whose missing decimal glyph made 13.3 render as 133). The
+scale slider (0.5–3.0) maps the full range smoothly; the old fixed 112 px ceiling and the native
+2.0 config clamp are gone. The 600-sample pacing trace has live X/Y/height/width/history/
+sensitivity controls (continuous ±0.5–8 ms), scrolls newest-right, and baselines on the effective
+cadence budget. Alarm-only mode (live checkbox `hud_alarm_only`) hides each indicator
+independently unless red, with smoothed-threshold hysteresis and a `hud_alarm_hold_ms` (default
+1500 ms) post-recovery hold; the trace is never hidden and telemetry keeps updating. Live-state
+shared memory is contract version 3 (120 bytes).
+
+**Responsive/live repair:** HUD layout now travels through the generation-stamped live-state
+mapping with X/Y/scale/safe-margin/clamp controls, and is clamped as a complete four-icon unit to
+the active projection sub-image. Calibration and visor-enable changes publish the same snapshot
+instead of requiring a restart. The zoomed preview keeps its curve pen screen-space stable.
+
+**Telemetry pass:** the ViewLab UI has a `Performance HUD (both eyes)` checkbox and live
+frame-trace position/size/history/sensitivity controls plus an alarm-only checkbox under
+Calibration. OpenXR wait/begin/end timing follows the frame association
+pattern reviewed in Fred Emmott's MIT-licensed XRFrameTools but is implemented locally with no
+runtime dependency. Each verbose telemetry sample records raw source/unit, conversion inputs, and
+final display values. Preview pin radii, outlines, hover state, hit testing, and drag acquisition are
+now screen-pixel based (`modelRadius = desiredPixelRadius / currentZoom`).
+
+## Draw in the Void research (2026-07-12)
+
+Research is complete; implementation is deliberately deferred. ViewLab's crop is confined to
+`xrLocateViews` FOV tangents and recommended projection swapchain dimensions—it does not currently
+rewrite submitted projection image rects or final composition. The in-tree creepy-face probe is
+unvalidated and has diagnostic gaps, so it is not evidence for or against the concept. Modern
+OpenKneeboard and RaceLab are expected to submit independently composited OpenXR content, but the
+current registry inspection has both disabled, so their actual layer types/order remain headset
+measurements. See `docs/DRAW_IN_VOID_RESEARCH.md` for sources, ranked hypotheses, instrumentation
+requirements, and the controlled test matrix. No publish was performed.
+
+**VDXR developer confirmation (2026-07-12):** VDXR PC-composes all OpenXR layers into one encoded
+stream. A ViewLab FOV-tangent crop therefore reduces the FOV of that final stream and constrains
+third-party overlays too, even when they arrived as independent OpenXR quads. Retaining overlays
+in the void requires either separately streamed layers (not known to be offered by any streamer)
+or a ViewLab-owned full-FOV final composition including black bars. The latter is technically
+possible: keep the game-facing crop, copy the reduced game projection into a full-FOV target,
+submit that target with original FOV, then let later quads compose. It deliberately spends encoder
+resolution/bandwidth on the unrendered region and weakens the cropped-stream crispness benefit,
+so it is shelved as counter to ViewLab's primary goal—not impossible. The VDXR performance overlay
+is headset-rendered; current code does not gate its crop on `fovMutable`, but the approach still
+depends on a runtime honouring mutable-FOV behaviour.
+
+**VDXR developer implementation clarification (2026-07-12):** the current `xrLocateViews` crop
+depends on runtimes honouring mutable-FOV behaviour (works in VDXR; the developer expects Quest
+Link not to support it portably). The full-FOV fallback would require a ViewLab-owned
+tangent-space FOV-reprojection shader, not a simple copy: reproject the app's submitted cropped
+eye layer into a full-FOV black-backed target, replace that projection at `xrEndFrame`, preserve
+later overlay layers, and correctly transform or handle depth chains for non-VD runtimes. This is
+high-risk compositor work and remains deliberately shelved pending an explicit product decision.
+
+**Shelved cleanup (2026-07-12):** the unvalidated Draw in the Void creepy-face probe is removed
+from the native layer, shared-memory contract, default INI, and UI. No unsupported composition
+layer is now created or appended. The live-settings mapping no longer calls `OpenFileMappingW` on
+every `xrEndFrame` when the UI is closed: reconnect attempts are limited to once per second, while
+an existing mapping retains generation-checked end-frame updates. Calibration remains default-off;
+normal logging stays startup/one-shot/error-only, with per-frame detail opt-in in the separate
+verbose log. Contract verification and the full 4.1.159 build pass; headset validation is pending.
+
+## Ten-pattern calibration suite (in progress, 2026-07-12)
+
+The former hidden `calibration_grid` diagnostic is now a Calibration dropdown with ten independent,
+default-off submitted-texture patterns: grid, ruler, repeated 1/2/4 px gratings, colour/grey bars,
+frame beacon, edge probes, checkerboards, radial zone plate, clipping steps, and motion strip.
+All patterns render after the visor at swapchain release, so they measure downstream runtime/stream
+behaviour. Beacon and motion state advance once per submitted projection frame and are shared by
+both eyes. Build and in-headset validation are pending; inspect one-pixel patterns at 100% capture
+zoom before interpreting stream quality.
+
+**Capture finding (4.1.153–4.1.154):** VDXR showed all new calibration geometry as black: grating
+bands, zone plate wedges, and colour plates lost white/colour components. This is not a batch
+overflow. The attempted semantic-only repair (`COLOR` → `TEXCOORD0`) made no visible difference,
+so calibration now uses its own constant-colour pixel shader and explicit colour batches, without
+changing the established visor shader or geometry. Rebuild and headset verification pending.
+
+## Calibration grid origin (4.1.150, 2026-07-12)
+
+The default-off `calibration_grid` draws a uniform 64 px
+reference grid into the eye images at `xrReleaseSwapchainImage` — the ground-truth ruler from
+the edge-smear investigation. It is now the first visible calibration option. Grid uniform in the submitted
+texture ⇒ any distortion seen in-headset is downstream (VD encode). Contract-pinned with the full suite;
+The suite remains default-off and is not yet headset-validated in this build.
 
 ## Binocular WYSIWYG preview + inner-eye controls hidden (4.1.146–4.1.148, 2026-07-12)
 

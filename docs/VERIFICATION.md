@@ -57,3 +57,25 @@ Interpretation: no `VIEWLAB_LOADED` marker means the OpenXR layer never entered 
 process; the marker plus `xrCreateApiLayerInstance result` identifies layer-chain failure; the marker
 plus `render: FOV adjustment active` means ViewLab's crop hook ran and the remaining issue is visual
 or runtime-side.
+# Overlay functionality questionnaire — 2026-07-13
+
+1. Which exact ViewLab build was most recently tested in Dirt Rally 2, and what happened?
+2. At 100% horizontal/vertical, where is the crosshair relative to perceived straight ahead?
+3. What visual reference is being used as the true lens centre?
+4. With one eye closed at a time, is the crosshair correct in each eye individually?
+5. With both eyes open, is the crosshair fused, doubled, blurry, or at an uncomfortable depth?
+6. When horizontal render amount changes, how do crosshair position and apparent size change per eye?
+7. With 0% top and 20% bottom, should pinning place the target on the edge or keep the whole symbol inset?
+8. Should user calibration offset move the full-lens target before pinning, or move the already-pinned symbol?
+9. Should radial spokes share the crosshair calibration offset, or remain the uncalibrated ViewLab centre reference?
+10. Is the Performance HUD deliberately monocular in the left eye, or intended on the left side but binocularly fused?
+11. Is HUD duplication two crisp copies, a small displaced double, stale trails, or differing content?
+12. When does duplication begin, and does toggling the HUD clear it?
+13. Should Performance Trace be left-eye-only or binocular, and should telemetry collection remain shared?
+14. Should Render Area `(0.5, 0.5)` mean submitted-rectangle pixel centre or selected tangent-region angular centre?
+15. Which overlays must fuse binocularly, and which must remain literal per-eye texture diagnostics?
+16. Should calibration dimensions remain exact texture pixels, scale with render area, or keep constant angular size?
+17. Do live crop changes recreate Dirt Rally swapchains, update FOV only, or require a restart before resolution changes?
+18. What exact OpenComposite installation path, headset, and active OpenXR runtime are used?
+19. Which other API layers remain enabled when duplication occurs?
+20. Which should be validated first: crosshair/pinning, HUD duplication, HUD/Trace separation, or calibration stability?

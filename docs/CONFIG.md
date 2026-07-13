@@ -17,7 +17,7 @@ Per-app registry: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>` — DWORD encod
 | `split_mode` + `top_tangent` / `bottom_tangent` | 0.09/0.09 | `topTangent`/`bottomTangent` | millis | split top/bottom crop |
 | `horizontal_render_width` | 0..1 / 0.80 | `horizontalRenderWidth` | millis | |
 | `crop_outer_edges_only` | 1 | `cropOuterEdgesOnly` | — | **Permanently enabled** — config key ignored. Horizontal crop takes from outer edges only. |
-| `foveated_center_compensation` | 1 | `foveatedCenterCompensation` | dword | **Permanently enabled** — config key ignored. |
+| `foveated_center_compensation` | 0 | retired/false | dword | Retained only for compatibility; ignored and permanently off because pose compensation tilted asymmetric crops. |
 | `visual_mask_only`, `horizontal_visual_mask_only` | 0 | same names | — | mask instead of crop (loses GPU savings); Edge Masks popup "Both" controls write these keys |
 | `render_scale` | 0.1..3 / 1.0 | `renderScale` | ×1e6 dword | per-game supersampling |
 
@@ -35,6 +35,10 @@ Per-app registry: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>` — DWORD encod
 | `mask_inner_bridge_peak_x` | −1..2 / 0.5 | `visorInnerBridgePeakX` | legacy millis 0..1000; extended marker encoding for per-app profiles | Peak X slider; moving left carries the peak farther from the binocular centre, mirrored by eye. |
 | `mask_inner_bridge_steepness` | −1..2 / 0.5 | `visorInnerBridgeSteepness` | legacy millis plus extended marker encoding for per-app profiles | Steepness slider |
 | `visor_live_revision` | monotonic timestamp | `liveVisorRevision` | — | Internal commit marker. The UI writes it last after global visor controls, allowing a safe live visor-only refresh at `xrEndFrame`. |
+
+Global visor controls are always published through the generation-stamped live-state mapping while
+the UI is open. The retired `live_visor_tuning` switch is ignored/removed; per-app profile overrides
+remain startup-owned and are never overwritten by the global live snapshot.
 | `mask_width_scale` / `mask_height_scale` | 1.0 | `visorWidth`/`visorHeight` | `visor_width`/`visor_height` | Fixed at 1.0; the visor mask always fills the crop opening and only affects corners. |
 | `visor_technique` | `c` | `visorTechnique` | — | a/b hidden; DirectWrite is the product path |
 | `visor_hd` | 0 | — | — | **Removed** — code disabled; key ignored. |
@@ -52,6 +56,43 @@ Per-app registry: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>` — DWORD encod
 | ini key | default | DLL global |
 |---|---|---|
 | `verbose_logging` | 0 | `verboseLogging` |
+| `calibration_grid` | 0 | `calibrationGrid` | 64 px full-eye texture grid; every fourth line is thicker. |
+| `calibration_ruler` | 0 | `calibrationRuler` | Bottom pixel ruler: 8 px ticks, 32 px medium ticks, 64 px major ticks. |
+| `calibration_gratings` | 0 | `calibrationGratings` | Repeated 1/2/4 px black/white full-width bands at 25/50/75% height. |
+| `calibration_bars` | 0 | `calibrationBars` | Eight colour bars plus a 16-step grey ramp. |
+| `calibration_beacon` | 0 | `calibrationBeacon` | 24 px temporal beacon driven once per submitted projection frame. |
+| `calibration_edge_probes` | 0 | `calibrationEdgeProbes` | 1/2/4 px probes at top, bottom, inner, and outer eye edges. |
+| `calibration_checkerboards` | 0 | `calibrationCheckerboards` | 1/2/4/8 px checkerboard ladder. |
+| `calibration_zone_plate` | 0 | `calibrationZonePlate` | Radial spoke and ring pattern for aliasing/falloff inspection. |
+| `calibration_clipping_steps` | 0 | `calibrationClippingSteps` | Near-black and near-white clipping steps. |
+| `calibration_motion_strip` | 0 | `calibrationMotionStrip` | Frame-serial-driven moving stripe marker for temporal artefacts. |
+| `hud_enabled` | 0 | `hudEnabled` | Enables the compact performance HUD as one shared upper-left visor-space element projected independently into both eyes. |
+| `hud_trace_enabled` | 0 | `hudTraceEnabled` | Independently enables the performance trace as a stereo-fused visor-space element in both eyes. |
+| `topmost_visor_overlays` | 0 | `topmostVisorOverlays` | Experimental live switch. Renders the existing visor/overlay scene into a transparent two-slice projection swapchain and appends it after game layers. Creation/submission failure retains or restores the normal eye-texture path. |
+| `hud_anchor_x`, `hud_anchor_y` | 0.04, 0.05 | `hudAnchorX`, `hudAnchorY` | Normalized position within the shared binocular overlap of the cropped views; live HUD X/Y sliders (full 0–1 range). |
+| `hud_scale`, `hud_spacing`, `hud_opacity` | 1.0, 0.018, 0.70 | HUD layout | Icon scale (0.5–3.0, maps smoothly across the whole range — no fixed pixel ceiling), normalized icon gap, and restrained colour intensity. |
+| `hud_safe_margin`, `hud_clamp_to_visible` | 0.025, 1 | HUD layout | Normalized safe margin and complete-bounds clamp against the binocular overlap region. The HUD uses the smaller current eye-region dimension then applies `hud_scale`, so crop/resolution changes retain its proportion. |
+| `hud_update_ms` | 100 | HUD telemetry | Bounded CPU/GPU/summary refresh period (50–1000 ms). Per-frame OpenXR samples still feed SYS, VR frame time, and the pacing trace. |
+| `hud_green_threshold`, `hud_red_threshold` | 75, 90 | HUD percentage state | For CPU/GPU/SYS: green below green, amber up to red, red at/above red. VR uses the rolling median of full-precision cadence ratios: sustained >108% enters amber and sustained >120% enters red; miss counts can reinforce a warning only when the median is also degraded. Exit thresholds are lower. Display rounding never classifies colour, so normal 8.2/8.3 ms at 120 Hz and 11.1/11.2 ms at 90 Hz remain green. |
+| `hud_trace_sensitivity_ms` | 2 | `hudTraceSensitivityMs` | Live vertical range (±ms, continuous 0.5–8) for the pacing trace around the effective cadence budget. |
+| `hud_trace_x`, `hud_trace_y` | 0.05, 0.75 | `hudTraceX`, `hudTraceY` | Live position of the frame-pacing trace within the shared binocular overlap. |
+| `hud_trace_scale`, `hud_trace_width` | 1.0, 0.42 | `hudTraceScale`, `hudTraceWidth` | Live trace height multiplier (0.25–3) and width as a fraction of the visible overlap (0.1–1). |
+| `hud_trace_history` | 120 | `hudTraceHistory` | Live number of frames shown in the trace (30–600); newest at the right, scrolling left. |
+| `crosshair_offset_x`, `crosshair_offset_y` | 0, 0 | `crosshairOffsetX`, `crosshairOffsetY` | User calibration in normalized full-lens tangent coordinates. Applied to the lens-centre target before Lens Pinned clamping. |
+| `hud_alarm_only` | 0 | `hudAlarmOnly` | Alarm-only mode: hides each of the four indicators independently while green/amber and shows it only in its red state (smoothed values + hysteresis + hold). The frame-pacing trace is never hidden; telemetry keeps updating. |
+| `hud_alarm_hold_ms` | 1500 | `hudAlarmHoldMs` | How long a red indicator stays visible after its metric recovers (0–10000 ms). |
+| `hud_debug_values` | 0 | HUD telemetry | Development-only deterministic values (`hud_debug_cpu`/`hud_debug_gpu`/`hud_debug_system` are percentages; `hud_debug_vr` is milliseconds). Normal mode uses `GetSystemTimes`, per-render-adapter PDH 3D-engine counters, and OpenXR `predictedDisplayPeriod` plus QPC frame timing. The VR frame time is the QPC interval between successive `xrWaitFrame` returns; its budget is `predictedDisplayPeriod × cadence multiple`, where the multiple (1–4) comes from a rolling median of intervals confirmed over 20 consecutive frames (reprojection/ASW/SSW detection — never a single slow frame, never a hardcoded refresh rate). |
+| `crosshair_enabled` | 0 | `crosshairEnabled` | Static CS-style crosshair at the calibrated stereo centre (both eyes, zero disparity). |
+| `crosshair_size`, `crosshair_gap`, `crosshair_thickness` | 5, -2, 1 | crosshair | CS reference-pixel size, gap (may be negative), and arm thickness. One CS pixel is a fixed tangent span (`2/1080`), projected with each eye's X/Y pixels-per-tangent density and pixel-snapped; crop changes cannot alter angular size or convergence. |
+| `crosshair_dot`, `crosshair_outline`, `crosshair_outline_thickness`, `crosshair_tstyle` | 0, 1, 1, 0 | crosshair | Centre dot, black outline + its thickness, and T-style (top arm hidden). The outlined green built-in default is immediately visible when enabled; no import is required. |
+| `crosshair_alpha`, `crosshair_scale` | 1.0, 1.0 | crosshair | Crosshair alpha (0–1) and overall ViewLab VR scale (0.1–10). |
+| `crosshair_color` | 65280 | crosshair | Colour as a decimal `0xRRGGBB` integer (65280 = `00FF00`). The UI parses `cl_crosshair*` configs and CS2 `CSGO-` share codes into all of the above. |
+| `notify_enabled` | 0 | `notifyEnabled` | Mirror supported Windows notifications into the visor (both eyes, bottom-right of the cropped region). |
+| `notify_x`, `notify_y`, `notify_scale`, `notify_opacity` | 0.98, 0.98, 1.0, 1.0 | notify render | Card anchor within the binocular overlap, card scale, and opacity — the render-side settings the DLL reads. |
+| `notify_duration_ms`, `notify_max_visible`, `notify_privacy` | 3000, 3, 0 | notify (UI) | Hold time, max concurrent cards, and privacy mode (0 full / 1 title-only / 2 app-only). Consumed by the UI-side queue manager (off the render thread), not the DLL. |
+| `notify_show_icon`, `notify_show_image` | 1, 1 | notify (UI) | Whether cards composite the source app icon and the image/thumbnail (app logo where the payload exposes one). |
+| `notify_allowlist_mode`, `notify_app_filters` | 0, (empty) | notify (UI) | Comma-separated app-name filter; `allowlist_mode=1` shows only matches, otherwise it is a blocklist. |
+| `iracing_enabled`, `iracing_lap_popup`, `iracing_spotter_glow`, `iracing_flag_border` | 0,0,0,0 | iRacing provider | Gates the optional background `IRSDKMemMapFileName` reader and generic lap/spotter/flag event consumers. Raw iRacing fields never enter the native renderer. UI simulations work without iRacing. |
 | `crop_experiment_mode` | — | — | **Removed 2026-07-11** (experimental crop-fix purge) — code and UI gone; key ignored. Root cause of the edge smear was VD fixed foveated encoding: `docs/FIXED_FOVEATION.md`. |
 | `edge_smear_fix`, `edge_smear_pixels` | — | — | **Removed 2026-07-11** — edge-guard code deleted; keys ignored. |
 | `lod_popin_fix` | 0 | — | **Removed** — code disabled; key ignored. |

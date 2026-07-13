@@ -2,6 +2,170 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## Unreleased - 2026-07-12 (Overlays: boundary flash, crosshair, notifications, iRacing scaffold)
+
+- Fixed Split Top/Bottom mode changes not being persisted by the checkbox event. Turning split off
+  now immediately writes `split_mode=0` and the centred normal-vertical tangents, preventing an old
+  asymmetric profile from returning on the next game launch.
+- Fixed pale Topmost Visor Overlay colours by matching the primary projection swapchain's sRGB/UNORM
+  format and non-sRGB RTV convention. The layer also declares the existing straight-alpha output
+  with `XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT`; the standard direct path is unchanged.
+- Reclassified calibration geometry by purpose: pixel rulers/patterns use the complete submitted
+  eye rectangle and never scale to crop-overlap bounds; the 64 px grid keeps exact spacing but is
+  centred on the fused crosshair; radial spokes and true circular rings are constructed in shared
+  tangent space. Edge probes once again touch the submitted texture bounds.
+- Added right-click zero reset to each crosshair offset slider and documented all ten calibration
+  patterns in `docs/CALIBRATION.md`.
+- System-wide overlay-coordinate repair: fused overlays now use shared tangent/angular positions
+  projected independently through each eye. Crosshair returns to shared tangent `(0,0)` and uses
+  per-axis pixels-per-tangent for crop-invariant angular size; diagnostics include shared position,
+  per-eye pixels/size, tangents, rectangle, and zero angular disparity. HUD base size/spacing and
+  notification card dimensions are likewise angular rather than cropped-pixel-relative.
+- Boundary flash is inset beyond half its stroke and now renders as a complete inner outline inside
+  each submitted eye rectangle. The combined visor preview shows one crosshair at its visual centre.
+  Pixel calibration patterns remain deliberately per-eye texture diagnostics.
+
+- Global visor tuning is now always live through the existing generation-stamped shared-memory
+  snapshot; the redundant on/off checkbox and config key are removed. Unchanged frames do no INI
+  parsing, and per-app profile overrides still take precedence.
+- Both crosshair previews are reduced to half their former visual scale. The binocular visor editor
+  now shows one left-eye reference crosshair instead of duplicating it in both preview eyes.
+
+- Follow-up calibration: crosshair centre now exactly matches the radial zone-plate/spoke centre
+  (submitted eye-rectangle midpoint) instead of tangent zero, which is displaced on asymmetric FOVs.
+  VR frame warnings now use a rolling cadence median and cannot turn amber from isolated miss counts;
+  stable 120 Hz 8.2/8.3 ms and 90 Hz 11.1/11.2 ms remain green.
+
+- Crosshair visibility repair: flat overlay colour/alpha now comes from an explicit constant-buffer
+  pixel shader instead of the VDXR-broken interpolated vertex colour path. Added resolved per-eye
+  geometry/draw logs, an outlined built-in default, a live Overlays preview, and matching binocular
+  visor-preview crosshairs.
+- Notification status now distinguishes exact access denial, unsupported deployment, listener
+  initialization, and internal bridge failure with the WinRT access enum/HRESULT retained. Added a
+  synthetic Test Notification that exercises composition, shared memory, texture upload, stereo
+  placement, animation, stacking and expiry without Windows notification permission.
+- Replaced the iRacing placeholder with an optional background SDK shared-memory provider for
+  `CarLeftRight`, `LapCompleted`, `LapLastLapTime`, and `SessionFlags`; it publishes generic events,
+  reports connection/update/raw/normalized diagnostics, and includes left/right/both/lap/yellow/
+  blue/clear simulations. No RaceLab/Garage61 dependency and no native iRacing coupling.
+- VR frame-time colour now uses full-precision rolling samples, sustained 105%/115% entry bands,
+  miss counts, consecutive confirmation and lower exit thresholds. The one-decimal label is display
+  only; stable 120 Hz 8.3–8.4 ms timing remains green.
+
+- **Packaging correctness repair.** The 4.1.169 MSI was correctly named/versioned but harvested
+  the stale 4.1.168 app from the former `net8.0-windows` publish directory after the project moved
+  to `net8.0-windows10.0.19041.0`. WiX now points at the current output, and `build.ps1` derives and
+  checks that path, removes generated outputs before building, extracts the finished MSI, and
+  rejects version, hash, native-payload, or compiled-Overlays marker mismatches.
+
+- **Render-boundary flash.** Dragging any HUD or frame-trace position/size/width/height/scale
+  control now paints the exact cropped render boundary in both eyes in a fixed cyan-white outline
+  at constant screen-space thickness. It holds for the whole drag and fades out over ~500 ms after
+  release (fade timer lives in the native layer so it survives the UI closing mid-drag). Only those
+  layout controls trigger it — telemetry, colour, opacity, and threshold controls do not.
+- **Static Counter-Strike crosshair.** Optional crosshair rendered at ViewLab's calibrated stereo
+  centre (tangent 0,0 in both eyes → zero disparity). Manual controls for size, gap (incl.
+  negative), thickness, centre dot, outline, outline thickness, alpha, colour, T-style, and an
+  overall ViewLab VR scale. Imports legacy `cl_crosshair*` console configs and CS2/CS:GO
+  `CSGO-…` share codes (base-58, community layout) into the same settings, and exports the current
+  settings as a legacy `cl_*` config to the clipboard. Dynamic spread/recoil/weapon/movement
+  behaviour is parsed-and-ignored; the crosshair is always static. Spans are pixel-snapped for
+  sharp edges at any eye-buffer resolution.
+- **Windows desktop notification bridge.** Supported Windows notifications are mirrored into the
+  visor as compact cards that slide in at the bottom-right of the cropped region, hold ~3 s, then
+  fade and slide away; multiple cards stack upward and expire independently, in both eyes, inside a
+  safe margin. Collection (WinRT `UserNotificationListener`), image decode, card compositing, and
+  the whole queue/animation run in the settings-app process, entirely off the game's render thread;
+  each card is pre-composited to an RGBA bitmap and drawn by the native layer as a single textured
+  quad (new textured D3D11 pipeline). Live settings: enable, position X/Y, scale, opacity,
+  duration, max visible, app allow/blocklist, message privacy (full / title-only / app-only), show
+  app icon, show image/thumbnail. Alarm-only HUD state never suppresses notifications.
+- **iRacing integration scaffold (not active).** A clearly-labelled future section with enable,
+  lap-time popup, peripheral spotter glow, and flag-state border toggles, plus a generic
+  `IViewLabEventProvider` / `ViewLabEvent` seam so a later telemetry provider can publish
+  renderer-agnostic events without coupling the visor renderer to iRacing. No telemetry is read.
+- Live-state shared-memory contract bumped to version 4 (208 bytes); a new
+  `Local\XRViewLabNotifications` mapping carries pre-composited notification cards. UI target
+  framework raised to `net8.0-windows10.0.19041.0` for the WinRT notification APIs.
+
+## Unreleased - 2026-07-12 (Stereo HUD refinement, 4.1.168)
+
+- The performance HUD now draws in BOTH eyes from a single per-frame snapshot. Every element is
+  anchored at a shared tangent-space point inside the binocular overlap of the cropped per-eye
+  FOVs, so it fuses cleanly with zero angular disparity, no double image, and no opposite-lens-edge
+  hugging, while staying positioned relative to the final cropped tangent bounds.
+- HUD scale fixed: the fixed 112 px ceiling that froze growth mid-slider is removed; the 0.5-3.0
+  UI range now maps smoothly onto the rendered size relative to the eye resolution (native config
+  clamp also raised from 2.0 to 3.0 to match the UI, and the anchor clamp widened to the full 0-1
+  slider range).
+- Replaced the seven-segment digits with a compact 5x7 pixel HUD font with a dedicated
+  decimal-point glyph, integer pixel scaling, and run-merged rows: values are legible at small
+  sizes, carry no unit suffixes, and 13.3 can no longer render as 133.
+- The fourth (headset) indicator now shows the real VR frame time in ms with one decimal
+  (e.g. 8.3 / 11.1 / 13.9). It is measured as the QPC interval between successive xrWaitFrame
+  returns; its budget is predictedDisplayPeriod x cadence multiple, where the multiple (1-4) is
+  detected from a rolling interval median confirmed over 20 consecutive frames - so ASW/SSW/
+  reprojection half-rate modes (72->36, 80->40, 90->45, 120->60) get the correct doubled budget,
+  nothing is hardcoded, and a single slow frame can never flip the cadence. Ring fill and colour
+  compare frame time against that effective budget (amber >=85%, red over budget).
+- Frame-pacing trace gained live X/Y/height/width/history-length/sensitivity controls (sensitivity
+  is now a continuous +/-0.5-8 ms slider). Newest samples stay on the right; the baseline is the
+  effective cadence budget, correct under half-rate reprojection. History extends to 600 samples.
+- New alarm-only mode (live checkbox): each of the four indicators hides independently while
+  green/amber and appears only in its red state, using the smoothed values with hysteresis plus a
+  configurable post-recovery hold (hud_alarm_hold_ms, default 1500 ms). The pacing trace is
+  never hidden and telemetry keeps updating.
+- Live-state shared-memory contract bumped to version 3 (120 bytes) carrying the trace and alarm
+  controls.
+
+## Unreleased - 2026-07-12 (Native Performance HUD)
+
+- Added live HUD X/Y/scale/safe-margin/clamp controls. HUD bounds now derive from and clamp to
+  the current submitted cropped eye rectangle, including at aggressive vertical tangents.
+- Fixed the shared live-state contract so calibration, HUD, and live visor-enable changes reach
+  the locked render path on the next frame. The mask editor now uses a zoom-compensated preview
+  pen, preserving readable curve thickness at every zoom.
+
+- Added an optional, default-off four-icon CPU/GPU/SYS/VR HUD drawn directly into the submitted
+  left-eye texture after the visor. Its normalized `XrRect2Di` anchor keeps the complete indicators
+  and pacing trace inside the cropped rendered region; no OpenXR overlay layer is created.
+- CPU now reports total system utilisation from `GetSystemTimes`. GPU groups Windows GPU Engine
+  samples by adapter and engine, selects the D3D11 render adapter, and reports its busiest 3D engine
+  without summing unrelated engines into impossible values.
+- SYS reports actual frame work divided by the OpenXR runtime's `predictedDisplayPeriod`; VR reports
+  the percentage of over-budget frames in a 60-frame window. All percentages are smoothed lightly
+  and clamped to 0–100.
+- Added a 120-sample frame-pacing line beneath the indicators. It scrolls left, plots deviation from
+  the runtime target interval, marks missed-budget segments red, and has live ±1/±2/±4 ms sensitivity.
+- Preview control pins now retain constant screen-pixel size, outline, hover, and hit tolerance at
+  every zoom level.
+
+## Unreleased - 2026-07-12 (Draw in the Void Shelved + Render-Path Cleanup)
+
+- Shelved the Draw in the Void concept after VDXR confirmed that it PC-composes OpenXR layers into
+  one reduced-FOV encoded stream. The unsupported test quad, its swapchain/reference-space code,
+  UI checkbox, live-state flag, and default INI key are removed.
+- With the settings app closed, the render path now attempts to reconnect the optional live-state
+  shared-memory mapping at most once per second instead of calling `OpenFileMappingW` every
+  submitted frame. Existing live visor and calibration updates remain generation-checked at the
+  `xrEndFrame` safe point.
+
+## Unreleased - 2026-07-12 (Ten-pattern Calibration Suite)
+
+- Promoted the hidden calibration grid into a Calibration dropdown with ten independently
+  default-off, submitted-texture diagnostics: grid, pixel ruler, repeated 1/2/4 px gratings,
+  colour/grey bars, frame beacon, edge probes, checkerboards, radial zone plate, clipping steps,
+  and a frame-serial motion strip.
+- Temporal diagnostics are driven once per submitted projection frame, so both eyes receive the
+  same beacon and motion state; they never depend on a two-release-per-frame assumption.
+
+## Unreleased - 2026-07-11 (Calibration Grid, hidden)
+
+- Added `calibration_grid` (ini-only, default 0, no UI): draws a uniform 64 px reference grid
+  into the eye images at `xrReleaseSwapchainImage`. Because the grid is exactly uniform in the
+  submitted texture, any spacing or contrast distortion seen in the headset is introduced
+  downstream of ViewLab (used to characterise VD fixed foveated encoding).
+
 ## Unreleased - 2026-07-12 (Binocular WYSIWYG Preview)
 
 - The visor preview is now binocular and one-to-one: the canvas represents the full uncropped
@@ -656,3 +820,11 @@
 ## 4.0.x and earlier
 
 See git history.
+# Unreleased
+
+- Fixed asymmetric top/bottom cropping tilting or folding the game world by retiring the pose-rotation compensation path; crop now changes FOV tangents without modifying eye orientation.
+- Repaired the systemic stereo regression introduced by normalized per-eye overlay placement: every migrated overlay now starts from shared binocular tangent-space bounds and projects independently into each eye; HUD is binocular again and calibration plates use the same shared render-area bounds.
+- Added disabled-by-default `Topmost Visor Overlays`, submitting the existing visor scene in a transparent final OpenXR projection layer with automatic normal-renderer fallback.
+- Unified eye-texture overlays behind Render Area, Full Lens, and Lens Pinned coordinate modes.
+- Made Performance HUD and Performance Trace independent, left-eye-only controls and removed repeated OpenComposite projection-layer draws.
+- Added normalized crosshair X/Y calibration and reset controls; zero remains the resolved full-lens centre.

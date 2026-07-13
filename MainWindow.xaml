@@ -416,10 +416,13 @@
 
                 <WrapPanel>
                   <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
-                  <Button Name="ReShadeButton" Content="ReShade ▾" Style="{StaticResource RedButton}" Padding="10,4" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
+                  <Button Name="ReShadeButton" Content="ReShade ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
+                  <Button Name="CalibrationButton" Content="Calibration ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Texture-pixel diagnostics for stream, colour, and frame quality." Click="CalibrationButton_Click" />
+                  <Button Name="OverlaysButton" Content="Overlays ▾" Style="{StaticResource RedButton}" Padding="10,4" ToolTip="Crosshair, desktop notifications, and future integrations." Click="OverlaysButton_Click" />
                 </WrapPanel>
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
                 <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                <CheckBox Name="TopmostVisorOverlaysCheck" Content="Topmost Visor Overlays" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Experimental: submits ViewLab visor content after game-owned layers; falls back to normal rendering if unavailable." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                 <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Binocular preview at fixed scale: the canvas is the full uncropped render; the inner rect is the current post-crop render area." />
                 <Grid Margin="0,0,0,0">
                   <Grid.ColumnDefinitions>
@@ -491,6 +494,153 @@
                     <CheckBox Name="VertTopMaskCheck" Content="Top mask only" IsEnabled="False" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="One-sided edge masks are not wired in this build." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                     <CheckBox Name="VertBottomMaskCheck" Content="Bottom mask only" IsEnabled="False" Foreground="#A8A8A8" ToolTip="One-sided edge masks are not wired in this build." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                   </StackPanel>
+                </Border>
+              </Popup>
+              <Popup Name="CalibrationPopup" StaysOpen="False" AllowsTransparency="True">
+                <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" MaxHeight="500">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                      <TextBlock Text="CALIBRATION PATTERNS" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <TextBlock Text="Drawn into the submitted eye image. Calibration and HUD controls apply live." TextWrapping="Wrap" Width="280" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,8" />
+                      <CheckBox Name="CalGridCheck" Content="64 px texture grid" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Measures geometry and texture-edge distortion." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
+                      <CheckBox Name="CalRulerCheck" Content="Pixel ruler" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Counts exact pixels in a capture." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
+                      <CheckBox Name="CalGratingsCheck" Content="Resolution gratings" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Shows where 1, 2, and 4 pixel detail stops resolving." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
+                      <CheckBox Name="CalBarsCheck" Content="Colour bars + grey ramp" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Checks chroma damage and visible banding." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
+                      <CheckBox Name="CalBeaconCheck" Content="Frame beacon" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Flashes every submitted frame; exposes frame synthesis." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
+                      <CheckBox Name="CalEdgeProbesCheck" Content="Edge probes" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Tests blur and foveation directly at eye-texture edges." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
+                      <CheckBox Name="CalCheckerboardsCheck" Content="Checkerboard ladder" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Reveals scaling blur, compression loss, and moire." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
+                      <CheckBox Name="CalZonePlateCheck" Content="Radial spokes / zone plate" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Reveals uneven sharpness and aliasing." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
+                      <CheckBox Name="CalClippingCheck" Content="Black / white clipping steps" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Reveals crushed blacks and clipped whites." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
+                      <CheckBox Name="CalMotionCheck" Content="Motion strip" Foreground="#A8A8A8" ToolTip="Reveals temporal smearing and reprojection artefacts." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
+                      <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
+                      <CheckBox Name="HudEnabledCheck" Content="Performance HUD" Foreground="#A8A8A8" ToolTip="CPU, GPU, frame-budget, and VR frame-time indicators projected stereo-coherently near the upper-left visor area." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                      <TextBlock Text="HUD X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,0" />
+                      <Slider Name="HudXSlider" Minimum="0" Maximum="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Horizontal position within the shared binocular view." />
+                      <TextBlock Text="HUD Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudYSlider" Minimum="0" Maximum="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Vertical position within the shared binocular view." />
+                      <TextBlock Text="HUD scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudScaleSlider" Minimum="0.5" Maximum="3" Value="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Indicator size; the whole range maps smoothly to the rendered size." />
+                      <CheckBox Name="HudAlarmOnlyCheck" Content="Alarm-only indicators (show only red)" Foreground="#A8A8A8" Margin="0,6,0,0" ToolTip="Hides each indicator while it is green or amber and shows it only in its red state. The frame-pacing trace is always visible." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                      <CheckBox Name="HudTraceEnabledCheck" Content="Performance Trace" Foreground="#A8A8A8" Margin="0,7,0,0" ToolTip="Independently enables the left-eye frame-pacing trace." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                      <TextBlock Text="Trace X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,0" />
+                      <Slider Name="HudTraceXSlider" Minimum="0" Maximum="1" Value="0.05" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Horizontal position of the frame-pacing trace." />
+                      <TextBlock Text="Trace Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudTraceYSlider" Minimum="0" Maximum="1" Value="0.75" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Vertical position of the frame-pacing trace." />
+                      <TextBlock Text="Trace height" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudTraceScaleSlider" Minimum="0.25" Maximum="3" Value="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Vertical size of the frame-pacing trace." />
+                      <TextBlock Text="Trace width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudTraceWidthSlider" Minimum="0.1" Maximum="1" Value="0.42" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Width of the frame-pacing trace as a fraction of the visible view." />
+                      <TextBlock Text="Trace history (samples)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudTraceHistorySlider" Minimum="30" Maximum="600" Value="120" ValueChanged="HudLayoutSlider_Changed" ToolTip="Number of frames kept in the trace; newest at the right, scrolling left." />
+                      <TextBlock Text="Trace sensitivity (± ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudTraceSensitivitySlider" Minimum="0.5" Maximum="8" Value="2" ValueChanged="HudLayoutSlider_Changed" ToolTip="Vertical range for frame-time deviation around the effective cadence budget." />
+                      <TextBlock Text="Safe margin" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudSafeMarginSlider" Minimum="0" Maximum="0.25" Value="0.025" ValueChanged="HudLayoutSlider_Changed" />
+                      <CheckBox Name="HudClampCheck" Content="Keep HUD inside visible region" Foreground="#A8A8A8" Margin="0,4,0,0" Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                    </StackPanel>
+                  </ScrollViewer>
+                </Border>
+              </Popup>
+              <Popup Name="OverlaysPopup" StaysOpen="False" AllowsTransparency="True">
+                <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" MaxHeight="560">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Width="300">
+                      <!-- Crosshair -->
+                      <TextBlock Text="STATIC CROSSHAIR" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <TextBlock Text="A static, game-agnostic Counter-Strike crosshair at ViewLab's calibrated stereo centre. Dynamic spread/recoil are ignored." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,6" />
+                      <CheckBox Name="CrosshairEnabledCheck" Content="Enable crosshair" Foreground="#A8A8A8" Checked="CrosshairEnabled_Changed" Unchecked="CrosshairEnabled_Changed" />
+                      <ui:CrosshairPreview x:Name="CrosshairOverlayPreview" Height="120" Margin="0,6,0,2" />
+                      <TextBlock Text="Reposition Crosshair" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
+                      <TextBlock Text="Horizontal offset" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                      <Slider Name="CrosshairOffsetXSlider" Minimum="-1" Maximum="1" Value="0" ValueChanged="CrosshairPosition_Changed" MouseRightButtonUp="CrosshairOffset_ResetRightClick" />
+                      <TextBlock Text="Vertical offset" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                      <Slider Name="CrosshairOffsetYSlider" Minimum="-1" Maximum="1" Value="0" ValueChanged="CrosshairPosition_Changed" MouseRightButtonUp="CrosshairOffset_ResetRightClick" />
+                      <Button Content="Reset Crosshair Position" Style="{StaticResource RedButton}" Padding="8,2" Margin="0,4,0,2" HorizontalAlignment="Left" Click="CrosshairPosition_Reset" />
+                      <TextBlock Text="Size" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
+                      <Slider Name="CrosshairSizeSlider" Minimum="0" Maximum="30" Value="5" ValueChanged="CrosshairControlSlider_Changed" />
+                      <TextBlock Text="Gap (may be negative)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="CrosshairGapSlider" Minimum="-10" Maximum="20" Value="-2" ValueChanged="CrosshairControlSlider_Changed" />
+                      <TextBlock Text="Thickness" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="CrosshairThicknessSlider" Minimum="0.1" Maximum="10" Value="1" ValueChanged="CrosshairControlSlider_Changed" />
+                      <TextBlock Text="Outline thickness" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="CrosshairOutlineThicknessSlider" Minimum="0" Maximum="5" Value="1" ValueChanged="CrosshairControlSlider_Changed" />
+                      <TextBlock Text="Alpha" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="CrosshairAlphaSlider" Minimum="0" Maximum="1" Value="1" ValueChanged="CrosshairControlSlider_Changed" />
+                      <TextBlock Text="ViewLab VR scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="CrosshairScaleSlider" Minimum="0.1" Maximum="5" Value="1" ValueChanged="CrosshairControlSlider_Changed" />
+                      <WrapPanel Margin="0,6,0,0">
+                        <CheckBox Name="CrosshairDotCheck" Content="Centre dot" Foreground="#A8A8A8" Margin="0,0,10,0" Checked="CrosshairControl_Changed" Unchecked="CrosshairControl_Changed" />
+                        <CheckBox Name="CrosshairOutlineCheck" Content="Outline" Foreground="#A8A8A8" Margin="0,0,10,0" Checked="CrosshairControl_Changed" Unchecked="CrosshairControl_Changed" />
+                        <CheckBox Name="CrosshairTStyleCheck" Content="T-style" Foreground="#A8A8A8" Checked="CrosshairControl_Changed" Unchecked="CrosshairControl_Changed" />
+                      </WrapPanel>
+                      <TextBlock Text="Colour (hex RRGGBB)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
+                      <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                        <Border Name="CrosshairColorPreview" Width="20" Height="20" Background="#00FF00" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,0,6,0" />
+                        <TextBox Name="CrosshairColorBox" Width="90" Text="00FF00" />
+                        <Button Content="Apply" Style="{StaticResource RedButton}" Padding="8,2" Margin="6,0,0,0" Click="CrosshairColor_Apply" />
+                      </StackPanel>
+                      <TextBlock Text="Import CS2 share code (CSGO-...) or legacy cl_crosshair config" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,8,0,2" TextWrapping="Wrap" />
+                      <TextBox Name="CrosshairImportBox" Height="52" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                      <WrapPanel Margin="0,4,0,0">
+                        <Button Content="Import" Style="{StaticResource RedButton}" Padding="10,3" Margin="0,0,8,0" Click="CrosshairImport_Click" />
+                        <Button Content="Copy config" Style="{StaticResource RedButton}" Padding="10,3" Click="CrosshairExport_Click" />
+                      </WrapPanel>
+
+                      <Separator Margin="0,10,0,8" Background="{StaticResource BorderBrush}" Height="1" />
+                      <!-- Desktop notifications -->
+                      <TextBlock Text="DESKTOP NOTIFICATIONS" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <TextBlock Text="Mirrors supported Windows notifications into the visor. Collection/decoding run outside the render thread." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,6" />
+                      <CheckBox Name="NotifyEnabledCheck" Content="Enable notifications" Foreground="#A8A8A8" Checked="NotifyControl_Changed" Unchecked="NotifyControl_Changed" />
+                      <TextBlock Name="NotifyStatusText" Text="" Foreground="{StaticResource MutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,2,0,0" />
+                      <TextBlock Text="Position X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
+                      <Slider Name="NotifyXSlider" Minimum="0" Maximum="1" Value="0.98" ValueChanged="NotifyControlSlider_Changed" />
+                      <TextBlock Text="Position Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="NotifyYSlider" Minimum="0" Maximum="1" Value="0.98" ValueChanged="NotifyControlSlider_Changed" />
+                      <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="NotifyScaleSlider" Minimum="0.25" Maximum="3" Value="1" ValueChanged="NotifyControlSlider_Changed" />
+                      <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="NotifyOpacitySlider" Minimum="0.1" Maximum="1" Value="1" ValueChanged="NotifyControlSlider_Changed" />
+                      <TextBlock Text="Display duration (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="NotifyDurationSlider" Minimum="500" Maximum="15000" Value="3000" ValueChanged="NotifyControlSlider_Changed" />
+                      <TextBlock Text="Max visible" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="NotifyMaxSlider" Minimum="1" Maximum="6" Value="3" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="NotifyControlSlider_Changed" />
+                      <TextBlock Text="Message privacy" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,2" />
+                      <ComboBox Name="NotifyPrivacyCombo" SelectionChanged="NotifyControl_Changed">
+                        <ComboBoxItem Content="Full content" IsSelected="True" />
+                        <ComboBoxItem Content="Title / sender only" />
+                        <ComboBoxItem Content="Application only" />
+                      </ComboBox>
+                      <WrapPanel Margin="0,6,0,0">
+                        <CheckBox Name="NotifyShowIconCheck" Content="App icon" Foreground="#A8A8A8" Margin="0,0,10,0" IsChecked="True" Checked="NotifyControl_Changed" Unchecked="NotifyControl_Changed" />
+                        <CheckBox Name="NotifyShowImageCheck" Content="Image/thumbnail" Foreground="#A8A8A8" IsChecked="True" Checked="NotifyControl_Changed" Unchecked="NotifyControl_Changed" />
+                      </WrapPanel>
+                      <CheckBox Name="NotifyAllowlistModeCheck" Content="Treat list as allowlist (otherwise blocklist)" Foreground="#A8A8A8" Margin="0,6,0,0" Checked="NotifyControl_Changed" Unchecked="NotifyControl_Changed" />
+                      <TextBlock Text="App filter (comma-separated names)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,2" />
+                      <TextBox Name="NotifyFiltersBox" Height="34" AcceptsReturn="True" TextWrapping="Wrap" LostFocus="NotifyControl_Changed" />
+                      <Button Content="Test Notification" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,6,0,0" Click="TestNotification_Click" />
+
+                      <Separator Margin="0,10,0,8" Background="{StaticResource BorderBrush}" Height="1" />
+                      <!-- iRacing scaffold (future integration) -->
+                      <TextBlock Text="iRACING TELEMETRY" Foreground="#C08A2A" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <TextBlock Text="Optional shared-memory provider. The renderer receives generic ViewLab events only." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,6" />
+                      <CheckBox Name="IRacingEnabledCheck" Content="Enable iRacing integration" Foreground="#8A8A8A" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                      <TextBlock Name="IRacingStatusText" Text="Disconnected" Foreground="{StaticResource MutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,3,0,0" />
+                      <CheckBox Name="IRacingLapPopupCheck" Content="Lap-time popup" Foreground="#8A8A8A" Margin="0,4,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                      <CheckBox Name="IRacingSpotterGlowCheck" Content="Peripheral spotter glow" Foreground="#8A8A8A" Margin="0,4,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                      <CheckBox Name="IRacingFlagBorderCheck" Content="Flag-state border" Foreground="#8A8A8A" Margin="0,4,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                      <WrapPanel Margin="0,6,0,0">
+                        <Button Content="Left" Style="{StaticResource RedButton}" Padding="6,2" Click="IRacingTestLeft_Click" />
+                        <Button Content="Right" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestRight_Click" />
+                        <Button Content="Both" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestBoth_Click" />
+                        <Button Content="Clear" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestClear_Click" />
+                      </WrapPanel>
+                      <WrapPanel Margin="0,4,0,0">
+                        <Button Content="Lap" Style="{StaticResource RedButton}" Padding="6,2" Click="IRacingTestLap_Click" />
+                        <Button Content="Yellow" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestYellow_Click" />
+                        <Button Content="Blue" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestBlue_Click" />
+                      </WrapPanel>
+                    </StackPanel>
+                  </ScrollViewer>
                 </Border>
               </Popup>
               <Popup Name="VrQuadPopup" StaysOpen="False" AllowsTransparency="True" Closed="VrQuadPopup_Closed">

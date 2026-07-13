@@ -24,6 +24,13 @@ public sealed class BeanMaskEditor : FrameworkElement
 	private double _cropHorizontal = 1.0;
 	private double _cropVertical = 1.0;
 	private DragTarget _dragTarget = DragTarget.None;
+	private DragTarget _hoverTarget = DragTarget.None;
+	private double _viewZoom = 1.0;
+	private Vector _viewPan;
+	private bool _panning;
+	private CrosshairSettings? _crosshair;
+	private Point _panStart;
+	private Vector _panOrigin;
 
 	// Inner-eye notch pins hidden: the notch looks right monocularly but turns translucent
 	// under binocular fusion, so its controls are not exposed in the current UI.
@@ -49,6 +56,12 @@ public sealed class BeanMaskEditor : FrameworkElement
 	}
 
 	public event EventHandler? ShapeChanged;
+
+	internal void SetCrosshair(CrosshairSettings settings)
+	{
+		_crosshair = settings;
+		InvalidateVisual();
+	}
 
 	public double Opening
 	{
@@ -227,6 +240,10 @@ public sealed class BeanMaskEditor : FrameworkElement
 		{
 			return;
 		}
+		dc.PushClip(new RectangleGeometry(bounds));
+		Point centre = new(ActualWidth * 0.5, ActualHeight * 0.5);
+		dc.PushTransform(new TranslateTransform(_viewPan.X, _viewPan.Y));
+		dc.PushTransform(new ScaleTransform(_viewZoom, _viewZoom, centre.X, centre.Y));
 		dc.DrawRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)), 1.0), crop);
 
 		Rect leftEye = new(crop.Left, crop.Top, crop.Width * 0.5, crop.Height);
@@ -234,10 +251,30 @@ public sealed class BeanMaskEditor : FrameworkElement
 		StreamGeometry geometry = OpenInnerPreview
 			? BuildBinocularOpenInnerGeometry(leftEye, rightEye)
 			: BuildBinocularClosedGeometry(leftEye, rightEye);
-		dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromRgb(224, 42, 53)), 4.0), geometry);
-		dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)), 1.0), geometry);
+		// Geometry remains in model space, but the pen is compensated inside the zoom transform so
+		// its on-screen width stays inspectable instead of becoming hairline/thick with zoom.
+		double screenStroke = 4.0 / _viewZoom;
+		dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromRgb(224, 42, 53)), screenStroke), geometry);
+		dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)), 1.0 / _viewZoom), geometry);
+		DrawCrosshair(dc, crop);
 
 		DrawPins(dc, leftEye);
+		dc.Pop();
+		dc.Pop();
+	}
+
+	private void DrawCrosshair(DrawingContext dc, Rect eye)
+	{
+		if (_crosshair is null) return;
+		double unit=Math.Max(0.375,eye.Height/216.0*_crosshair.VrScale), arm=Math.Max(1,Math.Round(_crosshair.Size*unit));
+		double thick=Math.Max(1,Math.Round(_crosshair.Thickness*unit)), gap=Math.Round(_crosshair.Gap*unit), outline=_crosshair.Outline?Math.Max(1,Math.Round(_crosshair.OutlineThickness*unit)):0;
+		double cx=Math.Floor(eye.Left+eye.Width/2)+.5,cy=Math.Floor(eye.Top+eye.Height/2)+.5,half=thick/2,inner=gap+half;
+		var arms=new List<Rect>{new(cx-inner-arm,cy-half,arm,thick),new(cx+inner,cy-half,arm,thick),new(cx-half,cy+inner,thick,arm)};
+		if(!_crosshair.TStyle) arms.Add(new(cx-half,cy-inner-arm,thick,arm));
+		byte a=(byte)Math.Round(Math.Clamp(_crosshair.Alpha,0,1)*255); var fg=new SolidColorBrush(Color.FromArgb(a,_crosshair.R,_crosshair.G,_crosshair.B)); var bg=new SolidColorBrush(Color.FromArgb(a,0,0,0));
+		if(outline>0) foreach(var r in arms) dc.DrawRectangle(bg,null,new Rect(r.X-outline,r.Y-outline,r.Width+2*outline,r.Height+2*outline));
+		foreach(var r in arms) dc.DrawRectangle(fg,null,r);
+		if(_crosshair.Dot){if(outline>0)dc.DrawRectangle(bg,null,new Rect(cx-half-outline,cy-half-outline,thick+2*outline,thick+2*outline));dc.DrawRectangle(fg,null,new Rect(cx-half,cy-half,thick,thick));}
 	}
 
 	// One-to-one reference: the canvas is the full uncropped binocular render, so the crop
@@ -255,6 +292,25 @@ public sealed class BeanMaskEditor : FrameworkElement
 		Rect area = new(2.0, 2.0, Math.Max(0.0, ActualWidth - 4.0), Math.Max(0.0, ActualHeight - 4.0));
 		Rect crop = CropRect(area);
 		return new Rect(crop.Left, crop.Top, crop.Width * 0.5, crop.Height);
+	}
+
+	private Point ScenePoint(Point screen)
+	{
+		Point centre = new(ActualWidth * 0.5, ActualHeight * 0.5);
+		return new Point((screen.X - _viewPan.X - centre.X) / _viewZoom + centre.X,
+			(screen.Y - _viewPan.Y - centre.Y) / _viewZoom + centre.Y);
+	}
+
+	protected override void OnMouseWheel(MouseWheelEventArgs e)
+	{
+		base.OnMouseWheel(e);
+		Point cursor = e.GetPosition(this);
+		double before = _viewZoom;
+		_viewZoom = Math.Clamp(_viewZoom * (e.Delta > 0 ? 1.15 : 1.0 / 1.15), 1.0, 8.0);
+		// Hold the scene point beneath the cursor while zooming.
+		Point centre = new(ActualWidth * 0.5, ActualHeight * 0.5);
+		_viewPan += new Vector(cursor.X - centre.X, cursor.Y - centre.Y) * (1.0 / before - 1.0 / _viewZoom) * _viewZoom;
+		InvalidateVisual(); e.Handled = true;
 	}
 
 	// A steep near-zero shoulder keeps the rectangle visually square while remaining continuous:
@@ -416,30 +472,51 @@ public sealed class BeanMaskEditor : FrameworkElement
 		}
 	}
 
+	private const double PinPixelRadius = 5.5;
+	private const double PinHitPixelRadius = 12.0;
+
 	private void DrawPins(DrawingContext dc, Rect area)
 	{
 		var pins = PinPositions(area);
-		DrawPin(dc, pins.outerApex, Color.FromRgb(255, 96, 105));
-		DrawPin(dc, pins.size, Color.FromRgb(180, 255, 120));
-		DrawPin(dc, pins.curve, Color.FromRgb(210, 120, 255));
+		DrawPin(dc, pins.outerApex, Color.FromRgb(255, 96, 105), DragTarget.OuterApex);
+		DrawPin(dc, pins.size, Color.FromRgb(180, 255, 120), DragTarget.Size);
+		DrawPin(dc, pins.curve, Color.FromRgb(210, 120, 255), DragTarget.Curve);
 		if (ShowInnerShapePins)
 		{
-			DrawPin(dc, pins.innerLower, Color.FromRgb(255, 180, 90));
-			DrawPin(dc, pins.innerRise, Color.FromRgb(100, 225, 220));
-			DrawPin(dc, pins.innerPeakX, Color.FromRgb(80, 160, 255));
-			DrawPin(dc, pins.innerSteepness, Color.FromRgb(255, 210, 100));
+			DrawPin(dc, pins.innerLower, Color.FromRgb(255, 180, 90), DragTarget.InnerLower);
+			DrawPin(dc, pins.innerRise, Color.FromRgb(100, 225, 220), DragTarget.InnerRise);
+			DrawPin(dc, pins.innerPeakX, Color.FromRgb(80, 160, 255), DragTarget.InnerPeakX);
+			DrawPin(dc, pins.innerSteepness, Color.FromRgb(255, 210, 100), DragTarget.InnerSteepness);
 			if (InnerLowerY > 0.0)
 			{
-				DrawPin(dc, pins.innerBridge, Color.FromRgb(120, 200, 255));
+				DrawPin(dc, pins.innerBridge, Color.FromRgb(120, 200, 255), DragTarget.InnerBridge);
 			}
 		}
 	}
 
-	private static void DrawPin(DrawingContext dc, Point p, Color color)
+	private void DrawPin(DrawingContext dc, Point p, Color color, DragTarget target)
 	{
+		double modelRadius = PinPixelRadius / _viewZoom;
+		double outlinePixels = target == _dragTarget ? 3.0 : target == _hoverTarget ? 2.25 : 1.5;
 		var fill = new SolidColorBrush(color);
-		var stroke = new Pen(new SolidColorBrush(Color.FromRgb(12, 12, 13)), 1.5);
-		dc.DrawEllipse(fill, stroke, p, 5.5, 5.5);
+		var stroke = new Pen(new SolidColorBrush(Color.FromRgb(12, 12, 13)), outlinePixels / _viewZoom);
+		dc.DrawEllipse(fill, stroke, p, modelRadius, modelRadius);
+	}
+
+	private DragTarget HitTarget(Point point, Rect area)
+	{
+		var pins = PinPositions(area);
+		double modelHitRadius = PinHitPixelRadius / _viewZoom;
+		double hitRadiusSquared = modelHitRadius * modelHitRadius;
+		if (DistanceSquared(point, pins.size) <= hitRadiusSquared) return DragTarget.Size;
+		if (DistanceSquared(point, pins.curve) <= hitRadiusSquared) return DragTarget.Curve;
+		if (ShowInnerShapePins && DistanceSquared(point, pins.innerRise) <= hitRadiusSquared) return DragTarget.InnerRise;
+		if (ShowInnerShapePins && DistanceSquared(point, pins.innerPeakX) <= hitRadiusSquared) return DragTarget.InnerPeakX;
+		if (ShowInnerShapePins && DistanceSquared(point, pins.innerSteepness) <= hitRadiusSquared) return DragTarget.InnerSteepness;
+		if (DistanceSquared(point, pins.outerApex) <= hitRadiusSquared) return DragTarget.OuterApex;
+		if (ShowInnerShapePins && InnerLowerY > 0.0 && DistanceSquared(point, pins.innerBridge) <= hitRadiusSquared) return DragTarget.InnerBridge;
+		if (ShowInnerShapePins && DistanceSquared(point, pins.innerLower) <= hitRadiusSquared) return DragTarget.InnerLower;
+		return DragTarget.None;
 	}
 
 	private (Point outerApex, Point innerLower, Point innerBridge, Point size, Point curve, Point innerRise, Point innerPeakX, Point innerSteepness, double y0, double y1, double bridgeStartX, double bridgeStartY, double bridgeEndX, double bridgeEndY) PinPositions(Rect area)
@@ -482,42 +559,28 @@ public sealed class BeanMaskEditor : FrameworkElement
 	{
 		base.OnPreviewMouseLeftButtonDown(e);
 		Focus();
-		_dragTarget = DragTarget.None;
 		var area = LeftEyeArea();
-		var pins = PinPositions(area);
-		Point p = e.GetPosition(this);
-		if (DistanceSquared(p, pins.size) <= 144.0)
-			_dragTarget = DragTarget.Size;
-		else if (DistanceSquared(p, pins.curve) <= 144.0)
-			_dragTarget = DragTarget.Curve;
-		else if (ShowInnerShapePins && DistanceSquared(p, pins.innerRise) <= 144.0)
-			_dragTarget = DragTarget.InnerRise;
-		else if (ShowInnerShapePins && DistanceSquared(p, pins.innerPeakX) <= 144.0)
-			_dragTarget = DragTarget.InnerPeakX;
-		else if (ShowInnerShapePins && DistanceSquared(p, pins.innerSteepness) <= 144.0)
-			_dragTarget = DragTarget.InnerSteepness;
-		else if (DistanceSquared(p, pins.outerApex) <= 144.0)
-		{
-			_dragTarget = DragTarget.OuterApex;
-		}
-		else if (ShowInnerShapePins && InnerLowerY > 0.0 && DistanceSquared(p, pins.innerBridge) <= 144.0)
-		{
-			_dragTarget = DragTarget.InnerBridge;
-		}
-		else if (ShowInnerShapePins && DistanceSquared(p, pins.innerLower) <= 144.0)
-		{
-			_dragTarget = DragTarget.InnerLower;
-		}
+		_dragTarget = HitTarget(ScenePoint(e.GetPosition(this)), area);
+		_hoverTarget = _dragTarget;
+		InvalidateVisual();
 		if (_dragTarget != DragTarget.None)
 		{
 			CaptureMouse();
 			e.Handled = true;
+		}
+		else
+		{
+			_panning = true; _panStart = e.GetPosition(this); _panOrigin = _viewPan; CaptureMouse(); e.Handled = true;
 		}
 	}
 
 	protected override void OnPreviewMouseMove(MouseEventArgs e)
 	{
 		base.OnPreviewMouseMove(e);
+		if (_panning && e.LeftButton == MouseButtonState.Pressed)
+		{
+			_viewPan = _panOrigin + (e.GetPosition(this) - _panStart); InvalidateVisual(); e.Handled = true; return;
+		}
 		if (_dragTarget == DragTarget.None || e.LeftButton != MouseButtonState.Pressed)
 		{
 			if (_dragTarget != DragTarget.None)
@@ -528,12 +591,18 @@ public sealed class BeanMaskEditor : FrameworkElement
 					ReleaseMouseCapture();
 				}
 			}
+			DragTarget hover = HitTarget(ScenePoint(e.GetPosition(this)), LeftEyeArea());
+			if (_hoverTarget != hover)
+			{
+				_hoverTarget = hover;
+				InvalidateVisual();
+			}
 			return;
 		}
 
 		var area = LeftEyeArea();
 		var pins = PinPositions(area);
-		Point mouse = e.GetPosition(this);
+		Point mouse = ScenePoint(e.GetPosition(this));
 		double span = pins.y1 - pins.y0;
 
 		if (_dragTarget == DragTarget.OuterApex)
@@ -579,6 +648,9 @@ public sealed class BeanMaskEditor : FrameworkElement
 	{
 		base.OnPreviewMouseLeftButtonUp(e);
 		_dragTarget = DragTarget.None;
+		_hoverTarget = HitTarget(ScenePoint(e.GetPosition(this)), LeftEyeArea());
+		_panning = false;
+		InvalidateVisual();
 		if (IsMouseCaptured)
 		{
 			ReleaseMouseCapture();
@@ -590,6 +662,18 @@ public sealed class BeanMaskEditor : FrameworkElement
 	{
 		base.OnLostMouseCapture(e);
 		_dragTarget = DragTarget.None;
+		_panning = false;
+		InvalidateVisual();
+	}
+
+	protected override void OnMouseLeave(MouseEventArgs e)
+	{
+		base.OnMouseLeave(e);
+		if (_dragTarget == DragTarget.None && _hoverTarget != DragTarget.None)
+		{
+			_hoverTarget = DragTarget.None;
+			InvalidateVisual();
+		}
 	}
 
 	private static double DistanceSquared(Point a, Point b)

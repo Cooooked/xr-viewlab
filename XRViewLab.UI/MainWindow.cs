@@ -37,6 +37,7 @@ public partial class MainWindow : Window
 
 	// Render options
 	private const string MaskEnabledKey = "mask_enabled";
+	private const string TopmostVisorOverlaysKey = "topmost_visor_overlays";
 	private const string MaskSizeKey = "mask_size";
 	private const string MaskRoundedKey = "mask_rounded";
 	private const string MaskCornerKey = "mask_corner";
@@ -59,6 +60,66 @@ public partial class MainWindow : Window
 	private const string VertVisualMaskBothKey = "visual_mask_only";
 	private const string VertTopMaskKey = "vertical_top_mask_only";
 	private const string VertBottomMaskKey = "vertical_bottom_mask_only";
+	private const string CalibrationGridKey = "calibration_grid";
+	private const string CalibrationRulerKey = "calibration_ruler";
+	private const string CalibrationGratingsKey = "calibration_gratings";
+	private const string CalibrationBarsKey = "calibration_bars";
+	private const string CalibrationBeaconKey = "calibration_beacon";
+	private const string CalibrationEdgeProbesKey = "calibration_edge_probes";
+	private const string CalibrationCheckerboardsKey = "calibration_checkerboards";
+	private const string CalibrationZonePlateKey = "calibration_zone_plate";
+	private const string CalibrationClippingStepsKey = "calibration_clipping_steps";
+	private const string CalibrationMotionStripKey = "calibration_motion_strip";
+	private const string HudEnabledKey = "hud_enabled";
+	private const string HudTraceEnabledKey = "hud_trace_enabled";
+	private const string HudAnchorXKey = "hud_anchor_x";
+	private const string HudAnchorYKey = "hud_anchor_y";
+	private const string HudScaleKey = "hud_scale";
+	private const string HudTraceSensitivityKey = "hud_trace_sensitivity_ms";
+	private const string HudTraceXKey = "hud_trace_x";
+	private const string HudTraceYKey = "hud_trace_y";
+	private const string HudTraceScaleKey = "hud_trace_scale";
+	private const string HudTraceWidthKey = "hud_trace_width";
+	private const string HudTraceHistoryKey = "hud_trace_history";
+	private const string HudAlarmOnlyKey = "hud_alarm_only";
+	private const string HudAlarmHoldKey = "hud_alarm_hold_ms";
+	private const string HudSafeMarginKey = "hud_safe_margin";
+	private const string HudClampKey = "hud_clamp_to_visible";
+
+	// Feature 2: crosshair
+	private const string CrosshairEnabledKey = "crosshair_enabled";
+	private const string CrosshairDotKey = "crosshair_dot";
+	private const string CrosshairOutlineKey = "crosshair_outline";
+	private const string CrosshairTStyleKey = "crosshair_tstyle";
+	private const string CrosshairSizeKey = "crosshair_size";
+	private const string CrosshairGapKey = "crosshair_gap";
+	private const string CrosshairThicknessKey = "crosshair_thickness";
+	private const string CrosshairOutlineThicknessKey = "crosshair_outline_thickness";
+	private const string CrosshairAlphaKey = "crosshair_alpha";
+	private const string CrosshairScaleKey = "crosshair_scale";
+	private const string CrosshairColorKey = "crosshair_color";
+	private const string CrosshairOffsetXKey = "crosshair_offset_x";
+	private const string CrosshairOffsetYKey = "crosshair_offset_y";
+
+	// Feature 3: notifications
+	private const string NotifyEnabledKey = "notify_enabled";
+	private const string NotifyXKey = "notify_x";
+	private const string NotifyYKey = "notify_y";
+	private const string NotifyScaleKey = "notify_scale";
+	private const string NotifyOpacityKey = "notify_opacity";
+	private const string NotifyDurationKey = "notify_duration_ms";
+	private const string NotifyMaxKey = "notify_max_visible";
+	private const string NotifyPrivacyKey = "notify_privacy";
+	private const string NotifyShowIconKey = "notify_show_icon";
+	private const string NotifyShowImageKey = "notify_show_image";
+	private const string NotifyAllowlistModeKey = "notify_allowlist_mode";
+	private const string NotifyFiltersKey = "notify_app_filters";
+
+	// Feature 4: iRacing scaffold
+	private const string IRacingEnabledKey = "iracing_enabled";
+	private const string IRacingLapPopupKey = "iracing_lap_popup";
+	private const string IRacingSpotterGlowKey = "iracing_spotter_glow";
+	private const string IRacingFlagBorderKey = "iracing_flag_border";
 
 	// ReShade MENU � OpenXR
 	private const string XrHmdMenuKey = "reshade_xr_hmd_menu";
@@ -87,6 +148,11 @@ public partial class MainWindow : Window
 	private string? _availableUpdateTag;
 
 	private readonly ReShadeControlService _xrControl = new();
+	private readonly LiveStateService _liveState = new();
+	private readonly CrosshairSettings _crosshair = new();
+	private NotificationService? _notifications;
+	private IRacingTelemetryProvider? _iracingProvider;
+	private bool _boundaryDragActive;
 	private System.Windows.Threading.DispatcherTimer _xrPollTimer;
 
 	private bool CompactLayout
@@ -142,6 +208,8 @@ public partial class MainWindow : Window
 		UpdateResponsiveLayout();
 		UpdateFooterLayout();
 		VisualMasksPopup.Closed += (_, _) => _visualMasksPopupClosedAt = DateTime.UtcNow;
+		CalibrationPopup.Closed += (_, _) => _calibrationPopupClosedAt = DateTime.UtcNow;
+		OverlaysPopup.Closed += (_, _) => _overlaysPopupClosedAt = DateTime.UtcNow;
 		_xrPollTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
 		_xrPollTimer.Tick += XrPollTimer_Tick;
 		_xrPollTimer.Start();
@@ -153,6 +221,17 @@ public partial class MainWindow : Window
 	}
 
 	private DateTime _visualMasksPopupClosedAt = DateTime.MinValue;
+	private DateTime _calibrationPopupClosedAt = DateTime.MinValue;
+	private DateTime _overlaysPopupClosedAt = DateTime.MinValue;
+
+	private void OverlaysButton_Click(object sender, RoutedEventArgs e)
+	{
+		if ((DateTime.UtcNow - _overlaysPopupClosedAt).TotalMilliseconds < 200)
+			return;
+		OverlaysPopup.PlacementTarget = (UIElement)sender;
+		OverlaysPopup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+		OverlaysPopup.IsOpen = true;
+	}
 
 	private void VisualMasksButton_Click(object sender, RoutedEventArgs e)
 	{
@@ -163,6 +242,15 @@ public partial class MainWindow : Window
 		VisualMasksPopup.PlacementTarget = (UIElement)sender;
 		VisualMasksPopup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
 		VisualMasksPopup.IsOpen = true;
+	}
+
+	private void CalibrationButton_Click(object sender, RoutedEventArgs e)
+	{
+		if ((DateTime.UtcNow - _calibrationPopupClosedAt).TotalMilliseconds < 200)
+			return;
+		CalibrationPopup.PlacementTarget = (UIElement)sender;
+		CalibrationPopup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+		CalibrationPopup.IsOpen = true;
 	}
 
 	private static void EnsureConfigMigrated()
@@ -177,6 +265,8 @@ public partial class MainWindow : Window
 	protected override void OnClosing(CancelEventArgs e)
 	{
 		SaveWindowSize();
+		_notifications?.Dispose();
+		_iracingProvider?.Dispose();
 		base.OnClosing(e);
 	}
 
@@ -925,6 +1015,7 @@ public partial class MainWindow : Window
 		HorizontalBox.Text = FormatScale(value);
 		// Mask (visor): absolute bounds, default 1.0 = no mask on that axis.
 		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
+		TopmostVisorOverlaysCheck.IsChecked = ReadBoolSetting(TopmostVisorOverlaysKey, fallback: false);
 		MaskSizeSlider.Value = ReadRangeSetting(MaskSizeKey, 1.0, 0.1, 1.0);
 		MaskRoundedCheck.IsChecked = ReadBoolSetting(MaskRoundedKey, fallback: true);
 		MaskVerticalBox.Text = FormatScale(ReadScaleSetting("mask_vertical", 1.0));
@@ -948,9 +1039,75 @@ public partial class MainWindow : Window
 		VertVisualMaskBothCheck.IsChecked = ReadBoolSetting(VertVisualMaskBothKey, fallback: false);
 		VertTopMaskCheck.IsChecked = ReadBoolSetting(VertTopMaskKey, fallback: false);
 		VertBottomMaskCheck.IsChecked = ReadBoolSetting(VertBottomMaskKey, fallback: false);
+		CalGridCheck.IsChecked = ReadBoolSetting(CalibrationGridKey, fallback: false);
+		CalRulerCheck.IsChecked = ReadBoolSetting(CalibrationRulerKey, fallback: false);
+		CalGratingsCheck.IsChecked = ReadBoolSetting(CalibrationGratingsKey, fallback: false);
+		CalBarsCheck.IsChecked = ReadBoolSetting(CalibrationBarsKey, fallback: false);
+		CalBeaconCheck.IsChecked = ReadBoolSetting(CalibrationBeaconKey, fallback: false);
+		CalEdgeProbesCheck.IsChecked = ReadBoolSetting(CalibrationEdgeProbesKey, fallback: false);
+		CalCheckerboardsCheck.IsChecked = ReadBoolSetting(CalibrationCheckerboardsKey, fallback: false);
+		CalZonePlateCheck.IsChecked = ReadBoolSetting(CalibrationZonePlateKey, fallback: false);
+		CalClippingCheck.IsChecked = ReadBoolSetting(CalibrationClippingStepsKey, fallback: false);
+		CalMotionCheck.IsChecked = ReadBoolSetting(CalibrationMotionStripKey, fallback: false);
+		HudEnabledCheck.IsChecked = ReadBoolSetting(HudEnabledKey, fallback: false);
+		HudTraceEnabledCheck.IsChecked = ReadBoolSetting(HudTraceEnabledKey, fallback: false);
+		HudXSlider.Value = ReadRangeSetting(HudAnchorXKey, 0.04, 0.0, 1.0);
+		HudYSlider.Value = ReadRangeSetting(HudAnchorYKey, 0.05, 0.0, 1.0);
+		HudScaleSlider.Value = ReadRangeSetting(HudScaleKey, 1.0, 0.5, 3.0);
+		HudTraceSensitivitySlider.Value = ReadRangeSetting(HudTraceSensitivityKey, 2.0, 0.5, 8.0);
+		HudTraceXSlider.Value = ReadRangeSetting(HudTraceXKey, 0.05, 0.0, 1.0);
+		HudTraceYSlider.Value = ReadRangeSetting(HudTraceYKey, 0.75, 0.0, 1.0);
+		HudTraceScaleSlider.Value = ReadRangeSetting(HudTraceScaleKey, 1.0, 0.25, 3.0);
+		HudTraceWidthSlider.Value = ReadRangeSetting(HudTraceWidthKey, 0.42, 0.1, 1.0);
+		HudTraceHistorySlider.Value = ReadRangeSetting(HudTraceHistoryKey, 120.0, 30.0, 600.0);
+		HudAlarmOnlyCheck.IsChecked = ReadBoolSetting(HudAlarmOnlyKey, fallback: false);
+		HudSafeMarginSlider.Value = ReadRangeSetting(HudSafeMarginKey, 0.025, 0.0, 0.25);
+		HudClampCheck.IsChecked = ReadBoolSetting(HudClampKey, fallback: true);
+
+		// Feature 2: crosshair
+		_crosshair.Size = ReadRangeSetting(CrosshairSizeKey, 5.0, 0.0, 1000.0);
+		_crosshair.Gap = ReadRangeSetting(CrosshairGapKey, -2.0, -50.0, 50.0);
+		_crosshair.Thickness = ReadRangeSetting(CrosshairThicknessKey, 1.0, 0.1, 50.0);
+		_crosshair.OutlineThickness = ReadRangeSetting(CrosshairOutlineThicknessKey, 1.0, 0.0, 10.0);
+		_crosshair.Alpha = ReadRangeSetting(CrosshairAlphaKey, 1.0, 0.0, 1.0);
+		_crosshair.VrScale = ReadRangeSetting(CrosshairScaleKey, 1.0, 0.1, 10.0);
+		_crosshair.Dot = ReadBoolSetting(CrosshairDotKey, false);
+		_crosshair.Outline = ReadBoolSetting(CrosshairOutlineKey, true);
+		_crosshair.TStyle = ReadBoolSetting(CrosshairTStyleKey, false);
+		{
+			uint col = (uint)ReadRangeSetting(CrosshairColorKey, 0x00FF00, 0, 0xFFFFFF);
+			_crosshair.R = (byte)((col >> 16) & 0xFF); _crosshair.G = (byte)((col >> 8) & 0xFF); _crosshair.B = (byte)(col & 0xFF);
+		}
+		CrosshairEnabledCheck.IsChecked = ReadBoolSetting(CrosshairEnabledKey, false);
+		CrosshairOffsetXSlider.Value = ReadRangeSetting(CrosshairOffsetXKey, 0.0, -1.0, 1.0);
+		CrosshairOffsetYSlider.Value = ReadRangeSetting(CrosshairOffsetYKey, 0.0, -1.0, 1.0);
+		SyncCrosshairControlsFromModel();
+
+		// Feature 3: notifications
+		NotifyEnabledCheck.IsChecked = ReadBoolSetting(NotifyEnabledKey, false);
+		NotifyXSlider.Value = ReadRangeSetting(NotifyXKey, 0.98, 0.0, 1.0);
+		NotifyYSlider.Value = ReadRangeSetting(NotifyYKey, 0.98, 0.0, 1.0);
+		NotifyScaleSlider.Value = ReadRangeSetting(NotifyScaleKey, 1.0, 0.25, 3.0);
+		NotifyOpacitySlider.Value = ReadRangeSetting(NotifyOpacityKey, 1.0, 0.1, 1.0);
+		NotifyDurationSlider.Value = ReadRangeSetting(NotifyDurationKey, 3000.0, 500.0, 15000.0);
+		NotifyMaxSlider.Value = ReadRangeSetting(NotifyMaxKey, 3.0, 1.0, 6.0);
+		NotifyPrivacyCombo.SelectedIndex = (int)ReadRangeSetting(NotifyPrivacyKey, 0, 0, 2);
+		NotifyShowIconCheck.IsChecked = ReadBoolSetting(NotifyShowIconKey, true);
+		NotifyShowImageCheck.IsChecked = ReadBoolSetting(NotifyShowImageKey, true);
+		NotifyAllowlistModeCheck.IsChecked = ReadBoolSetting(NotifyAllowlistModeKey, false);
+		NotifyFiltersBox.Text = ReadSetting(NotifyFiltersKey, string.Empty);
+
+		// Feature 4: iRacing scaffold
+		IRacingEnabledCheck.IsChecked = ReadBoolSetting(IRacingEnabledKey, false);
+		IRacingLapPopupCheck.IsChecked = ReadBoolSetting(IRacingLapPopupKey, false);
+		IRacingSpotterGlowCheck.IsChecked = ReadBoolSetting(IRacingSpotterGlowKey, false);
+		IRacingFlagBorderCheck.IsChecked = ReadBoolSetting(IRacingFlagBorderKey, false);
+
 		// Gameplay/Tuning + menu/window controls now live in the ReShade Remote pop-out (ReShadeRemoteWindow).
 		SyncSlidersFromText();
 		_loading = false;
+		EnsureIRacingProvider();
+		ApplyNotificationSettings();
 		UpdateModeControls();
 		UpdateHints();
 		StatusText.Text = "Config: " + ConfigPath;
@@ -1299,6 +1456,7 @@ public partial class MainWindow : Window
 			{
 				SyncMaskEditorFromSliders();
 			}
+			SaveGlobalSettings();
 		}
 	}
 
@@ -1329,13 +1487,25 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading) return;
 		SaveExperimentalSettings();
-		StatusText.Text = "Render options saved. Restart the VR game.";
+		PublishLiveState();
+		StatusText.Text = "Visor setting applied live.";
 	}
+
+	private void HudLayout_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		SaveCalibrationSettings();
+		PublishLiveState();
+		StatusText.Text = "HUD position applied live.";
+	}
+
+	private void HudLayoutSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => HudLayout_Changed(sender, e);
 
 	private void SaveExperimentalSettings()
 	{
 		Directory.CreateDirectory(ConfigDirectory);
 		WritePrivateProfileString("Settings", MaskEnabledKey, MaskEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", TopmostVisorOverlaysKey, TopmostVisorOverlaysCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskRoundedKey, MaskRoundedCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HorizVisualMaskBothKey, HorizVisualMaskBothCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HorizOuterEyeMaskKey, HorizOuterEyeMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
@@ -1343,6 +1513,331 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", VertVisualMaskBothKey, VertVisualMaskBothCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", VertTopMaskKey, VertTopMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", VertBottomMaskKey, VertBottomMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
+	}
+
+	private void CalibrationCheck_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		SaveCalibrationSettings();
+		PublishLiveState();
+		StatusText.Text = "Calibration setting applied live.";
+	}
+
+	private void PublishLiveState()
+	{
+		uint mask = 0;
+		if (CalGridCheck.IsChecked == true) mask |= 1u << 0; if (CalRulerCheck.IsChecked == true) mask |= 1u << 1;
+		if (CalGratingsCheck.IsChecked == true) mask |= 1u << 2; if (CalBarsCheck.IsChecked == true) mask |= 1u << 3;
+		if (CalBeaconCheck.IsChecked == true) mask |= 1u << 4; if (CalEdgeProbesCheck.IsChecked == true) mask |= 1u << 5;
+		if (CalCheckerboardsCheck.IsChecked == true) mask |= 1u << 6; if (CalZonePlateCheck.IsChecked == true) mask |= 1u << 7;
+		if (CalClippingCheck.IsChecked == true) mask |= 1u << 8; if (CalMotionCheck.IsChecked == true) mask |= 1u << 9;
+		_liveState.Publish(mask,
+			MaskEnabledCheck.IsChecked == true, TopmostVisorOverlaysCheck.IsChecked == true, MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
+			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, MaskInnerBridgeSlider.Value,
+			MaskInnerBridgeRiseSlider.Value, MaskInnerBridgePeakXSlider.Value, MaskInnerBridgeSteepnessSlider.Value,
+			HudEnabledCheck.IsChecked == true, HudTraceEnabledCheck.IsChecked == true, HudXSlider.Value, HudYSlider.Value, HudScaleSlider.Value,
+			HudSafeMarginSlider.Value, HudClampCheck.IsChecked == true, HudAlarmOnlyCheck.IsChecked == true,
+			HudTraceSensitivitySlider.Value, HudTraceXSlider.Value, HudTraceYSlider.Value, HudTraceScaleSlider.Value,
+			HudTraceWidthSlider.Value, HudTraceHistorySlider.Value, ReadRangeSetting(HudAlarmHoldKey, 1500.0, 0.0, 10000.0),
+			_boundaryDragActive,
+			CrosshairEnabledCheck.IsChecked == true, _crosshair.Dot, _crosshair.Outline, _crosshair.TStyle,
+			_crosshair.Size, _crosshair.Gap, _crosshair.Thickness, _crosshair.OutlineThickness, _crosshair.Alpha, _crosshair.VrScale, _crosshair.ColorRgb,
+			CrosshairOffsetXSlider.Value, CrosshairOffsetYSlider.Value,
+			NotifyEnabledCheck.IsChecked == true, NotifyShowIconCheck.IsChecked == true, NotifyShowImageCheck.IsChecked == true,
+			NotifyXSlider.Value, NotifyYSlider.Value, NotifyScaleSlider.Value, NotifyOpacitySlider.Value, NotifyDurationSlider.Value,
+			(uint)Math.Round(NotifyMaxSlider.Value), (uint)Math.Max(0, NotifyPrivacyCombo.SelectedIndex),
+			IRacingEnabledCheck.IsChecked == true, IRacingLapPopupCheck.IsChecked == true,
+			IRacingSpotterGlowCheck.IsChecked == true, IRacingFlagBorderCheck.IsChecked == true);
+	}
+
+	// ---- Feature 1: render-boundary flash drag signalling --------------------------------------
+	// Raised by drag-sensitive layout controls (HUD/trace position/size/width/height/scale). Only
+	// these controls flash the boundary — telemetry, colour, opacity, and threshold controls do not.
+	private void BoundaryDrag_Start(object sender, System.Windows.Controls.Primitives.DragStartedEventArgs e)
+	{
+		if (_loading) return;
+		_boundaryDragActive = true;
+		PublishLiveState();
+	}
+
+	private void BoundaryDrag_End(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+	{
+		if (_loading) return;
+		if (!_boundaryDragActive) return;
+		_boundaryDragActive = false;
+		PublishLiveState(); // native stamps the fade-out on the falling edge
+	}
+
+	// ---- Feature 2: crosshair UI ---------------------------------------------------------------
+	private void SyncCrosshairControlsFromModel()
+	{
+		if (CrosshairSizeSlider == null) return;
+		bool prev = _loading; _loading = true;
+		CrosshairSizeSlider.Value = Math.Clamp(_crosshair.Size, 0.0, 100.0);
+		CrosshairGapSlider.Value = Math.Clamp(_crosshair.Gap, -50.0, 50.0);
+		CrosshairThicknessSlider.Value = Math.Clamp(_crosshair.Thickness, 0.1, 50.0);
+		CrosshairOutlineThicknessSlider.Value = Math.Clamp(_crosshair.OutlineThickness, 0.0, 10.0);
+		CrosshairAlphaSlider.Value = Math.Clamp(_crosshair.Alpha, 0.0, 1.0);
+		CrosshairScaleSlider.Value = Math.Clamp(_crosshair.VrScale, 0.1, 10.0);
+		CrosshairDotCheck.IsChecked = _crosshair.Dot;
+		CrosshairOutlineCheck.IsChecked = _crosshair.Outline;
+		CrosshairTStyleCheck.IsChecked = _crosshair.TStyle;
+		CrosshairColorPreview.Background = new SolidColorBrush(Color.FromRgb(_crosshair.R, _crosshair.G, _crosshair.B));
+		CrosshairColorBox.Text = $"{_crosshair.R:X2}{_crosshair.G:X2}{_crosshair.B:X2}";
+		CrosshairOverlayPreview?.Apply(_crosshair);
+		MaskBeanEditor?.SetCrosshair(_crosshair);
+		_loading = prev;
+	}
+
+	private void CrosshairControl_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		_crosshair.Size = CrosshairSizeSlider.Value;
+		_crosshair.Gap = CrosshairGapSlider.Value;
+		_crosshair.Thickness = CrosshairThicknessSlider.Value;
+		_crosshair.OutlineThickness = CrosshairOutlineThicknessSlider.Value;
+		_crosshair.Alpha = CrosshairAlphaSlider.Value;
+		_crosshair.VrScale = CrosshairScaleSlider.Value;
+		_crosshair.Dot = CrosshairDotCheck.IsChecked == true;
+		_crosshair.Outline = CrosshairOutlineCheck.IsChecked == true;
+		_crosshair.TStyle = CrosshairTStyleCheck.IsChecked == true;
+		CrosshairOverlayPreview?.Apply(_crosshair);
+		MaskBeanEditor?.SetCrosshair(_crosshair);
+		SaveCrosshairSettings();
+		PublishLiveState();
+		StatusText.Text = "Crosshair applied live.";
+	}
+
+	private void CrosshairControlSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => CrosshairControl_Changed(sender, e);
+
+	// Colour is entered as a hex string (e.g. "00FF00" or "#00FF00") — no WinForms dependency.
+	private void CrosshairColor_Apply(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		string hex = (CrosshairColorBox.Text ?? string.Empty).Trim().TrimStart('#');
+		if (hex.Length == 6 && uint.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint rgb))
+		{
+			_crosshair.R = (byte)((rgb >> 16) & 0xFF); _crosshair.G = (byte)((rgb >> 8) & 0xFF); _crosshair.B = (byte)(rgb & 0xFF);
+			CrosshairColorPreview.Background = new SolidColorBrush(Color.FromRgb(_crosshair.R, _crosshair.G, _crosshair.B));
+			CrosshairOverlayPreview?.Apply(_crosshair);
+			MaskBeanEditor?.SetCrosshair(_crosshair);
+			SaveCrosshairSettings();
+			PublishLiveState();
+			StatusText.Text = "Crosshair colour applied.";
+		}
+		else StatusText.Text = "Enter a 6-digit hex colour, e.g. 00FF00.";
+	}
+
+	private void CrosshairImport_Click(object sender, RoutedEventArgs e)
+	{
+		string status = _crosshair.ImportAny(CrosshairImportBox.Text ?? string.Empty);
+		SyncCrosshairControlsFromModel();
+		SaveCrosshairSettings();
+		PublishLiveState();
+		StatusText.Text = status;
+	}
+
+	private void CrosshairExport_Click(object sender, RoutedEventArgs e)
+	{
+		string cfg = _crosshair.ToLegacyConfig();
+		try { Clipboard.SetText(cfg); StatusText.Text = "Crosshair config copied to clipboard."; }
+		catch { StatusText.Text = "Could not access clipboard."; }
+		CrosshairImportBox.Text = cfg;
+	}
+
+	private void SaveCrosshairSettings()
+	{
+		Directory.CreateDirectory(ConfigDirectory);
+		var c = CultureInfo.InvariantCulture;
+		WritePrivateProfileString("Settings", CrosshairEnabledKey, CrosshairEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairDotKey, _crosshair.Dot ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairOutlineKey, _crosshair.Outline ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairTStyleKey, _crosshair.TStyle ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairSizeKey, _crosshair.Size.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairGapKey, _crosshair.Gap.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairThicknessKey, _crosshair.Thickness.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairOutlineThicknessKey, _crosshair.OutlineThickness.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairAlphaKey, _crosshair.Alpha.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairScaleKey, _crosshair.VrScale.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairColorKey, ((int)_crosshair.ColorRgb).ToString(c), ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairOffsetXKey, CrosshairOffsetXSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", CrosshairOffsetYKey, CrosshairOffsetYSlider.Value.ToString("0.###", c), ConfigPath);
+	}
+
+	private void CrosshairPosition_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (_loading) return; SaveCrosshairSettings(); PublishLiveState();
+		StatusText.Text = "Crosshair calibration applied live.";
+	}
+
+	private void CrosshairPosition_Reset(object sender, RoutedEventArgs e)
+	{
+		CrosshairOffsetXSlider.Value = 0; CrosshairOffsetYSlider.Value = 0;
+		SaveCrosshairSettings(); PublishLiveState(); StatusText.Text = "Crosshair position reset.";
+	}
+
+	private void CrosshairOffset_ResetRightClick(object sender, MouseButtonEventArgs e)
+	{
+		if (_loading) return;
+		e.Handled = true;
+		if (sender == CrosshairOffsetXSlider) CrosshairOffsetXSlider.Value = 0;
+		else if (sender == CrosshairOffsetYSlider) CrosshairOffsetYSlider.Value = 0;
+		SaveCrosshairSettings(); PublishLiveState();
+	}
+
+	private void CrosshairEnabled_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		SaveCrosshairSettings();
+		PublishLiveState();
+		StatusText.Text = "Crosshair applied live.";
+	}
+
+	// ---- Feature 3: notifications UI -----------------------------------------------------------
+	private void ApplyNotificationSettings()
+	{
+		_notifications ??= new NotificationService(Dispatcher);
+		_notifications.StatusChanged -= NotificationStatusChanged;
+		_notifications.StatusChanged += NotificationStatusChanged;
+		var s = new NotificationSettings
+		{
+			Enabled = NotifyEnabledCheck.IsChecked == true,
+			X = NotifyXSlider.Value, Y = NotifyYSlider.Value,
+			Scale = NotifyScaleSlider.Value, Opacity = NotifyOpacitySlider.Value,
+			DurationMs = NotifyDurationSlider.Value,
+			MaxVisible = (int)Math.Round(NotifyMaxSlider.Value),
+			Privacy = Math.Max(0, NotifyPrivacyCombo.SelectedIndex),
+			ShowIcon = NotifyShowIconCheck.IsChecked == true,
+			ShowImage = NotifyShowImageCheck.IsChecked == true,
+			AllowlistMode = NotifyAllowlistModeCheck.IsChecked == true,
+			AppFilters = (NotifyFiltersBox.Text ?? string.Empty)
+				.Split(new[] { ',', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+		};
+		_notifications.Update(s);
+		if (NotifyStatusText != null) NotifyStatusText.Text = _notifications.Status;
+	}
+
+	private void NotificationStatusChanged()
+	{
+		Dispatcher.BeginInvoke(() => { if (NotifyStatusText != null && _notifications != null) NotifyStatusText.Text = _notifications.Status; });
+	}
+
+	private void TestNotification_Click(object sender, RoutedEventArgs e)
+	{
+		NotifyEnabledCheck.IsChecked = true;
+		ApplyNotificationSettings();
+		_notifications?.EnqueueTestNotification();
+		PublishLiveState();
+		if (NotifyStatusText != null && _notifications != null) NotifyStatusText.Text = _notifications.Status;
+	}
+
+	private void NotifyControl_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		SaveNotificationSettings();
+		PublishLiveState();
+		ApplyNotificationSettings();
+		StatusText.Text = "Notification settings applied.";
+	}
+
+	private void NotifyControlSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => NotifyControl_Changed(sender, e);
+
+	private void SaveNotificationSettings()
+	{
+		Directory.CreateDirectory(ConfigDirectory);
+		var c = CultureInfo.InvariantCulture;
+		WritePrivateProfileString("Settings", NotifyEnabledKey, NotifyEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", NotifyXKey, NotifyXSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", NotifyYKey, NotifyYSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", NotifyScaleKey, NotifyScaleSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", NotifyOpacityKey, NotifyOpacitySlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", NotifyDurationKey, NotifyDurationSlider.Value.ToString("0", c), ConfigPath);
+		WritePrivateProfileString("Settings", NotifyMaxKey, Math.Round(NotifyMaxSlider.Value).ToString("0", c), ConfigPath);
+		WritePrivateProfileString("Settings", NotifyPrivacyKey, Math.Max(0, NotifyPrivacyCombo.SelectedIndex).ToString("0", c), ConfigPath);
+		WritePrivateProfileString("Settings", NotifyShowIconKey, NotifyShowIconCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", NotifyShowImageKey, NotifyShowImageCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", NotifyAllowlistModeKey, NotifyAllowlistModeCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", NotifyFiltersKey, NotifyFiltersBox.Text ?? string.Empty, ConfigPath);
+	}
+
+	// ---- Feature 4: iRacing scaffold UI --------------------------------------------------------
+	private void IRacingControl_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		Directory.CreateDirectory(ConfigDirectory);
+		WritePrivateProfileString("Settings", IRacingEnabledKey, IRacingEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", IRacingLapPopupKey, IRacingLapPopupCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", IRacingSpotterGlowKey, IRacingSpotterGlowCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", IRacingFlagBorderKey, IRacingFlagBorderCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		PublishLiveState();
+		EnsureIRacingProvider();
+		StatusText.Text = "iRacing telemetry settings applied.";
+	}
+
+	private void EnsureIRacingProvider()
+	{
+		_iracingProvider ??= new IRacingTelemetryProvider();
+		_iracingProvider.DiagnosticsChanged -= IRacingDiagnosticsChanged;
+		_iracingProvider.DiagnosticsChanged += IRacingDiagnosticsChanged;
+		_iracingProvider.EventPublished -= IRacingEventPublished;
+		_iracingProvider.EventPublished += IRacingEventPublished;
+		if (IRacingEnabledCheck.IsChecked == true) _iracingProvider.Start(); else _iracingProvider.Stop();
+		IRacingDiagnosticsChanged();
+	}
+
+	private void IRacingDiagnosticsChanged() => Dispatcher.BeginInvoke(() =>
+	{
+		if (IRacingStatusText != null && _iracingProvider != null)
+			IRacingStatusText.Text = $"{_iracingProvider.Status} — {_iracingProvider.Diagnostics}";
+	});
+
+	private void IRacingEventPublished(object? sender, ViewLabEvent e)
+	{
+		Dispatcher.BeginInvoke(() => {
+			bool enabled = e.Kind switch { ViewLabEventKind.LapTime => IRacingLapPopupCheck.IsChecked==true, ViewLabEventKind.SpotterGlow => IRacingSpotterGlowCheck.IsChecked==true, ViewLabEventKind.FlagState => IRacingFlagBorderCheck.IsChecked==true, _=>false };
+			if (!enabled) return;
+			if (NotifyEnabledCheck.IsChecked != true) { NotifyEnabledCheck.IsChecked=true; ApplyNotificationSettings(); PublishLiveState(); }
+			_notifications ??= new NotificationService(Dispatcher);
+			_notifications.EnqueueEvent(e); // visible generic-event consumer; native iRacing coupling remains zero
+		});
+	}
+
+	private void SimulateIRacing(string kind){EnsureIRacingProvider();_iracingProvider?.Simulate(kind);}
+	private void IRacingTestLeft_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Left");
+	private void IRacingTestRight_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Right");
+	private void IRacingTestBoth_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Both");
+	private void IRacingTestClear_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Clear");
+	private void IRacingTestLap_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Lap");
+	private void IRacingTestYellow_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Yellow");
+	private void IRacingTestBlue_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Blue");
+
+	private void SaveCalibrationSettings()
+	{
+		Directory.CreateDirectory(ConfigDirectory);
+		WritePrivateProfileString("Settings", CalibrationGridKey, CalGridCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CalibrationRulerKey, CalRulerCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CalibrationGratingsKey, CalGratingsCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CalibrationBarsKey, CalBarsCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CalibrationBeaconKey, CalBeaconCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CalibrationEdgeProbesKey, CalEdgeProbesCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CalibrationCheckerboardsKey, CalCheckerboardsCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CalibrationZonePlateKey, CalZonePlateCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CalibrationClippingStepsKey, CalClippingCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", CalibrationMotionStripKey, CalMotionCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", HudEnabledKey, HudEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", HudTraceEnabledKey, HudTraceEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", HudAnchorXKey, HudXSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudAnchorYKey, HudYSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudScaleKey, HudScaleSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudTraceSensitivityKey, HudTraceSensitivitySlider.Value.ToString("0.##", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudTraceXKey, HudTraceXSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudTraceYKey, HudTraceYSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudTraceScaleKey, HudTraceScaleSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudTraceWidthKey, HudTraceWidthSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudTraceHistoryKey, HudTraceHistorySlider.Value.ToString("0", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudAlarmOnlyKey, HudAlarmOnlyCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", HudSafeMarginKey, HudSafeMarginSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudClampKey, HudClampCheck.IsChecked == true ? "1" : "0", ConfigPath);
 	}
 
 	private void ReShadeMenuSetting_Changed(object sender, RoutedEventArgs e) { }
@@ -1593,6 +2088,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", MaskBottomCurveKey, "0", ConfigPath);
 		// Written last: the native layer only live-reloads visor values after this revision changes.
 		WritePrivateProfileString("Settings", "visor_live_revision", DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture), ConfigPath);
+		PublishLiveState();
 		SaveReShadeMenuSettings();
 		SaveExperimentalSettings();
 		WriteRegistryEnabled(valueOrDefault2);

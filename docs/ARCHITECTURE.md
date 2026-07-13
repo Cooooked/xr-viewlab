@@ -17,6 +17,18 @@ the layer reloads only visor geometry values at the locked `xrEndFrame` safe poi
 reload remains forbidden because it raced native render hooks. The full key contract is
 `docs/CONFIG.md`.
 
+The performance HUD hooks `xrWaitFrame`, `xrBeginFrame`, and `xrEndFrame` without altering call
+flow. `predictedDisplayPeriod` is the active runtime frame budget; QPC measures each matched frame
+from `xrBeginFrame` entry through `xrEndFrame` return. CPU uses `GetSystemTimes` deltas. GPU Engine samples are
+grouped by adapter LUID and engine ID, restricted to 3D engines, and the D3D11 render adapter is
+preferred. A 60-frame rolling window supplies the missed-budget percentage, while a 120-sample
+buffer draws frame-time deviation around the runtime target interval.
+
+The live-state mapping is optional. When the settings app is not open, the native layer attempts
+to reconnect at most once per second; it never opens the mapping once per submitted frame. When
+mapped, it reads the compact generation-stamped snapshot at `xrEndFrame`, so enabled calibration
+and live visor adjustments take effect without INI I/O on the render path.
+
 ## Native layer anatomy (dllmain.cpp — grep these symbols)
 
 | Subsystem | Owning symbols |
@@ -28,6 +40,12 @@ reload remains forbidden because it raced native render hooks. The full key cont
 | Crop-boundary diagnostics | `LocateViewsSnapshot`, `StoreLocateViewsSnapshot`, `TakeLocateViewsSnapshot`, `ValidateSubImage` (read-only exact session/display-time submission comparison) |
 | D3D11 mask renderer init | `InitD3D11MaskRenderer` (compiles shaders via d3dcompiler; FreeLibrary ordering is load-bearing — REGRESSIONS R1) |
 | Visor draw entry (Technique C Direct) | `XRViewLab_xrReleaseSwapchainImage` → `DrawVisorBorderToTexture` |
+| Calibration diagnostics | `DrawCalibrationPatternsToTexture`, `DrawCalibrationGridToTexture`, `DrawCalibrationOverlayToTexture`, `AnyCalibrationPattern`, `g_calibrationFrameSerial`; ten optional patterns draw after the visor. Pixel-measurement tools use literal submitted-texture pixels and the complete eye rectangle; the 64 px grid is anchored at the fused centre without resizing; radial geometry is circular in shared tangent space. See `docs/CALIBRATION.md`. |
+| Overlay coordinates | `OverlayCoordinateResolver`, `OverlayPlacement`; builds shared selected/full-lens tangent bounds from both eyes, chooses one visor-space target, then projects it independently through each eye's read-only FOV and destination viewport. Render Area and Lens Pinned therefore produce different eye pixels for one fused target. No game projection structure is modified. |
+| FOV crop | `ApplyXRViewLabFov`; scales horizontal and vertical FOV tangents only. Asymmetric split crop never rotates or otherwise mutates `XrView.pose`; the former foveated-centre pose compensation is retired. |
+| Experimental topmost overlays | `EnsureTopmostLayer`, `RenderTopmostLayer`, `DestroyTopmostLayer`, `TopmostSubmission`; owns a transparent two-array-slice OpenXR projection swapchain, matches the primary projection's compatible sRGB/UNORM format and non-sRGB RTV convention, reuses the existing visor/calibration/overlay scene, declares straight alpha with the unpremultiplied-alpha layer flag, and appends after application layers at `xrEndFrame`. Normal release-time drawing remains the fallback. |
+| Native performance HUD | `XRViewLab_xrWaitFrame`, `XRViewLab_xrBeginFrame`, `XRViewLab_xrEndFrame`, `UpdateHudCadence`, `RecordHudFrameSample`, `RecordHudSystemSample`, `UpdateHudMetrics`, `UpdateHudAlarm`, `DrawCalibrationOverlayToTexture`, `HudDrawSnapshot`, `kHudFont`; both-eye CPU/GPU/SYS/VR-frame-time rings plus a scrolling pacing trace, anchored in the shared tangent-space binocular overlap from one per-frame snapshot; frame budget = `predictedDisplayPeriod` × rolling-median cadence multiple (reprojection-aware); VR colour uses the full-precision rolling cadence median with sustained 108%/120% entry thresholds and lower hysteresis exits; alarm-only per-metric hiding with hold |
+| Visor overlays (boundary/crosshair/notifications/iRacing events) | `DrawViewLabOverlaysToTexture`, `EnsureNotifyCardTexture`, `AnyViewLabOverlay`, `BoundaryFlashActive`, `kOverlayPS`, `kTexturedPS`; flat overlays use an explicit constant-colour shader (never the VDXR-broken vertex-colour interpolant), while cards use textured quads. `CrosshairPreview` and `BeanMaskEditor.DrawCrosshair` mirror native rectangle geometry. `NotificationService` reports exact WinRT access/HRESULT state and owns a permission-independent synthetic-card test. `IRacingTelemetryProvider` reads the public SDK mapping off-thread and normalizes lap/spotter/flag events through `IViewLabEventProvider`; the renderer has no iRacing dependency. |
 | Visor geometry — open-inner arch | `BuildOpenInnerEyeVisorVerts` (per-eye, apex-aware superellipse cap + full-width top/bottom bands; exact rectangle at Curve 0) |
 | Visor geometry — closed bean | `BuildVisorBorderVerts` (apex-aware superellipse ring fill; exact rectangle at Curve 0) |
 | Visor geometry — nose divot | `BuildNoseBridgeCurve` (cubic bezier trapezoid fill, band-clamped to NDC bottom) |
@@ -104,12 +122,56 @@ not merely a saved preference.
 `ProfileWindow.xaml` owns the PowerUp/profile popup chrome, including its dedicated ViewLab-themed
 scroll viewer. The scrollbar occupies a separate grid column, never an overlay on visor controls.
 
+## Overlay coordinate contract
+
+ViewLab deliberately uses several coordinate spaces; treating them as interchangeable creates
+stereo disparity:
+
+- **Per-eye texture pixels:** the submitted `XrSwapchainSubImage.imageRect`. Visor geometry,
+  boundary clipping, and calibration diagnostics ultimately rasterize here.
+- **Per-eye cropped tangent space:** `tan(angleLeft/Right/Up/Down)` from each submitted projection
+  view. `x = left + (tanX-selfLeft)/(selfRight-selfLeft)*width`; Y is the corresponding inverted
+  mapping. Each eye has different bounds and therefore usually different pixel coordinates for the
+  same angular point.
+- **Shared binocular-overlap space:** the intersection of both eyes' cropped tangent bounds. HUD,
+  trace, and notification X/Y fractions select one shared tangent point inside this intersection,
+  which is then projected independently into each eye.
+- **Calibrated angular space:** the crosshair uses shared tangent `(0,0)` (parallel straight-ahead
+  rays, zero unintended angular disparity). Its CS pixels are fixed tangent spans (`2/1080`) and
+  become eye pixels through that eye's pixels-per-tangent density. Crop changes therefore change
+  clipping/density, not convergence or angular size.
+- **Combined visor-preview space:** a user-facing fused representation of both eyes. It shows one
+  resolved crosshair at the complete crop rectangle's visual centre; it does not display the two
+  unequal native per-eye pixel projections.
+
+The performance HUD and frame-trace positions are shared-overlap tangent points. Their base size is
+angular; trace width remains intentionally relative to the available visible overlap because it is
+a user-facing width control. Notification cards use one tangent width/height and each eye's own
+X/Y density. The render-boundary flash is the exception: it is a per-eye inner outline of the final
+submitted rectangle, with angularly stable stroke thickness and inset beyond half its stroke so
+scissoring cannot remove it.
+
+Calibration grid, ruler, gratings, colour bars, beacon, edge probes, checkerboards, zone plate,
+clipping steps, and motion strip are explicitly **per-eye texture diagnostics**, not fused visor
+content. Their job is to reveal downstream scaling/encoding, so their pixel-exact geometry remains
+crop-relative by design. The visor mask likewise follows each submitted eye rectangle and its
+existing shape contract; it is not repositioned as a binocular overlay.
+
 ## Build & packaging
 
 `build.ps1` (the only build entry): bumps version in `Properties/AssemblyInfo.cs` +
 `Installer/Product.wxs` → `dotnet publish` WPF (win-x64 self-contained single-file) → copies the
 repo default `xr-viewlab.ini` into publish output → MSBuild native layer x64 then Win32 → copies
 the freshly-built layer DLLs to dist + publish dir → WiX MSI → `dist\ViewLab-<version>.msi`.
+The publish path is derived from `xr-viewlab.csproj`'s `TargetFramework`; generated WPF, native,
+and WiX outputs are removed before their respective builds. After WiX completes, the script
+administratively extracts the MSI and fails unless its app version and WPF/native hashes match the
+fresh outputs and the compiled app contains the Overlays/boundary/crosshair/notification/iRacing
+markers. This prevents a target-framework change from leaving WiX pointed at an older publish tree.
+
+Global visor edits use the same generation-stamped `Local\XRViewLabLiveState` snapshot as HUD and
+overlay controls and are always live while the UI is open. Unchanged snapshots cost only the fixed
+generation check; there is no per-frame INI parse. Per-app visor overrides retain precedence.
 Manual builds must bump versions by hand to avoid double-bumps. MSI registers both layer
 manifests under HKLM Khronos ApiLayers (x64 + WOW6432Node), and installs the app, fresh-install
 default ini, and ReShadePayload. Upgrades leave the live config in `%LOCALAPPDATA%` and per-app

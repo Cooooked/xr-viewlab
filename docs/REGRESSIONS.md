@@ -130,3 +130,67 @@ ownership boundary and can turn an upgrade into a layer-loss incident.
 **Never again:** the MSI contains no registry-enumerating cleanup custom action. WiX may write and
 remove ViewLab's own declared registry values only; no installer code may enumerate, recreate, or
 delete values in the shared implicit-layer key. Contract test pins this.
+
+## R14 - MSI filename/version can disagree with its WPF payload (4.1.169; fixed 2026-07-12)
+**What:** `ViewLab-4.1.169.msi` installed and registered as 4.1.169, but launched a byte-identical
+4.1.168 executable with none of the new Overlays UI.
+**Why:** the project TFM moved to `net8.0-windows10.0.19041.0`, while both `build.ps1` and WiX kept
+using the old `net8.0-windows` publish directory. That stale directory remained on disk and was a
+perfectly valid WiX input, an especially unhelpful form of success.
+**Never again:** derive the publish directory from the project TFM, clean generated outputs, and
+administratively extract every built MSI. The build must compare payload version and WPF/native
+hashes to fresh outputs and require compiled overlay markers before copying an MSI to `dist`.
+
+## R15 - Flat overlays must not depend on the VDXR vertex-colour interpolant (4.1.169-176)
+**What:** crosshair state, geometry and both-eye draw routing were correct, yet the crosshair was
+invisible in-headset.
+**Why:** the new flat overlay pass reused the visor pixel shader's interpolated `TEXCOORD0` colour.
+The calibration investigation had already demonstrated that VDXR can deliver that interpolant as
+black. A green crosshair therefore became black, often on a black visor/game background.
+**Never again:** boundary/crosshair flat colours come from an explicit pixel-shader constant buffer.
+Contracts pin that shader and resolved per-eye draw logging; previews mirror the rectangle formulas.
+
+## R16 - Equal eye pixels are not a fused overlay coordinate (4.1.179-180)
+**What:** crosshair split into two images and moved/rescaled with crop; boundary flash showed only
+corner fragments. Other overlays mixed angular placement with crop-relative sizing.
+**Why:** the crosshair was forced to each eye rectangle's normalized midpoint, although asymmetric
+FOVs require different pixel projections for one shared angular point. Crosshair/HUD/notification
+sizes also used cropped width/height directly. The boundary stroke straddled the active scissor.
+**Never again:** fused content starts in shared tangent/angular space and projects independently per
+eye; fixed-size elements use pixels-per-tangent, not cropped dimensions. Pixel-centred calibration
+patterns remain explicitly texture diagnostics. Boundary outlines are fully inset. Deterministic
+contracts cover asymmetric projection, angular round-trip, and crop-invariant size.
+# Overlay coordinate divergence and repeated projection layers (2026-07-13)
+
+HUD, trace, calibration, and general overlays had independently evolved pixel/tangent anchoring. Asymmetric FOV crops therefore moved nominally identical centres differently. OpenComposite can also repeat a projection texture in later composition layers; accumulating every layer caused the same release-time HUD geometry to be drawn repeatedly into one image. All placement now goes through `OverlayCoordinateResolver`, and capture accepts only the primary projection layer. Never repair this with per-game offsets or opacity changes.
+
+The first resolver implementation then introduced a systemic stereo regression: Render Area returned identical normalized pixels independently in each eye, while Lens Pinned `(0.5,0.5)` used each asymmetric eye's own FOV midpoint. Both create two monocular stickers rather than one visor-space target. The repaired contract constructs shared binocular tangent bounds, chooses one target there (crosshair zero is tangent `0,0`), and projects it through each eye independently. Tests must prove asymmetric eyes receive different local pixels while inverse-projecting to the same tangent target.
+# Asymmetric crop rotated the game eye poses (2026-07-13)
+
+`foveated_center_compensation` was changed from an optional default-off experiment to permanently on. In split mode it replaced the requested asymmetric FOV with a symmetric FOV and wrote a pitch quaternion into `XrView.pose.orientation`. Runtime logs captured `pitch_offset=0.31637` radians (about 18.1°), exactly matching the tilted/folded world report. The feature is retired: vertical crop changes FOV tangents only and must never modify game eye poses. Contract tests forbid `view.pose.orientation` writes.
+
+## R17 - A mode checkbox must persist the mode transition (4.1.186; fixed 2026-07-13)
+
+**What:** after disabling Split Top/Bottom, a later game launch could still place normal Vertical in
+the former top-only slice. **Why:** `SplitCheck_Changed` refreshed controls and preview but omitted
+`SaveGlobalSettings()`. The ini therefore retained `split_mode=1` and its asymmetric tangents until
+some unrelated setting happened to save. **Never again:** mode-changing handlers persist the whole
+active configuration immediately; disabling split writes both `split_mode=0` and centred tangents.
+
+## R18 - Straight-alpha compositor layers must say so (4.1.185-186; fixed 2026-07-13)
+
+**What:** HUD and trace colours were pale only through Topmost Visor Overlays. **Why:** Topmost was
+hard-coded to linear `R8G8B8A8_UNORM` while the normal game projection could be sRGB, so identical
+shader values entered the compositor under different transfer declarations. ViewLab also produced
+straight RGBA without advertising the unpremultiplied convention for partially transparent content.
+**Never again:** match the primary projection's compatible sRGB/UNORM format and non-sRGB RTV view,
+declare straight alpha, and leave the established direct path untouched.
+
+## R19 - Calibration bounds depend on what a pattern measures (4.1.185-186; fixed 2026-07-13)
+
+**What:** edge probes became inset, pixel plates shrank with crop, the grid missed the crosshair,
+and the radial plate appeared oval. **Why:** unrelated calibration tools were all placed inside the
+shared binocular-overlap rectangle, while the radial plate used equal raw-pixel radii despite unequal
+horizontal/vertical pixels per tangent. **Never again:** texture-measurement tools use the complete
+submitted eye rectangle and literal pixel pitches; centre-based perceptual shapes use the shared
+crosshair tangent target and per-eye projection. Do not repair either class with identical eye pixels.
