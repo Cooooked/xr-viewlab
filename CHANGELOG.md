@@ -2,6 +2,15 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## Unreleased - 2026-07-13 (Performance Trace visibility)
+
+- Replaced the ambiguous graph checkbox with explicit Off, Always visible and Alarm only modes,
+  retaining the legacy enable key solely for migration.
+- Alarm-only keeps the fixed 600-sample history running while hidden, appears only after existing
+  sustained alarm confirmation, extends one hold during repeated trouble, then fades over 500 ms.
+- Emphasised graph channels responsible for active VR/frame or APP alarms without changing channel
+  values, units, stereo placement or normal always-visible behaviour.
+
 ## Unreleased - 2026-07-13 (Racing attention policy)
 
 - Added a deliberately small four-channel policy: spatial spotter and safety flag cues are immediate

@@ -548,7 +548,10 @@
                         <Slider Name="HudSysCriticalSlider" Minimum="0" Maximum="30" Value="10" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" ToolTip="Red at or below this remaining-headroom percentage."/>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="PERFORMANCE GRAPH" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
-                      <CheckBox Name="HudTraceEnabledCheck" Content="Performance graph" Foreground="#A8A8A8" Margin="0,4,0,0" ToolTip="Bounded channel graph rendered from the same immutable stereo snapshot as the HUD." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                      <TextBlock Text="Visibility" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1" />
+                      <ComboBox Name="HudTraceVisibilityCombo" SelectionChanged="HudLayout_Changed" ToolTip="Off, continuously visible, or shown only for sustained performance trouble with recovery hold and fade.">
+                        <ComboBoxItem Content="Off"/><ComboBoxItem Content="Always visible"/><ComboBoxItem Content="Alarm only"/>
+                      </ComboBox>
                       <TextBlock Text="Graph mode" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,1" />
                       <ComboBox Name="HudGraphModeCombo" SelectionChanged="HudGraphMode_Changed" ToolTip="Only channels with compatible units are drawn together.">
                         <ComboBoxItem Content="Budget deviation (ms)"/><ComboBoxItem Content="Absolute milliseconds"/><ComboBoxItem Content="FPS"/><ComboBoxItem Content="Percent of frame budget"/>

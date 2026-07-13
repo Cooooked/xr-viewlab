@@ -25,7 +25,7 @@ internal sealed class LiveStateService : IDisposable
     public void Publish(uint calibrationMask,
         bool maskEnabled, bool topmostOverlays, double size, double corner, double apex, double innerLow,
         double bridgeWidth, double bridgeRise, double bridgePeakX, double bridgeSteepness,
-        bool hudEnabled, bool traceEnabled, double hudX, double hudY, double hudScale, double hudSafeMargin, bool hudClamp,
+        bool hudEnabled, int traceVisibilityMode, double hudX, double hudY, double hudScale, double hudSafeMargin, bool hudClamp,
         bool hudAlarmOnly, double hudTraceSensitivityMs, double traceX, double traceY, double traceScale,
         double traceWidth, double traceHistory, double alarmHoldMs,
         uint hudWidgetMask, uint hudWidgetOrder, uint hudGraphChannels, uint hudGraphMode,
@@ -59,7 +59,7 @@ internal sealed class LiveStateService : IDisposable
         _view.Write(156, (float)notifyOpacity); _view.Write(160, (float)notifyDurationMs);
         _view.Write(164, notifyMaxVisible); _view.Write(168, notifyPrivacy);
         _view.Write(172, (iracingEnabled ? 1u : 0u) | (iracingLapPopup ? 2u : 0u) | (iracingSpotterGlow ? 4u : 0u) | (iracingFlagBorder ? 8u : 0u));
-        _view.Write(176, traceEnabled ? 1u : 0u);
+        _view.Write(176, traceVisibilityMode == 0 ? 0u : 1u | (traceVisibilityMode == 2 ? 2u : 0u));
         _view.Write(180, (float)chOffsetX); _view.Write(184, (float)chOffsetY);
         _view.Write(188, topmostOverlays ? 1u : 0u);
         _view.Write(192, hudWidgetMask); _view.Write(196, hudWidgetOrder);

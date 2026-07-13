@@ -81,6 +81,7 @@ public partial class MainWindow : Window
 	private const string HudTraceScaleKey = "hud_trace_scale";
 	private const string HudTraceWidthKey = "hud_trace_width";
 	private const string HudTraceHistoryKey = "hud_trace_history";
+	private const string HudTraceVisibilityKey = "hud_trace_visibility_mode";
 	private const string HudAlarmOnlyKey = "hud_alarm_only";
 	private const string HudAlarmHoldKey = "hud_alarm_hold_ms";
 	private const string HudSafeMarginKey = "hud_safe_margin";
@@ -1076,7 +1077,9 @@ public partial class MainWindow : Window
 		CalClippingCheck.IsChecked = ReadBoolSetting(CalibrationClippingStepsKey, fallback: false);
 		CalMotionCheck.IsChecked = ReadBoolSetting(CalibrationMotionStripKey, fallback: false);
 		HudEnabledCheck.IsChecked = ReadBoolSetting(HudEnabledKey, fallback: false);
-		HudTraceEnabledCheck.IsChecked = ReadBoolSetting(HudTraceEnabledKey, fallback: false);
+		string traceModeText = ReadSetting(HudTraceVisibilityKey, string.Empty);
+		HudTraceVisibilityCombo.SelectedIndex = int.TryParse(traceModeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int traceMode)
+			? Math.Clamp(traceMode, 0, 2) : (ReadBoolSetting(HudTraceEnabledKey, fallback: false) ? 1 : 0);
 		HudXSlider.Value = ReadRangeSetting(HudAnchorXKey, 0.04, 0.0, 1.0);
 		HudYSlider.Value = ReadRangeSetting(HudAnchorYKey, 0.05, 0.0, 1.0);
 		HudScaleSlider.Value = ReadRangeSetting(HudScaleKey, 1.0, 0.15, 3.0);
@@ -1634,7 +1637,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			MaskEnabledCheck.IsChecked == true, TopmostVisorOverlaysCheck.IsChecked == true, MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
 			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, MaskInnerBridgeSlider.Value,
 			MaskInnerBridgeRiseSlider.Value, MaskInnerBridgePeakXSlider.Value, MaskInnerBridgeSteepnessSlider.Value,
-			HudEnabledCheck.IsChecked == true, HudTraceEnabledCheck.IsChecked == true, HudXSlider.Value, HudYSlider.Value, HudScaleSlider.Value,
+			HudEnabledCheck.IsChecked == true, Math.Max(0, HudTraceVisibilityCombo.SelectedIndex), HudXSlider.Value, HudYSlider.Value, HudScaleSlider.Value,
 			HudSafeMarginSlider.Value, HudClampCheck.IsChecked == true, HudAlarmOnlyCheck.IsChecked == true,
 			HudTraceSensitivitySlider.Value, HudTraceXSlider.Value, HudTraceYSlider.Value, HudTraceScaleSlider.Value,
 			HudTraceWidthSlider.Value, HudTraceHistorySlider.Value, ReadRangeSetting(HudAlarmHoldKey, 1500.0, 0.0, 10000.0),
@@ -1922,7 +1925,9 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", CalibrationClippingStepsKey, CalClippingCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CalibrationMotionStripKey, CalMotionCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HudEnabledKey, HudEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", HudTraceEnabledKey, HudTraceEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		int traceVisibility = Math.Max(0, HudTraceVisibilityCombo.SelectedIndex);
+		WritePrivateProfileString("Settings", HudTraceVisibilityKey, traceVisibility.ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudTraceEnabledKey, traceVisibility != 0 ? "1" : "0", ConfigPath); // legacy migration key
 		WritePrivateProfileString("Settings", HudAnchorXKey, HudXSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudAnchorYKey, HudYSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudScaleKey, HudScaleSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);

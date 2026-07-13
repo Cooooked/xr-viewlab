@@ -100,6 +100,9 @@ double hudSysWarningThreshold=30.0,hudSysCriticalThreshold=10.0;
 // overlap of the cropped views; scale multiplies the trace height; history is in samples.
 double hudTraceX = 0.05, hudTraceY = 0.75, hudTraceScale = 1.0, hudTraceWidth = 0.42, hudTraceHistory = 120.0;
 bool hudTraceEnabled = false;
+uint32_t hudTraceVisibilityMode = 0; // 0 off, 1 always, 2 alarm only
+float g_hudTraceVisibilityAlpha = 0.f;
+uint64_t g_hudTraceHoldUntilTick = 0, g_hudTraceFadeStartTick = 0;
 bool hudAlarmOnly = false;
 double hudAlarmHoldMs = 1500.0;
 uint32_t hudUpdateIntervalMs = 100;
@@ -666,6 +669,7 @@ void ConsumeLiveState() {
     hudTraceHistory = std::clamp((double)stable.traceHistory, 10.0, 600.0);
     hudAlarmHoldMs = std::clamp((double)stable.alarmHoldMs, 0.0, 10000.0);
     hudTraceEnabled = (stable.traceFlags & 1u) != 0;
+    hudTraceVisibilityMode = !hudTraceEnabled ? 0u : (stable.traceFlags & 2u) != 0 ? 2u : 1u;
     topmostVisorOverlays = (stable.topmostFlags & 1u) != 0;
     hudWidgetMask=(hudWidgetMask&~0x0Full)|(stable.hudWidgetMask&0x0Fu);
     hudWidgetOrderPacked=stable.hudWidgetOrder;
@@ -2563,6 +2567,16 @@ void DrawCalibrationOverlayToTexture(
             g_hudDrawSnap.valid = true;
         }
         const HudDrawSnapshot& snap = g_hudDrawSnap;
+        if (eye.viewIndex == 0) {
+            if (hudTraceVisibilityMode == 1) { g_hudTraceVisibilityAlpha=1.f; g_hudTraceFadeStartTick=0; }
+            else if (hudTraceVisibilityMode == 2) {
+                bool trouble=false; for(bool alarm:snap.alarm) if(alarm){trouble=true;break;}
+                const uint64_t now=GetTickCount64();
+                if(trouble){g_hudTraceHoldUntilTick=now+(uint64_t)std::clamp(hudAlarmHoldMs,0.0,10000.0);g_hudTraceFadeStartTick=0;g_hudTraceVisibilityAlpha=1.f;}
+                else if(now<g_hudTraceHoldUntilTick){g_hudTraceVisibilityAlpha=1.f;}
+                else {if(g_hudTraceVisibilityAlpha>0.f&&g_hudTraceFadeStartTick==0)g_hudTraceFadeStartTick=now;g_hudTraceVisibilityAlpha=g_hudTraceFadeStartTick?std::clamp(1.f-(now-g_hudTraceFadeStartTick)/500.f,0.f,1.f):0.f;}
+            } else { g_hudTraceVisibilityAlpha=0.f; g_hudTraceFadeStartTick=0; }
+        }
         XrFovf fovSelf = eye.fov, fovOther = eye.fov; bool haveOther = false;
         for (const EyeView& v : allViews) if (v.viewIndex != eye.viewIndex) { fovOther = v.fov; haveOther = true; break; }
         auto fovOk = [](const XrFovf& f) { return f.angleRight > f.angleLeft && f.angleUp > f.angleDown &&
@@ -2732,7 +2746,8 @@ void DrawCalibrationOverlayToTexture(
         }
         // Modular performance graph. Each mode admits only compatible units; selected channels
         // remain persisted when switching modes but incompatible lines are not drawn.
-        if (hudTraceEnabled) {
+        if (hudTraceEnabled && g_hudTraceVisibilityAlpha > .001f) {
+        const float traceIntensity=intensity*g_hudTraceVisibilityAlpha;
         const size_t historyN = (size_t)std::clamp(hudTraceHistory, 10.0, (double)snap.samples.size());
         const float traceW = std::clamp((float)hudTraceWidth, 0.10f, 1.0f) * (std::max)(32.f, obR - obL - 2.f * margin);
         const float traceH = unit * .55f * std::clamp((float)hudTraceScale, 0.25f, 3.0f);
@@ -2744,7 +2759,7 @@ void DrawCalibrationOverlayToTexture(
         }
         const float traceRight = traceLeft + traceW, traceBottom=traceTop+traceH, traceCentre = traceTop + traceH * .5f;
         const bool deviationMode=snap.graphMode==HudGraphMode::Deviation;
-        line(traceLeft,deviationMode?traceCentre:traceBottom,traceRight,deviationMode?traceCentre:traceBottom,(std::max)(1.f,unit*.012f),.20f*intensity,.25f*intensity,.30f*intensity);
+        line(traceLeft,deviationMode?traceCentre:traceBottom,traceRight,deviationMode?traceCentre:traceBottom,(std::max)(1.f,unit*.012f),.20f*traceIntensity,.25f*traceIntensity,.30f*traceIntensity);
         const size_t visible = (std::min)(snap.sampleCount, historyN);
         if (visible > 1) {
             const float sensitivity=(float)(std::max)(0.25,hudTraceSensitivityMs), dx=traceW/(float)(historyN-1);
@@ -2778,10 +2793,12 @@ void DrawCalibrationOverlayToTexture(
             };
             for(const GraphStyle& style:styles) {
                 if((snap.graphChannels&style.bit)==0||!compatible(style.bit))continue;
+                const bool responsible=(snap.alarm[(size_t)HudWidgetId::Vr]&&(style.bit==GraphFrameInterval||style.bit==GraphFps||style.bit==GraphBudgetDeviation||style.bit==GraphDisplayPeriod))||
+                    (snap.alarm[(size_t)HudWidgetId::App]&&style.bit==GraphAppWork);
                 for(size_t i=1;i<visible;++i){
                     const HudFrameSample&s0=snap.samples[base+i-1]; const HudFrameSample&s1=snap.samples[base+i];
                     line(firstX+dx*(i-1),yFor(value(s0,style.bit)),firstX+dx*i,yFor(value(s1,style.bit)),
-                        (std::max)(1.2f,unit*.018f),style.r*intensity,style.g*intensity,style.b*intensity);
+                        (std::max)(1.2f,unit*.018f)*(responsible?1.55f:1.f),style.r*traceIntensity,style.g*traceIntensity,style.b*traceIntensity);
                 }
             }
         }
@@ -3524,6 +3541,8 @@ void LoadConfig() {
     hudTraceWidth = std::clamp(ReadDoubleSetting(L"hud_trace_width", 0.42), 0.10, 1.0);
     hudTraceHistory = std::clamp(ReadDoubleSetting(L"hud_trace_history", 120.0), 10.0, 600.0);
     hudTraceEnabled = ReadBoolSetting(L"hud_trace_enabled", false);
+    hudTraceVisibilityMode = (uint32_t)std::clamp((int)ReadDoubleSetting(L"hud_trace_visibility_mode",hudTraceEnabled?1.0:0.0),0,2);
+    hudTraceEnabled = hudTraceVisibilityMode != 0;
     constexpr const wchar_t* widgetKeys[kHudWidgetCount]={L"cpu",L"gpu",L"app",L"vr",L"cpu_peak",L"cpu_frequency",L"ram",L"commit",L"vram",L"sys",L"fps",L"frame_interval"};
     hudWidgetMask=0;
     for(size_t i=0;i<kHudWidgetCount;++i){wchar_t key[80]{};swprintf_s(key,L"hud_widget_%s_enabled",widgetKeys[i]);const bool defaultOn=i==0||i==1||i==3||i==9;if(ReadBoolSetting(key,defaultOn))hudWidgetMask|=1ull<<i;}
