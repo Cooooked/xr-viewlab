@@ -107,6 +107,11 @@ then unregistered. This proves external packaged notification → Windows histor
 composition → production native card queue. Final perceived placement/stereo still requires the
 release headset check.
 
+The same independent test was repeated on 2026-07-13 after candidate 4.1.209 was built. The installed
+packaged broker still reported `Ready` with listener access `Allowed`, and the new toast reached the
+production mapping as exactly one active card (ID 2). This repetition validates the operating-system
+collection path; installing 4.1.209 and checking its card in-headset remains a separate release gate.
+
 Microsoft references:
 
 - <https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/grant-identity-to-nonpackaged-apps>

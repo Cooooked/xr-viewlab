@@ -685,6 +685,9 @@ Remaining broader static-audit items not closed in this pass:
   `build.ps1` then produced 4.1.209 with 0 warnings / 0 errors for WPF, broker, signed identity
   package, x64 native, Win32 native and WiX MSI; extracted payload version and fresh hashes passed:
   `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.209.msi`.
+- All HUD, Topmost, iRacing and history deterministic suites then passed. A fresh independent
+  packaged Windows toast reached the installed production broker as exactly one card (ID 2). See
+  `VIEWLAB_RELEASE_VALIDATION.md` for the deliberately pending 4.1.209 headset/game safety matrix.
 
 - `Tests\Verify-ViewLabContracts.ps1`, `Tests\Verify-PerformanceHud.ps1`, and
   `Tests\Verify-TopmostSafety.ps1` passed on integrated `master` on 2026-07-13. `build.ps1` then
