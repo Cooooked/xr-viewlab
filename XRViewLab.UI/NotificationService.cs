@@ -63,7 +63,9 @@ internal sealed class NotificationService : IDisposable
         public int Width, Height;
         public uint ContentSerial;
         public long BornTick;      // Environment.TickCount64 at first show
+        public long EligibleTick;  // desktop cards start only after racing-attention hold clears
         public long LeaveTick;     // when it started leaving; 0 = not yet
+        public bool IsDesktop;
         public bool PixelsDirty = true;
     }
 
@@ -86,6 +88,7 @@ internal sealed class NotificationService : IDisposable
     private volatile bool _listenerFaulted;
     private long _lastRefreshTick;
     private bool _disposed;
+    private volatile bool _racingAttentionActive;
 
     public string Status { get; private set; } = "Notifications idle.";
     public ServiceState State { get; private set; } = ServiceState.UnsupportedDeployment;
@@ -268,6 +271,8 @@ internal sealed class NotificationService : IDisposable
         }
     }
 
+    public void SetRacingAttention(bool active) => _racingAttentionActive = active;
+
     private static string NotificationKey(UserNotification n)
     {
         string family = Safe(() => n.AppInfo?.PackageFamilyName) ?? Safe(() => n.AppInfo?.AppUserModelId) ?? "unknown";
@@ -303,7 +308,10 @@ internal sealed class NotificationService : IDisposable
     private void AddComposedCard(uint id, string appName, string title, string body, BitmapSource? icon, NotificationSettings s, string? sourceKey = null)
     {
         var (rgba, w, h) = ComposeCard(appName, title, body, icon, s);
-        var card = new Card { Id = id, SourceKey = sourceKey, Rgba = rgba, Width = w, Height = h, ContentSerial = id, BornTick = Environment.TickCount64, PixelsDirty = true };
+        long now = Environment.TickCount64;
+        bool desktop = sourceKey != null;
+        var card = new Card { Id = id, SourceKey = sourceKey, Rgba = rgba, Width = w, Height = h, ContentSerial = id,
+            BornTick = now, EligibleTick = desktop && _racingAttentionActive ? 0 : now, IsDesktop = desktop, PixelsDirty = true };
         lock (_lock)
         {
             _cards.Add(card);
@@ -388,7 +396,13 @@ internal sealed class NotificationService : IDisposable
             var toRemove = new List<Card>();
             foreach (var c in ordered)
             {
-                long age = now - c.BornTick;
+                if (c.IsDesktop && _racingAttentionActive)
+                {
+                    if (now - c.BornTick >= 5000) toRemove.Add(c); // stale driving-time card: discard
+                    continue;
+                }
+                if (c.EligibleTick == 0) c.EligibleTick = now;
+                long age = now - c.EligibleTick;
                 if (c.LeaveTick == 0 && age >= RiseMs + (long)s.DurationMs) c.LeaveTick = now;
                 if (c.LeaveTick != 0 && now - c.LeaveTick >= LeaveMs) toRemove.Add(c);
             }
@@ -406,7 +420,7 @@ internal sealed class NotificationService : IDisposable
         lock (_lock)
         {
             int max = Math.Clamp(s.MaxVisible, 1, MaxCards);
-            var ordered = _cards.OrderBy(c => c.BornTick).ToList();
+            var ordered = _cards.Where(c => !(c.IsDesktop && _racingAttentionActive) && c.EligibleTick != 0).OrderBy(c => c.EligibleTick).ToList();
             visible = ordered.Skip(Math.Max(0, ordered.Count - max)).ToList();
         }
 
@@ -418,7 +432,7 @@ internal sealed class NotificationService : IDisposable
         {
             if (slot >= MaxCards) break;
             int baseOff = HeaderBytes + (int)slot * CardStride;
-            long age = now - c.BornTick;
+            long age = now - c.EligibleTick;
             float alpha = 1f, slide = 0f;
             if (age < RiseMs) { float p = age / (float)RiseMs; alpha = p; slide = 1f - p; }
             if (c.LeaveTick != 0)

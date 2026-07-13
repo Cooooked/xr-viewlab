@@ -2,6 +2,15 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## Unreleased - 2026-07-13 (Racing attention policy)
+
+- Added a deliberately small four-channel policy: spatial spotter and safety flag cues are immediate
+  and coexist; performance alarms remain independent; transient cards stay in their compact area.
+- Desktop cards wait off-screen during active spotter or safety-flag states, then present normally if
+  the state clears within five seconds or are discarded as stale. Lap cards are not self-delayed.
+- Kept queue size, wait time and expiry bounded; no racing feature enables global notifications and
+  no notification body is added to diagnostics.
+
 ## Unreleased - 2026-07-13 (iRacing provider correctness)
 
 - Replaced the prototype poller with one cancellation-bound, tick-aware worker using validated SDK

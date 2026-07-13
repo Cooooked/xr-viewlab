@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.205 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.205.msi`
+**Current version:** 4.1.206 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.206.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
@@ -12,6 +12,13 @@ narrow confirmed reference for its stencil repair, not the last headset-tested b
 notification desktop validation. Headset presentation and affected recent systems still need
 risk-based checks.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Attention policy (implemented; visual validation pending, 2026-07-13)
+
+Spotter and safety flags are immediate independent spatial/border channels and may coexist. Desktop
+cards wait off-screen while either is active, then show normally if released within five seconds or
+expire. Lap cards remain prompt and performance alarms remain independent. The policy has fixed
+bounds and no cross-feature enable side effects. See `VIEWLAB_ATTENTION_POLICY.md`.
 
 ## iRacing provider correctness (complete; presentation pending, 2026-07-13)
 

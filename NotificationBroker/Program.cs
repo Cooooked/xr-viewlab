@@ -66,10 +66,16 @@ internal static class NotificationBrokerProgram
         bool racingEnabled = ReadBool("iracing_enabled", false);
         bool lapPopupEnabled = ReadBool("iracing_lap_popup", false);
         double lapDurationMs = ReadDouble("iracing_lap_duration_ms", 4500, 1000, 15000);
+        SpotterState attentionSpotter = SpotterState.Clear;
+        RacingFlagState attentionFlag = RacingFlagState.Clear;
         racingProvider.DiagnosticsChanged += () => WriteIRacingStatus(racingProvider.Status, racingProvider.Diagnostics);
         racingProvider.EventPublished += (_, e) => dispatcher.BeginInvoke(() =>
         {
             racingState.Publish(e, lapDurationMs);
+            if (e.Kind == ViewLabEventKind.SpotterGlow) attentionSpotter = e.Spotter;
+            if (e.Kind == ViewLabEventKind.FlagState) attentionFlag = e.Flag;
+            bool safetyFlag = attentionFlag is RacingFlagState.Blue or RacingFlagState.Yellow or RacingFlagState.Debris or RacingFlagState.Red or RacingFlagState.Black or RacingFlagState.Disqualified;
+            service.SetRacingAttention(attentionSpotter != SpotterState.Clear || safetyFlag);
             if (e.Kind == ViewLabEventKind.LapTime && lapPopupEnabled)
             {
                 string suffix = !e.IsValid ? "Invalid lap" :
@@ -99,7 +105,7 @@ internal static class NotificationBrokerProgram
             if (nextRacingEnabled != racingEnabled)
             {
                 racingEnabled = nextRacingEnabled;
-                if (racingEnabled) racingProvider.Start(); else { racingProvider.Stop(); racingState.Clear(); }
+                if (racingEnabled) racingProvider.Start(); else { racingProvider.Stop(); racingState.Clear(); attentionSpotter=SpotterState.Clear; attentionFlag=RacingFlagState.Clear; service.SetRacingAttention(false); }
             }
         }, dispatcher);
         settingsTimer.Start();
