@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.1.211
+
+- Prevent visibility-mask filtering from returning an empty eye mesh. Indivisible one-triangle
+  runtime masks now pass through unchanged, and unfamiliar topology fails open to the runtime data.
+
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
 ## 4.1.210 - 2026-07-13 (4.1.209 Pistol Whip presentation repair)

@@ -102,6 +102,10 @@ Three cooperating mechanisms, all keyed to ini `stencil_outer_edges_only` (DLL g
    (`openInnerShape = outerEdgeVisibilityMaskOnly`) — same switch the preview uses.
 3. The partner-eye boundary (`BuildProjectedPartnerVisorVerts`) only draws in closed-bean mode;
    in arch mode it would black the nose side (DECISIONS D9).
+
+Visibility-mask filtering is fail-open: an indivisible one-triangle runtime mask passes through
+unchanged, and a filter result that would empty a previously non-empty mesh is discarded. Runtime
+topology safety takes precedence over the optional stencil optimization.
 Games query the visibility mask once per session → restart the game to see stencil changes.
 
 ### Horizontal crop modes

@@ -4458,6 +4458,24 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
     }
 
     const uint32_t beforeIndexCount = visibilityMask->indexCountOutput;
+
+    // A single triangle is already an indivisible runtime mask. Attempting to
+    // classify it by centroid can discard the entire mask for one eye (VDXR
+    // reports the same local-coordinate sign for both eyes), which violates
+    // the non-empty result the application just queried and can crash clients
+    // that immediately consume both meshes. Preserve such masks verbatim.
+    if (beforeIndexCount == 3) {
+        const uint32_t logCount = visibilityMaskLogCount.fetch_add(1);
+        if (logCount == 0) {
+            Log("visibility mask: runtime mask is indivisible; passing through unmodified\n");
+        }
+        LogVerbose("xrGetVisibilityMaskKHR: view=%u hidden indices %u -> %u indivisible_passthrough=1\n",
+            viewIndex,
+            beforeIndexCount,
+            beforeIndexCount);
+        return result;
+    }
+
     uint32_t writeIndex = 0;
     for (uint32_t readIndex = 0; readIndex + 2 < beforeIndexCount; readIndex += 3) {
         const uint32_t i0 = visibilityMask->indices[readIndex];
@@ -4486,6 +4504,21 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetVisibilityMaskKHR(
         visibilityMask->indices[writeIndex++] = i0;
         visibilityMask->indices[writeIndex++] = i1;
         visibilityMask->indices[writeIndex++] = i2;
+    }
+
+    // Never turn a valid non-empty runtime mesh into an empty mesh. The
+    // application's safety is more important than applying this optional
+    // stencil optimization to an unfamiliar runtime topology.
+    if (writeIndex == 0) {
+        const uint32_t logCount = visibilityMaskLogCount.fetch_add(1);
+        if (logCount == 0) {
+            Log("visibility mask: filter rejected the complete runtime mask; passing through unmodified\n");
+        }
+        LogVerbose("xrGetVisibilityMaskKHR: view=%u hidden indices %u -> %u empty_filter_passthrough=1\n",
+            viewIndex,
+            beforeIndexCount,
+            beforeIndexCount);
+        return result;
     }
 
     visibilityMask->indexCountOutput = writeIndex;

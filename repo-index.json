@@ -58,8 +58,8 @@
       "files": ["dllmain.cpp"],
       "symbols": ["XRViewLab_xrGetVisibilityMaskKHR", "keepOuterEdge", "outerEdgeVisibilityMaskOnly", "openInnerShape", "ApplyVisorMask", "visibilityMaskVisor"],
       "tests": ["Tests/Verify-ViewLabContracts.ps1"],
-      "docs": ["docs/ARCHITECTURE.md#the-stencil-pipeline", "docs/DECISIONS.md#d8", "docs/DECISIONS.md#d9", "docs/REGRESSIONS.md#r3"],
-      "invariants": ["filter runs even when visor active", "DLL reads stencil_outer_edges_only (legacy fallback outer_edge_visibility_mask_only)", "crop_outer_edges_only selects outer-only versus full horizontal FOV crop", "game restart required to re-query mask"],
+      "docs": ["docs/ARCHITECTURE.md#the-stencil-pipeline", "docs/DECISIONS.md#d8", "docs/DECISIONS.md#d9", "docs/REGRESSIONS.md#r3", "docs/REGRESSIONS.md#r8a"],
+      "invariants": ["filter runs even when visor active", "indivisible one-triangle runtime masks pass through unchanged", "filtering never turns a non-empty runtime mesh into an empty mesh", "DLL reads stencil_outer_edges_only (legacy fallback outer_edge_visibility_mask_only)", "crop_outer_edges_only selects outer-only versus full horizontal FOV crop", "game restart required to re-query mask"],
       "keywords": ["stencil", "visibility mask", "hidden area mesh", "FOV stencil", "Virtual Desktop", "inner edge", "outer edge"]
     },
     "configPlumbing": {

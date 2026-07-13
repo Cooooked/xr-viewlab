@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.210 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.210.msi`
+**Current version:** 4.1.211 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.211.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
@@ -13,6 +13,16 @@ narrow confirmed reference for its stencil repair, not the last headset-tested b
 and has clean contracts/fixtures plus WPF, broker, x64/Win32 native, signed identity package, MSI and
 extracted-payload validation. Its narrow Pistol Whip headset matrix is mandatory before DiRT.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Elite Dangerous startup crash repair (2026-07-13, headset verification pending)
+
+VDXR supplies a valid one-triangle hidden-area mask for each eye. The outer-edge visibility-mask
+filter assumed mirrored centroid signs, retained the left triangle, and reduced the right mask from
+three indices to zero. Four Elite Dangerous launches then produced the same null-pointer write in
+`EliteDangerous64.exe` immediately after mask consumption. The filter now passes indivisible masks
+through unchanged and refuses any transformation that would empty a non-empty runtime mesh. This is
+a runtime-topology safety rule, not an application exception. Contracts and the complete 4.1.211
+packaging build pass; Elite, then the broader native/OpenComposite headset matrix, remain pending.
 
 ## 4.1.209 Pistol Whip failure and repair candidate (2026-07-13)
 

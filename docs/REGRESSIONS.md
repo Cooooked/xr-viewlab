@@ -122,6 +122,16 @@ constants once, carefully — both root causes were visible in the code the whol
 without running the test; when two consecutive fixes fail, stop editing and read the whole
 subsystem; reverts are for known-good states, not exploration.
 
+## R8a — Visibility-mask filtering emptied one eye and crashed Elite Dangerous
+**What:** VDXR returned one valid hidden-area triangle per eye. ViewLab classified triangles using
+an assumed mirrored centroid sign, retained the left eye's three indices, and returned zero indices
+for the right eye. Elite Dangerous deterministically null-wrote while consuming the startup masks.
+**Why:** the optional outer-edge filter had no fail-open invariant for indivisible or unfamiliar
+runtime topology.
+**Never again:** pass one-triangle masks through verbatim and never replace a non-empty runtime mesh
+with an empty result. Contract tests pin both guards; headset verification must include an OpenVR
+title through OpenComposite as well as native OpenXR titles.
+
 ## R9 — Pin click-drag: five threshold tweaks, zero fixes (open, Pass 2)
 **What:** preview pins can't be dragged; repeated "fixes" adjusted hit thresholds/Focusable.
 **Why (diagnosed, unverified):** `OnMouseLeftButtonDown` never calls `CaptureMouse()`, so the

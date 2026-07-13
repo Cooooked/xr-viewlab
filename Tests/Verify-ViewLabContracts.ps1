@@ -203,6 +203,8 @@ Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'double dir = dx > 0\.0 \? 1\.0
 
 # ---- Native layer: stencil fixes must survive (4.1.102/4.1.103) --------------------
 Assert-Contains 'dllmain.cpp' 'const bool keepOuterEdge =' 'visibility-mask filter keeps outer-edge triangles'
+Assert-Contains 'dllmain.cpp' 'if \(beforeIndexCount == 3\)[\s\S]*?indivisible_passthrough=1' 'indivisible runtime visibility masks pass through unchanged'
+Assert-Contains 'dllmain.cpp' 'if \(writeIndex == 0\)[\s\S]*?empty_filter_passthrough=1' 'visibility-mask filtering can never turn a non-empty runtime mask into an empty mask'
 Assert-Contains 'dllmain.cpp' 'visibility_mask_visor=1 is retired' 'legacy visibility-mask visor path is explicitly ignored'
 Assert-Contains 'dllmain.cpp' 'visibilityMaskVisor = false;' 'legacy visibility-mask visor cannot reshape current visor geometry'
 
