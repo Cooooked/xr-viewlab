@@ -2,6 +2,19 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## Unreleased - 2026-07-13 (iRacing provider correctness)
+
+- Replaced the prototype poller with one cancellation-bound, tick-aware worker using validated SDK
+  header, variable-table, type/count, buffer-length and offset reads.
+- Corrected all official `CarLeftRight` states, including distinct two-cars-left and two-cars-right;
+  inactive, stale, disconnect, stop and session reset now clear cues authoritatively.
+- Added bounded reconnects, 750 ms stale detection, duplicate-tick/event suppression, session
+  identity/reset handling and safety-prioritised official flag mapping.
+- Expanded lap events with validity, personal-best, previous-best delta and session identity without
+  fabricating unavailable session-best data.
+- Added a real named-shared-memory fixture covering enums, stale and repeated ticks, reconnect,
+  quick restart, invalid values/offsets, flags, laps, duplicates and session changes.
+
 ## Unreleased - 2026-07-13 (Packaged Windows notification collection)
 
 - Added a signed package-with-external-location identity and dedicated medium-integrity notification

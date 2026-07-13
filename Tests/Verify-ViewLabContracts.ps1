@@ -411,12 +411,16 @@ foreach ($key in @('notify_enabled','notify_x','notify_y','notify_scale','notify
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'NotifyDurationKey' 'UI persists notification duration'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'NotifyPrivacyKey' 'UI persists notification privacy mode'
 
-# Feature 4: iRacing scaffold — settings + placeholder UI + decoupled event provider, no telemetry.
+# Feature 4: validated iRacing shared-memory provider and generic event contract.
 Assert-Contains 'XRViewLab.UI\ViewLabEvents.cs' 'interface IViewLabEventProvider' 'generic ViewLab event provider seam exists'
 Assert-Contains 'MainWindow.xaml' 'Name="IRacingEnabledCheck"' 'iRacing scaffold enable control exists'
 Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' 'IRSDKMemMapFileName' 'iRacing provider opens the SDK shared-memory mapping'
 foreach ($field in @('CarLeftRight','LapCompleted','LapLastLapTime','SessionFlags')) { Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' $field "iRacing reads $field" }
 Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' 'void Simulate' 'iRacing generic events can be simulated without the simulator'
+foreach ($state in @('CarsBothSides','TwoCarsLeft','TwoCarsRight')) { Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' $state "iRacing preserves $state" }
+Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' 'StaleAfterMs = 750' 'iRacing stale telemetry clears promptly'
+Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' 'token.WaitHandle.WaitOne' 'iRacing worker waits are cancellation-interruptible'
+Assert-Contains 'Tests\IRacingFixtures\Program.cs' 'invalid buffer offset is rejected' 'iRacing fixture covers invalid SDK offsets'
 Assert-Contains 'dllmain.cpp' 'HudMetricState::Reprojection' 'VR HUD identifies stable cadence divisions'
 Assert-Contains 'dllmain.cpp' 'HudMetricState::Unstable' 'VR HUD identifies unstable cadence'
 Assert-Contains 'dllmain.cpp' 'rollingRatio>1\.03' 'VR HUD warning compares sustained cadence to the active budget'

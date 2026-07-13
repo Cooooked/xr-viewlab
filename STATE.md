@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.202 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.202.msi`
+**Current version:** 4.1.203 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.203.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
@@ -12,6 +12,16 @@ narrow confirmed reference for its stencil repair, not the last headset-tested b
 notification desktop validation. Headset presentation and affected recent systems still need
 risk-based checks.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## iRacing provider correctness (complete; presentation pending, 2026-07-13)
+
+The SDK reader now validates layout/ranges/types, consumes only advancing ticks, goes stale after
+750 ms, reconnects at a bounded 500 ms interval, and owns one interruptible worker. All official
+`CarLeftRight` states are distinct; inactive/stale/disconnect/session reset clears cues. Generic flag
+events use stable safety priority. Lap events include authoritative validity, PB/delta/session fields
+and suppress duplicates; session-best is deliberately absent until an authoritative source is read.
+The production reader passed the real named-memory-map fixture matrix. Spatial presentation and
+independent game-lifetime ownership remain the active work. See `IRACING_IMPLEMENTATION.md`.
 
 ## Windows notification broker (implementation complete; headset presentation pending, 2026-07-13)
 

@@ -21,13 +21,46 @@ internal enum ViewLabEventKind
     FlagState,
 }
 
+internal enum SpotterState
+{
+    Clear = 0,
+    CarLeft = 1,
+    CarRight = 2,
+    CarsBothSides = 3,
+    TwoCarsLeft = 4,
+    TwoCarsRight = 5,
+}
+
+internal enum RacingFlagState
+{
+    Clear = 0,
+    Green,
+    Blue,
+    White,
+    Yellow,
+    Debris,
+    Red,
+    Black,
+    Disqualified,
+    Checkered,
+}
+
 internal readonly struct ViewLabEvent
 {
     public ViewLabEventKind Kind { get; init; }
     public string? Title { get; init; }
     public string? Body { get; init; }
     public double Value { get; init; }   // generic scalar (e.g. spotter side/intensity)
+    public double SecondaryValue { get; init; }
     public uint Color { get; init; }      // 0xRRGGBB where meaningful (e.g. flag colour)
+    public SpotterState Spotter { get; init; }
+    public RacingFlagState Flag { get; init; }
+    public int LapNumber { get; init; }
+    public bool IsValid { get; init; }
+    public bool IsPersonalBest { get; init; }
+    public bool? IsSessionBest { get; init; }
+    public double? DeltaSeconds { get; init; }
+    public string? SessionId { get; init; }
     public DateTimeOffset TimestampUtc { get; init; }
 }
 
