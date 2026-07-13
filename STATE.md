@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.187 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.187.msi`
+**Current version:** 4.1.189 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.189.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
 
@@ -12,14 +12,21 @@
 
 The first `OverlayCoordinateResolver` pass incorrectly mapped normalized coordinates independently into each eye and used each asymmetric full-FOV midpoint for the crosshair. This produced two monocular stickers and contaminated both direct and topmost output. The resolver now builds shared selected/full tangent bounds from both eyes, chooses one visor-space target, and projects it independently into each eye viewport. Crosshair zero is shared tangent `(0,0)`; normalized offsets and Lens Pinned clamping happen in shared tangent space. HUD and trace both render binocularly. Projection capture still stops after the primary layer to prevent repeated OpenComposite texture draws. Headset validation remains pending and no release is authorised.
 
-Experimental `Topmost Visor Overlays` remains default-off and live-switchable. It draws the same binocular visor scene into a transparent two-eye projection swapchain and appends that layer after game-owned layers. The established direct visor mask remains active independently, and the topmost texture also carries the mask. Swapchain creation, acquisition, wait, release, or submission failure falls back to the eye-texture renderer. Dirt Rally 2/OpenComposite headset validation is pending.
+**Safety-critical Topmost repair:** the 2026-07-13 DiRT Rally incident was caused by Topmost
+swapchain churn followed by 193 unbounded allocation retries during device/display-stack failure.
+Topmost now makes one stable allocation attempt per OpenXR session, derives capacity from the tracked
+game texture rather than submitted-rectangle jitter, and permanently fails closed to the direct path
+on any allocation, render, submission, capacity, or device-loss error. Checkbox cycling cannot re-arm
+a failed session, and failed resources are not destroyed on the render path. Headset validation is
+mandatory before release; see `INCIDENT_REPORT.md`, `TOPMOST_ROOT_CAUSE.md`, and
+`TOPMOST_VALIDATION.md`.
 
 **Core crop regression found:** runtime evidence showed asymmetric split crop applying `pitch_offset=0.31637` radians to both game eye poses even though the live ini requested `foveated_center_compensation=0`. The setting had been made permanently on after the 4.1.81 backup, which defaulted/respected it off. Pose compensation is now retired; split crop changes only FOV tangents. Headset confirmation is required before returning to overlay calibration issues.
 
 **Narrow remaining-repairs pass:** `SplitCheck_Changed` now persists the mode immediately, so
 disabling split writes centred normal-vertical state before the next game launch. The experimental
-topmost projection matches the primary projection's sRGB/UNORM transfer convention and declares
-ViewLab's straight-alpha shader output as unpremultiplied, without changing direct-render colours.
+topmost projection uses the runtime texture's legal typed RTV format and submits the already blended
+transparent target as premultiplied alpha, without changing direct-render colours.
 Calibration tools are divided by purpose: literal-pixel
 patterns use the complete submitted eye rectangle; the 64 px grid retains exact spacing but starts
 at shared tangent zero; radial spokes and rings are constructed in shared tangent space and project
@@ -29,10 +36,10 @@ contract.
 
 ## Visor overlays: boundary flash, crosshair, notifications, iRacing scaffold (in progress, 2026-07-12)
 
-**Build:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.187.msi` (stale split persistence,
-Topmost colour transfer/alpha semantics, calibration geometry classification, and crosshair-slider
-right-click resets repaired; working crop/stereo resolver unchanged; WPF + native x64/Win32 +
-deterministic contracts + extracted MSI payload validated; headset validation pending).
+**Build:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.189.msi` (Topmost allocation churn and
+unbounded retry removed; one attempt per session, device-loss fail-closed gate, stable texture
+capacity, typed RTV, premultiplied submission; working crop/stereo resolver unchanged; WPF + native
+x64/Win32 + deterministic contracts + extracted MSI payload validated; headset validation pending).
 
 **Packaging mismatch repair:** 4.1.169's MSI metadata/filename were correct, but WiX harvested the
 stale 4.1.168 executable from `bin\Release\net8.0-windows\...` after the WPF project moved to

@@ -654,10 +654,13 @@ struct TopmostLayerState {
     uint32_t width = 0, height = 0;
     int64_t format = DXGI_FORMAT_R8G8B8A8_UNORM;
     std::vector<XrSwapchainImageD3D11KHR> images;
-    bool ready = false, failed = false;
+    bool ready = false;
 };
 TopmostLayerState g_topmostLayer;
 bool g_topmostLayerBlocked = false;
+bool g_topmostLayerAttempted = false;
+std::atomic<bool> g_rendererDeviceLost{false};
+std::atomic<bool> g_rendererDeviceLossLogged{false};
 
 std::mutex g_swapchainMutex;
 // Serializes renderer lifetime and immediate-context use across OpenXR hooks. The D3D11
@@ -703,6 +706,23 @@ struct D3D11MaskState {
 };
 
 D3D11MaskState g_d3d11Mask;
+
+bool RendererDeviceHealthy(const char* stage) {
+    if (g_rendererDeviceLost.load(std::memory_order_acquire)) return false;
+    if (!g_d3d11Mask.device) return false;
+    const HRESULT reason = g_d3d11Mask.device->GetDeviceRemovedReason();
+    if (SUCCEEDED(reason)) return true;
+    g_rendererDeviceLost.store(true, std::memory_order_release);
+    g_topmostLayerBlocked = true;
+    if (!g_rendererDeviceLossLogged.exchange(true)) {
+        Log("d3d11 safety: device removed stage=%s reason=0x%08X pid=%lu thread=%lu; "
+            "all ViewLab rendering disabled for this session\n",
+            stage ? stage : "unknown", static_cast<unsigned>(reason),
+            static_cast<unsigned long>(GetCurrentProcessId()),
+            static_cast<unsigned long>(GetCurrentThreadId()));
+    }
+    return false;
+}
 
 bool GetHudRenderAdapterLuid(uint64_t& adapterLuid) {
     adapterLuid = 0;
@@ -2819,34 +2839,81 @@ void DestroyTopmostLayer() {
     g_topmostLayer = TopmostLayerState{};
 }
 
+void BlockTopmostLayer(const char* stage, int64_t result) {
+    const bool firstFailure = !g_topmostLayerBlocked;
+    g_topmostLayerBlocked = true;
+    const HRESULT deviceReason = g_d3d11Mask.device
+        ? g_d3d11Mask.device->GetDeviceRemovedReason() : E_POINTER;
+    if (FAILED(deviceReason) && g_d3d11Mask.device)
+        RendererDeviceHealthy(stage);
+    if (firstFailure) {
+        Log("topmost safety: disabled for session stage=%s result=0x%llX deviceReason=0x%08X "
+            "pid=%lu thread=%lu; no automatic retry\n",
+            stage ? stage : "unknown", static_cast<unsigned long long>(result),
+            static_cast<unsigned>(deviceReason),
+            static_cast<unsigned long>(GetCurrentProcessId()),
+            static_cast<unsigned long>(GetCurrentThreadId()));
+    }
+    // Do not destroy or recreate compositor resources from a failing render path. In particular,
+    // a removed device is precisely the wrong moment to churn runtime-owned D3D resources. The
+    // dormant swapchain is released once, during normal session teardown.
+}
+
 bool EnsureTopmostLayer(XrSession session, uint32_t width, uint32_t height, int64_t preferredFormat) {
     if (g_topmostLayerBlocked) return false;
-    if (g_topmostLayer.ready && g_topmostLayer.session==session && g_topmostLayer.width==width &&
-        g_topmostLayer.height==height && g_topmostLayer.format==preferredFormat) return true;
-    DestroyTopmostLayer();
-    if (!nextXrCreateSwapchain || !nextXrEnumerateSwapchainImages || width==0 || height==0) return false;
+    if (g_topmostLayer.ready) {
+        if (g_topmostLayer.session==session && width<=g_topmostLayer.width &&
+            height<=g_topmostLayer.height && g_topmostLayer.format==preferredFormat) return true;
+        BlockTopmostLayer("projection capacity changed", XR_ERROR_LIMIT_REACHED);
+        return false;
+    }
+    // A session gets exactly one allocation attempt. A failed runtime/driver allocation must never
+    // become a per-frame retry loop, even if a future failure branch forgets to latch explicitly.
+    if (g_topmostLayerAttempted) {
+        BlockTopmostLayer("allocation already attempted", XR_ERROR_RUNTIME_FAILURE);
+        return false;
+    }
+    g_topmostLayerAttempted = true;
+    if (!nextXrCreateSwapchain || !nextXrEnumerateSwapchainImages || width==0 || height==0) {
+        BlockTopmostLayer("invalid prerequisites", XR_ERROR_VALIDATION_FAILURE);
+        return false;
+    }
     XrSwapchainCreateInfo ci{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     ci.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT|XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
     ci.format=preferredFormat; ci.sampleCount=1; ci.width=width; ci.height=height;
     ci.faceCount=1; ci.arraySize=2; ci.mipCount=1;
     XrSwapchain sc=XR_NULL_HANDLE;
-    if (XR_FAILED(nextXrCreateSwapchain(session,&ci,&sc))) {
-        Log("topmost overlays: colour-matched swapchain creation failed format=%lld; normal renderer remains active\n",(long long)preferredFormat);
+    const XrResult createResult=nextXrCreateSwapchain(session,&ci,&sc);
+    if (XR_FAILED(createResult)) {
+        BlockTopmostLayer("xrCreateSwapchain", createResult);
         return false;
     }
     uint32_t count=0;
-    if (XR_FAILED(nextXrEnumerateSwapchainImages(sc,0,&count,nullptr)) || count==0) { nextXrDestroySwapchain(sc); return false; }
+    XrResult enumerateResult=nextXrEnumerateSwapchainImages(sc,0,&count,nullptr);
+    if (XR_FAILED(enumerateResult) || count==0) { nextXrDestroySwapchain(sc); BlockTopmostLayer("xrEnumerateSwapchainImages(count)", enumerateResult); return false; }
     std::vector<XrSwapchainImageD3D11KHR> images(count);
     for(auto& image:images) image.type=XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR;
-    if (XR_FAILED(nextXrEnumerateSwapchainImages(sc,count,&count,reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())))) { nextXrDestroySwapchain(sc); return false; }
+    enumerateResult=nextXrEnumerateSwapchainImages(sc,count,&count,reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
+    if (XR_FAILED(enumerateResult)) { nextXrDestroySwapchain(sc); BlockTopmostLayer("xrEnumerateSwapchainImages(images)", enumerateResult); return false; }
     g_topmostLayer.session=session; g_topmostLayer.swapchain=sc; g_topmostLayer.width=width; g_topmostLayer.height=height;
     g_topmostLayer.format=ci.format; g_topmostLayer.images=std::move(images); g_topmostLayer.ready=true;
-    Log("topmost overlays: transparent projection swapchain ready %ux%u array=2 format=%lld\n",width,height,(long long)ci.format);
+    D3D11_TEXTURE2D_DESC desc{};
+    if(!g_topmostLayer.images.empty() && g_topmostLayer.images[0].texture)
+        g_topmostLayer.images[0].texture->GetDesc(&desc);
+    Log("topmost overlays: swapchain ready %ux%u array=2 requestedFormat=%lld resourceFormat=%u "
+        "bind=0x%X misc=0x%X images=%u pid=%lu thread=%lu\n",
+        width,height,(long long)ci.format,(unsigned)desc.Format,desc.BindFlags,desc.MiscFlags,count,
+        static_cast<unsigned long>(GetCurrentProcessId()),
+        static_cast<unsigned long>(GetCurrentThreadId()));
     return true;
 }
 
 bool RenderTopmostLayer(XrSession session, const XrCompositionLayerProjection* source, TopmostSubmission& out) {
-    if (!source || source->viewCount<1 || !source->views || !g_d3d11Mask.device || !g_d3d11Mask.context) return false;
+    if (!source || source->viewCount<1 || !source->views || !g_d3d11Mask.device || !g_d3d11Mask.context) {
+        BlockTopmostLayer("render prerequisites", E_POINTER);
+        return false;
+    }
+    if (!RendererDeviceHealthy("RenderTopmostLayer(begin)")) { BlockTopmostLayer("device removed before render", DXGI_ERROR_DEVICE_REMOVED); return false; }
     uint32_t width=0,height=0,viewCount=(std::min)(source->viewCount,2u);
     for(uint32_t i=0;i<viewCount;++i) { width=(std::max)(width,(uint32_t)source->views[i].subImage.imageRect.extent.width); height=(std::max)(height,(uint32_t)source->views[i].subImage.imageRect.extent.height); }
     // Match the primary projection's transfer-function declaration. The direct renderer writes
@@ -2861,28 +2928,54 @@ bool RenderTopmostLayer(XrSession session, const XrCompositionLayerProjection* s
             if(candidate==DXGI_FORMAT_R8G8B8A8_UNORM || candidate==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ||
                candidate==DXGI_FORMAT_B8G8R8A8_UNORM || candidate==DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
                 preferredFormat=candidate;
+            // Allocate from the underlying game texture capacity, not its submitted imageRect.
+            // The latter legitimately moves by a pixel or changes between menus and gameplay;
+            // tying allocation size to it caused destructive swapchain churn.
+            if(!tracked->second.textures.empty() && tracked->second.textures[0]) {
+                D3D11_TEXTURE2D_DESC sourceDesc{};
+                tracked->second.textures[0]->GetDesc(&sourceDesc);
+                if(sourceDesc.ArraySize > 1) {
+                    width=(std::max)(width,sourceDesc.Width);
+                    height=(std::max)(height,sourceDesc.Height);
+                }
+            }
         }
     }
     if (!EnsureTopmostLayer(session,width,height,preferredFormat)) return false;
     uint32_t imageIndex=0; XrSwapchainImageAcquireInfo ai{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
-    if (XR_FAILED(nextXrAcquireSwapchainImage(g_topmostLayer.swapchain,&ai,&imageIndex))) return false;
+    const XrResult acquireResult=nextXrAcquireSwapchainImage(g_topmostLayer.swapchain,&ai,&imageIndex);
+    if (XR_FAILED(acquireResult)) { BlockTopmostLayer("xrAcquireSwapchainImage", acquireResult); return false; }
     XrSwapchainImageWaitInfo wi{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO}; wi.timeout=100000000;
-    if (XR_FAILED(nextXrWaitSwapchainImage(g_topmostLayer.swapchain,&wi)) || imageIndex>=g_topmostLayer.images.size()) { XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO}; nextXrReleaseSwapchainImage(g_topmostLayer.swapchain,&ri); return false; }
+    const XrResult waitResult=nextXrWaitSwapchainImage(g_topmostLayer.swapchain,&wi);
+    if (XR_FAILED(waitResult) || imageIndex>=g_topmostLayer.images.size()) { XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO}; nextXrReleaseSwapchainImage(g_topmostLayer.swapchain,&ri); BlockTopmostLayer("xrWaitSwapchainImage", waitResult); return false; }
     ID3D11Texture2D* tex=g_topmostLayer.images[imageIndex].texture;
+    if(!tex) { XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO}; nextXrReleaseSwapchainImage(g_topmostLayer.swapchain,&ri); BlockTopmostLayer("null swapchain texture", E_POINTER); return false; }
+    D3D11_TEXTURE2D_DESC topmostDesc{}; tex->GetDesc(&topmostDesc);
     std::vector<EyeView> eyes; eyes.reserve(viewCount);
     for(uint32_t i=0;i<viewCount;++i) { XrFovf full=source->views[i].fov; if(i<g_d3d11Mask.latestViewCount) full=g_d3d11Mask.latestOriginalViews[i].fov; eyes.push_back(EyeView{{{0,0},{source->views[i].subImage.imageRect.extent.width,source->views[i].subImage.imageRect.extent.height}},i,i,source->views[i].fov,full}); }
-    bool rendered=true;
+    bool rendered=true; HRESULT renderResult=S_OK;
     for(uint32_t i=0;i<viewCount;++i) {
-        D3D11_RENDER_TARGET_VIEW_DESC rd{}; rd.Format=GetNonSRGBFormat((DXGI_FORMAT)g_topmostLayer.format); rd.ViewDimension=D3D11_RTV_DIMENSION_TEXTURE2DARRAY; rd.Texture2DArray.FirstArraySlice=i; rd.Texture2DArray.ArraySize=1;
+        D3D11_RENDER_TARGET_VIEW_DESC rd{};
+        // Runtime swapchain images may be strongly typed. Reinterpreting an SRGB resource as
+        // UNORM is only legal when the allocation is typeless, and was the failing RTV operation
+        // at the start of the incident. Use the resource's actual typed format.
+        rd.Format=topmostDesc.Format;
+        if(rd.Format==DXGI_FORMAT_R8G8B8A8_TYPELESS || rd.Format==DXGI_FORMAT_B8G8R8A8_TYPELESS)
+            rd.Format=(DXGI_FORMAT)g_topmostLayer.format;
+        rd.ViewDimension=D3D11_RTV_DIMENSION_TEXTURE2DARRAY; rd.Texture2DArray.FirstArraySlice=i; rd.Texture2DArray.ArraySize=1;
         ID3D11RenderTargetView* rtv=nullptr;
-        if(FAILED(g_d3d11Mask.device->CreateRenderTargetView(tex,&rd,&rtv))||!rtv) { rendered=false; break; }
+        renderResult=g_d3d11Mask.device->CreateRenderTargetView(tex,&rd,&rtv);
+        if(FAILED(renderResult)||!rtv) { rendered=false; break; }
         const float clear[4]={0,0,0,0}; g_d3d11Mask.context->ClearRenderTargetView(rtv,clear); if(maskEnabled) DrawVisorBorderToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv); DrawCalibrationPatternsToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv); rtv->Release();
     }
-    g_d3d11Mask.context->Flush(); XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO}; if(XR_FAILED(nextXrReleaseSwapchainImage(g_topmostLayer.swapchain,&ri))) return false;
-    if(!rendered) { Log("topmost overlays: compatible RTV creation failed; normal renderer remains active\n"); return false; }
-    // Overlay shaders output straight (unpremultiplied) RGB + alpha; advertise that convention for
-    // partially transparent visor content while the matched swapchain format preserves RGB transfer.
-    out.layer.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT|XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT; out.layer.space=source->space; out.layer.viewCount=viewCount; out.layer.views=out.views.data();
+    if(rendered) g_d3d11Mask.context->Flush();
+    XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO}; const XrResult releaseResult=nextXrReleaseSwapchainImage(g_topmostLayer.swapchain,&ri);
+    if(!rendered) { BlockTopmostLayer("CreateRenderTargetView", renderResult); return false; }
+    if(XR_FAILED(releaseResult)) { BlockTopmostLayer("xrReleaseSwapchainImage", releaseResult); return false; }
+    if (!RendererDeviceHealthy("RenderTopmostLayer(end)")) { BlockTopmostLayer("device removed after render", DXGI_ERROR_DEVICE_REMOVED); return false; }
+    // ViewLab's alpha-blended draw pass writes premultiplied RGB into the transparent target, so do
+    // not ask the compositor to multiply it a second time.
+    out.layer.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT; out.layer.space=source->space; out.layer.viewCount=viewCount; out.layer.views=out.views.data();
     for(uint32_t i=0;i<viewCount;++i) { out.views[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}; out.views[i].pose=source->views[i].pose; out.views[i].fov=source->views[i].fov; out.views[i].subImage.swapchain=g_topmostLayer.swapchain; out.views[i].subImage.imageRect=XrRect2Di{{0,0},{source->views[i].subImage.imageRect.extent.width,source->views[i].subImage.imageRect.extent.height}}; out.views[i].subImage.imageArrayIndex=i; }
     return true;
 }
@@ -3057,7 +3150,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
     // overwritten by the app and is guaranteed present when the runtime composites.
     // Independent of the visibility-mask path; that path must never suppress this.
 
-    if (enabled && (maskEnabled || ((!topmostVisorOverlays || !g_topmostLayer.ready) && AnyDirectOverlay())) && g_d3d11Mask.initialized && g_d3d11Mask.context) {
+    if (enabled && (maskEnabled || ((!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked) && AnyDirectOverlay())) &&
+        g_d3d11Mask.initialized && g_d3d11Mask.context && RendererDeviceHealthy("xrReleaseSwapchainImage")) {
         ID3D11Texture2D* tex = nullptr;
         uint32_t arrSize = 1;
         int64_t  scFormat = 0;
@@ -3098,7 +3192,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                         DrawVisorBorderToTexture(tex, arrSize, scFormat, views[i], views,
                             i < rtvs.size() ? rtvs[i] : nullptr);
                     }
-                    if ((!topmostVisorOverlays || !g_topmostLayer.ready) && (AnyCalibrationPattern() || hudEnabled || hudTraceEnabled || AnyViewLabOverlay())) {
+                    if ((!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked) && (AnyCalibrationPattern() || hudEnabled || hudTraceEnabled || AnyViewLabOverlay())) {
                         DrawCalibrationPatternsToTexture(tex, arrSize, scFormat, views[i], views,
                             i < rtvs.size() ? rtvs[i] : nullptr);
                     }
@@ -3660,6 +3754,11 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
 
     ReleaseD3D11MaskRenderer();
+    DestroyTopmostLayer();
+    g_rendererDeviceLost.store(false, std::memory_order_release);
+    g_rendererDeviceLossLogged.store(false, std::memory_order_release);
+    g_topmostLayerBlocked=false;
+    g_topmostLayerAttempted=false;
     g_d3d11Mask.session = *session;
     const auto* d3d11Binding = reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(
         FindStructInChain(createInfo->next, XR_TYPE_GRAPHICS_BINDING_D3D11_KHR));
@@ -3667,7 +3766,14 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
         g_d3d11Mask.device = d3d11Binding->device;
         g_d3d11Mask.device->AddRef();
         g_d3d11Mask.device->GetImmediateContext(&g_d3d11Mask.context);
-        Log("visor: D3D11 session detected; initializing renderer\n");
+        uint64_t adapterLuid=0; GetHudRenderAdapterLuid(adapterLuid);
+        Log("visor: D3D11 session detected pid=%lu thread=%lu device=%p context=%p adapterLuid=%016llX "
+            "featureLevel=0x%X; initializing renderer\n",
+            static_cast<unsigned long>(GetCurrentProcessId()),
+            static_cast<unsigned long>(GetCurrentThreadId()),
+            g_d3d11Mask.device,g_d3d11Mask.context,
+            static_cast<unsigned long long>(adapterLuid),
+            static_cast<unsigned>(g_d3d11Mask.device->GetFeatureLevel()));
         InitD3D11MaskRenderer();
     } else {
         Log("visor: this game does not use D3D11; ViewLab's visor is unavailable\n");
@@ -3680,11 +3786,14 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
     if (session == g_topmostLayer.session) DestroyTopmostLayer();
     g_topmostLayerBlocked=false;
+    g_topmostLayerAttempted=false;
     if (session == g_d3d11Mask.session) {
         ReleaseD3D11MaskRenderer();
         DisconnectLiveState();
         DisconnectNotify();
     }
+    g_rendererDeviceLost.store(false, std::memory_order_release);
+    g_rendererDeviceLossLogged.store(false, std::memory_order_release);
     return nextXrDestroySession(session);
 }
 
@@ -3761,6 +3870,10 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
 
     // One generation check against the UI-published shared snapshot; no ini parsing here.
     ConsumeLiveState();
+    if (g_d3d11Mask.initialized && !RendererDeviceHealthy("xrEndFrame") &&
+        g_topmostLayer.swapchain != XR_NULL_HANDLE) {
+        BlockTopmostLayer("device removed at xrEndFrame", DXGI_ERROR_DEVICE_REMOVED);
+    }
     const XrCompositionLayerProjection* primaryProjection = nullptr;
 
     if (!g_diagEndFrameCalled.exchange(true)) {
@@ -3822,7 +3935,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         }
     }
 
-    if (enabled && g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
+    if (enabled && g_d3d11Mask.initialized && !g_rendererDeviceLost.load(std::memory_order_acquire) &&
+        session == g_d3d11Mask.session) {
         const bool releaseDrewVisor = g_releaseDrewVisorThisFrame.exchange(false);
         if (maskEnabled && !releaseDrewVisor) {
             DrawCapturedProjectionTextures(true, "visor");
@@ -3833,16 +3947,17 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     std::vector<const XrCompositionLayerBaseHeader*> submittedLayers;
     TopmostSubmission topmostSubmission;
     bool submittedTopmost=false;
-    if (topmostVisorOverlays && primaryProjection) {
+    if (topmostVisorOverlays && primaryProjection && !g_topmostLayerBlocked &&
+        !g_rendererDeviceLost.load(std::memory_order_acquire)) {
         const bool wasReady=g_topmostLayer.ready;
         if (RenderTopmostLayer(session,primaryProjection,topmostSubmission)) {
             // On the initialization frame the established release path has already drawn. Arm the
             // layer now and begin submitting next frame, avoiding a one-frame duplicate.
             if (wasReady) { submittedLayers.assign(frameEndInfo->layers,frameEndInfo->layers+frameEndInfo->layerCount); submittedLayers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader*>(&topmostSubmission.layer)); submittedInfo.layerCount=(uint32_t)submittedLayers.size(); submittedInfo.layers=submittedLayers.data(); submittedTopmost=true; }
-        } else DestroyTopmostLayer();
-    } else if (!topmostVisorOverlays) { if(g_topmostLayer.swapchain!=XR_NULL_HANDLE) DestroyTopmostLayer(); g_topmostLayerBlocked=false; }
+        }
+    }
     const XrResult result = nextXrEndFrame(session, submittedTopmost ? &submittedInfo : frameEndInfo);
-    if (submittedTopmost && XR_FAILED(result)) { Log("topmost overlays: xrEndFrame rejected experimental layer (%d); falling back to normal renderer\n",result); DestroyTopmostLayer(); g_topmostLayerBlocked=true; }
+    if (submittedTopmost && XR_FAILED(result)) BlockTopmostLayer("xrEndFrame", result);
     LARGE_INTEGER endStop{};
     QueryPerformanceCounter(&endStop);
     if (trackedFrameIndex < g_hudTrackedFrames.size()) {

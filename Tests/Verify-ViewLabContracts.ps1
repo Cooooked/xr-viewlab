@@ -327,11 +327,13 @@ Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 6u\)' 'live
 Assert-Contains 'dllmain.cpp' 'snapshot\.version != 6' 'DLL consumes live-state contract version 6'
 Assert-Contains 'MainWindow.xaml' 'Name="TopmostVisorOverlaysCheck"' 'UI exposes experimental topmost overlay control'
 Assert-Contains 'dllmain.cpp' 'XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT' 'topmost layer submits transparent source alpha'
-Assert-Contains 'dllmain.cpp' 'XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT' 'topmost layer declares the renderer straight-alpha colour convention'
+Assert-NotContains 'dllmain.cpp' 'XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT' 'topmost compositor does not multiply its premultiplied target twice'
 Assert-Contains 'dllmain.cpp' 'tracked->second\.format' 'topmost layer derives colour format from the primary projection swapchain'
-Assert-Contains 'dllmain.cpp' 'rd\.Format=GetNonSRGBFormat' 'topmost writes through the same non-sRGB RTV convention as the direct path'
+Assert-Contains 'dllmain.cpp' 'rd\.Format=topmostDesc\.Format' 'topmost uses the runtime texture typed format for a legal RTV'
 Assert-Contains 'dllmain.cpp' 'submittedLayers\.push_back' 'topmost layer is appended after game layers'
 Assert-Contains 'dllmain.cpp' 'DestroyTopmostLayer\(\)' 'topmost path has explicit fallback and teardown'
+Assert-Contains 'dllmain.cpp' 'g_topmostLayerAttempted\s*=\s*true' 'topmost allocation is attempted at most once per session'
+Assert-Contains 'dllmain.cpp' 'projection capacity changed' 'topmost projection-size changes fail closed instead of reallocating'
 Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(76, \(float\)hudTraceSensitivityMs\)' 'live state carries HUD trace sensitivity'
 
 # Feature 1: render-boundary flash — drags flash the exact cropped boundary in cyan-white, fading ~500ms.
@@ -405,7 +407,7 @@ Assert-Contains 'dllmain.cpp' 'angularDisparity=0' 'crosshair diagnostics report
 Assert-Contains 'dllmain.cpp' 'const float inset=floorf\(th\*\.5f\)\+2\.f' 'boundary flash is inset fully inside the eye scissor'
 Assert-Contains 'dllmain.cpp' 'boundaryPxPerTan' 'boundary flash stroke thickness is angular/screen stable under crop changes'
 Assert-Contains 'dllmain.cpp' 'sharedSelectedL' 'render-area overlays use shared binocular tangent bounds'
-Assert-Contains 'dllmain.cpp' 'maskEnabled \|\| \(\(!topmostVisorOverlays' 'direct visor rendering remains active and isolated while topmost overlays run'
+Assert-Contains 'dllmain.cpp' 'maskEnabled \|\| \(\(!topmostVisorOverlays \|\| !g_topmostLayer\.ready \|\| g_topmostLayerBlocked\)' 'direct visor rendering resumes after a topmost failure'
 Assert-Contains 'dllmain.cpp' 'if\(maskEnabled\) DrawVisorBorderToTexture' 'topmost backend also draws the visor mask'
 
 # Stable display cadence straddles the theoretical interval slightly; these displayed values must

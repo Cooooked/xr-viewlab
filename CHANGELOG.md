@@ -4,12 +4,18 @@
 
 ## Unreleased - 2026-07-12 (Overlays: boundary flash, crosshair, notifications, iRacing scaffold)
 
+- Safety-critical: stopped Topmost from recreating large compositor swapchains for projection-
+  rectangle changes and retrying allocation every frame after failure. It now gets one stable
+  allocation attempt per session and permanently falls back to direct rendering on any failure.
+- Added a session-wide D3D device-removal gate, deferred failed-resource teardown to normal session
+  shutdown, used the runtime texture's legal RTV format, and corrected premultiplied-alpha submission.
+
 - Fixed Split Top/Bottom mode changes not being persisted by the checkbox event. Turning split off
   now immediately writes `split_mode=0` and the centred normal-vertical tangents, preventing an old
   asymmetric profile from returning on the next game launch.
-- Fixed pale Topmost Visor Overlay colours by matching the primary projection swapchain's sRGB/UNORM
-  format and non-sRGB RTV convention. The layer also declares the existing straight-alpha output
-  with `XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT`; the standard direct path is unchanged.
+- Fixed pale Topmost Visor Overlay colours by using the runtime swapchain texture's legal typed RTV
+  format and submitting ViewLab's already alpha-blended target as premultiplied; the standard direct
+  path is unchanged.
 - Reclassified calibration geometry by purpose: pixel rulers/patterns use the complete submitted
   eye rectangle and never scale to crop-overlap bounds; the 64 px grid keeps exact spacing but is
   centred on the fused crosshair; radial spokes and true circular rings are constructed in shared

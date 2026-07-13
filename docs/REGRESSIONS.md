@@ -3,6 +3,17 @@
 > Institutional scar tissue. Read before touching the areas named here. Append an entry whenever
 > a significant regression occurs: what / why / how detected / fix / how to never repeat it.
 
+## R20 — Topmost swapchain churn can collapse the user-mode display stack
+
+**What:** During a DiRT Rally menu-to-car transition, Topmost recreated its large projection
+swapchain for every submitted `imageRect` size change, including a one-pixel oscillation. Once
+allocation failed it retried 193 times in about 21 seconds while the D3D device and DWM failed.
+
+**Never again:** Topmost receives one allocation attempt per session, based on stable underlying
+texture capacity. It never reallocates for submitted-rectangle jitter, retries a failed session,
+re-arms by checkbox cycling, or destroys failed resources from the render path. Device removal
+disables every ViewLab D3D draw until the next session. `Tests/Verify-TopmostSafety.ps1` pins this.
+
 ## R1 — FreeLibrary-before-blob-use crash (4.1.56–4.1.88 era; fixed 4.1.89, re-fixed 4.1.100)
 **What:** Pistol Whip (and any game without d3dcompiler_47 resident) crashed 0xC0000005 at launch.
 **Why:** `InitD3D11MaskRenderer` called `FreeLibrary(dxcLib)` before the compiled shader blobs
