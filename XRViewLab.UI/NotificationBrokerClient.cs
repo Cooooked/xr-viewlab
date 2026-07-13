@@ -84,4 +84,37 @@ internal sealed class NotificationBrokerClient
         }
         return Status;
     }
+
+    public bool SendCommand(string command)
+    {
+        if (!Start(requestAccess: false)) return false;
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = BrokerPath, Arguments = "--" + command, UseShellExecute = false,
+                WorkingDirectory = ProcessDirectory, CreateNoWindow = true
+            });
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Status = $"Error: broker command failed: {ex.GetType().Name} (0x{ex.HResult:X8}).";
+            return false;
+        }
+    }
+
+    public string RefreshIRacingStatus()
+    {
+        string path = Path.Combine(ConfigDirectory, "iracing-status.json");
+        try
+        {
+            if (!File.Exists(path)) return "Provider disconnected — broker has not reported telemetry.";
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+            string state = document.RootElement.GetProperty("state").GetString() ?? "Disconnected";
+            string detail = document.RootElement.GetProperty("detail").GetString() ?? string.Empty;
+            return $"{state} — {detail}";
+        }
+        catch (Exception ex) { return $"Provider status unavailable ({ex.GetType().Name})."; }
+    }
 }

@@ -14,6 +14,12 @@
   fabricating unavailable session-best data.
 - Added a real named-shared-memory fixture covering enums, stale and repeated ticks, reconnect,
   quick restart, invalid values/offsets, flags, laps, duplicates and session changes.
+- Moved the single provider worker into the independent installed broker and added a generation-safe
+  generic racing-state mapping, so telemetry and cues survive settings-window exit.
+- Implemented configurable side-correct peripheral spotter glow, safety-prioritised flag border and
+  lap-result cards through the existing textured-card renderer without enabling desktop notifications.
+- Routed every UI simulation through the same broker, generic event, mapping and native consumer as
+  live telemetry; removed the settings-owned duplicate worker and stale scaffold wording.
 
 ## Unreleased - 2026-07-13 (Packaged Windows notification collection)
 

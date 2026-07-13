@@ -119,11 +119,19 @@ public partial class MainWindow : Window
 	private const string NotifyAllowlistModeKey = "notify_allowlist_mode";
 	private const string NotifyFiltersKey = "notify_app_filters";
 
-	// Feature 4: iRacing scaffold
+	// iRacing provider and generic racing presentation
 	private const string IRacingEnabledKey = "iracing_enabled";
 	private const string IRacingLapPopupKey = "iracing_lap_popup";
 	private const string IRacingSpotterGlowKey = "iracing_spotter_glow";
 	private const string IRacingFlagBorderKey = "iracing_flag_border";
+	private const string IRacingSpotterWidthKey = "iracing_spotter_width";
+	private const string IRacingSpotterStrengthKey = "iracing_spotter_strength";
+	private const string IRacingSpotterOpacityKey = "iracing_spotter_opacity";
+	private const string IRacingSpotterFadeKey = "iracing_spotter_fade";
+	private const string IRacingSpotterColorKey = "iracing_spotter_color";
+	private const string IRacingFlagWidthKey = "iracing_flag_width";
+	private const string IRacingFlagOpacityKey = "iracing_flag_opacity";
+	private const string IRacingLapDurationKey = "iracing_lap_duration_ms";
 
 	// ReShade MENU � OpenXR
 	private const string XrHmdMenuKey = "reshade_xr_hmd_menu";
@@ -171,7 +179,6 @@ public partial class MainWindow : Window
 	private readonly TelemetryConfigService _telemetryConfig = new();
 	private readonly CrosshairSettings _crosshair = new();
 	private readonly NotificationBrokerClient _notificationBroker = new();
-	private IRacingTelemetryProvider? _iracingProvider;
 	private bool _boundaryDragActive;
 	private System.Windows.Threading.DispatcherTimer _xrPollTimer;
 
@@ -286,7 +293,6 @@ public partial class MainWindow : Window
 	protected override void OnClosing(CancelEventArgs e)
 	{
 		SaveWindowSize();
-		_iracingProvider?.Dispose();
 		base.OnClosing(e);
 	}
 
@@ -1133,11 +1139,21 @@ public partial class MainWindow : Window
 		NotifyAllowlistModeCheck.IsChecked = ReadBoolSetting(NotifyAllowlistModeKey, false);
 		NotifyFiltersBox.Text = ReadSetting(NotifyFiltersKey, string.Empty);
 
-		// Feature 4: iRacing scaffold
+		// iRacing provider and generic racing presentation
 		IRacingEnabledCheck.IsChecked = ReadBoolSetting(IRacingEnabledKey, false);
 		IRacingLapPopupCheck.IsChecked = ReadBoolSetting(IRacingLapPopupKey, false);
 		IRacingSpotterGlowCheck.IsChecked = ReadBoolSetting(IRacingSpotterGlowKey, false);
 		IRacingFlagBorderCheck.IsChecked = ReadBoolSetting(IRacingFlagBorderKey, false);
+		IRacingSpotterWidthSlider.Value = ReadRangeSetting(IRacingSpotterWidthKey, 0.12, 0.03, 0.35);
+		IRacingSpotterStrengthSlider.Value = ReadRangeSetting(IRacingSpotterStrengthKey, 1.0, 0.1, 2.0);
+		IRacingSpotterOpacitySlider.Value = ReadRangeSetting(IRacingSpotterOpacityKey, 0.65, 0.05, 1.0);
+		IRacingSpotterFadeSlider.Value = ReadRangeSetting(IRacingSpotterFadeKey, 1.8, 0.25, 4.0);
+		uint spotterColor = (uint)ReadRangeSetting(IRacingSpotterColorKey, 0xFF4500, 0, 0xFFFFFF);
+		IRacingSpotterColorBox.Text = spotterColor.ToString("X6", CultureInfo.InvariantCulture);
+		IRacingSpotterColorPreview.Background = new SolidColorBrush(Color.FromRgb((byte)(spotterColor >> 16), (byte)(spotterColor >> 8), (byte)spotterColor));
+		IRacingFlagWidthSlider.Value = ReadRangeSetting(IRacingFlagWidthKey, 0.018, 0.003, 0.12);
+		IRacingFlagOpacitySlider.Value = ReadRangeSetting(IRacingFlagOpacityKey, 0.60, 0.05, 1.0);
+		IRacingLapDurationSlider.Value = ReadRangeSetting(IRacingLapDurationKey, 4500, 1000, 15000);
 
 		// Gameplay/Tuning + menu/window controls now live in the ReShade Remote pop-out (ReShadeRemoteWindow).
 		SyncSlidersFromText();
@@ -1834,7 +1850,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", NotifyFiltersKey, NotifyFiltersBox.Text ?? string.Empty, ConfigPath);
 	}
 
-	// ---- Feature 4: iRacing scaffold UI --------------------------------------------------------
+	// ---- iRacing integration UI ----------------------------------------------------------------
 	private void IRacingControl_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading) return;
@@ -1843,6 +1859,14 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", IRacingLapPopupKey, IRacingLapPopupCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", IRacingSpotterGlowKey, IRacingSpotterGlowCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", IRacingFlagBorderKey, IRacingFlagBorderCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		var c = CultureInfo.InvariantCulture;
+		WritePrivateProfileString("Settings", IRacingSpotterWidthKey, IRacingSpotterWidthSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingSpotterStrengthKey, IRacingSpotterStrengthSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingSpotterOpacityKey, IRacingSpotterOpacitySlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingSpotterFadeKey, IRacingSpotterFadeSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingFlagWidthKey, IRacingFlagWidthSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingFlagOpacityKey, IRacingFlagOpacitySlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingLapDurationKey, IRacingLapDurationSlider.Value.ToString("0", c), ConfigPath);
 		PublishLiveState();
 		EnsureIRacingProvider();
 		StatusText.Text = "iRacing telemetry settings applied.";
@@ -1850,28 +1874,32 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private void EnsureIRacingProvider()
 	{
-		_iracingProvider ??= new IRacingTelemetryProvider();
-		_iracingProvider.DiagnosticsChanged -= IRacingDiagnosticsChanged;
-		_iracingProvider.DiagnosticsChanged += IRacingDiagnosticsChanged;
-		_iracingProvider.EventPublished -= IRacingEventPublished;
-		_iracingProvider.EventPublished += IRacingEventPublished;
-		if (IRacingEnabledCheck.IsChecked == true) _iracingProvider.Start(); else _iracingProvider.Stop();
+		_notificationBroker.Start(requestAccess: false);
 		IRacingDiagnosticsChanged();
+	}
+
+	private void IRacingControlSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => IRacingControl_Changed(sender, e);
+
+	private void IRacingSpotterColor_Apply(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		string hex = (IRacingSpotterColorBox.Text ?? string.Empty).Trim().TrimStart('#');
+		if (hex.Length == 6 && uint.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint rgb))
+		{
+			WritePrivateProfileString("Settings", IRacingSpotterColorKey, rgb.ToString(CultureInfo.InvariantCulture), ConfigPath);
+			IRacingSpotterColorPreview.Background = new SolidColorBrush(Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
+			StatusText.Text = "Spotter glow colour saved; an active game picks it up at session start.";
+		}
+		else StatusText.Text = "Enter a 6-digit hex colour, e.g. FF4500.";
 	}
 
 	private void IRacingDiagnosticsChanged() => Dispatcher.BeginInvoke(() =>
 	{
-		if (IRacingStatusText != null && _iracingProvider != null)
-			IRacingStatusText.Text = $"{_iracingProvider.Status} — {_iracingProvider.Diagnostics}";
+		if (IRacingStatusText != null)
+			IRacingStatusText.Text = _notificationBroker.RefreshIRacingStatus();
 	});
 
-	private void IRacingEventPublished(object? sender, ViewLabEvent e)
-	{
-		// Racing events use their own generic presentation channels. They must never enable or
-		// persist the unrelated global Windows-notification feature.
-	}
-
-	private void SimulateIRacing(string kind){EnsureIRacingProvider();_iracingProvider?.Simulate(kind);}
+	private void SimulateIRacing(string kind){EnsureIRacingProvider();_notificationBroker.SendCommand("simulate-"+kind.ToLowerInvariant());}
 	private void IRacingTestLeft_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Left");
 	private void IRacingTestRight_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Right");
 	private void IRacingTestBoth_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Both");

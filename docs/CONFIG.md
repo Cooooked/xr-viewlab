@@ -100,6 +100,10 @@ remain startup-owned and are never overwritten by the global live snapshot.
 | `notify_show_icon`, `notify_show_image` | 1, 1 | notification broker | Whether cards composite the source app icon and the image/thumbnail where Windows exposes one. |
 | `notify_allowlist_mode`, `notify_app_filters` | 0, (empty) | notification broker | Comma-separated source-app filter; `allowlist_mode=1` shows only matches, otherwise it is a blocklist. Permission remains global. |
 | `iracing_enabled`, `iracing_lap_popup`, `iracing_spotter_glow`, `iracing_flag_border` | 0,0,0,0 | iRacing provider | Gates the optional background `IRSDKMemMapFileName` reader and generic lap/spotter/flag event consumers. Raw iRacing fields never enter the native renderer. UI simulations work without iRacing. |
+| `iracing_spotter_width`, `iracing_spotter_strength`, `iracing_spotter_opacity`, `iracing_spotter_fade` | 0.12, 1.0, 0.65, 1.8 | racing renderer | Peripheral width, intensity multiplier, maximum edge alpha and inward falloff exponent. |
+| `iracing_spotter_color` | 16729344 (`FF4500`) | racing renderer | Decimal `0xRRGGBB` colour for side glows. |
+| `iracing_flag_width`, `iracing_flag_opacity` | 0.018, 0.60 | racing renderer | Inner flag-border width as eye-min-dimension fraction and alpha. Flag colour comes from the generic prioritised state. |
+| `iracing_lap_duration_ms` | 4500 | broker card queue | Lap result card lifetime, clamped to 1000–15000 ms. Independent of Windows-notification permission. |
 | `crop_experiment_mode` | — | — | **Removed 2026-07-11** (experimental crop-fix purge) — code and UI gone; key ignored. Root cause of the edge smear was VD fixed foveated encoding: `docs/FIXED_FOVEATION.md`. |
 | `edge_smear_fix`, `edge_smear_pixels` | — | — | **Removed 2026-07-11** — edge-guard code deleted; keys ignored. |
 | `lod_popin_fix` | 0 | — | **Removed** — code disabled; key ignored. |

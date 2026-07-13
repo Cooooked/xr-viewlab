@@ -36,8 +36,12 @@ void Sample(int spotter = 1, int lap = 0, float lapTime = -1, uint flags = 0, in
 }
 
 var events = new ConcurrentQueue<ViewLabEvent>();
+string racingMapName = "Local\\ViewLabRacingStateFixture_" + Environment.ProcessId;
+using var racingState = new RacingStateService(racingMapName);
+using var racingMap = MemoryMappedFile.OpenExisting(racingMapName, MemoryMappedFileRights.Read);
+using var racingView = racingMap.CreateViewAccessor(0, 64, MemoryMappedFileAccess.Read);
 using var provider = new IRacingTelemetryProvider(mapName);
-provider.EventPublished += (_, e) => events.Enqueue(e);
+provider.EventPublished += (_, e) => { events.Enqueue(e); racingState.Publish(e, 4500); };
 provider.Start();
 Sample();
 WaitUntil(() => provider.IsConnected, "provider connects to fixture mapping");
@@ -56,6 +60,7 @@ foreach (int raw in new[] { 2, 3, 4, 5, 6, 1 })
     Sample(spotter: raw);
     ViewLabEvent e = WaitEvent(x => x.Kind == ViewLabEventKind.SpotterGlow, $"spotter raw {raw}");
     Assert(e.Spotter == official[raw], $"spotter raw {raw} reaches generic event as {official[raw]}");
+    WaitUntil(() => racingView.ReadUInt32(16) == (uint)official[raw], $"spotter raw {raw} reaches native racing-state contract");
     Drain();
 }
 Sample(spotter: 0); Thread.Sleep(40);
@@ -69,6 +74,7 @@ Sample(spotter: 2);
 WaitEvent(e => e.Kind == ViewLabEventKind.SpotterGlow && e.Spotter == SpotterState.CarLeft, "left before stale");
 WaitUntil(() => provider.Status == "Stale", "unchanged tick becomes stale", 1800);
 WaitEvent(e => e.Kind == ViewLabEventKind.SpotterGlow && e.Spotter == SpotterState.Clear, "stale clears spotter");
+WaitUntil(() => racingView.ReadUInt32(16) == 0, "stale clears native racing-state contract");
 Drain();
 
 Sample(spotter: 3);
@@ -96,6 +102,7 @@ foreach ((uint raw, RacingFlagState expected) in flags)
     Sample(flags: raw);
     ViewLabEvent e = WaitEvent(x => x.Kind == ViewLabEventKind.FlagState, $"flag 0x{raw:X}");
     Assert(e.Flag == expected, $"flag 0x{raw:X} maps/prioritises as {expected}"); Drain();
+    WaitUntil(() => racingView.ReadUInt32(20) == (uint)expected, $"flag {expected} reaches native racing-state contract");
 }
 
 Sample(lap: 10, lapTime: 95, bestLap: 9, bestTime: 94);
@@ -103,6 +110,7 @@ Drain();
 Sample(lap: 11, lapTime: 93, bestLap: 11, bestTime: 93);
 ViewLabEvent lap = WaitEvent(e => e.Kind == ViewLabEventKind.LapTime, "valid lap completion");
 Assert(lap.IsValid && lap.IsPersonalBest && lap.LapNumber == 11 && lap.SessionId == "100:1", "valid PB lap semantics");
+WaitUntil(() => racingView.ReadInt32(32) == 11 && (racingView.ReadUInt32(28) & 7) == 7, "lap result reaches native racing-state contract");
 Sample(lap: 11, lapTime: 93, bestLap: 11, bestTime: 93); Thread.Sleep(40);
 Assert(!events.Any(e => e.Kind == ViewLabEventKind.LapTime), "duplicate lap value is suppressed");
 Sample(lap: 12, lapTime: -1, bestLap: 11, bestTime: 93);

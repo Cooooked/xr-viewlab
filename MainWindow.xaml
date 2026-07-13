@@ -662,7 +662,7 @@
                       <Button Content="Test Notification" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,6,0,0" Click="TestNotification_Click" />
 
                       <Separator Margin="0,10,0,8" Background="{StaticResource BorderBrush}" Height="1" />
-                      <!-- iRacing scaffold (future integration) -->
+                      <!-- iRacing integration and real presentation-path controls -->
                       <TextBlock Text="iRACING TELEMETRY" Foreground="#C08A2A" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
                       <TextBlock Text="Optional shared-memory provider. The renderer receives generic ViewLab events only." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,6" />
                       <CheckBox Name="IRacingEnabledCheck" Content="Enable iRacing integration" Foreground="#8A8A8A" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
@@ -670,6 +670,22 @@
                       <CheckBox Name="IRacingLapPopupCheck" Content="Lap-time popup" Foreground="#8A8A8A" Margin="0,4,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
                       <CheckBox Name="IRacingSpotterGlowCheck" Content="Peripheral spotter glow" Foreground="#8A8A8A" Margin="0,4,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
                       <CheckBox Name="IRacingFlagBorderCheck" Content="Flag-state border" Foreground="#8A8A8A" Margin="0,4,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                      <TextBlock Text="Spotter width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,0" />
+                      <Slider Name="IRacingSpotterWidthSlider" Minimum="0.03" Maximum="0.35" Value="0.12" ValueChanged="IRacingControlSlider_Changed" />
+                      <TextBlock Text="Spotter strength / opacity / inward fade" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                      <Slider Name="IRacingSpotterStrengthSlider" Minimum="0.1" Maximum="2" Value="1" ValueChanged="IRacingControlSlider_Changed" />
+                      <Slider Name="IRacingSpotterOpacitySlider" Minimum="0.05" Maximum="1" Value="0.65" ValueChanged="IRacingControlSlider_Changed" />
+                      <Slider Name="IRacingSpotterFadeSlider" Minimum="0.25" Maximum="4" Value="1.8" ValueChanged="IRacingControlSlider_Changed" />
+                      <WrapPanel Margin="0,3,0,0">
+                        <Border Name="IRacingSpotterColorPreview" Width="20" Height="20" Background="#FF4500" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,0,6,0" />
+                        <TextBox Name="IRacingSpotterColorBox" Width="90" Text="FF4500" />
+                        <Button Content="Apply colour" Style="{StaticResource RedButton}" Padding="8,2" Margin="6,0,0,0" Click="IRacingSpotterColor_Apply" />
+                      </WrapPanel>
+                      <TextBlock Text="Flag border width / opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,0" />
+                      <Slider Name="IRacingFlagWidthSlider" Minimum="0.003" Maximum="0.12" Value="0.018" ValueChanged="IRacingControlSlider_Changed" />
+                      <Slider Name="IRacingFlagOpacitySlider" Minimum="0.05" Maximum="1" Value="0.6" ValueChanged="IRacingControlSlider_Changed" />
+                      <TextBlock Text="Lap card duration" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,0" />
+                      <Slider Name="IRacingLapDurationSlider" Minimum="1000" Maximum="15000" Value="4500" ValueChanged="IRacingControlSlider_Changed" />
                       <WrapPanel Margin="0,6,0,0">
                         <Button Content="Left" Style="{StaticResource RedButton}" Padding="6,2" Click="IRacingTestLeft_Click" />
                         <Button Content="Right" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestRight_Click" />

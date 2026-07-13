@@ -208,10 +208,11 @@ bool notifyEnabled = false;
 bool topmostVisorOverlays = false;
 double notifyX = 0.98, notifyY = 0.98, notifyScale = 1.0, notifyOpacity = 1.0;
 
-// ---- iRacing integration scaffold (feature 4) ----
-// Flags are plumbed end-to-end but the layer takes no action on them yet. A later generic event
-// provider publishes ViewLab overlay events; the renderer stays decoupled from iRacing.
+// ---- Generic racing presentation (iRacing is one broker-side producer) ----
 bool iracingEnabled = false, iracingLapPopup = false, iracingSpotterGlow = false, iracingFlagBorder = false;
+double iracingSpotterWidth = 0.12, iracingSpotterStrength = 1.0, iracingSpotterOpacity = 0.65, iracingSpotterFade = 1.8;
+double iracingFlagWidth = 0.018, iracingFlagOpacity = 0.60;
+uint32_t iracingSpotterColor = 0xFF4500;
 struct HudTrackedFrame {
     XrTime displayTime = 0;
     XrDuration displayPeriod = 0;
@@ -229,7 +230,7 @@ inline bool AnyCalibrationPattern() {
 // Notifications are "active" only while at least one card is live in the shared queue; that is
 // evaluated per-frame in the draw path, so the coarse gate here simply includes notifyEnabled.
 inline bool BoundaryFlashActive() { return g_boundaryDragActive || g_boundaryReleaseTick != 0; }
-inline bool AnyViewLabOverlay() { return crosshairEnabled || notifyEnabled || BoundaryFlashActive(); }
+inline bool AnyViewLabOverlay() { return crosshairEnabled || notifyEnabled || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
 inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || hudEnabled || hudTraceEnabled || AnyViewLabOverlay(); }
 
 uint64_t FileTimeToUint64(const FILETIME& time) {
@@ -603,7 +604,7 @@ struct NotifyCardBlock {
     uint8_t rgba[kNotifyCardW * kNotifyCardH * 4]; // top-down BGRA-as-RGBA, straight alpha
 };
 struct NotifyBlock {
-    uint32_t magic, version, generation, count;
+    uint32_t magic, version, count, generation;
     NotifyCardBlock cards[kNotifyMaxCards];
 };
 #pragma pack(pop)
@@ -621,6 +622,26 @@ void ConnectNotify() {
     if (!g_notify) { CloseHandle(g_notifyMap); g_notifyMap = nullptr; }
 }
 void DisconnectNotify() { if (g_notify) { UnmapViewOfFile(g_notify); g_notify = nullptr; } if (g_notifyMap) { CloseHandle(g_notifyMap); g_notifyMap = nullptr; } g_notifyNextConnectTick = 0; }
+
+// Generic racing presentation bridge. The producer owns simulator-specific telemetry and writes
+// generation last; native sees only stable spotter/flag/lap semantics.
+constexpr uint32_t kRacingMagic = 0x31524C56; // VLR1
+#pragma pack(push,4)
+struct RacingStateBlock {
+    uint32_t magic,version,size,generation;
+    uint32_t spotterState,flagState,flagColor,lapFlags;
+    int32_t lapNumber; float lapSeconds,lapDeltaSeconds; uint32_t reserved0;
+    int64_t lapExpiresTick; uint32_t reserved[2];
+};
+#pragma pack(pop)
+static_assert(sizeof(RacingStateBlock)==64,"Racing state contract size");
+HANDLE g_racingMap=nullptr; const RacingStateBlock* g_racing=nullptr; RacingStateBlock g_racingStable{}; uint32_t g_racingGeneration=0; uint64_t g_racingNextConnectTick=0;
+void ConsumeRacingState(){
+    if(!g_racing){const uint64_t now=GetTickCount64();if(now<g_racingNextConnectTick)return;g_racingNextConnectTick=now+1000;g_racingMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabRacingState");if(g_racingMap)g_racing=(const RacingStateBlock*)MapViewOfFile(g_racingMap,FILE_MAP_READ,0,0,sizeof(RacingStateBlock));}
+    if(!g_racing||g_racing->magic!=kRacingMagic||g_racing->version!=1||g_racing->size!=sizeof(RacingStateBlock)||g_racing->generation==g_racingGeneration)return;
+    const RacingStateBlock snapshot=*g_racing;MemoryBarrier();if(snapshot.generation!=g_racing->generation)return;g_racingStable=snapshot;g_racingGeneration=snapshot.generation;
+}
+void DisconnectRacingState(){if(g_racing)UnmapViewOfFile(g_racing);if(g_racingMap)CloseHandle(g_racingMap);g_racing=nullptr;g_racingMap=nullptr;g_racingStable={};g_racingGeneration=0;g_racingNextConnectTick=0;}
 
 void ConsumeLiveState() {
     ConsumeTelemetryConfig();
@@ -671,7 +692,7 @@ void ConsumeLiveState() {
     notifyEnabled = (stable.notifyFlags & 1u) != 0;
     notifyX = std::clamp((double)stable.notifyX, 0.0, 1.0); notifyY = std::clamp((double)stable.notifyY, 0.0, 1.0);
     notifyScale = std::clamp((double)stable.notifyScale, 0.25, 3.0); notifyOpacity = std::clamp((double)stable.notifyOpacity, 0.1, 1.0);
-    // Feature 4: iRacing scaffold flags (plumbed, not yet acted on).
+    // Generic racing presentation enables; event state arrives through its dedicated mapping.
     iracingEnabled = (stable.iracingFlags & 1u) != 0; iracingLapPopup = (stable.iracingFlags & 2u) != 0;
     iracingSpotterGlow = (stable.iracingFlags & 4u) != 0; iracingFlagBorder = (stable.iracingFlags & 8u) != 0;
     if ((stable.flags & 1u) != 0 && !liveVisorUsesProfileOverride) {
@@ -2820,9 +2841,12 @@ void DrawViewLabOverlaysToTexture(
     }
     const bool wantBoundary = boundaryAlpha > 0.001f;
     const bool wantCrosshair = crosshairEnabled && crosshairAlpha > 0.001f;
+    ConsumeRacingState();
+    const bool wantSpotter = iracingEnabled && iracingSpotterGlow && g_racingStable.spotterState != 0;
+    const bool wantFlag = iracingEnabled && iracingFlagBorder && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
     bool wantNotify = false;
-    if (notifyEnabled && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic) wantNotify = true; }
-    if (!wantBoundary && !wantCrosshair && !wantNotify) return;
+    if ((notifyEnabled || (iracingEnabled && iracingLapPopup)) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic) wantNotify = true; }
+    if (!wantBoundary && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
 
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
     if (texDesc.Width == 0 || texDesc.Height == 0) return;
@@ -2908,6 +2932,30 @@ void DrawViewLabOverlaysToTexture(
         }
         verts.clear();
     };
+
+    // Racing flag border is a restrained inner outline. It is static for an unchanged generic
+    // flag state, so telemetry ticks cannot replay an animation or create an event storm.
+    if (wantFlag) {
+        const float cr=((g_racingStable.flagColor>>16)&255)/255.f,cg=((g_racingStable.flagColor>>8)&255)/255.f,cb=(g_racingStable.flagColor&255)/255.f;
+        const float a=(float)iracingFlagOpacity,th=std::clamp((float)iracingFlagWidth*minDim,2.f,minDim*.12f),inset=2.f;
+        rectFill(l+inset,t+inset,rr_-inset,t+inset+th,cr,cg,cb,a); rectFill(l+inset,bb_-inset-th,rr_-inset,bb_-inset,cr,cg,cb,a);
+        rectFill(l+inset,t+inset,l+inset+th,bb_-inset,cr,cg,cb,a); rectFill(rr_-inset-th,t+inset,rr_-inset,bb_-inset,cr,cg,cb,a);
+        flushFlat(cr,cg,cb,a);
+    }
+
+    // Spotter is spatial rather than textual: maximum intensity at the relevant peripheral edge,
+    // fading inward in eight bounded bands. Both-sides remains two simultaneous independent cues.
+    if (wantSpotter) {
+        const uint32_t state=g_racingStable.spotterState;
+        const bool left=state==1||state==3||state==4,right=state==2||state==3||state==5;
+        const float cr=((iracingSpotterColor>>16)&255)/255.f,cg=((iracingSpotterColor>>8)&255)/255.f,cb=(iracingSpotterColor&255)/255.f;
+        const float width=std::clamp((float)iracingSpotterWidth*w,8.f,w*.35f),step=width/8.f,base=(float)(iracingSpotterOpacity*iracingSpotterStrength);
+        for(int i=0;i<8;++i){
+            const float inward=(i+.5f)/8.f;
+            if(left){const float a=base*powf(1.f-inward,(float)iracingSpotterFade);rectFill(l+i*step,(float)t,l+(i+1)*step,(float)bb_,cr,cg,cb,a);flushFlat(cr,cg,cb,a);}
+            if(right){const float a=base*powf(inward,(float)iracingSpotterFade);rectFill(rr_-width+i*step,(float)t,rr_-width+(i+1)*step,(float)bb_,cr,cg,cb,a);flushFlat(cr,cg,cb,a);}
+        }
+    }
 
     // Feature 1: exact cropped render boundary in fixed cyan-white, constant screen thickness.
     if (wantBoundary) {
@@ -3528,11 +3576,18 @@ void LoadConfig() {
     notifyY = std::clamp(ReadDoubleSetting(L"notify_y", 0.98), 0.0, 1.0);
     notifyScale = std::clamp(ReadDoubleSetting(L"notify_scale", 1.0), 0.25, 3.0);
     notifyOpacity = std::clamp(ReadDoubleSetting(L"notify_opacity", 1.0), 0.1, 1.0);
-    // Feature 4: iRacing scaffold flags.
+    // Generic racing presentation settings.
     iracingEnabled = ReadBoolSetting(L"iracing_enabled", false);
     iracingLapPopup = ReadBoolSetting(L"iracing_lap_popup", false);
     iracingSpotterGlow = ReadBoolSetting(L"iracing_spotter_glow", false);
     iracingFlagBorder = ReadBoolSetting(L"iracing_flag_border", false);
+    iracingSpotterWidth = std::clamp(ReadDoubleSetting(L"iracing_spotter_width", 0.12), 0.03, 0.35);
+    iracingSpotterStrength = std::clamp(ReadDoubleSetting(L"iracing_spotter_strength", 1.0), 0.1, 2.0);
+    iracingSpotterOpacity = std::clamp(ReadDoubleSetting(L"iracing_spotter_opacity", 0.65), 0.05, 1.0);
+    iracingSpotterFade = std::clamp(ReadDoubleSetting(L"iracing_spotter_fade", 1.8), 0.25, 4.0);
+    iracingSpotterColor = static_cast<uint32_t>(ReadDoubleSetting(L"iracing_spotter_color", (double)0xFF4500)) & 0xFFFFFFu;
+    iracingFlagWidth = std::clamp(ReadDoubleSetting(L"iracing_flag_width", 0.018), 0.003, 0.12);
+    iracingFlagOpacity = std::clamp(ReadDoubleSetting(L"iracing_flag_opacity", 0.60), 0.05, 1.0);
     ConnectLiveState();
     if (AnyCalibrationPattern()) {
         Log("calibration: grid=%d ruler=%d gratings=%d bars=%d beacon=%d edge_probes=%d checkerboards=%d zone_plate=%d clipping_steps=%d motion_strip=%d\n",
@@ -4018,6 +4073,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
         DisconnectLiveState();
         DisconnectTelemetryConfig();
         DisconnectNotify();
+        DisconnectRacingState();
     }
     g_rendererDeviceLost.store(false, std::memory_order_release);
     g_rendererDeviceLossLogged.store(false, std::memory_order_release);

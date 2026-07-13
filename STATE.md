@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.203 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.203.msi`
+**Current version:** 4.1.205 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.205.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
@@ -20,8 +20,11 @@ The SDK reader now validates layout/ranges/types, consumes only advancing ticks,
 `CarLeftRight` states are distinct; inactive/stale/disconnect/session reset clears cues. Generic flag
 events use stable safety priority. Lap events include authoritative validity, PB/delta/session fields
 and suppress duplicates; session-best is deliberately absent until an authoritative source is read.
-The production reader passed the real named-memory-map fixture matrix. Spatial presentation and
-independent game-lifetime ownership remain the active work. See `IRACING_IMPLEMENTATION.md`.
+The production reader passed the real named-memory-map fixture matrix. Its sole worker now lives in
+the installed broker and publishes a generation-safe generic state mapping independently of the
+settings window. Native presentation implements side-correct configurable spotter glow, controlled
+flag border, and lap cards gated separately from Windows notifications. Fixture/native build checks
+pass; live/replay iRacing and headset appearance remain pending. See `IRACING_IMPLEMENTATION.md`.
 
 ## Windows notification broker (implementation complete; headset presentation pending, 2026-07-13)
 

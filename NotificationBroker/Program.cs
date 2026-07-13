@@ -23,6 +23,7 @@ internal static class NotificationBrokerProgram
     private static readonly string ConfigDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XR ViewLab");
     private static readonly string ConfigPath = Path.Combine(ConfigDirectory, "xr-viewlab.ini");
     private static readonly string StatusPath = Path.Combine(ConfigDirectory, "notification-broker-status.json");
+    private static readonly string IRacingStatusPath = Path.Combine(ConfigDirectory, "iracing-status.json");
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern uint GetPrivateProfileString(string section, string key, string fallback, StringBuilder value, uint size, string path);
@@ -60,6 +61,23 @@ internal static class NotificationBrokerProgram
     {
         var service = new NotificationService(dispatcher);
         service.StatusChanged += () => WriteStatus(service.State.ToString(), service.Status, identityReady);
+        var racingState = new RacingStateService();
+        var racingProvider = new IRacingTelemetryProvider();
+        bool racingEnabled = ReadBool("iracing_enabled", false);
+        bool lapPopupEnabled = ReadBool("iracing_lap_popup", false);
+        double lapDurationMs = ReadDouble("iracing_lap_duration_ms", 4500, 1000, 15000);
+        racingProvider.DiagnosticsChanged += () => WriteIRacingStatus(racingProvider.Status, racingProvider.Diagnostics);
+        racingProvider.EventPublished += (_, e) => dispatcher.BeginInvoke(() =>
+        {
+            racingState.Publish(e, lapDurationMs);
+            if (e.Kind == ViewLabEventKind.LapTime && lapPopupEnabled)
+            {
+                string suffix = !e.IsValid ? "Invalid lap" :
+                    (e.IsPersonalBest ? "Personal best" : e.DeltaSeconds is double delta ? $"{delta:+0.000;-0.000;0.000} s" : string.Empty);
+                service.EnqueueEvent(new ViewLabEvent { Kind = e.Kind, Title = e.Title, Body = string.IsNullOrEmpty(suffix) ? e.Body : $"{e.Body}  {suffix}", Value = e.Value, TimestampUtc = e.TimestampUtc });
+            }
+        });
+        if (racingEnabled) racingProvider.Start(); else { racingProvider.Stop(); racingState.Clear(); }
 
         NotificationSettings current = ReadSettings();
         bool initialAccessRequest = initialCommand is "request-access" or "request-access-and-test";
@@ -74,6 +92,14 @@ internal static class NotificationBrokerProgram
             {
                 current = next;
                 service.Update(current);
+            }
+            bool nextRacingEnabled = ReadBool("iracing_enabled", false);
+            lapPopupEnabled = ReadBool("iracing_lap_popup", false);
+            lapDurationMs = ReadDouble("iracing_lap_duration_ms", 4500, 1000, 15000);
+            if (nextRacingEnabled != racingEnabled)
+            {
+                racingEnabled = nextRacingEnabled;
+                if (racingEnabled) racingProvider.Start(); else { racingProvider.Stop(); racingState.Clear(); }
             }
         }, dispatcher);
         settingsTimer.Start();
@@ -96,8 +122,17 @@ internal static class NotificationBrokerProgram
                             case "request-access-and-test": service.Update(current, requestAccess: identityReady); service.EnqueueTestNotification(); break;
                             case "test": service.EnqueueTestNotification(); break;
                             case "refresh": service.Update(current); break;
+                            case "simulate-left": racingProvider.Simulate("Left"); break;
+                            case "simulate-right": racingProvider.Simulate("Right"); break;
+                            case "simulate-both": racingProvider.Simulate("Both"); break;
+                            case "simulate-twoleft": racingProvider.Simulate("TwoLeft"); break;
+                            case "simulate-tworight": racingProvider.Simulate("TwoRight"); break;
+                            case "simulate-clear": racingProvider.Simulate("Clear"); break;
+                            case "simulate-lap": racingProvider.Simulate("Lap"); break;
+                            case "simulate-yellow": racingProvider.Simulate("Yellow"); break;
+                            case "simulate-blue": racingProvider.Simulate("Blue"); break;
                             case "shutdown":
-                                settingsTimer.Stop(); service.Dispose(); Application.Current.Shutdown(); break;
+                                settingsTimer.Stop(); racingProvider.Dispose(); racingState.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
                         }
                     });
                     if (received == "shutdown") return;
@@ -212,5 +247,17 @@ internal static class NotificationBrokerProgram
             File.Move(temp, StatusPath, true);
         }
         catch { /* status reporting may fail without affecting notification/rendering paths */ }
+    }
+
+    private static void WriteIRacingStatus(string state, string detail)
+    {
+        try
+        {
+            Directory.CreateDirectory(ConfigDirectory);
+            string temp = IRacingStatusPath + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(new { state, detail, updatedUtc = DateTime.UtcNow }), new UTF8Encoding(false));
+            File.Move(temp, IRacingStatusPath, true);
+        }
+        catch { /* diagnostics never affect telemetry or rendering */ }
     }
 }
