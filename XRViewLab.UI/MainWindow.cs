@@ -85,6 +85,9 @@ public partial class MainWindow : Window
 	private const string HudAlarmHoldKey = "hud_alarm_hold_ms";
 	private const string HudSafeMarginKey = "hud_safe_margin";
 	private const string HudClampKey = "hud_clamp_to_visible";
+	private const string HudGraphModeKey = "hud_graph_mode";
+	private static readonly string[] HudWidgetIds = { "cpu", "gpu", "app", "vr" };
+	private static readonly string[] HudGraphChannelIds = { "frame_interval", "fps", "budget_deviation", "app_work", "wait_duration", "submit_duration", "display_period" };
 
 	// Feature 2: crosshair
 	private const string CrosshairEnabledKey = "crosshair_enabled";
@@ -136,6 +139,13 @@ public partial class MainWindow : Window
 	private const string VrHeadLockedKey = "reshade_vr_head_locked";
 
 	private readonly ObservableCollection<AppProfile> _apps = new ObservableCollection<AppProfile>();
+	private readonly ObservableCollection<HudWidgetOption> _hudWidgets = new()
+	{
+		new() { Id="cpu", Label="CPU — total system utilisation", ToolTip="GetSystemTimes total machine CPU utilisation." },
+		new() { Id="gpu", Label="GPU — render-adapter 3D utilisation", ToolTip="PDH 3D-engine utilisation for ViewLab's D3D adapter." },
+		new() { Id="app", Label="APP — application workload", ToolTip="Time from xrBeginFrame return to xrEndFrame entry, as a percentage of the cadence-aware budget." },
+		new() { Id="vr", Label="VR — application cadence", ToolTip="Wait-to-wait frame interval judged against the runtime's current predicted display period." }
+	};
 
 	private bool _loading = true;
 
@@ -196,6 +206,7 @@ public partial class MainWindow : Window
 	public MainWindow()
 	{
 		InitializeComponent();
+		HudWidgetList.ItemsSource = _hudWidgets;
 		EnsureConfigMigrated();
 		LoadWindowSize();
 		LoadColumnWidths();
@@ -1053,7 +1064,7 @@ public partial class MainWindow : Window
 		HudTraceEnabledCheck.IsChecked = ReadBoolSetting(HudTraceEnabledKey, fallback: false);
 		HudXSlider.Value = ReadRangeSetting(HudAnchorXKey, 0.04, 0.0, 1.0);
 		HudYSlider.Value = ReadRangeSetting(HudAnchorYKey, 0.05, 0.0, 1.0);
-		HudScaleSlider.Value = ReadRangeSetting(HudScaleKey, 1.0, 0.5, 3.0);
+		HudScaleSlider.Value = ReadRangeSetting(HudScaleKey, 1.0, 0.15, 3.0);
 		HudTraceSensitivitySlider.Value = ReadRangeSetting(HudTraceSensitivityKey, 2.0, 0.5, 8.0);
 		HudTraceXSlider.Value = ReadRangeSetting(HudTraceXKey, 0.05, 0.0, 1.0);
 		HudTraceYSlider.Value = ReadRangeSetting(HudTraceYKey, 0.75, 0.0, 1.0);
@@ -1063,6 +1074,19 @@ public partial class MainWindow : Window
 		HudAlarmOnlyCheck.IsChecked = ReadBoolSetting(HudAlarmOnlyKey, fallback: false);
 		HudSafeMarginSlider.Value = ReadRangeSetting(HudSafeMarginKey, 0.025, 0.0, 0.25);
 		HudClampCheck.IsChecked = ReadBoolSetting(HudClampKey, fallback: true);
+		foreach (HudWidgetOption widget in _hudWidgets)
+			widget.Enabled = ReadBoolSetting($"hud_widget_{widget.Id}_enabled", true);
+		var orderedWidgets = _hudWidgets.OrderBy(w => ReadRangeSetting($"hud_widget_{w.Id}_order", Array.IndexOf(HudWidgetIds, w.Id), 0, 3)).ToList();
+		_hudWidgets.Clear(); foreach (HudWidgetOption widget in orderedWidgets) _hudWidgets.Add(widget);
+		HudGraphModeCombo.SelectedIndex = (int)ReadRangeSetting(HudGraphModeKey, 0, 0, 3);
+		HudGraphFrameIntervalCheck.IsChecked = ReadBoolSetting("hud_graph_frame_interval", false);
+		HudGraphFpsCheck.IsChecked = ReadBoolSetting("hud_graph_fps", false);
+		HudGraphBudgetDeviationCheck.IsChecked = ReadBoolSetting("hud_graph_budget_deviation", true);
+		HudGraphAppWorkCheck.IsChecked = ReadBoolSetting("hud_graph_app_work", false);
+		HudGraphWaitDurationCheck.IsChecked = ReadBoolSetting("hud_graph_wait_duration", false);
+		HudGraphSubmitDurationCheck.IsChecked = ReadBoolSetting("hud_graph_submit_duration", false);
+		HudGraphDisplayPeriodCheck.IsChecked = ReadBoolSetting("hud_graph_display_period", false);
+		UpdateGraphChannelAvailability();
 
 		// Feature 2: crosshair
 		_crosshair.Size = ReadRangeSetting(CrosshairSizeKey, 5.0, 0.0, 1000.0);
@@ -1501,6 +1525,39 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private void HudLayoutSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => HudLayout_Changed(sender, e);
 
+	private void HudWidgetToggle_Changed(object sender, RoutedEventArgs e) => HudLayout_Changed(sender, e);
+
+	private void HudWidgetUp_Click(object sender, RoutedEventArgs e) => MoveHudWidget(sender, -1);
+	private void HudWidgetDown_Click(object sender, RoutedEventArgs e) => MoveHudWidget(sender, 1);
+	private void MoveHudWidget(object sender, int delta)
+	{
+		if (sender is not Button { CommandParameter: string id }) return;
+		int index = _hudWidgets.ToList().FindIndex(widget => widget.Id == id);
+		int target = Math.Clamp(index + delta, 0, _hudWidgets.Count - 1);
+		if (index < 0 || index == target) return;
+		_hudWidgets.Move(index, target);
+		HudLayout_Changed(sender, new RoutedEventArgs());
+	}
+
+	private void HudGraphMode_Changed(object sender, SelectionChangedEventArgs e)
+	{
+		UpdateGraphChannelAvailability();
+		HudLayout_Changed(sender, e);
+	}
+
+	private void UpdateGraphChannelAvailability()
+	{
+		int mode = HudGraphModeCombo?.SelectedIndex ?? 0;
+		if (HudGraphFrameIntervalCheck == null) return;
+		HudGraphFrameIntervalCheck.IsEnabled = mode is 1 or 3;
+		HudGraphFpsCheck.IsEnabled = mode == 2;
+		HudGraphBudgetDeviationCheck.IsEnabled = mode == 0;
+		HudGraphAppWorkCheck.IsEnabled = mode is 1 or 3;
+		HudGraphWaitDurationCheck.IsEnabled = mode == 1;
+		HudGraphSubmitDurationCheck.IsEnabled = mode == 1;
+		HudGraphDisplayPeriodCheck.IsEnabled = mode == 1;
+	}
+
 	private void SaveExperimentalSettings()
 	{
 		Directory.CreateDirectory(ConfigDirectory);
@@ -1531,6 +1588,10 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if (CalBeaconCheck.IsChecked == true) mask |= 1u << 4; if (CalEdgeProbesCheck.IsChecked == true) mask |= 1u << 5;
 		if (CalCheckerboardsCheck.IsChecked == true) mask |= 1u << 6; if (CalZonePlateCheck.IsChecked == true) mask |= 1u << 7;
 		if (CalClippingCheck.IsChecked == true) mask |= 1u << 8; if (CalMotionCheck.IsChecked == true) mask |= 1u << 9;
+		uint widgetMask=0, widgetOrder=0;
+		for(int slot=0;slot<_hudWidgets.Count;++slot) { int id=Array.IndexOf(HudWidgetIds,_hudWidgets[slot].Id); if(id<0)continue; if(_hudWidgets[slot].Enabled)widgetMask|=1u<<id; widgetOrder|=(uint)id<<(slot*8); }
+		var graphChecks=new[]{HudGraphFrameIntervalCheck,HudGraphFpsCheck,HudGraphBudgetDeviationCheck,HudGraphAppWorkCheck,HudGraphWaitDurationCheck,HudGraphSubmitDurationCheck,HudGraphDisplayPeriodCheck};
+		uint graphChannels=0; for(int i=0;i<graphChecks.Length;++i)if(graphChecks[i].IsChecked==true)graphChannels|=1u<<i;
 		_liveState.Publish(mask,
 			MaskEnabledCheck.IsChecked == true, TopmostVisorOverlaysCheck.IsChecked == true, MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
 			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, MaskInnerBridgeSlider.Value,
@@ -1539,6 +1600,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			HudSafeMarginSlider.Value, HudClampCheck.IsChecked == true, HudAlarmOnlyCheck.IsChecked == true,
 			HudTraceSensitivitySlider.Value, HudTraceXSlider.Value, HudTraceYSlider.Value, HudTraceScaleSlider.Value,
 			HudTraceWidthSlider.Value, HudTraceHistorySlider.Value, ReadRangeSetting(HudAlarmHoldKey, 1500.0, 0.0, 10000.0),
+			widgetMask, widgetOrder, graphChannels, (uint)Math.Max(0,HudGraphModeCombo.SelectedIndex),
 			_boundaryDragActive,
 			CrosshairEnabledCheck.IsChecked == true, _crosshair.Dot, _crosshair.Outline, _crosshair.TStyle,
 			_crosshair.Size, _crosshair.Gap, _crosshair.Thickness, _crosshair.OutlineThickness, _crosshair.Alpha, _crosshair.VrScale, _crosshair.ColorRgb,
@@ -1838,6 +1900,16 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", HudAlarmOnlyKey, HudAlarmOnlyCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HudSafeMarginKey, HudSafeMarginSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudClampKey, HudClampCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		for (int order = 0; order < _hudWidgets.Count; ++order)
+		{
+			HudWidgetOption widget = _hudWidgets[order];
+			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_enabled", widget.Enabled ? "1" : "0", ConfigPath);
+			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_order", order.ToString(CultureInfo.InvariantCulture), ConfigPath);
+		}
+		WritePrivateProfileString("Settings", HudGraphModeKey, Math.Max(0, HudGraphModeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		var graphChecks = new[] { HudGraphFrameIntervalCheck, HudGraphFpsCheck, HudGraphBudgetDeviationCheck, HudGraphAppWorkCheck, HudGraphWaitDurationCheck, HudGraphSubmitDurationCheck, HudGraphDisplayPeriodCheck };
+		for (int i = 0; i < graphChecks.Length; ++i)
+			WritePrivateProfileString("Settings", $"hud_graph_{HudGraphChannelIds[i]}", graphChecks[i].IsChecked == true ? "1" : "0", ConfigPath);
 	}
 
 	private void ReShadeMenuSetting_Changed(object sender, RoutedEventArgs e) { }

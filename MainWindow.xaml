@@ -513,27 +513,59 @@
                       <CheckBox Name="CalClippingCheck" Content="Black / white clipping steps" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Reveals crushed blacks and clipped whites." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
                       <CheckBox Name="CalMotionCheck" Content="Motion strip" Foreground="#A8A8A8" ToolTip="Reveals temporal smearing and reprojection artefacts." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
-                      <CheckBox Name="HudEnabledCheck" Content="Performance HUD" Foreground="#A8A8A8" ToolTip="CPU, GPU, frame-budget, and VR frame-time indicators projected stereo-coherently near the upper-left visor area." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                      <TextBlock Text="PERFORMANCE HUD" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
+                      <CheckBox Name="HudEnabledCheck" Content="HUD symbols" Foreground="#A8A8A8" Margin="0,4,0,0" ToolTip="Modular CPU, GPU, APP-workload, and VR-cadence widgets rendered identically in both eyes." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                       <TextBlock Text="HUD X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,0" />
                       <Slider Name="HudXSlider" Minimum="0" Maximum="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Horizontal position within the shared binocular view." />
                       <TextBlock Text="HUD Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudYSlider" Minimum="0" Maximum="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Vertical position within the shared binocular view." />
                       <TextBlock Text="HUD scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="HudScaleSlider" Minimum="0.5" Maximum="3" Value="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Indicator size; the whole range maps smoothly to the rendered size." />
-                      <CheckBox Name="HudAlarmOnlyCheck" Content="Alarm-only indicators (show only red)" Foreground="#A8A8A8" Margin="0,6,0,0" ToolTip="Hides each indicator while it is green or amber and shows it only in its red state. The frame-pacing trace is always visible." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
-                      <CheckBox Name="HudTraceEnabledCheck" Content="Performance Trace" Foreground="#A8A8A8" Margin="0,7,0,0" ToolTip="Independently enables the left-eye frame-pacing trace." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
-                      <TextBlock Text="Trace X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,0" />
+                      <Slider Name="HudScaleSlider" Minimum="0.15" Maximum="3" Value="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Scales rings, icons, numbers, spacing, and padding together. Existing 0.5–3.0 sizes are preserved." />
+                      <CheckBox Name="HudAlarmOnlyCheck" Content="Alarm-only symbols (critical/unstable)" Foreground="#A8A8A8" Margin="0,6,0,0" ToolTip="Shows only widgets with a sustained critical or unstable state; recovery uses hysteresis and a hold." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                      <TextBlock Text="Widgets (enabled and order)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,2" />
+                      <ListBox Name="HudWidgetList" Background="Transparent" BorderThickness="0" Padding="0">
+                        <ListBox.ItemTemplate>
+                          <DataTemplate>
+                            <Grid Margin="0,1">
+                              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                              <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" ToolTip="{Binding ToolTip}" Checked="HudWidgetToggle_Changed" Unchecked="HudWidgetToggle_Changed" />
+                              <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="10" Foreground="#B8B8B8" Margin="5,0" VerticalAlignment="Center" ToolTip="{Binding ToolTip}" />
+                              <Button Grid.Column="2" Content="↑" CommandParameter="{Binding Id}" Click="HudWidgetUp_Click" Padding="5,1" Margin="1,0" ToolTip="Move earlier" />
+                              <Button Grid.Column="3" Content="↓" CommandParameter="{Binding Id}" Click="HudWidgetDown_Click" Padding="5,1" Margin="1,0" ToolTip="Move later" />
+                            </Grid>
+                          </DataTemplate>
+                        </ListBox.ItemTemplate>
+                      </ListBox>
+                      <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
+                      <TextBlock Text="PERFORMANCE GRAPH" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
+                      <CheckBox Name="HudTraceEnabledCheck" Content="Performance graph" Foreground="#A8A8A8" Margin="0,4,0,0" ToolTip="Bounded channel graph rendered from the same immutable stereo snapshot as the HUD." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                      <TextBlock Text="Graph mode" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,1" />
+                      <ComboBox Name="HudGraphModeCombo" SelectionChanged="HudGraphMode_Changed" ToolTip="Only channels with compatible units are drawn together.">
+                        <ComboBoxItem Content="Budget deviation (ms)"/><ComboBoxItem Content="Absolute milliseconds"/><ComboBoxItem Content="FPS"/><ComboBoxItem Content="Percent of frame budget"/>
+                      </ComboBox>
+                      <Expander Header="Graph channels" Foreground="#B8B8B8" Margin="0,6,0,0">
+                        <StackPanel Margin="8,3,0,2">
+                          <CheckBox Name="HudGraphFrameIntervalCheck" Content="Frame interval — ms / budget %" ToolTip="QPC interval between consecutive xrWaitFrame returns." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                          <CheckBox Name="HudGraphFpsCheck" Content="FPS — frames/s" ToolTip="1000 divided by measured frame interval." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                          <CheckBox Name="HudGraphBudgetDeviationCheck" Content="Budget deviation — ms" ToolTip="Frame interval minus the cadence-aware frame budget." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                          <CheckBox Name="HudGraphAppWorkCheck" Content="APP work — ms / budget %" ToolTip="Wall time from xrBeginFrame return to xrEndFrame entry." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                          <CheckBox Name="HudGraphWaitDurationCheck" Content="Wait duration — ms" ToolTip="Wall time spent inside xrWaitFrame; this is runtime blocking, not CPU execution time." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                          <CheckBox Name="HudGraphSubmitDurationCheck" Content="Submit duration — ms" ToolTip="Wall time spent inside xrEndFrame; this may include runtime/driver blocking." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                          <CheckBox Name="HudGraphDisplayPeriodCheck" Content="Predicted display period — ms" ToolTip="Runtime-provided predictedDisplayPeriod for the current headset refresh rate." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                        </StackPanel>
+                      </Expander>
+                      <TextBlock Text="Graph X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,0" />
                       <Slider Name="HudTraceXSlider" Minimum="0" Maximum="1" Value="0.05" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Horizontal position of the frame-pacing trace." />
-                      <TextBlock Text="Trace Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <TextBlock Text="Graph Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceYSlider" Minimum="0" Maximum="1" Value="0.75" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Vertical position of the frame-pacing trace." />
-                      <TextBlock Text="Trace height" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <TextBlock Text="Graph height" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceScaleSlider" Minimum="0.25" Maximum="3" Value="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Vertical size of the frame-pacing trace." />
-                      <TextBlock Text="Trace width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <TextBlock Text="Graph width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceWidthSlider" Minimum="0.1" Maximum="1" Value="0.42" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Width of the frame-pacing trace as a fraction of the visible view." />
-                      <TextBlock Text="Trace history (samples)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <TextBlock Text="Graph history (samples)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceHistorySlider" Minimum="30" Maximum="600" Value="120" ValueChanged="HudLayoutSlider_Changed" ToolTip="Number of frames kept in the trace; newest at the right, scrolling left." />
-                      <TextBlock Text="Trace sensitivity (± ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="HudTraceSensitivitySlider" Minimum="0.5" Maximum="8" Value="2" ValueChanged="HudLayoutSlider_Changed" ToolTip="Vertical range for frame-time deviation around the effective cadence budget." />
+                      <TextBlock Text="Graph scale / deviation sensitivity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudTraceSensitivitySlider" Minimum="0.5" Maximum="8" Value="2" ValueChanged="HudLayoutSlider_Changed" ToolTip="Deviation mode uses ±ms; absolute-ms mode uses this as a minimum scale before budget auto-scaling." />
                       <TextBlock Text="Safe margin" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudSafeMarginSlider" Minimum="0" Maximum="0.25" Value="0.025" ValueChanged="HudLayoutSlider_Changed" />
                       <CheckBox Name="HudClampCheck" Content="Keep HUD inside visible region" Foreground="#A8A8A8" Margin="0,4,0,0" Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />

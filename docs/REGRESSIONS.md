@@ -14,6 +14,16 @@ texture capacity. It never reallocates for submitted-rectangle jitter, retries a
 re-arms by checkbox cycling, or destroys failed resources from the render path. Device removal
 disables every ViewLab D3D draw until the next session. `Tests/Verify-TopmostSafety.ps1` pins this.
 
+## R21 — Runtime blocking masqueraded as SYS load
+
+**What:** SYS jumped between roughly 10% and 90% in stable scenes and repeatedly activated
+alarm-only mode. **Why:** it measured from entry to `xrBeginFrame` through return from `xrEndFrame`,
+including variable runtime/compositor/driver blocking, then labelled the result like system pressure.
+
+**Never again:** APP measures the explicit begin-return→end-entry application window and divides it
+by the cadence-aware budget. Hook wall times are named by their boundaries; GPU frame time remains
+deferred until a valid timestamp-query design exists. `Tests/Verify-PerformanceHud.ps1` pins this.
+
 ## R1 — FreeLibrary-before-blob-use crash (4.1.56–4.1.88 era; fixed 4.1.89, re-fixed 4.1.100)
 **What:** Pistol Whip (and any game without d3dcompiler_47 resident) crashed 0xC0000005 at launch.
 **Why:** `InitD3D11MaskRenderer` called `FreeLibrary(dxcLib)` before the compiled shader blobs

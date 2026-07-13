@@ -1,5 +1,13 @@
 # Decision log
 
+## D20 — Performance timings are named by observable hook boundaries
+
+APP is wall time from `xrBeginFrame` return to `xrEndFrame` entry, not exact CPU execution. Wait and
+submit graph channels are durations inside their respective runtime calls. Adapter 3D utilisation is
+not GPU frame time, which remains deferred until ViewLab has a correctly scoped non-blocking D3D
+timestamp-query pipeline. Cadence derives from the active `predictedDisplayPeriod`, never a list of
+familiar millisecond values.
+
 > Why things are the way they are. Append-only; add an entry when a decision becomes permanent.
 > Format: decision, reasoning, alternatives rejected, consequences.
 

@@ -19,7 +19,7 @@ internal sealed class LiveStateService : IDisposable
     {
         _map = MemoryMappedFile.CreateOrOpen(Name, Size, MemoryMappedFileAccess.ReadWrite);
         _view = _map.CreateViewAccessor(0, Size, MemoryMappedFileAccess.ReadWrite);
-        _view.Write(0, Magic); _view.Write(4, 6u); _view.Write(8, (uint)Size);
+        _view.Write(0, Magic); _view.Write(4, 7u); _view.Write(8, (uint)Size);
     }
 
     public void Publish(uint calibrationMask,
@@ -28,6 +28,7 @@ internal sealed class LiveStateService : IDisposable
         bool hudEnabled, bool traceEnabled, double hudX, double hudY, double hudScale, double hudSafeMargin, bool hudClamp,
         bool hudAlarmOnly, double hudTraceSensitivityMs, double traceX, double traceY, double traceScale,
         double traceWidth, double traceHistory, double alarmHoldMs,
+        uint hudWidgetMask, uint hudWidgetOrder, uint hudGraphChannels, uint hudGraphMode,
         bool boundaryDrag,
         bool crosshairEnabled, bool crosshairDot, bool crosshairOutline, bool crosshairTStyle,
         double chSize, double chGap, double chThickness, double chOutlineThickness, double chAlpha, double chScale, uint chColor,
@@ -61,6 +62,8 @@ internal sealed class LiveStateService : IDisposable
         _view.Write(176, traceEnabled ? 1u : 0u);
         _view.Write(180, (float)chOffsetX); _view.Write(184, (float)chOffsetY);
         _view.Write(188, topmostOverlays ? 1u : 0u);
+        _view.Write(192, hudWidgetMask); _view.Write(196, hudWidgetOrder);
+        _view.Write(200, hudGraphChannels); _view.Write(204, hudGraphMode);
         Thread.MemoryBarrier();
         _view.Write(12, unchecked(++_generation));
     }

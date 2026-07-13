@@ -4,6 +4,15 @@
 
 ## Unreleased - 2026-07-12 (Overlays: boundary flash, crosshair, notifications, iRacing scaffold)
 
+- Redesigned Performance HUD as ordered modular CPU/GPU/APP/VR widgets with independent enables,
+  gap-free packing, 0.15–3.0 whole-widget scale, sustained alarm hysteresis, and live persistence.
+- Replaced unstable SYS timing with APP workload: application-side wall time from `xrBeginFrame`
+  return to `xrEndFrame` entry, expressed against the cadence-aware budget.
+- Reworked VR classification against the runtime's current `predictedDisplayPeriod`, including
+  on-target, warning, critical, stable-reprojection, unstable, and unavailable states.
+- Replaced the trace with a bounded channel graph for frame interval, FPS, budget deviation, APP
+  work, wait duration, submit duration, and predicted display period in unit-safe modes.
+
 - Safety-critical: stopped Topmost from recreating large compositor swapchains for projection-
   rectangle changes and retrying allocation every frame after failure. It now gets one stable
   allocation attempt per session and permanently falls back to direct rendering on any failure.

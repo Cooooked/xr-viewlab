@@ -103,8 +103,47 @@ double hudAlarmHoldMs = 1500.0;
 uint32_t hudUpdateIntervalMs = 100;
 bool hudDebugValues = false;
 double hudDebugCpu = 52.0, hudDebugGpu = 98.0, hudDebugSystem = 44.0, hudDebugVr = 18.0;
+enum class HudWidgetId : uint8_t { Cpu=0, Gpu=1, App=2, Vr=3, Count=4 };
+enum class HudMetricState : uint8_t { OnTarget=0, Warning=1, Critical=2, Reprojection=3, Unstable=4, Unavailable=5 };
+enum class HudGraphMode : uint32_t { Deviation=0, Milliseconds=1, Fps=2, BudgetPercent=3 };
+enum HudGraphChannel : uint32_t {
+    GraphFrameInterval=1u<<0, GraphFps=1u<<1, GraphBudgetDeviation=1u<<2,
+    GraphAppWork=1u<<3, GraphWaitDuration=1u<<4, GraphSubmitDuration=1u<<5,
+    GraphDisplayPeriod=1u<<6
+};
+struct HudWidgetDescriptor {
+    HudWidgetId id; const char* label; const char* unit; uint8_t decimals; bool cadenceRelative;
+};
+constexpr std::array<HudWidgetDescriptor,4> kHudWidgetRegistry{{
+    {HudWidgetId::Cpu,"CPU","%",0,false}, {HudWidgetId::Gpu,"GPU","%",0,false},
+    {HudWidgetId::App,"APP","%",0,false}, {HudWidgetId::Vr,"VR","ms",1,true}
+}};
+uint32_t hudWidgetMask = 0x0Fu;
+uint32_t hudWidgetOrderPacked = 0x03020100u; // four widget IDs, low byte first
+uint32_t hudGraphChannels = GraphBudgetDeviation;
+HudGraphMode hudGraphMode = HudGraphMode::Deviation;
+std::array<uint8_t,4> OrderedHudWidgets(uint32_t packed) {
+    std::array<uint8_t,4> result{}; std::array<bool,4> seen{}; size_t count=0;
+    for(size_t slot=0;slot<4;++slot) {
+        const uint8_t id=(uint8_t)((packed>>(slot*8))&0xFFu);
+        if(id<4 && !seen[id]) { result[count++]=id; seen[id]=true; }
+    }
+    for(uint8_t id=0;id<4;++id) if(!seen[id]) result[count++]=id;
+    return result;
+}
+uint32_t PackHudWidgetOrder(const std::array<int,4>& positions) {
+    std::array<std::pair<int,uint8_t>,4> sorted{};
+    for(uint8_t id=0;id<4;++id) sorted[id]={positions[id],id};
+    std::stable_sort(sorted.begin(),sorted.end(),[](const auto&a,const auto&b){return a.first<b.first;});
+    uint32_t packed=0; for(size_t slot=0;slot<4;++slot) packed|=(uint32_t)sorted[slot].second<<(slot*8);
+    return packed;
+}
 struct HudMetric { double value = 0.0; bool available = false; };
-struct HudFrameSample { double actualMs = 0.0; double targetMs = 0.0; double deviationMs = 0.0; bool overBudget = false; };
+struct HudFrameSample {
+    double actualMs = 0.0, targetMs = 0.0, deviationMs = 0.0;
+    double appWorkMs = 0.0, waitDurationMs = 0.0, submitDurationMs = 0.0, displayPeriodMs = 0.0;
+    bool overBudget = false;
+};
 HudMetric g_hudMetrics[4];
 std::array<HudFrameSample, 600> g_hudFrameHistory{};
 size_t g_hudFrameHistoryStart = 0, g_hudFrameHistoryCount = 0;
@@ -112,7 +151,8 @@ uint64_t g_hudNextUpdateTick = 0, g_hudLastIdle100ns = 0, g_hudLastKernel100ns =
 PDH_HQUERY g_hudPdhQuery = nullptr;
 PDH_HCOUNTER g_hudGpuCounter = nullptr;
 LARGE_INTEGER g_hudQpcFrequency{};
-double g_hudSystemRawPercent = 0.0, g_hudSystemSmoothedPercent = 0.0;
+double g_hudAppRawPercent = 0.0, g_hudAppSmoothedPercent = 0.0;
+double g_hudLastAppWorkMs = 0.0, g_hudLastWaitDurationMs = 0.0, g_hudLastSubmitDurationMs = 0.0;
 std::mutex g_hudTimingMutex;
 // Effective application cadence detection. The app's real frame interval is the QPC time
 // between successive xrWaitFrame returns (the runtime throttles the app there, so under
@@ -124,13 +164,18 @@ std::array<double, 90> g_hudIntervalRing{};
 size_t g_hudIntervalCount = 0, g_hudIntervalNext = 0;
 int g_hudCadenceMultiple = 1, g_hudCadenceCandidate = 1, g_hudCadenceStable = 0;
 double g_hudDisplayPeriodMs = 0.0, g_hudFrameTimeMs = 0.0, g_hudEffectiveBudgetMs = 0.0;
-int g_hudVrColorState = 0; // 0 green, 1 amber, 2 red
+HudMetricState g_hudVrState = HudMetricState::Unavailable;
 int g_hudVrAmberSamples = 0, g_hudVrRedSamples = 0;
 std::string g_hudVrColorReason = "initializing";
 // Alarm-only mode: a metric's indicator is shown only while red. Entry uses the normal red
 // threshold on the already-smoothed value; exit uses a lower threshold plus a hold time so
 // indicators do not flicker at the boundary.
-struct HudAlarmState { bool inAlarm = false; uint64_t redHoldUntilTick = 0; };
+struct HudAlarmState {
+    bool inAlarm = false;
+    HudMetricState state = HudMetricState::Unavailable;
+    uint8_t entryCount = 0, recoveryCount = 0;
+    uint64_t redHoldUntilTick = 0;
+};
 HudAlarmState g_hudAlarm[4];
 
 // ---- Render-boundary flash (feature 1) ----
@@ -240,7 +285,11 @@ double ReadGpuAdapterUtilization(uint64_t& selectedAdapterLuid) {
 // effective (cadence-aware) frame budget so the baseline is correct under half-rate modes.
 void RecordHudFrameSample(double actualMs, double targetMs) {
     if (!std::isfinite(actualMs) || !std::isfinite(targetMs) || actualMs < 0.0 || targetMs <= 0.0) return;
-    HudFrameSample sample{actualMs, targetMs, actualMs - targetMs, actualMs > targetMs * 1.03};
+    HudFrameSample sample{};
+    sample.actualMs=actualMs; sample.targetMs=targetMs; sample.deviationMs=actualMs-targetMs;
+    sample.appWorkMs=g_hudLastAppWorkMs; sample.waitDurationMs=g_hudLastWaitDurationMs;
+    sample.submitDurationMs=g_hudLastSubmitDurationMs; sample.displayPeriodMs=g_hudDisplayPeriodMs;
+    sample.overBudget=actualMs > targetMs * 1.03;
     const size_t index = (g_hudFrameHistoryStart + g_hudFrameHistoryCount) % g_hudFrameHistory.size();
     if (g_hudFrameHistoryCount == g_hudFrameHistory.size()) {
         g_hudFrameHistory[g_hudFrameHistoryStart] = sample;
@@ -250,11 +299,16 @@ void RecordHudFrameSample(double actualMs, double targetMs) {
         ++g_hudFrameHistoryCount;
     }
 }
-// SYS metric: actual OpenXR frame work (begin->end) as a percentage of the display period.
-void RecordHudSystemSample(double actualMs, double targetMs) {
-    if (!std::isfinite(actualMs) || !std::isfinite(targetMs) || actualMs < 0.0 || targetMs <= 0.0) return;
-    g_hudSystemRawPercent = std::clamp(actualMs / targetMs * 100.0, 0.0, 100.0);
-    g_hudSystemSmoothedPercent = SmoothHudPercent(g_hudSystemSmoothedPercent, g_hudSystemRawPercent);
+// APP workload is the application-side wall-clock window after xrBeginFrame returns and before
+// xrEndFrame is entered. It excludes runtime blocking inside both calls and is expressed against
+// the cadence-aware budget. It is not presented as exact thread CPU execution time.
+void RecordHudAppWorkSample(double appWorkMs, double budgetMs, double submitDurationMs) {
+    if (!std::isfinite(appWorkMs) || !std::isfinite(budgetMs) || appWorkMs < 0.0 || budgetMs <= 0.0) return;
+    g_hudLastAppWorkMs = appWorkMs;
+    g_hudLastSubmitDurationMs = (std::max)(0.0, submitDurationMs);
+    g_hudAppRawPercent = std::clamp(appWorkMs / budgetMs * 100.0, 0.0, 199.0);
+    const double clampedForDisplay = std::clamp(g_hudAppRawPercent, 0.0, 100.0);
+    g_hudAppSmoothedPercent = SmoothHudPercent(g_hudAppSmoothedPercent, clampedForDisplay);
 }
 // Cadence and pacing update, called under g_hudTimingMutex from xrWaitFrame.
 void UpdateHudCadence(const LARGE_INTEGER& waitStop, XrDuration displayPeriod) {
@@ -277,6 +331,8 @@ void UpdateHudCadence(const LARGE_INTEGER& waitStop, XrDuration displayPeriod) {
                 else { g_hudCadenceCandidate = rawMultiple; g_hudCadenceStable = 1; }
                 if (g_hudCadenceStable >= 20 && g_hudCadenceMultiple != g_hudCadenceCandidate) {
                     g_hudCadenceMultiple = g_hudCadenceCandidate;
+                    // Samples recorded against the previous cadence budget are not comparable.
+                    g_hudFrameHistoryStart = g_hudFrameHistoryCount = 0;
                     Log("HUD cadence: effective app cadence is 1/%d of display rate (period=%.2fms budget=%.2fms)\n",
                         g_hudCadenceMultiple, g_hudDisplayPeriodMs, g_hudDisplayPeriodMs * g_hudCadenceMultiple);
                 }
@@ -288,12 +344,32 @@ void UpdateHudCadence(const LARGE_INTEGER& waitStop, XrDuration displayPeriod) {
     }
     g_hudLastWaitStop = waitStop;
 }
-// Per-metric red-state with hysteresis and a post-recovery hold, driving alarm-only mode.
-// Uses the already-smoothed metric values, so boundary flicker is absorbed twice.
-void UpdateHudAlarm(int index, bool redNow, uint64_t nowTick) {
+// Sustained per-widget state with entry/recovery hysteresis. At a 100 ms update interval, three
+// entry samples are roughly 300 ms and six recovery samples are roughly 600 ms.
+void UpdateHudState(int index, HudMetricState desired, uint64_t nowTick) {
     HudAlarmState& alarm = g_hudAlarm[index];
-    if (redNow) { alarm.inAlarm = true; alarm.redHoldUntilTick = nowTick + static_cast<uint64_t>(std::clamp(hudAlarmHoldMs, 0.0, 10000.0)); }
-    else if (alarm.inAlarm && nowTick >= alarm.redHoldUntilTick) alarm.inAlarm = false;
+    if (desired == HudMetricState::Unavailable) {
+        alarm.state=desired; alarm.entryCount=alarm.recoveryCount=0; alarm.inAlarm=false; return;
+    }
+    auto severity=[](HudMetricState state) {
+        if(state==HudMetricState::Warning)return 1;
+        if(state==HudMetricState::Critical || state==HudMetricState::Unstable)return 2;
+        if(state==HudMetricState::Unavailable)return -1;
+        return 0;
+    };
+    if (desired == alarm.state) { alarm.entryCount=alarm.recoveryCount=0; }
+    else if (severity(desired) > severity(alarm.state) || alarm.state == HudMetricState::Unavailable) {
+        alarm.recoveryCount=0;
+        if (++alarm.entryCount >= 3) { alarm.state=desired; alarm.entryCount=0; }
+    } else {
+        alarm.entryCount=0;
+        if (++alarm.recoveryCount >= 6 && nowTick >= alarm.redHoldUntilTick) { alarm.state=desired; alarm.recoveryCount=0; }
+    }
+    const bool critical = alarm.state==HudMetricState::Critical || alarm.state==HudMetricState::Unstable;
+    if (critical) {
+        alarm.inAlarm=true;
+        alarm.redHoldUntilTick=nowTick+static_cast<uint64_t>(std::clamp(hudAlarmHoldMs,0.0,10000.0));
+    } else if (alarm.inAlarm && nowTick >= alarm.redHoldUntilTick) alarm.inAlarm=false;
 }
 void UpdateHudMetrics() {
     const uint64_t now = GetTickCount64();
@@ -306,10 +382,14 @@ void UpdateHudMetrics() {
         // Debug VR value is interpreted as milliseconds of app frame time.
         g_hudMetrics[3] = { std::clamp(hudDebugVr, 0.0, 999.9), true };
         if (g_hudEffectiveBudgetMs <= 0.0) g_hudEffectiveBudgetMs = 11.1;
-        for (int i = 0; i < 3; ++i)
-            UpdateHudAlarm(i, g_hudMetrics[i].value >= (g_hudAlarm[i].inAlarm ? hudRedThreshold - 3.0 : hudRedThreshold), now);
-        UpdateHudAlarm(3, g_hudMetrics[3].value > g_hudEffectiveBudgetMs * (g_hudAlarm[3].inAlarm ? 0.97 : 1.0), now);
-        LogVerbose("HUD telemetry: DEBUG raw CPU=%.2f%% GPU=%.2f%% SYS=%.2f%% VRms=%.2f; displayed=%.2f%%/%.2f%%/%.2f%%/%.1fms\n",
+        for (int i = 0; i < 3; ++i) {
+            const double value=g_hudMetrics[i].value;
+            UpdateHudState(i,value>=hudRedThreshold?HudMetricState::Critical:value>=hudGreenThreshold?HudMetricState::Warning:HudMetricState::OnTarget,now);
+        }
+        const double debugRatio=g_hudEffectiveBudgetMs>0.0?g_hudMetrics[3].value/g_hudEffectiveBudgetMs:0.0;
+        UpdateHudState(3,debugRatio>1.08?HudMetricState::Critical:debugRatio>1.03?HudMetricState::Warning:HudMetricState::OnTarget,now);
+        g_hudVrState=g_hudAlarm[3].state;
+        LogVerbose("HUD telemetry: DEBUG raw CPU=%.2f%% GPU=%.2f%% APP=%.2f%% VRms=%.2f; displayed=%.2f%%/%.2f%%/%.2f%%/%.1fms\n",
             hudDebugCpu, hudDebugGpu, hudDebugSystem, hudDebugVr, g_hudMetrics[0].value, g_hudMetrics[1].value, g_hudMetrics[2].value, g_hudMetrics[3].value);
         return;
     }
@@ -340,53 +420,61 @@ void UpdateHudMetrics() {
     }
     if (!cpuAvailable) g_hudMetrics[0].available = false;
     if (!gpuAvailable) g_hudMetrics[1].available = false;
-    double systemRaw = 0.0, frameMs = 0.0, budgetMs = 0.0, periodMs = 0.0;
+    double appRaw = 0.0, frameMs = 0.0, budgetMs = 0.0, periodMs = 0.0;
     int cadence = 1;
     {
         std::lock_guard<std::mutex> lock(g_hudTimingMutex);
-        systemRaw = g_hudSystemRawPercent;
-        if (g_hudSystemSmoothedPercent > 0.0 || g_hudSystemRawPercent > 0.0)
-            g_hudMetrics[2] = { std::clamp(g_hudSystemSmoothedPercent, 0.0, 100.0), true };
+        appRaw = g_hudAppRawPercent;
+        if (g_hudAppSmoothedPercent > 0.0 || g_hudAppRawPercent > 0.0)
+            g_hudMetrics[2] = { std::clamp(g_hudAppSmoothedPercent, 0.0, 100.0), true };
         frameMs = g_hudFrameTimeMs; budgetMs = g_hudEffectiveBudgetMs;
         periodMs = g_hudDisplayPeriodMs; cadence = g_hudCadenceMultiple;
         if (g_hudIntervalCount >= 2 && frameMs > 0.0 && budgetMs > 0.0)
             g_hudMetrics[3] = { std::clamp(frameMs, 0.0, 999.9), true };
         else g_hudMetrics[3].available = false;
     }
-    for (int i = 0; i < 3; ++i)
-        UpdateHudAlarm(i, g_hudMetrics[i].available && g_hudMetrics[i].value >= (g_hudAlarm[i].inAlarm ? hudRedThreshold - 3.0 : hudRedThreshold), now);
+    for (int i = 0; i < 3; ++i) {
+        const HudMetric& metric=g_hudMetrics[i];
+        const HudMetricState desired=!metric.available?HudMetricState::Unavailable:
+            metric.value>=hudRedThreshold?HudMetricState::Critical:
+            metric.value>=hudGreenThreshold?HudMetricState::Warning:HudMetricState::OnTarget;
+        UpdateHudState(i,desired,now);
+    }
     int missCount = 0, meaningfulMissCount = 0;
     double rollingRatio = 0.0;
+    std::array<double,60> ratios{}; size_t ratioCount=0;
     {
         std::lock_guard<std::mutex> lock(g_hudTimingMutex);
         const size_t n=(std::min)(g_hudFrameHistoryCount,size_t{60});
-        std::array<double,60> ratios{}; size_t ratioCount=0;
         for(size_t i=g_hudFrameHistoryCount-n;i<g_hudFrameHistoryCount;++i){const auto&s=g_hudFrameHistory[(g_hudFrameHistoryStart+i)%g_hudFrameHistory.size()];if(s.actualMs>s.targetMs*1.05)++missCount;if(s.actualMs>s.targetMs*1.15)++meaningfulMissCount;if(s.targetMs>0.0)ratios[ratioCount++]=s.actualMs/s.targetMs;}
-        if(ratioCount){std::nth_element(ratios.begin(),ratios.begin()+ratioCount/2,ratios.begin()+ratioCount);rollingRatio=ratios[ratioCount/2];}
+        if(ratioCount){std::sort(ratios.begin(),ratios.begin()+ratioCount);rollingRatio=ratios[ratioCount/2];}
     }
-    const double vrRatio=(g_hudMetrics[3].available&&budgetMs>0.0)?frameMs/budgetMs:0.0;
-    // Stable cadence naturally straddles the theoretical interval by a few tenths. Never warn
-    // from miss count alone: require a degraded rolling median as well, then confirm it across
-    // several HUD updates. This keeps 8.2/8.3 at 120 Hz and 11.1/11.2 at 90 Hz solid green.
-    const bool amberCandidate = rollingRatio > 1.08 || (rollingRatio > 1.05 && missCount >= 24);
-    const bool redCandidate = rollingRatio > 1.20 || (rollingRatio > 1.10 && meaningfulMissCount >= 12);
-    if(amberCandidate)++g_hudVrAmberSamples;else g_hudVrAmberSamples=0;
-    if(redCandidate)++g_hudVrRedSamples;else g_hudVrRedSamples=0;
-    if(g_hudVrColorState==2){if(rollingRatio<1.10&&meaningfulMissCount<6)g_hudVrColorState=1;}
-    else if(g_hudVrRedSamples>=4)g_hudVrColorState=2;
-    else if(g_hudVrColorState==1){if(rollingRatio<1.04)g_hudVrColorState=0;}
-    else if(g_hudVrAmberSamples>=5)g_hudVrColorState=1;
-    g_hudVrColorReason = g_hudVrColorState==2 ? "sustained cadence median >120% or repeated meaningful misses" : g_hudVrColorState==1 ? "sustained cadence median >108% or repeated mild misses" : "stable rolling cadence";
-    UpdateHudAlarm(3, g_hudVrColorState==2, now);
-    LogVerbose("HUD telemetry: CPU source=GetSystemTimes unit=100ns idle_delta=%llu total_delta=%llu conversion=100*(1-idle/total) raw=%.2f%% available=%d displayed=%.2f%%; GPU source=PDH_GPU_Engine unit=percent adapterLuid=0x%016llx conversion=max(group_by_luid_3D_engine) raw=%.2f%% available=%d displayed=%.2f%%; SYS source=OpenXR_QPC unit=ms conversion=begin_to_end/period*100 raw=%.2f%% available=%d displayed=%.2f%%; VR source=xrWaitFrame_QPC_interval unit=ms period=%.3f cadence_multiple=%d budget=%.3f conversion=EMA(interval) frame=%.3f available=%d displayed=%.1fms\n",
+    double spread=0.0;
+    if(ratioCount>=10) spread=ratios[(ratioCount*9)/10]-ratios[ratioCount/10];
+    HudMetricState cadenceDesired=HudMetricState::Unavailable;
+    if(g_hudMetrics[3].available && ratioCount>=12) {
+        const bool transition=g_hudCadenceCandidate!=g_hudCadenceMultiple && g_hudCadenceStable>=4;
+        if(transition || spread>0.18) cadenceDesired=HudMetricState::Unstable;
+        else if(g_hudCadenceMultiple>1 && g_hudCadenceStable>=20 && rollingRatio>=0.94 && rollingRatio<=1.06) cadenceDesired=HudMetricState::Reprojection;
+        else if(rollingRatio>1.08) cadenceDesired=HudMetricState::Critical;
+        else if(rollingRatio>1.03) cadenceDesired=HudMetricState::Warning;
+        else cadenceDesired=HudMetricState::OnTarget;
+    }
+    UpdateHudState(3,cadenceDesired,now);
+    g_hudVrState=g_hudAlarm[3].state;
+    g_hudVrColorReason = g_hudVrState==HudMetricState::Critical ? "sustained cadence above active budget" :
+        g_hudVrState==HudMetricState::Warning ? "approaching active cadence budget" :
+        g_hudVrState==HudMetricState::Reprojection ? "stable cadence division" :
+        g_hudVrState==HudMetricState::Unstable ? "cadence multiple or rolling spread is unstable" : "on active runtime target";
+    LogVerbose("HUD telemetry: CPU source=GetSystemTimes unit=100ns idle_delta=%llu total_delta=%llu conversion=100*(1-idle/total) raw=%.2f%% available=%d displayed=%.2f%%; GPU source=PDH_GPU_Engine unit=percent adapterLuid=0x%016llx conversion=max(group_by_luid_3D_engine) raw=%.2f%% available=%d displayed=%.2f%%; APP source=OpenXR_QPC unit=ms conversion=begin_return_to_end_entry/effective_budget*100 raw=%.2f%% available=%d displayed=%.2f%%; VR source=xrWaitFrame_QPC_interval unit=ms period=%.3f cadence_multiple=%d budget=%.3f conversion=EMA(interval) frame=%.3f available=%d displayed=%.1fms\n",
         static_cast<unsigned long long>(cpuIdleDelta), static_cast<unsigned long long>(cpuTotalDelta), cpuRaw, cpuAvailable ? 1 : 0, g_hudMetrics[0].value,
         static_cast<unsigned long long>(gpuLuid), gpuRaw, gpuAvailable ? 1 : 0, g_hudMetrics[1].value,
-        systemRaw, g_hudMetrics[2].available ? 1 : 0, g_hudMetrics[2].value,
+        appRaw, g_hudMetrics[2].available ? 1 : 0, g_hudMetrics[2].value,
         periodMs, cadence, budgetMs, frameMs, g_hudMetrics[3].available ? 1 : 0, g_hudMetrics[3].value);
     LogVerbose("HUD pacing decision: refresh=%.2fHz effective=%.2fHz target=%.4fms raw/latest=%.4fms smoothed=%.4fms rollingRatio=%.4f misses=%d meaningful=%d state=%s reason=%s\n",
         periodMs>0?1000.0/periodMs:0.0, budgetMs>0?1000.0/budgetMs:0.0,budgetMs,
         g_hudFrameHistoryCount?g_hudFrameHistory[(g_hudFrameHistoryStart+g_hudFrameHistoryCount-1)%g_hudFrameHistory.size()].actualMs:0.0,
-        frameMs,rollingRatio,missCount,meaningfulMissCount,g_hudVrColorState==2?"red":g_hudVrColorState==1?"amber":"green",g_hudVrColorReason.c_str());
+        frameMs,rollingRatio,missCount,meaningfulMissCount,g_hudVrState==HudMetricState::Critical?"critical":g_hudVrState==HudMetricState::Warning?"warning":g_hudVrState==HudMetricState::Reprojection?"reprojection":g_hudVrState==HudMetricState::Unstable?"unstable":"target",g_hudVrColorReason.c_str());
 }
 
 #pragma pack(push, 4)
@@ -408,7 +496,7 @@ struct LiveStateBlock {
     uint32_t traceFlags;      // v5: bit0 independent performance trace enabled
     float crosshairOffsetX, crosshairOffsetY; // normalized full-lens tangent coordinates
     uint32_t topmostFlags;    // v6: bit0 experimental topmost composition layer
-    float reserved[4];
+    uint32_t hudWidgetMask, hudWidgetOrder, hudGraphChannels, hudGraphMode; // v7
 };
 #pragma pack(pop)
 constexpr uint32_t kLiveStateMagic = 0x534C4C56; // VLLS
@@ -474,7 +562,7 @@ void DisconnectNotify() { if (g_notify) { UnmapViewOfFile(g_notify); g_notify = 
 void ConsumeLiveState() {
     if (!g_liveState) { ConnectLiveState(); if (!g_liveState) return; }
     const LiveStateBlock snapshot = *g_liveState;
-    if (snapshot.magic != kLiveStateMagic || snapshot.version != 6 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
+    if (snapshot.magic != kLiveStateMagic || snapshot.version != 7 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
     MemoryBarrier();
     const LiveStateBlock stable = *g_liveState;
     if (stable.generation != snapshot.generation) return;
@@ -486,7 +574,7 @@ void ConsumeLiveState() {
     calibrationClippingSteps = (stable.calibrationMask & (1u << 8)) != 0; calibrationMotionStrip = (stable.calibrationMask & (1u << 9)) != 0;
     hudEnabled = (stable.hudFlags & 1u) != 0; hudClampToVisible = (stable.hudFlags & 2u) != 0; hudAlarmOnly = (stable.hudFlags & 4u) != 0;
     hudAnchorX = std::clamp((double)stable.hudAnchorX, 0.0, 1.0); hudAnchorY = std::clamp((double)stable.hudAnchorY, 0.0, 1.0);
-    hudScale = std::clamp((double)stable.hudScale, 0.5, 3.0); hudSafeMargin = std::clamp((double)stable.hudSafeMargin, 0.0, 0.25);
+    hudScale = std::clamp((double)stable.hudScale, 0.15, 3.0); hudSafeMargin = std::clamp((double)stable.hudSafeMargin, 0.0, 0.25);
     hudTraceSensitivityMs = std::clamp((double)stable.traceSensitivityMs, 0.25, 8.0);
     hudTraceX = std::clamp((double)stable.traceX, 0.0, 1.0); hudTraceY = std::clamp((double)stable.traceY, 0.0, 1.0);
     hudTraceScale = std::clamp((double)stable.traceScale, 0.25, 3.0); hudTraceWidth = std::clamp((double)stable.traceWidth, 0.10, 1.0);
@@ -494,6 +582,10 @@ void ConsumeLiveState() {
     hudAlarmHoldMs = std::clamp((double)stable.alarmHoldMs, 0.0, 10000.0);
     hudTraceEnabled = (stable.traceFlags & 1u) != 0;
     topmostVisorOverlays = (stable.topmostFlags & 1u) != 0;
+    hudWidgetMask=stable.hudWidgetMask&0x0Fu;
+    hudWidgetOrderPacked=stable.hudWidgetOrder;
+    hudGraphChannels=stable.hudGraphChannels&0x7Fu;
+    hudGraphMode=(HudGraphMode)std::clamp(stable.hudGraphMode,0u,3u);
     // Feature 1: render-boundary flash drag state. A rising edge to inactive stamps the fade start.
     {
         const bool dragNow = (stable.interactFlags & 1u) != 0;
@@ -2277,8 +2369,10 @@ void DrawCalibrationGridToTexture(
 struct HudDrawSnapshot {
     HudMetric metrics[4]{};
     bool alarm[4]{};
+    HudMetricState states[4]{};
     double budgetMs = 0.0;
-    int vrColorState = 0;
+    uint32_t widgetMask=0, widgetOrder=0, graphChannels=0;
+    HudGraphMode graphMode=HudGraphMode::Deviation;
     std::array<HudFrameSample, 600> samples{};
     size_t sampleCount = 0;
     bool valid = false;
@@ -2372,10 +2466,11 @@ void DrawCalibrationOverlayToTexture(
     if ((hudEnabled || hudTraceEnabled) && eye.viewIndex < 2) {
         if (eye.viewIndex == 0 || !g_hudDrawSnap.valid) {
             UpdateHudMetrics();
-            for (int i = 0; i < 4; ++i) { g_hudDrawSnap.metrics[i] = g_hudMetrics[i]; g_hudDrawSnap.alarm[i] = g_hudAlarm[i].inAlarm; }
+            for (int i = 0; i < 4; ++i) { g_hudDrawSnap.metrics[i] = g_hudMetrics[i]; g_hudDrawSnap.alarm[i] = g_hudAlarm[i].inAlarm; g_hudDrawSnap.states[i]=g_hudAlarm[i].state; }
             std::lock_guard<std::mutex> lock(g_hudTimingMutex);
             g_hudDrawSnap.budgetMs = g_hudEffectiveBudgetMs;
-            g_hudDrawSnap.vrColorState = g_hudVrColorState;
+            g_hudDrawSnap.widgetMask=hudWidgetMask; g_hudDrawSnap.widgetOrder=hudWidgetOrderPacked;
+            g_hudDrawSnap.graphChannels=hudGraphChannels; g_hudDrawSnap.graphMode=hudGraphMode;
             g_hudDrawSnap.sampleCount = g_hudFrameHistoryCount;
             for (size_t i = 0; i < g_hudFrameHistoryCount; ++i)
                 g_hudDrawSnap.samples[i] = g_hudFrameHistory[(g_hudFrameHistoryStart + i) % g_hudFrameHistory.size()];
@@ -2407,14 +2502,21 @@ void DrawCalibrationOverlayToTexture(
         const float pxPerTanX = stereoAnchor ? w / (selfR-selfL) : w*.5f;
         const float pxPerTanY = stereoAnchor ? h / (selfU-selfD) : h*.5f;
         const float angularRefPx = (std::min)(pxPerTanX,pxPerTanY) * (2.f/1080.f);
-        const float unit = std::clamp((float)(angularRefPx * 64.f * std::clamp(hudScale, 0.5, 3.0)), 8.f, minDim * 0.45f);
+        const float unit = std::clamp((float)(angularRefPx * 64.f * std::clamp(hudScale, 0.15, 3.0)), 4.f, minDim * 0.45f);
         const float radius = unit * 0.48f, gap = (std::max)(unit * 0.25f, angularRefPx * 1080.f * (float)hudSpacing);
         const float margin = std::clamp((float)hudSafeMargin, 0.f, .25f) * minDim;
         const int pxs = (std::max)(1, (int)std::lround(unit * 0.045));
         const float numberHeight = (float)(pxs * 7), numberGap = unit * .08f;
+        std::array<uint8_t,4> drawWidgets{}; size_t drawWidgetCount=0;
+        for(uint8_t id:OrderedHudWidgets(snap.widgetOrder)) {
+            if((snap.widgetMask&(1u<<id))==0)continue;
+            if(hudAlarmOnly && !snap.alarm[id])continue;
+            drawWidgets[drawWidgetCount++]=id;
+        }
         const float desiredX = anchorPxX(hudAnchorX) + radius;
         const float desiredY = anchorPxY(hudAnchorY) + radius;
-        const float maxX = obR - margin - (radius * 7.f + gap * 3.f);
+        const float hudWidth=drawWidgetCount?radius*2.f*drawWidgetCount+gap*(drawWidgetCount-1):0.f;
+        const float maxX = obR - margin - (std::max)(0.f,hudWidth-radius);
         const float maxY = obB - margin - radius - numberGap - numberHeight;
         const float startX = hudClampToVisible ? (std::clamp)(desiredX, obL + margin + radius, (std::max)(obL + margin + radius, maxX)) : desiredX;
         const float startY = hudClampToVisible ? (std::clamp)(desiredY, obT + margin + radius, (std::max)(obT + margin + radius, maxY)) : desiredY;
@@ -2422,15 +2524,12 @@ void DrawCalibrationOverlayToTexture(
         // Item 3 (VR frame time) colours against the effective cadence budget; items 0-2
         // keep the percentage thresholds.
         auto hudColour = [&](int item, const HudMetric& m, float& rr, float& gg, float& bb) {
-            if (!m.available) { rr=.42f*intensity; gg=.50f*intensity; bb=.56f*intensity; return; }
-            bool red, amber;
-            if (item == 3) {
-                red = snap.vrColorState == 2; amber = snap.vrColorState == 1;
-            } else {
-                red = m.value >= hudRedThreshold; amber = m.value >= hudGreenThreshold;
-            }
-            if (red) { rr=1.f*intensity; gg=.16f*intensity; bb=.12f*intensity; }
-            else if (amber) { rr=1.f*intensity; gg=.62f*intensity; bb=.10f*intensity; }
+            const HudMetricState state=snap.states[item];
+            if (!m.available || state==HudMetricState::Unavailable) { rr=.42f*intensity; gg=.50f*intensity; bb=.56f*intensity; }
+            else if(state==HudMetricState::Critical) { rr=1.f*intensity; gg=.16f*intensity; bb=.12f*intensity; }
+            else if(state==HudMetricState::Warning) { rr=1.f*intensity; gg=.62f*intensity; bb=.10f*intensity; }
+            else if(state==HudMetricState::Reprojection) { rr=.20f*intensity; gg=.78f*intensity; bb=1.f*intensity; }
+            else if(state==HudMetricState::Unstable) { rr=1.f*intensity; gg=.20f*intensity; bb=.78f*intensity; }
             else { rr=.18f*intensity; gg=1.f*intensity; bb=.48f*intensity; }
         };
         auto line = [&](float x0,float y0,float x1,float y1,float thickness,float rr,float gg,float bb) {
@@ -2499,12 +2598,10 @@ void DrawCalibrationOverlayToTexture(
                 emit(cx+cosf(a)*ri,cy+sinf(a)*ri,fr,fg,fb); emit(cx+cosf(b2)*radius,cy+sinf(b2)*radius,fr,fg,fb); emit(cx+cosf(b2)*ri,cy+sinf(b2)*ri,fr,fg,fb);
             }
         };
-        if (hudEnabled) for (int item=0; item<4; ++item) {
-            // Alarm-only mode hides each indicator independently unless its metric is red
-            // (with hold-time hysteresis applied in UpdateHudAlarm). Telemetry keeps updating
-            // regardless; only drawing is skipped.
-            if (hudAlarmOnly && !snap.alarm[item]) continue;
-            float cx=startX+item*(radius*2+gap), cy=startY, rr,gg,bb; const HudMetric& metric=snap.metrics[item]; hudColour(item,metric,rr,gg,bb);
+        if (hudEnabled) for (size_t slot=0; slot<drawWidgetCount; ++slot) {
+            const int item=drawWidgets[slot];
+            const HudWidgetDescriptor& widget=kHudWidgetRegistry[item];
+            float cx=startX+slot*(radius*2+gap), cy=startY, rr,gg,bb; const HudMetric& metric=snap.metrics[item]; hudColour(item,metric,rr,gg,bb);
             const float fillFrac = !metric.available ? 0.f
                 : item == 3 ? (snap.budgetMs > 0.0 ? std::clamp((float)(metric.value / snap.budgetMs), 0.f, 1.f) : 0.f)
                 : std::clamp((float)(metric.value/100.0), 0.f, 1.f);
@@ -2530,14 +2627,12 @@ void DrawCalibrationOverlayToTexture(
             // time in milliseconds with exactly one decimal place (e.g. 8.3, 11.1, 13.9).
             char text[16];
             if (!metric.available) { text[0]='-'; text[1]='-'; text[2]='\0'; }
-            else if (item == 3) snprintf(text, sizeof(text), "%.1f", metric.value);
+            else if (widget.decimals == 1) snprintf(text, sizeof(text), "%.1f", metric.value);
             else snprintf(text, sizeof(text), "%d", std::clamp(static_cast<int>(std::round(metric.value)),0,100));
             drawText(cx, cy + radius + numberGap, text, rr, gg, bb);
         }
-        // Frame-pacing trace: always drawn (alarm-only mode never hides it), with live
-        // position/width/height/history/sensitivity controls. Newest samples sit at the right
-        // edge and scroll left; the baseline is the effective cadence budget, so it stays
-        // correct under half-rate reprojection.
+        // Modular performance graph. Each mode admits only compatible units; selected channels
+        // remain persisted when switching modes but incompatible lines are not drawn.
         if (hudTraceEnabled) {
         const size_t historyN = (size_t)std::clamp(hudTraceHistory, 10.0, (double)snap.samples.size());
         const float traceW = std::clamp((float)hudTraceWidth, 0.10f, 1.0f) * (std::max)(32.f, obR - obL - 2.f * margin);
@@ -2548,21 +2643,47 @@ void DrawCalibrationOverlayToTexture(
             traceLeft = std::clamp(traceLeft, obL + margin, (std::max)(obL + margin, obR - margin - traceW));
             traceTop = std::clamp(traceTop, obT + margin, (std::max)(obT + margin, obB - margin - traceH));
         }
-        const float traceRight = traceLeft + traceW, traceCentre = traceTop + traceH * .5f;
-        line(traceLeft,traceCentre,traceRight,traceCentre,(std::max)(1.f,unit*.012f),.20f*intensity,.25f*intensity,.30f*intensity);
+        const float traceRight = traceLeft + traceW, traceBottom=traceTop+traceH, traceCentre = traceTop + traceH * .5f;
+        const bool deviationMode=snap.graphMode==HudGraphMode::Deviation;
+        line(traceLeft,deviationMode?traceCentre:traceBottom,traceRight,deviationMode?traceCentre:traceBottom,(std::max)(1.f,unit*.012f),.20f*intensity,.25f*intensity,.30f*intensity);
         const size_t visible = (std::min)(snap.sampleCount, historyN);
         if (visible > 1) {
             const float sensitivity=(float)(std::max)(0.25,hudTraceSensitivityMs), dx=traceW/(float)(historyN-1);
             const float firstX=traceRight-dx*(visible-1);
             const size_t base = snap.sampleCount - visible;
-            for(size_t i=1;i<visible;++i){
-                const HudFrameSample& s0 = snap.samples[base+i-1];
-                const HudFrameSample& s1 = snap.samples[base+i];
-                float x0=firstX+dx*(i-1),x1=firstX+dx*i;
-                float y0=traceCentre-std::clamp((float)(s0.deviationMs/sensitivity),-1.f,1.f)*traceH*.5f;
-                float y1=traceCentre-std::clamp((float)(s1.deviationMs/sensitivity),-1.f,1.f)*traceH*.5f;
-                const bool missed=s1.overBudget;
-                line(x0,y0,x1,y1,(std::max)(1.2f,unit*.018f),missed?1.f*intensity:.36f*intensity,missed?.12f*intensity:.88f*intensity,missed?.10f*intensity:1.f*intensity);
+            struct GraphStyle { uint32_t bit; float r,g,b; };
+            constexpr GraphStyle styles[]={
+                {GraphFrameInterval,.20f,.85f,1.f},{GraphFps,.32f,1.f,.46f},
+                {GraphBudgetDeviation,1.f,.56f,.12f},{GraphAppWork,.78f,.38f,1.f},
+                {GraphWaitDuration,.98f,.88f,.25f},{GraphSubmitDuration,1.f,.28f,.48f},
+                {GraphDisplayPeriod,.72f,.76f,.82f}};
+            auto compatible=[&](uint32_t bit){
+                if(snap.graphMode==HudGraphMode::Deviation)return bit==GraphBudgetDeviation;
+                if(snap.graphMode==HudGraphMode::Fps)return bit==GraphFps;
+                if(snap.graphMode==HudGraphMode::BudgetPercent)return bit==GraphFrameInterval||bit==GraphAppWork;
+                return bit==GraphFrameInterval||bit==GraphAppWork||bit==GraphWaitDuration||bit==GraphSubmitDuration||bit==GraphDisplayPeriod;
+            };
+            auto value=[&](const HudFrameSample&s,uint32_t bit){
+                if(snap.graphMode==HudGraphMode::Fps)return s.actualMs>0.0?1000.0/s.actualMs:0.0;
+                if(snap.graphMode==HudGraphMode::Deviation)return s.deviationMs;
+                double raw=bit==GraphFrameInterval?s.actualMs:bit==GraphAppWork?s.appWorkMs:
+                    bit==GraphWaitDuration?s.waitDurationMs:bit==GraphSubmitDuration?s.submitDurationMs:s.displayPeriodMs;
+                if(snap.graphMode==HudGraphMode::BudgetPercent)return s.targetMs>0.0?raw/s.targetMs*100.0:0.0;
+                return raw;
+            };
+            const float absoluteMax=snap.graphMode==HudGraphMode::Fps?(float)(snap.samples[base].displayPeriodMs>0.0?1000.0/snap.samples[base].displayPeriodMs*1.25:144.0):
+                snap.graphMode==HudGraphMode::BudgetPercent?200.f:(float)(std::max)(sensitivity*4.0,snap.budgetMs*2.0);
+            auto yFor=[&](double v){
+                if(deviationMode)return traceCentre-std::clamp((float)(v/sensitivity),-1.f,1.f)*traceH*.5f;
+                return traceBottom-std::clamp((float)(v/(std::max)(1.f,absoluteMax)),0.f,1.f)*traceH;
+            };
+            for(const GraphStyle& style:styles) {
+                if((snap.graphChannels&style.bit)==0||!compatible(style.bit))continue;
+                for(size_t i=1;i<visible;++i){
+                    const HudFrameSample&s0=snap.samples[base+i-1]; const HudFrameSample&s1=snap.samples[base+i];
+                    line(firstX+dx*(i-1),yFor(value(s0,style.bit)),firstX+dx*i,yFor(value(s1,style.bit)),
+                        (std::max)(1.2f,unit*.018f),style.r*intensity,style.g*intensity,style.b*intensity);
+                }
             }
         }
         }
@@ -3262,7 +3383,7 @@ void LoadConfig() {
     hudEnabled = ReadBoolSetting(L"hud_enabled", false);
     hudAnchorX = std::clamp(ReadDoubleSetting(L"hud_anchor_x", 0.04), 0.0, 1.0);
     hudAnchorY = std::clamp(ReadDoubleSetting(L"hud_anchor_y", 0.05), 0.0, 1.0);
-    hudScale = std::clamp(ReadDoubleSetting(L"hud_scale", 1.0), 0.5, 3.0);
+    hudScale = std::clamp(ReadDoubleSetting(L"hud_scale", 1.0), 0.15, 3.0);
     hudSpacing = std::clamp(ReadDoubleSetting(L"hud_spacing", 0.018), 0.0, 0.10);
     hudOpacity = std::clamp(ReadDoubleSetting(L"hud_opacity", 0.70), 0.10, 1.0);
     hudSafeMargin = std::clamp(ReadDoubleSetting(L"hud_safe_margin", 0.025), 0.0, 0.25);
@@ -3277,12 +3398,29 @@ void LoadConfig() {
     hudTraceWidth = std::clamp(ReadDoubleSetting(L"hud_trace_width", 0.42), 0.10, 1.0);
     hudTraceHistory = std::clamp(ReadDoubleSetting(L"hud_trace_history", 120.0), 10.0, 600.0);
     hudTraceEnabled = ReadBoolSetting(L"hud_trace_enabled", false);
+    hudWidgetMask=(ReadBoolSetting(L"hud_widget_cpu_enabled",true)?1u:0u)|
+        (ReadBoolSetting(L"hud_widget_gpu_enabled",true)?2u:0u)|
+        (ReadBoolSetting(L"hud_widget_app_enabled",true)?4u:0u)|
+        (ReadBoolSetting(L"hud_widget_vr_enabled",true)?8u:0u);
+    hudWidgetOrderPacked=PackHudWidgetOrder({
+        (int)ReadDoubleSetting(L"hud_widget_cpu_order",0.0),
+        (int)ReadDoubleSetting(L"hud_widget_gpu_order",1.0),
+        (int)ReadDoubleSetting(L"hud_widget_app_order",2.0),
+        (int)ReadDoubleSetting(L"hud_widget_vr_order",3.0)});
+    hudGraphChannels=(ReadBoolSetting(L"hud_graph_frame_interval",false)?GraphFrameInterval:0u)|
+        (ReadBoolSetting(L"hud_graph_fps",false)?GraphFps:0u)|
+        (ReadBoolSetting(L"hud_graph_budget_deviation",true)?GraphBudgetDeviation:0u)|
+        (ReadBoolSetting(L"hud_graph_app_work",false)?GraphAppWork:0u)|
+        (ReadBoolSetting(L"hud_graph_wait_duration",false)?GraphWaitDuration:0u)|
+        (ReadBoolSetting(L"hud_graph_submit_duration",false)?GraphSubmitDuration:0u)|
+        (ReadBoolSetting(L"hud_graph_display_period",false)?GraphDisplayPeriod:0u);
+    hudGraphMode=(HudGraphMode)std::clamp((int)ReadDoubleSetting(L"hud_graph_mode",0.0),0,3);
     topmostVisorOverlays = ReadBoolSetting(L"topmost_visor_overlays", false);
     hudAlarmOnly = ReadBoolSetting(L"hud_alarm_only", false);
     hudAlarmHoldMs = std::clamp(ReadDoubleSetting(L"hud_alarm_hold_ms", 1500.0), 0.0, 10000.0);
     hudDebugValues = ReadBoolSetting(L"hud_debug_values", false);
     hudDebugCpu = ReadDoubleSetting(L"hud_debug_cpu", 52.0); hudDebugGpu = ReadDoubleSetting(L"hud_debug_gpu", 98.0);
-    hudDebugSystem = ReadDoubleSetting(L"hud_debug_system", 44.0); hudDebugVr = ReadDoubleSetting(L"hud_debug_vr", 18.0);
+    hudDebugSystem = ReadDoubleSetting(L"hud_debug_app",ReadDoubleSetting(L"hud_debug_system",44.0)); hudDebugVr = ReadDoubleSetting(L"hud_debug_vr", 18.0);
     // Feature 2: crosshair defaults (the UI parses legacy cl_* configs / CS2 share codes into these).
     crosshairEnabled = ReadBoolSetting(L"crosshair_enabled", false);
     crosshairDot = ReadBoolSetting(L"crosshair_dot", false);
@@ -3809,6 +3947,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrWaitFrame(
     QueryPerformanceCounter(&stop);
     if (XR_SUCCEEDED(result) && frameState) {
         std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+        if(g_hudQpcFrequency.QuadPart>0 && stop.QuadPart>=start.QuadPart)
+            g_hudLastWaitDurationMs=1000.0*(double)(stop.QuadPart-start.QuadPart)/g_hudQpcFrequency.QuadPart;
         HudTrackedFrame& frame = g_hudTrackedFrames[g_hudNextWaitFrame++ % g_hudTrackedFrames.size()];
         frame = HudTrackedFrame{};
         frame.displayTime = frameState->predictedDisplayTime;
@@ -3964,10 +4104,12 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         std::lock_guard<std::mutex> lock(g_hudTimingMutex);
         HudTrackedFrame& frame = g_hudTrackedFrames[trackedFrameIndex];
         frame.endStop = endStop;
-        if (XR_SUCCEEDED(result) && g_hudQpcFrequency.QuadPart > 0 && frame.beginStart.QuadPart > 0 && frame.endStop.QuadPart >= frame.beginStart.QuadPart && frame.displayPeriod > 0) {
-            const double actualMs = 1000.0 * static_cast<double>(frame.endStop.QuadPart - frame.beginStart.QuadPart) / g_hudQpcFrequency.QuadPart;
-            const double targetMs = static_cast<double>(frame.displayPeriod) / 1000000.0;
-            RecordHudSystemSample(actualMs, targetMs);
+        if (XR_SUCCEEDED(result) && g_hudQpcFrequency.QuadPart > 0 && frame.beginStop.QuadPart > 0 &&
+            frame.endStart.QuadPart >= frame.beginStop.QuadPart && frame.endStop.QuadPart >= frame.endStart.QuadPart) {
+            const double appWorkMs=1000.0*(double)(frame.endStart.QuadPart-frame.beginStop.QuadPart)/g_hudQpcFrequency.QuadPart;
+            const double submitMs=1000.0*(double)(frame.endStop.QuadPart-frame.endStart.QuadPart)/g_hudQpcFrequency.QuadPart;
+            const double budgetMs=g_hudEffectiveBudgetMs>0.0?g_hudEffectiveBudgetMs:(double)frame.displayPeriod/1000000.0;
+            RecordHudAppWorkSample(appWorkMs,budgetMs,submitMs);
         }
         frame = HudTrackedFrame{};
     }

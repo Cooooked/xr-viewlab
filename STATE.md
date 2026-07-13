@@ -4,9 +4,25 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.189 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.189.msi`
+**Current version:** 4.1.191 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.191.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Modular Performance HUD redesign (build complete; headset validation pending, 2026-07-13)
+
+CPU and GPU retain their established collectors. Unstable SYS is replaced by APP workload—the QPC
+window from successful `xrBeginFrame` return to matching `xrEndFrame` entry, divided by the detected
+cadence-aware budget. CPU/GPU/APP/VR are registry-backed widgets with independent enables, persisted
+order, gap-free packing, sustained state hysteresis, and a 0.15–3.0 whole-widget scale. VR derives
+only from the current `predictedDisplayPeriod` and rolling cadence, with explicit target, warning,
+critical, stable-reprojection, unstable, and unavailable states.
+
+Performance Trace is now a bounded seven-channel graph with Deviation, Milliseconds, FPS, and Budget
+Percent modes. Live state remains 208 bytes and moves to v7 using its reserved tail. Topmost, crop,
+projection, and calibration logic are unchanged. Native x64 and WPF compile plus HUD, Topmost, and
+repository contracts pass. MSI 4.1.191 payload hashes/version were extracted and validated; headset
+validation remains pending. See
+`PERFORMANCE_HUD_REDESIGN.md` and `PERFORMANCE_HUD_VALIDATION.md`.
 
 ## Overlay coordinate unification (in progress, 2026-07-13)
 
@@ -36,10 +52,10 @@ contract.
 
 ## Visor overlays: boundary flash, crosshair, notifications, iRacing scaffold (in progress, 2026-07-12)
 
-**Build:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.189.msi` (Topmost allocation churn and
-unbounded retry removed; one attempt per session, device-loss fail-closed gate, stable texture
-capacity, typed RTV, premultiplied submission; working crop/stereo resolver unchanged; WPF + native
-x64/Win32 + deterministic contracts + extracted MSI payload validated; headset validation pending).
+**Build:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.191.msi` (modular HUD widgets, APP workload,
+refresh-relative cadence states, seven-channel performance graph, live-state v7, and smaller scale;
+Topmost safety, crop/stereo resolver, and calibration paths unchanged; WPF + native x64/Win32 +
+deterministic contracts + extracted MSI payload validated; headset validation pending).
 
 **Packaging mismatch repair:** 4.1.169's MSI metadata/filename were correct, but WiX harvested the
 stale 4.1.168 executable from `bin\Release\net8.0-windows\...` after the WPF project moved to
