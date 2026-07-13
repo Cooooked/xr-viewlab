@@ -1,5 +1,13 @@
 # Decision log
 
+## D21 — Hardware telemetry is snapshot-only at the render boundary
+
+All Windows, PDH, DXGI and future vendor sensor work belongs to a bounded telemetry provider worker.
+OpenXR/D3D hooks may only attempt a non-blocking copy of its completed fixed snapshot. Catalogue live
+settings use `XRViewLabTelemetryConfigV1`; the 208-byte v7 general overlay mapping is not enlarged.
+Advanced vendor sensors remain absent until licensing and failure isolation are reviewed; missing
+data is never represented as zero.
+
 ## D20 — Performance timings are named by observable hook boundaries
 
 APP is wall time from `xrBeginFrame` return to `xrEndFrame` entry, not exact CPU execution. Wait and

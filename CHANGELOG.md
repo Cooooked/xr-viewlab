@@ -2,6 +2,16 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## Unreleased - 2026-07-13 (Hardware telemetry platform)
+
+- Expanded the HUD from four fixed choices to twelve functional widgets: CPU, peak logical CPU,
+  reported CPU clock, GPU 3D, RAM, commit, VRAM budget, SYS headroom, APP, VR, FPS and frame interval.
+- Moved Windows/PDH/DXGI hardware sampling to one bounded worker. The render thread consumes only a
+  non-blocking immutable snapshot; provider failure cannot disable rendering.
+- Added bottleneck-aware SYS, inverse configurable thresholds, provider/unit metadata, persisted
+  ordering, default restore, gap-free packing and configurable multi-row wrapping.
+- Added a versioned telemetry configuration mapping without changing the 208-byte overlay contract.
+
 ## Unreleased - 2026-07-12 (Overlays: boundary flash, crosshair, notifications, iRacing scaffold)
 
 - Redesigned Performance HUD as ordered modular CPU/GPU/APP/VR widgets with independent enables,

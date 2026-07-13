@@ -97,7 +97,7 @@ $GeneratedPaths = @(
     (Join-Path $Root "obj\$Configuration\$TargetFramework"),
     (Join-Path $Root "Installer\bin\$Configuration"),
     (Join-Path $Root "Installer\obj\$Configuration"),
-    (Join-Path $Root "Installer\verify")
+    (Join-Path $Root "Installer\verify-build")
 )
 foreach ($GeneratedPath in $GeneratedPaths) {
     if (Test-Path $GeneratedPath) { Remove-Item -Recurse -Force $GeneratedPath }
@@ -195,7 +195,7 @@ foreach ($FreshOutput in @($PublishExe, $Dll64Src, $Dll32Src, $MsiSource)) {
 }
 
 # Administrative extraction proves what the MSI actually contains, independently of WiX source intent.
-$VerifyDir = Join-Path $Root "Installer\verify"
+$VerifyDir = Join-Path $Root "Installer\verify-build"
 New-Item -ItemType Directory -Path $VerifyDir -Force | Out-Null
 Invoke-Native msiexec.exe /a $MsiSource /qn "TARGETDIR=$VerifyDir"
 $PayloadExe = $null

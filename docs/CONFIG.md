@@ -74,8 +74,11 @@ remain startup-owned and are never overwritten by the global live snapshot.
 | `hud_safe_margin`, `hud_clamp_to_visible` | 0.025, 1 | HUD layout | Normalized safe margin and complete-bounds clamp against the binocular overlap region. The HUD uses the smaller current eye-region dimension then applies `hud_scale`, so crop/resolution changes retain its proportion. |
 | `hud_update_ms` | 100 | HUD telemetry | Bounded CPU/GPU/widget-state refresh period (50–1000 ms). Fixed-ring OpenXR timing samples feed APP, VR, and graph channels per frame. |
 | `hud_green_threshold`, `hud_red_threshold` | 75, 90 | HUD percentage state | CPU/GPU/APP warning and critical thresholds. Entry requires three updates; recovery requires six updates plus critical hold. VR instead compares sustained cadence with the active runtime period/budget. |
-| `hud_widget_{cpu,gpu,app,vr}_enabled` | 1 | widget registry | Independent widget enables. Disabled widgets are omitted and remaining widgets pack with no gaps. |
-| `hud_widget_{cpu,gpu,app,vr}_order` | 0,1,2,3 | widget registry | Persisted order positions. Invalid/duplicate values are normalized to one occurrence of every widget. |
+| `telemetry_settings_version` | 1 | telemetry migration | Explicit catalogue/settings schema. Kept separate from the 208-byte v7 overlay live-state contract. |
+| `hud_widget_{cpu,gpu,app,vr,cpu_peak,cpu_frequency,ram,commit,vram,sys,fps,frame_interval}_enabled` | CPU/GPU/SYS/VR on | widget registry | Independent widget enables. Disabled widgets are omitted; unavailable configured widgets remain dormant. |
+| `hud_widget_{...}_order` | CPU,GPU,SYS,VR then catalogue | widget registry | Persisted order. Invalid/duplicate positions normalize to one occurrence of every widget. |
+| `hud_max_per_row` | 4 | HUD layout | Automatic wrapping limit, 2–8 in the UI and 1–8 in native validation. |
+| `hud_sys_warning`, `hud_sys_critical` | 30, 10 | SYS inverse state | Remaining-headroom thresholds: lower is worse. Sustained state and normal alarm hold still apply. |
 | `hud_graph_mode` | 0 | `HudGraphMode` | 0 deviation ms, 1 absolute milliseconds, 2 FPS, 3 percentage of cadence-aware budget. Incompatible channels are not mixed. |
 | `hud_graph_frame_interval`, `hud_graph_fps`, `hud_graph_budget_deviation`, `hud_graph_app_work`, `hud_graph_wait_duration`, `hud_graph_submit_duration`, `hud_graph_display_period` | 0,0,1,0,0,0,0 | graph channels | Independent bounded-history lines. Sources/units are defined in `PERFORMANCE_HUD_REDESIGN.md`; default remains one understandable deviation line. |
 | `hud_trace_sensitivity_ms` | 2 | `hudTraceSensitivityMs` | Deviation mode vertical range (±ms); in absolute-ms mode it supplies a minimum scale before automatic budget scaling. |

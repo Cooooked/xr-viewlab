@@ -3,6 +3,13 @@
 > Institutional scar tissue. Read before touching the areas named here. Append an entry whenever
 > a significant regression occurs: what / why / how detected / fix / how to never repeat it.
 
+## Hardware queries on the XR/D3D thread
+
+**Never:** call PDH collection/enumeration, DXGI budget queries, memory APIs, WMI, ETW or vendor sensor
+APIs from HUD geometry, swapchain release, `xrEndFrame`, or either eye draw. The hardware worker owns
+those calls and the renderer consumes `TryGetSnapshot`. Contention or provider failure means retaining
+the previous/unavailable value—not waiting, retrying per frame, or fabricating zero.
+
 ## R20 — Topmost swapchain churn can collapse the user-mode display stack
 
 **What:** During a DiRT Rally menu-to-car transition, Topmost recreated its large projection

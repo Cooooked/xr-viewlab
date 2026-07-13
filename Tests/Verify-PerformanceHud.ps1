@@ -3,10 +3,21 @@ $ErrorActionPreference='Stop'
 $native=Get-Content (Join-Path $Root 'dllmain.cpp') -Raw
 $ui=Get-Content (Join-Path $Root 'MainWindow.xaml') -Raw
 $live=Get-Content (Join-Path $Root 'XRViewLab.UI\LiveStateService.cs') -Raw
+$hardware=Get-Content (Join-Path $Root 'HardwareTelemetry.cpp') -Raw
+$telemetryLive=Get-Content (Join-Path $Root 'XRViewLab.UI\TelemetryConfigService.cs') -Raw
 function Require($text,$pattern,$message){if($text-notmatch$pattern){throw "Performance HUD contract failed: $message"}}
 function Forbid($text,$pattern,$message){if($text-match$pattern){throw "Performance HUD contract failed: $message"}}
 
 Require $native 'enum class HudWidgetId' 'widget registry identifier is absent'
+foreach($id in 'CpuPeak','CpuFrequency','Ram','Commit','Vram','Sys','Fps','FrameInterval'){Require $native $id "catalogue widget $id is absent"}
+Require $native 'viewlab::telemetry::TryGetSnapshot' 'renderer does not consume the isolated telemetry snapshot'
+Require $hardware 'void Run\(\)' 'bounded worker is absent'
+Require $hardware 'wait_for\(waitLock,std::chrono::milliseconds\(kSamplePeriodMs\)' 'worker cadence is not bounded'
+Require $hardware 'QueryVideoMemoryInfo' 'DXGI budget provider is absent'
+Require $hardware 'GetPerformanceInfo' 'commit provider is absent'
+Require $hardware 'GlobalMemoryStatusEx' 'RAM provider is absent'
+Require $hardware 'Processor Information\(\*\).*% Processor Utility' 'peak-core provider is absent'
+Require $hardware 'strongest=\*std::max_element' 'SYS is not bottleneck-aware'
 Require $native 'OrderedHudWidgets' 'enabled widgets are not normalized into persisted order'
 Require $native 'drawWidgetCount' 'renderer is still fixed-slot rather than packed'
 Require $native 'beginStop\.QuadPart[\s\S]*?endStart\.QuadPart' 'APP work does not use begin-return to end-entry'
@@ -22,7 +33,9 @@ Require $native 'if\(snap\.graphMode==HudGraphMode::Deviation\)return bit==Graph
 Require $native 'if\(snap\.graphMode==HudGraphMode::Fps\)return bit==GraphFps' 'FPS mode admits incompatible units'
 Require $ui 'HudScaleSlider" Minimum="0\.15"' 'small HUD scale is unavailable'
 foreach($name in 'HudWidgetList','HudGraphModeCombo','HudGraphFrameIntervalCheck','HudGraphFpsCheck','HudGraphBudgetDeviationCheck','HudGraphAppWorkCheck','HudGraphWaitDurationCheck','HudGraphSubmitDurationCheck','HudGraphDisplayPeriodCheck'){Require $ui "Name=`"$name`"" "UI control $name is absent"}
+foreach($name in 'HudMaxPerRowCombo','HudSysWarningSlider','HudSysCriticalSlider'){Require $ui "Name=`"$name`"" "telemetry UI control $name is absent"}
 Require $live '_view\.Write\(4, 7u\)' 'live mapping is not version 7'
+Require $telemetryLive 'XRViewLabTelemetryConfigV1' 'versioned telemetry extension mapping is absent'
 foreach($offset in 192,196,200,204){Require $live "_view\.Write\($offset," "live mapping field at $offset is absent"}
 
 # All enable masks pack without holes; all permutations preserve each widget exactly once.

@@ -86,7 +86,8 @@ public partial class MainWindow : Window
 	private const string HudSafeMarginKey = "hud_safe_margin";
 	private const string HudClampKey = "hud_clamp_to_visible";
 	private const string HudGraphModeKey = "hud_graph_mode";
-	private static readonly string[] HudWidgetIds = { "cpu", "gpu", "app", "vr" };
+	private const string TelemetrySettingsVersionKey = "telemetry_settings_version";
+	private static readonly string[] HudWidgetIds = { "cpu", "gpu", "app", "vr", "cpu_peak", "cpu_frequency", "ram", "commit", "vram", "sys", "fps", "frame_interval" };
 	private static readonly string[] HudGraphChannelIds = { "frame_interval", "fps", "budget_deviation", "app_work", "wait_duration", "submit_duration", "display_period" };
 
 	// Feature 2: crosshair
@@ -141,10 +142,18 @@ public partial class MainWindow : Window
 	private readonly ObservableCollection<AppProfile> _apps = new ObservableCollection<AppProfile>();
 	private readonly ObservableCollection<HudWidgetOption> _hudWidgets = new()
 	{
-		new() { Id="cpu", Label="CPU — total system utilisation", ToolTip="GetSystemTimes total machine CPU utilisation." },
-		new() { Id="gpu", Label="GPU — render-adapter 3D utilisation", ToolTip="PDH 3D-engine utilisation for ViewLab's D3D adapter." },
-		new() { Id="app", Label="APP — application workload", ToolTip="Time from xrBeginFrame return to xrEndFrame entry, as a percentage of the cadence-aware budget." },
-		new() { Id="vr", Label="VR — application cadence", ToolTip="Wait-to-wait frame interval judged against the runtime's current predicted display period." }
+		new() { MetricId=0, Id="cpu", Label="CPU — total utilisation", Provider="Windows / GetSystemTimes", Unit="%", ToolTip="Total machine CPU utilisation; sampled every 250 ms." },
+		new() { MetricId=1, Id="gpu", Label="GPU — 3D utilisation", Provider="Windows PDH / adapter LUID", Unit="%", ToolTip="3D-engine utilisation for the render adapter." },
+		new() { MetricId=2, Id="app", Label="APP — application workload", Provider="OpenXR timing", Unit="%", ToolTip="Application work against the cadence-aware budget." },
+		new() { MetricId=3, Id="vr", Label="VR — cadence", Provider="OpenXR timing", Unit="ms", ToolTip="Wait-to-wait interval judged against the display period." },
+		new() { MetricId=4, Id="cpu_peak", Label="PEAK — busiest logical CPU", Provider="Windows PDH", Unit="%", ToolTip="Smoothed busiest logical processor." },
+		new() { MetricId=5, Id="cpu_frequency", Label="CLK — CPU reported clock", Provider="Windows power API", Unit="MHz", ToolTip="Average Windows CurrentMhz; not residency-derived effective clock." },
+		new() { MetricId=6, Id="ram", Label="RAM — physical memory", Provider="GlobalMemoryStatusEx", Unit="%", ToolTip="Physical memory pressure." },
+		new() { MetricId=7, Id="commit", Label="CMT — committed memory", Provider="GetPerformanceInfo", Unit="%", ToolTip="Commit charge relative to commit limit." },
+		new() { MetricId=8, Id="vram", Label="VRAM — budget pressure", Provider="DXGI 1.4", Unit="%", ToolTip="Local video-memory use relative to the OS budget." },
+		new() { MetricId=9, Id="sys", Label="SYS — remaining headroom", Provider="ViewLab composite", Unit="%", ToolTip="Remaining capacity after the strongest valid pressure; higher is healthier." },
+		new() { MetricId=10, Id="fps", Label="FPS — effective cadence", Provider="OpenXR timing", Unit="fps", ToolTip="1000 divided by application frame interval." },
+		new() { MetricId=11, Id="frame_interval", Label="FT — frame interval", Provider="OpenXR timing", Unit="ms", ToolTip="Rolling application frame interval." }
 	};
 
 	private bool _loading = true;
@@ -159,6 +168,7 @@ public partial class MainWindow : Window
 
 	private readonly ReShadeControlService _xrControl = new();
 	private readonly LiveStateService _liveState = new();
+	private readonly TelemetryConfigService _telemetryConfig = new();
 	private readonly CrosshairSettings _crosshair = new();
 	private NotificationService? _notifications;
 	private IRacingTelemetryProvider? _iracingProvider;
@@ -1075,9 +1085,12 @@ public partial class MainWindow : Window
 		HudSafeMarginSlider.Value = ReadRangeSetting(HudSafeMarginKey, 0.025, 0.0, 0.25);
 		HudClampCheck.IsChecked = ReadBoolSetting(HudClampKey, fallback: true);
 		foreach (HudWidgetOption widget in _hudWidgets)
-			widget.Enabled = ReadBoolSetting($"hud_widget_{widget.Id}_enabled", true);
-		var orderedWidgets = _hudWidgets.OrderBy(w => ReadRangeSetting($"hud_widget_{w.Id}_order", Array.IndexOf(HudWidgetIds, w.Id), 0, 3)).ToList();
+			widget.Enabled = ReadBoolSetting($"hud_widget_{widget.Id}_enabled", widget.Id is "cpu" or "gpu" or "sys" or "vr");
+		var orderedWidgets = _hudWidgets.OrderBy(w => ReadRangeSetting($"hud_widget_{w.Id}_order", Array.IndexOf(HudWidgetIds, w.Id), 0, HudWidgetIds.Length - 1)).ToList();
 		_hudWidgets.Clear(); foreach (HudWidgetOption widget in orderedWidgets) _hudWidgets.Add(widget);
+		HudMaxPerRowCombo.SelectedIndex = (int)ReadRangeSetting("hud_max_per_row", 4, 2, 8) - 2;
+		HudSysWarningSlider.Value = ReadRangeSetting("hud_sys_warning", 30, 10, 60);
+		HudSysCriticalSlider.Value = ReadRangeSetting("hud_sys_critical", 10, 0, 30);
 		HudGraphModeCombo.SelectedIndex = (int)ReadRangeSetting(HudGraphModeKey, 0, 0, 3);
 		HudGraphFrameIntervalCheck.IsChecked = ReadBoolSetting("hud_graph_frame_interval", false);
 		HudGraphFpsCheck.IsChecked = ReadBoolSetting("hud_graph_fps", false);
@@ -1538,6 +1551,15 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		_hudWidgets.Move(index, target);
 		HudLayout_Changed(sender, new RoutedEventArgs());
 	}
+	private void HudDefaults_Click(object sender, RoutedEventArgs e)
+	{
+		string[] defaults={"cpu","gpu","sys","vr"};
+		foreach(var widget in _hudWidgets)widget.Enabled=defaults.Contains(widget.Id);
+		var ordered=defaults.Select(id=>_hudWidgets.First(w=>w.Id==id)).Concat(_hudWidgets.Where(w=>!defaults.Contains(w.Id))).ToList();
+		_hudWidgets.Clear();foreach(var widget in ordered)_hudWidgets.Add(widget);
+		HudMaxPerRowCombo.SelectedIndex=2;HudSysWarningSlider.Value=30;HudSysCriticalSlider.Value=10;
+		HudLayout_Changed(sender,new RoutedEventArgs());
+	}
 
 	private void HudGraphMode_Changed(object sender, SelectionChangedEventArgs e)
 	{
@@ -1592,6 +1614,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		for(int slot=0;slot<_hudWidgets.Count;++slot) { int id=Array.IndexOf(HudWidgetIds,_hudWidgets[slot].Id); if(id<0)continue; if(_hudWidgets[slot].Enabled)widgetMask|=1u<<id; widgetOrder|=(uint)id<<(slot*8); }
 		var graphChecks=new[]{HudGraphFrameIntervalCheck,HudGraphFpsCheck,HudGraphBudgetDeviationCheck,HudGraphAppWorkCheck,HudGraphWaitDurationCheck,HudGraphSubmitDurationCheck,HudGraphDisplayPeriodCheck};
 		uint graphChannels=0; for(int i=0;i<graphChecks.Length;++i)if(graphChecks[i].IsChecked==true)graphChannels|=1u<<i;
+		_telemetryConfig.Publish(_hudWidgets, (HudMaxPerRowCombo?.SelectedIndex ?? 2) + 2, HudSysWarningSlider?.Value ?? 30, HudSysCriticalSlider?.Value ?? 10);
 		_liveState.Publish(mask,
 			MaskEnabledCheck.IsChecked == true, TopmostVisorOverlaysCheck.IsChecked == true, MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
 			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, MaskInnerBridgeSlider.Value,
@@ -1906,6 +1929,10 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_enabled", widget.Enabled ? "1" : "0", ConfigPath);
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_order", order.ToString(CultureInfo.InvariantCulture), ConfigPath);
 		}
+		WritePrivateProfileString("Settings", TelemetrySettingsVersionKey, "1", ConfigPath);
+		WritePrivateProfileString("Settings", "hud_max_per_row", ((HudMaxPerRowCombo?.SelectedIndex ?? 2)+2).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "hud_sys_warning", (HudSysWarningSlider?.Value ?? 30).ToString("0",CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "hud_sys_critical", (HudSysCriticalSlider?.Value ?? 10).ToString("0",CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudGraphModeKey, Math.Max(0, HudGraphModeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		var graphChecks = new[] { HudGraphFrameIntervalCheck, HudGraphFpsCheck, HudGraphBudgetDeviationCheck, HudGraphAppWorkCheck, HudGraphWaitDurationCheck, HudGraphSubmitDurationCheck, HudGraphDisplayPeriodCheck };
 		for (int i = 0; i < graphChecks.Length; ++i)

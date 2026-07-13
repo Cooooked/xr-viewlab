@@ -529,13 +529,23 @@
                             <Grid Margin="0,1">
                               <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                               <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" ToolTip="{Binding ToolTip}" Checked="HudWidgetToggle_Changed" Unchecked="HudWidgetToggle_Changed" />
-                              <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="10" Foreground="#B8B8B8" Margin="5,0" VerticalAlignment="Center" ToolTip="{Binding ToolTip}" />
+                                <StackPanel Grid.Column="1" Margin="5,0" ToolTip="{Binding ToolTip}">
+                                  <TextBlock Text="{Binding Label}" FontSize="10" Foreground="#B8B8B8" />
+                                  <TextBlock FontSize="8" Foreground="#777"><Run Text="{Binding Provider}"/><Run Text=" · "/><Run Text="{Binding Unit}"/><Run Text=" · "/><Run Text="{Binding Availability}"/></TextBlock>
+                                </StackPanel>
                               <Button Grid.Column="2" Content="↑" CommandParameter="{Binding Id}" Click="HudWidgetUp_Click" Padding="5,1" Margin="1,0" ToolTip="Move earlier" />
                               <Button Grid.Column="3" Content="↓" CommandParameter="{Binding Id}" Click="HudWidgetDown_Click" Padding="5,1" Margin="1,0" ToolTip="Move later" />
                             </Grid>
                           </DataTemplate>
                         </ListBox.ItemTemplate>
-                      </ListBox>
+                        </ListBox>
+                        <Grid Margin="0,6,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <StackPanel Orientation="Horizontal"><TextBlock Text="Maximum per row" Foreground="{StaticResource MutedBrush}" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/><ComboBox Name="HudMaxPerRowCombo" Width="48" SelectionChanged="HudLayout_Changed"><ComboBoxItem Content="2"/><ComboBoxItem Content="3"/><ComboBoxItem Content="4"/><ComboBoxItem Content="5"/><ComboBoxItem Content="6"/><ComboBoxItem Content="7"/><ComboBoxItem Content="8"/></ComboBox></StackPanel>
+                          <Button Grid.Column="1" Content="Restore CPU/GPU/SYS/VR" Click="HudDefaults_Click" Padding="6,2" FontSize="9"/>
+                        </Grid>
+                        <TextBlock Text="SYS warning / critical remaining headroom" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,1"/>
+                        <Slider Name="HudSysWarningSlider" Minimum="10" Maximum="60" Value="30" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" ToolTip="Amber at or below this remaining-headroom percentage."/>
+                        <Slider Name="HudSysCriticalSlider" Minimum="0" Maximum="30" Value="10" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" ToolTip="Red at or below this remaining-headroom percentage."/>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="PERFORMANCE GRAPH" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
                       <CheckBox Name="HudTraceEnabledCheck" Content="Performance graph" Foreground="#A8A8A8" Margin="0,4,0,0" ToolTip="Bounded channel graph rendered from the same immutable stereo snapshot as the HUD." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />

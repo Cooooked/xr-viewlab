@@ -4,9 +4,27 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.191 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.191.msi`
+**Current version:** 4.1.194 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.194.msi`
 **Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Hardware telemetry platform (implementation complete; build/headset validation pending, 2026-07-13)
+
+The HUD catalogue now offers CPU total, peak logical CPU, reported CPU clock, GPU 3D, RAM, commit,
+VRAM budget, genuine SYS remaining headroom, APP, VR, FPS and frame interval. One 250 ms worker owns
+Windows, PDH and DXGI collection and publishes a fixed snapshot; the render thread only attempts a
+non-blocking copy and both eyes reuse one draw snapshot. Default layout is CPU/GPU/SYS/VR, APP remains
+optional, enabled widgets pack in saved order and wrap at a configurable maximum per row.
+
+Telemetry settings are schema version 1 and use a separate 64-byte live mapping, preserving the
+208-byte overlay v7 mapping. SYS is `100 * (1 - max(valid pressure))`; CPU/peak/GPU use raw load and
+RAM/commit/VRAM map 70–95% use onto 0–100% pressure. Default remaining-headroom warning/critical
+thresholds are 30/10 with sustained entry/recovery.
+
+Advanced vendor sensors (temperature, power, fan and vendor GPU clocks) are intentionally deferred
+until an optional provider has passed licensing, deployment and failure-isolation review. Hardware
+history channels for the graph and percentage/absolute memory display remain known follow-ups; the
+existing unit-safe OpenXR graph is unchanged. Headset/provider/overhead validation is still required.
 
 ## Modular Performance HUD redesign (build complete; headset validation pending, 2026-07-13)
 
@@ -592,6 +610,13 @@ Remaining broader static-audit items not closed in this pass:
   `WOW6432Node` (Win32). A stray 32-bit entry in the 64-bit hive was removed 2026-07-10.
 
 ## Latest verification
+
+- `Tests\Verify-ViewLabContracts.ps1` and `Tests\Verify-PerformanceHud.ps1` passed on 2026-07-13.
+- The isolated native telemetry smoke test produced 20 samples in 5 seconds, full six-input SYS
+  coverage, and 15.625 ms worker CPU time (0.3125% of one logical CPU over wall time).
+- `build.ps1` passed on 2026-07-13 with 0 warnings / 0 errors for WPF, x64 native, Win32 native,
+  WiX MSI, extracted payload version and fresh-binary hashes:
+  `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.194.msi`.
 
 - `Tests\Verify-ViewLabContracts.ps1` passed on 2026-07-11 after the 4.1.113 build.
 - `dotnet build xr-viewlab.csproj -c Release --no-restore` passed with 0 warnings / 0 errors on
