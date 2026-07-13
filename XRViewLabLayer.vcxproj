@@ -123,6 +123,7 @@
   <ItemGroup>
     <ClInclude Include="pch.h" />
     <ClInclude Include="HardwareTelemetry.h" />
+    <ClInclude Include="RenderPolicy.h" />
     <ClInclude Include="loader_interfaces.h" />
   </ItemGroup>
   <ItemGroup>

@@ -538,10 +538,7 @@
                           </DataTemplate>
                         </ListBox.ItemTemplate>
                         </ListBox>
-                        <Grid Margin="0,6,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                          <StackPanel Orientation="Horizontal"><TextBlock Text="Maximum per row" Foreground="{StaticResource MutedBrush}" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/><ComboBox Name="HudMaxPerRowCombo" Width="48" SelectionChanged="HudLayout_Changed"><ComboBoxItem Content="2"/><ComboBoxItem Content="3"/><ComboBoxItem Content="4"/><ComboBoxItem Content="5"/><ComboBoxItem Content="6"/><ComboBoxItem Content="7"/><ComboBoxItem Content="8"/></ComboBox></StackPanel>
-                          <Button Grid.Column="1" Content="Restore CPU/GPU/SYS/VR" Click="HudDefaults_Click" Padding="6,2" FontSize="9"/>
-                        </Grid>
+                        <Button Margin="0,6,0,0" HorizontalAlignment="Right" Content="Restore CPU/GPU/SYS/VR" Click="HudDefaults_Click" Padding="6,2" FontSize="9"/>
                         <TextBlock Text="SYS warning / critical remaining headroom" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,1"/>
                         <Slider Name="HudSysWarningSlider" Minimum="10" Maximum="60" Value="30" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" ToolTip="Amber at or below this remaining-headroom percentage."/>
                         <Slider Name="HudSysCriticalSlider" Minimum="0" Maximum="30" Value="10" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" ToolTip="Red at or below this remaining-headroom percentage."/>

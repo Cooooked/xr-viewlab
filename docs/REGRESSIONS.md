@@ -3,6 +3,25 @@
 > Institutional scar tissue. Read before touching the areas named here. Append an entry whenever
 > a significant regression occurs: what / why / how detected / fix / how to never repeat it.
 
+## R22 — Automatic Topmost replaced a proven renderer without compositor-layer demand (4.1.208–209)
+
+**What:** Pistol Whip lost the visor and calibration while HUD/Trace presentation regressed.
+**Why:** automatic policy selected the separate composition backend for an ordinary single projection
+layer even though there was nothing application-owned to occlude ViewLab. Pixel calibration was also
+misdirected into ViewLab's separate target. **Never again:** projection-only sessions remain direct;
+Topmost demand requires a distinct application layer and is executable policy-tested. Calibration
+measures the submitted game texture. Backend transition prepares one frame before submission.
+
+## R23 — Desktop cadence and stale UI choices leaked into VR presentation (4.1.209)
+
+**What:** notification animation stepped, some graph modes drew nothing, Alarm-only stayed visible,
+HUD wrapped at four, its gaps ignored scale, and racing test buttons were gated off.
+**Why:** animation floats were published at 30 Hz and alpha applied twice; graph mode retained an
+incompatible channel; trace considered unrelated widget alarms; a legacy row limit/non-scaling gap
+remained; presentation tests followed production enable gates. **Never again:** `RenderPolicy.h`
+owns executable graph/trace/layout/animation/backend policy fixtures; racing tests carry temporary
+mapping flags and never mutate production settings.
+
 ## Hardware queries on the XR/D3D thread
 
 **Never:** call PDH collection/enumeration, DXGI budget queries, memory APIs, WMI, ETW or vendor sensor

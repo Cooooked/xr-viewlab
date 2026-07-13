@@ -4,15 +4,29 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.209 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.209.msi`
+**Current version:** 4.1.210 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.210.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
 `VIEWLAB_VALIDATION_HISTORY.md`; 4.1.202 has real packaged-notification desktop validation and
-4.1.209 has contracts/history fixtures plus clean WPF, broker, x64/Win32 native, identity-package,
-MSI and extracted-payload validation. Headset presentation and affected recent systems still need
-risk-based checks.
+4.1.209 failed its first precise Pistol Whip headset matrix. 4.1.210 repairs those observed failures
+and has clean contracts/fixtures plus WPF, broker, x64/Win32 native, signed identity package, MSI and
+extracted-payload validation. Its narrow Pistol Whip headset matrix is mandatory before DiRT.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## 4.1.209 Pistol Whip failure and repair candidate (2026-07-13)
+
+Headset testing failed 4.1.209: visor and calibration were absent, only the deviation graph was
+reliable, Alarm-only stayed visible, HUD wrapped/scaled incorrectly, notification animation stepped,
+and racing presentation buttons appeared inert. Installed WPF, broker, x64 and Win32 payload hashes
+matched 4.1.209, proving this was product behaviour rather than stale installation.
+
+The repair keeps projection-only applications on the proven direct backend and demands Topmost only
+after a distinct application compositor layer is observed. Calibration remains on submitted game
+pixels; the grid uses explicit constant colour. Graph/trace/HUD policy is isolated in `RenderPolicy.h`
+with executable fixtures. Notifications carry lifecycle timestamps for native per-frame animation;
+racing tests use temporary non-persistent gate overrides. Managed/native builds and deterministic
+fixtures pass. MSI 4.1.210 is built; its narrow Pistol Whip headset check remains required before DiRT.
 
 ## Bounded technical history (implemented; 2026-07-13)
 
@@ -23,14 +37,14 @@ and limited to the newest 14 days, 512 records and 512 KiB. Malformed/expired re
 on load, failures are swallowed outside rendering, and ordinary settings provide a clear action.
 Deterministic corruption, count, UTF-8 byte-size, field-limit, privacy-schema and clear tests pass.
 
-## Automatic topmost backend (implemented; safety headset matrix pending, 2026-07-13)
+## Automatic topmost backend (repaired; safety headset matrix pending, 2026-07-13)
 
-Safe topmost-capable presentation is now the normal session policy and the experimental checkbox is
-gone. The common scene includes visor, calibration, HUD/Trace, crosshair, notification/lap cards and
-racing cues. Frame one remains direct while a single allocation arms; subsequent direct visor/scene
-drawing is suppressed. Any capacity, render, submit or device-loss failure latches the session to
-direct fallback. `overlay_force_direct=1` is the hidden profile/diagnostic escape. The historical
-incident makes the ordered Pistol Whip then DiRT headset safety matrix mandatory before release.
+Backend choice is automatic and the experimental checkbox is gone. Projection-only applications
+remain on direct eye-texture rendering. A distinct application compositor layer latches Topmost
+demand; the common scene is prepared on the transition frame and submitted from the following frame
+without duplicates. Literal-pixel calibration stays direct. Any capacity, render, submit or device-
+loss failure latches direct fallback. `overlay_force_direct=1` remains the diagnostic escape. The
+ordered Pistol Whip then DiRT headset safety matrix remains mandatory before release.
 
 ## Performance Trace modes (implemented; headset validation pending, 2026-07-13)
 
@@ -81,7 +95,8 @@ The HUD catalogue now offers CPU total, peak logical CPU, reported CPU clock, GP
 VRAM budget, genuine SYS remaining headroom, APP, VR, FPS and frame interval. One 250 ms worker owns
 Windows, PDH and DXGI collection and publishes a fixed snapshot; the render thread only attempts a
 non-blocking copy and both eyes reuse one draw snapshot. Default layout is CPU/GPU/SYS/VR, APP remains
-optional, enabled widgets pack in saved order and wrap at a configurable maximum per row.
+optional, enabled widgets pack in saved order into one proportional row; scale changes widget
+geometry and gaps together.
 
 Telemetry settings are schema version 1 and use a separate 64-byte live mapping, preserving the
 208-byte overlay v7 mapping. SYS is `100 * (1 - max(valid pressure))`; CPU/peak/GPU use raw load and

@@ -29,11 +29,14 @@ Require $native 'HudMetricState::Reprojection' 'stable reprojection has no expli
 Require $native 'HudMetricState::Unstable' 'unstable cadence has no explicit state'
 Require $native 'std::array<HudFrameSample, 600>' 'history is not statically bounded'
 Require $native 'GraphFrameInterval[\s\S]*GraphFps[\s\S]*GraphBudgetDeviation[\s\S]*GraphAppWork[\s\S]*GraphWaitDuration[\s\S]*GraphSubmitDuration[\s\S]*GraphDisplayPeriod' 'truthful graph channels are incomplete'
-Require $native 'if\(snap\.graphMode==HudGraphMode::Deviation\)return bit==GraphBudgetDeviation' 'deviation mode admits incompatible units'
-Require $native 'if\(snap\.graphMode==HudGraphMode::Fps\)return bit==GraphFps' 'FPS mode admits incompatible units'
+$policy=Get-Content (Join-Path $Root 'RenderPolicy.h') -Raw
+Require $policy 'case 0: return GraphBudgetDeviation' 'deviation mode admits incompatible units'
+Require $policy 'case 2: return GraphFps' 'FPS mode admits incompatible units'
 Require $ui 'HudScaleSlider" Minimum="0\.15"' 'small HUD scale is unavailable'
 foreach($name in 'HudWidgetList','HudGraphModeCombo','HudGraphFrameIntervalCheck','HudGraphFpsCheck','HudGraphBudgetDeviationCheck','HudGraphAppWorkCheck','HudGraphWaitDurationCheck','HudGraphSubmitDurationCheck','HudGraphDisplayPeriodCheck'){Require $ui "Name=`"$name`"" "UI control $name is absent"}
-foreach($name in 'HudMaxPerRowCombo','HudSysWarningSlider','HudSysCriticalSlider'){Require $ui "Name=`"$name`"" "telemetry UI control $name is absent"}
+foreach($name in 'HudSysWarningSlider','HudSysCriticalSlider'){Require $ui "Name=`"$name`"" "telemetry UI control $name is absent"}
+Forbid $ui 'HudMaxPerRowCombo' 'obsolete maximum-per-row control remains despite the single-row contract'
+Require (Get-Content (Join-Path $Root 'Tests\RenderPolicyFixtures.cpp') -Raw) 'twelve widgets remain one row' 'single-row HUD layout lacks an executable fixture'
 Require $live '_view\.Write\(4, 7u\)' 'live mapping is not version 7'
 Require $telemetryLive 'XRViewLabTelemetryConfigV1' 'versioned telemetry extension mapping is absent'
 foreach($offset in 192,196,200,204){Require $live "_view\.Write\($offset," "live mapping field at $offset is absent"}

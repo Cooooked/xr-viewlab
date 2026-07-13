@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "HardwareTelemetry.h"
+#include "RenderPolicy.h"
 
 namespace {
 constexpr const char* LayerName = "XR_APILAYER_cooooked_xrviewlab";
@@ -102,7 +103,7 @@ double hudTraceX = 0.05, hudTraceY = 0.75, hudTraceScale = 1.0, hudTraceWidth = 
 bool hudTraceEnabled = false;
 uint32_t hudTraceVisibilityMode = 0; // 0 off, 1 always, 2 alarm only
 float g_hudTraceVisibilityAlpha = 0.f;
-uint64_t g_hudTraceHoldUntilTick = 0, g_hudTraceFadeStartTick = 0;
+viewlab::policy::TraceVisibilityState g_hudTraceVisibilityState{};
 bool hudAlarmOnly = false;
 double hudAlarmHoldMs = 1500.0;
 uint32_t hudUpdateIntervalMs = 100;
@@ -134,7 +135,7 @@ constexpr std::array<HudWidgetDescriptor,kHudWidgetCount> kHudWidgetRegistry{{
 uint64_t hudWidgetMask = (1ull<<0)|(1ull<<1)|(1ull<<3)|(1ull<<9);
 uint32_t hudWidgetOrderPacked = 0x03020100u; // four widget IDs, low byte first
 std::array<uint8_t,kHudWidgetCount> hudWidgetOrder{{0,1,9,3,2,4,5,6,7,8,10,11}};
-uint32_t hudMaxPerRow=4;
+uint32_t hudMaxPerRow=static_cast<uint32_t>(kHudWidgetCount); // legacy mapping field; renderer is deliberately one row
 uint32_t hudGraphChannels = GraphBudgetDeviation;
 HudGraphMode hudGraphMode = HudGraphMode::Deviation;
 std::array<uint8_t,kHudWidgetCount> OrderedHudWidgets(uint32_t) { return hudWidgetOrder; }
@@ -580,7 +581,7 @@ void ConsumeTelemetryConfig() {
     if(!g_telemetryConfig){g_telemetryConfigMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabTelemetryConfigV1");if(g_telemetryConfigMap)g_telemetryConfig=(const TelemetryConfigBlock*)MapViewOfFile(g_telemetryConfigMap,FILE_MAP_READ,0,0,sizeof(TelemetryConfigBlock));}
     if(!g_telemetryConfig||g_telemetryConfig->magic!=0x31435456u||g_telemetryConfig->version!=1||g_telemetryConfig->size!=64||g_telemetryConfig->generation==g_telemetryConfigGeneration)return;
     const TelemetryConfigBlock stable=*g_telemetryConfig;if(stable.generation!=g_telemetryConfig->generation)return;
-    hudWidgetMask=stable.widgetMask&((1ull<<kHudWidgetCount)-1);hudMaxPerRow=std::clamp(stable.maxPerRow,1u,8u);hudSysWarningThreshold=std::clamp((double)stable.sysWarning,10.0,60.0);hudSysCriticalThreshold=std::clamp((double)stable.sysCritical,0.0,hudSysWarningThreshold);
+    hudWidgetMask=stable.widgetMask&((1ull<<kHudWidgetCount)-1);hudMaxPerRow=std::clamp(stable.maxPerRow,1u,16u);hudSysWarningThreshold=std::clamp((double)stable.sysWarning,10.0,60.0);hudSysCriticalThreshold=std::clamp((double)stable.sysCritical,0.0,hudSysWarningThreshold);
     std::array<bool,kHudWidgetCount> seen{};size_t n=0;for(uint8_t id:stable.order)if(id<kHudWidgetCount&&!seen[id]){hudWidgetOrder[n++]=id;seen[id]=true;}for(uint8_t id=0;id<kHudWidgetCount;++id)if(!seen[id])hudWidgetOrder[n++]=id;
     g_telemetryConfigGeneration=stable.generation;
 }
@@ -588,9 +589,9 @@ void DisconnectTelemetryConfig(){if(g_telemetryConfig)UnmapViewOfFile(g_telemetr
 
 // ---- Notification content bridge (feature 3, read-only for the layer) ----
 // The UI process composites each notification card (app icon, image/avatar, title/sender, and a
-// shortened body) into a fixed-size top-down RGBA bitmap, and runs the whole queue — arrival,
-// 3 s hold, fade/slide, independent expiry, and stacking — off the render thread. The layer only
-// samples the current frame's cards, so nothing here touches image decoding or window contents.
+// shortened body) into a fixed-size top-down RGBA bitmap and runs queue lifecycle off the render
+// thread. The layer evaluates timestamped fade/slide at render cadence; it never collects, decodes,
+// polls Windows, or rewrites pixels per frame.
 constexpr uint32_t kNotifyMagic = 0x314E4C56; // "VLN1"
 constexpr uint32_t kNotifyMaxCards = 6;
 constexpr uint32_t kNotifyCardW = 336;
@@ -600,8 +601,8 @@ struct NotifyCardBlock {
     uint32_t active;        // 1 = slot carries a live card this generation
     uint32_t id;            // stable id so the layer re-uploads pixels only on real change
     uint32_t width, height; // used pixels within the fixed card texture
-    float alpha;            // animated in the UI: 0..1 (fade)
-    float slideRight;       // 0 = fully docked, 1 = slid fully off the right edge
+    uint32_t enterTick;     // low GetTickCount64 bits; native animates at render cadence
+    uint32_t leaveTick;     // zero until expiry begins
     uint32_t stackIndex;    // 0 = bottom card; higher stacks upward
     uint32_t contentSerial; // bumps whenever the RGBA changes
     uint8_t rgba[kNotifyCardW * kNotifyCardH * 4]; // top-down BGRA-as-RGBA, straight alpha
@@ -634,7 +635,7 @@ struct RacingStateBlock {
     uint32_t magic,version,size,generation;
     uint32_t spotterState,flagState,flagColor,lapFlags;
     int32_t lapNumber; float lapSeconds,lapDeltaSeconds; uint32_t reserved0;
-    int64_t lapExpiresTick; uint32_t reserved[2];
+    int64_t lapExpiresTick; uint32_t presentationFlags,reserved1;
 };
 #pragma pack(pop)
 static_assert(sizeof(RacingStateBlock)==64,"Racing state contract size");
@@ -841,6 +842,7 @@ struct TopmostLayerState {
 TopmostLayerState g_topmostLayer;
 bool g_topmostLayerBlocked = false;
 bool g_topmostLayerAttempted = false;
+bool g_topmostLayerDemanded = false;
 std::atomic<bool> g_rendererDeviceLost{false};
 std::atomic<bool> g_rendererDeviceLossLogged{false};
 
@@ -2409,6 +2411,7 @@ void DrawCalibrationGridToTexture(
     ID3D11DepthStencilState* sDSS = nullptr; UINT sSRef = 0; g_d3d11Mask.context->OMGetDepthStencilState(&sDSS, &sSRef);
     ID3D11VertexShader* sVS = nullptr; g_d3d11Mask.context->VSGetShader(&sVS, nullptr, nullptr);
     ID3D11PixelShader* sPS = nullptr; g_d3d11Mask.context->PSGetShader(&sPS, nullptr, nullptr);
+    ID3D11Buffer* sPSCB = nullptr; g_d3d11Mask.context->PSGetConstantBuffers(0,1,&sPSCB);
     ID3D11InputLayout* sLayout = nullptr; g_d3d11Mask.context->IAGetInputLayout(&sLayout);
     D3D11_PRIMITIVE_TOPOLOGY sTopo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED; g_d3d11Mask.context->IAGetPrimitiveTopology(&sTopo);
     ID3D11Buffer* sVB = nullptr; UINT sStride = 0, sOff = 0; g_d3d11Mask.context->IAGetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
@@ -2424,7 +2427,15 @@ void DrawCalibrationGridToTexture(
     g_d3d11Mask.context->OMSetBlendState(g_d3d11Mask.bsOpaque, kBF, 0xFFFFFFFF);
     g_d3d11Mask.context->OMSetDepthStencilState(g_d3d11Mask.dss, 0);
     g_d3d11Mask.context->VSSetShader(g_d3d11Mask.vs, nullptr, 0);
-    g_d3d11Mask.context->PSSetShader(g_d3d11Mask.ps, nullptr, 0);
+    // The grid previously remained on the interpolated visor-colour shader while every other
+    // calibration pattern moved to the proven constant-colour shader. On VDXR that made valid
+    // grid geometry disappear. Major/minor weight is carried by line thickness; colour is explicit.
+    float gridColour[4]={1.f,1.f,1.f,0.f}; D3D11_MAPPED_SUBRESOURCE cm{};
+    if(SUCCEEDED(g_d3d11Mask.context->Map(g_d3d11Mask.calibrationColorCb,0,D3D11_MAP_WRITE_DISCARD,0,&cm))) {
+        memcpy(cm.pData,gridColour,sizeof(gridColour)); g_d3d11Mask.context->Unmap(g_d3d11Mask.calibrationColorCb,0);
+    }
+    g_d3d11Mask.context->PSSetShader(g_d3d11Mask.calibrationPs, nullptr, 0);
+    g_d3d11Mask.context->PSSetConstantBuffers(0,1,&g_d3d11Mask.calibrationColorCb);
     g_d3d11Mask.context->IASetInputLayout(g_d3d11Mask.layout);
     g_d3d11Mask.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     g_d3d11Mask.context->IASetVertexBuffers(0, 1, &g_d3d11Mask.vb, &stride, &offset);
@@ -2438,6 +2449,7 @@ void DrawCalibrationGridToTexture(
     g_d3d11Mask.context->OMSetDepthStencilState(sDSS, sSRef);
     g_d3d11Mask.context->VSSetShader(sVS, nullptr, 0);
     g_d3d11Mask.context->PSSetShader(sPS, nullptr, 0);
+    g_d3d11Mask.context->PSSetConstantBuffers(0,1,&sPSCB);
     g_d3d11Mask.context->IASetInputLayout(sLayout);
     g_d3d11Mask.context->IASetPrimitiveTopology(sTopo);
     g_d3d11Mask.context->IASetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
@@ -2447,7 +2459,7 @@ void DrawCalibrationGridToTexture(
     if (sDSV) sDSV->Release();
     if (sRS) sRS->Release(); if (sBS) sBS->Release();
     if (sDSS) sDSS->Release(); if (sVS) sVS->Release();
-    if (sPS) sPS->Release(); if (sLayout) sLayout->Release();
+    if (sPS) sPS->Release(); if(sPSCB)sPSCB->Release(); if (sLayout) sLayout->Release();
     if (sVB) sVB->Release();
     g_d3d11Mask.context->Flush();
 }
@@ -2474,7 +2486,8 @@ HudDrawSnapshot g_hudDrawSnap;
 // original renderer above so its investigation-proven output remains unchanged.
 void DrawCalibrationOverlayToTexture(
     ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
-    const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv) {
+    const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv,
+    bool includeCalibration, bool includeHudTrace) {
     if (!g_d3d11Mask.initialized || !g_d3d11Mask.context || !tex ||
         eye.rect.extent.width <= 0 || eye.rect.extent.height <= 0) return;
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
@@ -2530,6 +2543,7 @@ void DrawCalibrationOverlayToTexture(
         bar(s&0x01, q,0,2*q,scale); bar(s&0x02, 2*q,scale,2*q+scale,q); bar(s&0x04, 2*q,q+scale,2*q+scale,2*q); bar(s&0x08, q,2*q,2*q,2*q+scale); bar(s&0x10, 0,q+scale,scale,2*q); bar(s&0x20, 0,scale,scale,q); bar(s&0x40, q,q,2*q,q+scale);
     };
 
+    if(includeCalibration) {
     // Pixel ruler and bars live at the bottom; all values are texture-pixel coordinates.
     int bottomCursor=b;
     if (calibrationRuler) { bottomCursor-=14; safeQuad((float)l,(float)bottomCursor,(float)r,(float)b,0,0,0); for(int x=l;x<r;x+=8) { int tall=(x-l)%64==0?14:((x-l)%32==0?10:6); safeQuad((float)x,(float)(b-tall),(float)(x+1),(float)b,1,1,1); } }
@@ -2548,13 +2562,14 @@ void DrawCalibrationOverlayToTexture(
         for(int i=0;i<32;++i){const float a=i*2*pi/32.f,a2=(i+1)*2*pi/32.f,v=(i&1)?1.f:0.f;const auto p1=calibrationCoordinates.ResolveSharedTangent(cosf(a)*radiusTan,sinf(a)*radiusTan,false);const auto p2=calibrationCoordinates.ResolveSharedTangent(cosf(a2)*radiusTan,sinf(a2)*radiusTan,false);if(verts.size()+3>kMaxVerts)flush();emit(centre.first,centre.second,v,v,v);emit(p1.first,p1.second,v,v,v);emit(p2.first,p2.second,v,v,v);}
         for(int q=1;q<=8;++q){const float qr=radiusTan*q/8.f;for(int i=0;i<64;++i){const float a=i*2*pi/64.f,a2=(i+1)*2*pi/64.f;const auto p1=calibrationCoordinates.ResolveSharedTangent(cosf(a)*qr,sinf(a)*qr,false);const auto p2=calibrationCoordinates.ResolveSharedTangent(cosf(a2)*qr,sinf(a2)*qr,false);calibrationLine(p1.first,p1.second,p2.first,p2.second,1.f,1,1,1);}}
     }
+    }
     // The HUD draws in BOTH eyes. Every element is anchored at a shared tangent-space point
     // inside the binocular overlap of the cropped per-eye FOVs, mapped through this eye's own
     // tangent bounds into its sub-image pixels. Both eyes therefore see the overlay at the
     // same angular position (zero angular disparity — it fuses cleanly and never hugs the
     // opposite lens edge), and it stays positioned relative to the final cropped tangent
     // bounds at any eye resolution.
-    if ((hudEnabled || hudTraceEnabled) && eye.viewIndex < 2) {
+    if (includeHudTrace && (hudEnabled || hudTraceEnabled) && eye.viewIndex < 2) {
         if (eye.viewIndex == 0 || !g_hudDrawSnap.valid) {
             UpdateHudMetrics();
             for (size_t i = 0; i < kHudWidgetCount; ++i) { g_hudDrawSnap.metrics[i] = g_hudMetrics[i]; g_hudDrawSnap.alarm[i] = g_hudAlarm[i].inAlarm; g_hudDrawSnap.states[i]=g_hudAlarm[i].state; }
@@ -2569,14 +2584,13 @@ void DrawCalibrationOverlayToTexture(
         }
         const HudDrawSnapshot& snap = g_hudDrawSnap;
         if (eye.viewIndex == 0) {
-            if (hudTraceVisibilityMode == 1) { g_hudTraceVisibilityAlpha=1.f; g_hudTraceFadeStartTick=0; }
-            else if (hudTraceVisibilityMode == 2) {
-                bool trouble=false; for(bool alarm:snap.alarm) if(alarm){trouble=true;break;}
-                const uint64_t now=GetTickCount64();
-                if(trouble){g_hudTraceHoldUntilTick=now+(uint64_t)std::clamp(hudAlarmHoldMs,0.0,10000.0);g_hudTraceFadeStartTick=0;g_hudTraceVisibilityAlpha=1.f;}
-                else if(now<g_hudTraceHoldUntilTick){g_hudTraceVisibilityAlpha=1.f;}
-                else {if(g_hudTraceVisibilityAlpha>0.f&&g_hudTraceFadeStartTick==0)g_hudTraceFadeStartTick=now;g_hudTraceVisibilityAlpha=g_hudTraceFadeStartTick?std::clamp(1.f-(now-g_hudTraceFadeStartTick)/500.f,0.f,1.f):0.f;}
-            } else { g_hudTraceVisibilityAlpha=0.f; g_hudTraceFadeStartTick=0; }
+            const uint32_t effectiveChannels=viewlab::policy::EffectiveGraphChannels(static_cast<uint32_t>(snap.graphMode),snap.graphChannels);
+            const bool vrTrouble=snap.alarm[(size_t)HudWidgetId::Vr] &&
+                (effectiveChannels&(GraphFrameInterval|GraphFps|GraphBudgetDeviation|GraphDisplayPeriod))!=0;
+            const bool appTrouble=snap.alarm[(size_t)HudWidgetId::App] && (effectiveChannels&GraphAppWork)!=0;
+            g_hudTraceVisibilityAlpha=viewlab::policy::UpdateTraceVisibility(g_hudTraceVisibilityState,
+                hudTraceVisibilityMode,vrTrouble||appTrouble,GetTickCount64(),
+                (uint64_t)std::clamp(hudAlarmHoldMs,0.0,10000.0));
         }
         XrFovf fovSelf = eye.fov, fovOther = eye.fov; bool haveOther = false;
         for (const EyeView& v : allViews) if (v.viewIndex != eye.viewIndex) { fovOther = v.fov; haveOther = true; break; }
@@ -2604,7 +2618,7 @@ void DrawCalibrationOverlayToTexture(
         const float pxPerTanY = stereoAnchor ? h / (selfU-selfD) : h*.5f;
         const float angularRefPx = (std::min)(pxPerTanX,pxPerTanY) * (2.f/1080.f);
         const float unit = std::clamp((float)(angularRefPx * 64.f * std::clamp(hudScale, 0.15, 3.0)), 4.f, minDim * 0.45f);
-        const float radius = unit * 0.48f, gap = (std::max)(unit * 0.25f, angularRefPx * 1080.f * (float)hudSpacing);
+        const float radius = unit * 0.48f;
         const float margin = std::clamp((float)hudSafeMargin, 0.f, .25f) * minDim;
         const int pxs = (std::max)(1, (int)std::lround(unit * 0.045));
         const float numberHeight = (float)(pxs * 7), numberGap = unit * .08f;
@@ -2616,10 +2630,11 @@ void DrawCalibrationOverlayToTexture(
         }
         const float desiredX = anchorPxX(hudAnchorX) + radius;
         const float desiredY = anchorPxY(hudAnchorY) + radius;
-        const size_t widgetsPerRow=(std::min)(drawWidgetCount,(size_t)std::clamp(hudMaxPerRow,1u,8u));
-        const size_t rowCount=widgetsPerRow?(drawWidgetCount+widgetsPerRow-1)/widgetsPerRow:0;
+        const auto hudLayout=viewlab::policy::SingleRowHudLayout(drawWidgetCount,radius,unit,(float)hudSpacing);
+        const size_t widgetsPerRow=hudLayout.widgetsPerRow,rowCount=hudLayout.rowCount;
+        const float gap=hudLayout.gap;
         const float rowStride=radius*2.f+numberGap+numberHeight+gap*.45f;
-        const float hudWidth=widgetsPerRow?radius*2.f*widgetsPerRow+gap*(widgetsPerRow-1):0.f;
+        const float hudWidth=hudLayout.width;
         const float maxX = obR - margin - (std::max)(0.f,hudWidth-radius);
         const float maxY = obB - margin - radius - numberGap - numberHeight - (rowCount?rowStride*(rowCount-1):0.f);
         const float startX = hudClampToVisible ? (std::clamp)(desiredX, obL + margin + radius, (std::max)(obL + margin + radius, maxX)) : desiredX;
@@ -2772,12 +2787,7 @@ void DrawCalibrationOverlayToTexture(
                 {GraphBudgetDeviation,1.f,.56f,.12f},{GraphAppWork,.78f,.38f,1.f},
                 {GraphWaitDuration,.98f,.88f,.25f},{GraphSubmitDuration,1.f,.28f,.48f},
                 {GraphDisplayPeriod,.72f,.76f,.82f}};
-            auto compatible=[&](uint32_t bit){
-                if(snap.graphMode==HudGraphMode::Deviation)return bit==GraphBudgetDeviation;
-                if(snap.graphMode==HudGraphMode::Fps)return bit==GraphFps;
-                if(snap.graphMode==HudGraphMode::BudgetPercent)return bit==GraphFrameInterval||bit==GraphAppWork;
-                return bit==GraphFrameInterval||bit==GraphAppWork||bit==GraphWaitDuration||bit==GraphSubmitDuration||bit==GraphDisplayPeriod;
-            };
+            const uint32_t effectiveChannels=viewlab::policy::EffectiveGraphChannels(static_cast<uint32_t>(snap.graphMode),snap.graphChannels);
             auto value=[&](const HudFrameSample&s,uint32_t bit){
                 if(snap.graphMode==HudGraphMode::Fps)return s.actualMs>0.0?1000.0/s.actualMs:0.0;
                 if(snap.graphMode==HudGraphMode::Deviation)return s.deviationMs;
@@ -2786,14 +2796,20 @@ void DrawCalibrationOverlayToTexture(
                 if(snap.graphMode==HudGraphMode::BudgetPercent)return s.targetMs>0.0?raw/s.targetMs*100.0:0.0;
                 return raw;
             };
-            const float absoluteMax=snap.graphMode==HudGraphMode::Fps?(float)(snap.samples[base].displayPeriodMs>0.0?1000.0/snap.samples[base].displayPeriodMs*1.25:144.0):
-                snap.graphMode==HudGraphMode::BudgetPercent?200.f:(float)(std::max)(sensitivity*4.0,snap.budgetMs*2.0);
+            float observedMax=0.f;
+            for(const GraphStyle& style:styles) if((effectiveChannels&style.bit)!=0) for(size_t i=0;i<visible;++i) {
+                const double candidate=value(snap.samples[base+i],style.bit);
+                if(std::isfinite(candidate)&&candidate>observedMax)observedMax=(float)candidate;
+            }
+            const float absoluteMax=snap.graphMode==HudGraphMode::Fps?(std::max)(60.f,observedMax*1.10f):
+                snap.graphMode==HudGraphMode::BudgetPercent?(std::max)(120.f,observedMax*1.10f):
+                (std::max)((float)(std::max)(sensitivity*2.0,snap.budgetMs*1.25),observedMax*1.10f);
             auto yFor=[&](double v){
                 if(deviationMode)return traceCentre-std::clamp((float)(v/sensitivity),-1.f,1.f)*traceH*.5f;
                 return traceBottom-std::clamp((float)(v/(std::max)(1.f,absoluteMax)),0.f,1.f)*traceH;
             };
             for(const GraphStyle& style:styles) {
-                if((snap.graphChannels&style.bit)==0||!compatible(style.bit))continue;
+                if((effectiveChannels&style.bit)==0)continue;
                 const bool responsible=(snap.alarm[(size_t)HudWidgetId::Vr]&&(style.bit==GraphFrameInterval||style.bit==GraphFps||style.bit==GraphBudgetDeviation||style.bit==GraphDisplayPeriod))||
                     (snap.alarm[(size_t)HudWidgetId::App]&&style.bit==GraphAppWork);
                 for(size_t i=1;i<visible;++i){
@@ -2860,10 +2876,10 @@ void DrawViewLabOverlaysToTexture(
     const bool wantBoundary = boundaryAlpha > 0.001f;
     const bool wantCrosshair = crosshairEnabled && crosshairAlpha > 0.001f;
     ConsumeRacingState();
-    const bool wantSpotter = iracingEnabled && iracingSpotterGlow && g_racingStable.spotterState != 0;
-    const bool wantFlag = iracingEnabled && iracingFlagBorder && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
+    const bool wantSpotter = ((iracingEnabled && iracingSpotterGlow) || (g_racingStable.presentationFlags & 1u)) && g_racingStable.spotterState != 0;
+    const bool wantFlag = ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
     bool wantNotify = false;
-    if ((notifyEnabled || (iracingEnabled && iracingLapPopup)) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic) wantNotify = true; }
+    if ((notifyEnabled || (iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u)) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 2) wantNotify = true; }
     if (!wantBoundary && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
 
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
@@ -3051,22 +3067,24 @@ void DrawViewLabOverlaysToTexture(
             if (!srv) continue;
             const float aspect = (float)card.height/(float)card.width;
             const float cardH = cardTan*pxPerTanY*aspect;
-            const float slidePx = std::clamp(card.slideRight,0.f,1.f) * (cardW + margin);
+            const auto animation = viewlab::policy::EvaluateNotificationAnimation(
+                static_cast<uint32_t>(GetTickCount64()), card.enterTick, card.leaveTick);
+            const float slidePx = animation.slide * (cardW + margin);
             const float x1 = baseRight + slidePx;                       // right edge (slides off-right)
             const float x0 = x1 - cardW;
             const float y1 = baseBottom - card.stackIndex*(cardH+gap);
             const float y0 = y1 - cardH;
             const float u1 = (float)card.width/(float)kNotifyCardW, v1=(float)card.height/(float)kNotifyCardH;
-            const float a = std::clamp(card.alpha,0.f,1.f) * (float)notifyOpacity;
+            const float a = animation.alpha * (float)notifyOpacity;
             if (a <= 0.003f) continue;
             // Tint alpha animates the fade; RGB unused by the textured PS.
             float tint[4]={1.f,1.f,1.f,a}; D3D11_MAPPED_SUBRESOURCE tm{};
             if (SUCCEEDED(g_d3d11Mask.context->Map(g_d3d11Mask.tintCb,0,D3D11_MAP_WRITE_DISCARD,0,&tm))) { memcpy(tm.pData,tint,sizeof(tint)); g_d3d11Mask.context->Unmap(g_d3d11Mask.tintCb,0); }
             g_d3d11Mask.context->PSSetConstantBuffers(0,1,&g_d3d11Mask.tintCb);
             g_d3d11Mask.context->PSSetShaderResources(0,1,&srv);
-            // UV packed into TEXCOORD.xy (r,g); alpha carries the per-card fade too.
+            // UV packed into TEXCOORD.xy (r,g); tint alpha carries the per-card fade once.
             VisorVertex q[6];
-            auto V=[&](float px,float py,float u,float v){ VisorVertex vv{}; vv.x=ndcX(px); vv.y=ndcY(py); vv.r=u; vv.g=v; vv.b=0.f; vv.alpha=a; return vv; };
+            auto V=[&](float px,float py,float u,float v){ VisorVertex vv{}; vv.x=ndcX(px); vv.y=ndcY(py); vv.r=u; vv.g=v; vv.b=0.f; vv.alpha=1.f; return vv; };
             q[0]=V(x0,y0,0,0); q[1]=V(x1,y0,u1,0); q[2]=V(x1,y1,u1,v1);
             q[3]=V(x0,y0,0,0); q[4]=V(x1,y1,u1,v1); q[5]=V(x0,y1,0,v1);
             D3D11_MAPPED_SUBRESOURCE m{};
@@ -3085,11 +3103,12 @@ void DrawViewLabOverlaysToTexture(
 }
 
 void DrawCalibrationPatternsToTexture(ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
-    const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv) {
-    if (calibrationGrid) DrawCalibrationGridToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv);
-    if (hudEnabled || hudTraceEnabled || calibrationRuler || calibrationGratings || calibrationBars || calibrationBeacon || calibrationEdgeProbes || calibrationCheckerboards || calibrationZonePlate || calibrationClippingSteps || calibrationMotionStrip)
-        DrawCalibrationOverlayToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv);
-    if (AnyViewLabOverlay())
+    const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv,
+    bool includeCalibration, bool includeHudAndOverlays) {
+    if (includeCalibration && calibrationGrid) DrawCalibrationGridToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv);
+    if ((includeCalibration && AnyCalibrationPattern()) || (includeHudAndOverlays && (hudEnabled || hudTraceEnabled)))
+        DrawCalibrationOverlayToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv,includeCalibration,includeHudAndOverlays);
+    if (includeHudAndOverlays && AnyViewLabOverlay())
         DrawViewLabOverlaysToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv);
 }
 
@@ -3231,7 +3250,7 @@ bool RenderTopmostLayer(XrSession session, const XrCompositionLayerProjection* s
         ID3D11RenderTargetView* rtv=nullptr;
         renderResult=g_d3d11Mask.device->CreateRenderTargetView(tex,&rd,&rtv);
         if(FAILED(renderResult)||!rtv) { rendered=false; break; }
-        const float clear[4]={0,0,0,0}; g_d3d11Mask.context->ClearRenderTargetView(rtv,clear); if(maskEnabled) DrawVisorBorderToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv); DrawCalibrationPatternsToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv); rtv->Release();
+        const float clear[4]={0,0,0,0}; g_d3d11Mask.context->ClearRenderTargetView(rtv,clear); if(maskEnabled) DrawVisorBorderToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv); DrawCalibrationPatternsToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv,false,true); rtv->Release();
     }
     if(rendered) g_d3d11Mask.context->Flush();
     XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO}; const XrResult releaseResult=nextXrReleaseSwapchainImage(g_topmostLayer.swapchain,&ri);
@@ -3452,14 +3471,17 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                 if (!g_diagReleaseNoLayout.exchange(true))
                     Log("d3d11 mask DIAG: no eye layout yet for this swapchain (captured on first xrEndFrame; mask starts next frame)\n");
             } else {
+                const bool directCommon=!topmostVisorOverlays||!g_topmostLayer.ready||g_topmostLayerBlocked;
                 for (size_t i = 0; i < views.size(); ++i) {
-                    if (maskEnabled && (!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked)) {
+                    if (maskEnabled && directCommon) {
                         DrawVisorBorderToTexture(tex, arrSize, scFormat, views[i], views,
                             i < rtvs.size() ? rtvs[i] : nullptr);
                     }
-                    if ((!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked) && (AnyCalibrationPattern() || hudEnabled || hudTraceEnabled || AnyViewLabOverlay())) {
+                    // Literal-pixel calibration always measures the submitted game texture. It is
+                    // never silently redefined as pixels of ViewLab's separate Topmost target.
+                    if (AnyCalibrationPattern() || (directCommon && (hudEnabled || hudTraceEnabled || AnyViewLabOverlay()))) {
                         DrawCalibrationPatternsToTexture(tex, arrSize, scFormat, views[i], views,
-                            i < rtvs.size() ? rtvs[i] : nullptr);
+                            i < rtvs.size() ? rtvs[i] : nullptr,true,directCommon);
                     }
                 }
                 for (ID3D11RenderTargetView* rtv : rtvs) {
@@ -3551,7 +3573,7 @@ void LoadConfig() {
     for(size_t i=0;i<kHudWidgetCount;++i){wchar_t key[80]{};swprintf_s(key,L"hud_widget_%s_order",widgetKeys[i]);ordered[i]={(int)ReadDoubleSetting(key,(double)i),(uint8_t)i};}
     std::stable_sort(ordered.begin(),ordered.end(),[](const auto&a,const auto&b){return a.first<b.first;});
     for(size_t i=0;i<kHudWidgetCount;++i)hudWidgetOrder[i]=ordered[i].second;
-    hudMaxPerRow=(uint32_t)std::clamp(ReadDoubleSetting(L"hud_max_per_row",4.0),1.0,8.0);
+    hudMaxPerRow=(uint32_t)std::clamp(ReadDoubleSetting(L"hud_max_per_row",static_cast<double>(kHudWidgetCount)),1.0,16.0);
     hudSysWarningThreshold=std::clamp(ReadDoubleSetting(L"hud_sys_warning",30.0),10.0,60.0);
     hudSysCriticalThreshold=std::clamp(ReadDoubleSetting(L"hud_sys_critical",10.0),0.0,hudSysWarningThreshold);
     hudWidgetOrderPacked=PackHudWidgetOrder({
@@ -4056,6 +4078,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
     g_rendererDeviceLossLogged.store(false, std::memory_order_release);
     g_topmostLayerBlocked=false;
     g_topmostLayerAttempted=false;
+    g_topmostLayerDemanded=false;
     g_d3d11Mask.session = *session;
     const auto* d3d11Binding = reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(
         FindStructInChain(createInfo->next, XR_TYPE_GRAPHICS_BINDING_D3D11_KHR));
@@ -4086,6 +4109,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
     if (session == g_topmostLayer.session) DestroyTopmostLayer();
     g_topmostLayerBlocked=false;
     g_topmostLayerAttempted=false;
+    g_topmostLayerDemanded=false;
     if (session == g_d3d11Mask.session) {
         viewlab::telemetry::Stop();
         viewlab::telemetry::SetPreferredAdapterLuid(0);
@@ -4240,6 +4264,32 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         }
     }
 
+    // Automatic Topmost is a compatibility backend, not a tax paid by every projection-only
+    // application. A plain stereo projection retains the proven direct renderer. Once the app
+    // submits a distinct compositor layer that could cover ViewLab, demand is latched for the
+    // session and the bounded Topmost path takes over. Exact repeated projection submissions from
+    // OpenComposite are not mistaken for an occluding layer.
+    if (topmostVisorOverlays && primaryProjection && !g_topmostLayerDemanded) {
+        bool distinctApplicationLayer=false;
+        for(uint32_t l=0;l<frameEndInfo->layerCount&&!distinctApplicationLayer;++l) {
+            const XrCompositionLayerBaseHeader* hdr=frameEndInfo->layers[l];
+            if(!hdr||hdr==reinterpret_cast<const XrCompositionLayerBaseHeader*>(primaryProjection))continue;
+            if(hdr->type!=XR_TYPE_COMPOSITION_LAYER_PROJECTION){distinctApplicationLayer=true;break;}
+            const auto* other=reinterpret_cast<const XrCompositionLayerProjection*>(hdr);
+            if(other->viewCount!=primaryProjection->viewCount||!other->views){distinctApplicationLayer=true;break;}
+            for(uint32_t v=0;v<other->viewCount;++v) {
+                const auto& a=other->views[v].subImage; const auto& b=primaryProjection->views[v].subImage;
+                if(a.swapchain!=b.swapchain||a.imageArrayIndex!=b.imageArrayIndex||
+                   a.imageRect.offset.x!=b.imageRect.offset.x||a.imageRect.offset.y!=b.imageRect.offset.y||
+                   a.imageRect.extent.width!=b.imageRect.extent.width||a.imageRect.extent.height!=b.imageRect.extent.height) {
+                    distinctApplicationLayer=true;break;
+                }
+            }
+        }
+        g_topmostLayerDemanded=viewlab::policy::LatchTopmostDemand(g_topmostLayerDemanded,distinctApplicationLayer);
+        if(g_topmostLayerDemanded)Log("topmost overlays: distinct application compositor layer detected; compatibility backend demanded for session\n");
+    }
+
     if (enabled && g_d3d11Mask.initialized && !g_rendererDeviceLost.load(std::memory_order_acquire) &&
         session == g_d3d11Mask.session) {
         const bool releaseDrewVisor = g_releaseDrewVisorThisFrame.exchange(false);
@@ -4252,7 +4302,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     std::vector<const XrCompositionLayerBaseHeader*> submittedLayers;
     TopmostSubmission topmostSubmission;
     bool submittedTopmost=false;
-    if (topmostVisorOverlays && primaryProjection && !g_topmostLayerBlocked &&
+    if (topmostVisorOverlays && g_topmostLayerDemanded && primaryProjection && !g_topmostLayerBlocked &&
         !g_rendererDeviceLost.load(std::memory_order_acquire)) {
         const bool wasReady=g_topmostLayer.ready;
         if (RenderTopmostLayer(session,primaryProjection,topmostSubmission)) {

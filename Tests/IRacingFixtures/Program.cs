@@ -137,7 +137,19 @@ WaitUntil(() => provider.IsConnected, "quick stop/start creates one fresh worker
 WaitEvent(e => e.Kind == ViewLabEventKind.SpotterGlow && e.Spotter == SpotterState.TwoCarsRight, "quick restart event path");
 provider.Stop();
 
-Console.WriteLine("iRacing shared-memory fixtures passed: official spotter enum, tick dedupe, stale/inactive clearing, reconnect, layout/value rejection, flag priority, lap/session semantics, quick stop/start.");
+provider.Simulate("Left");
+WaitUntil(() => (racingView.ReadUInt32(56) & 1u) != 0 && racingView.ReadUInt32(16) == (uint)SpotterState.CarLeft,
+    "spotter presentation test bypasses disabled feature gates");
+provider.Simulate("Yellow");
+WaitUntil(() => (racingView.ReadUInt32(56) & 2u) != 0 && racingView.ReadUInt32(20) == (uint)RacingFlagState.Yellow,
+    "flag presentation test bypasses disabled feature gates");
+provider.Simulate("Lap");
+WaitUntil(() => (racingView.ReadUInt32(56) & 4u) != 0 && racingView.ReadInt32(32) == 12,
+    "lap presentation test bypasses disabled feature gates");
+provider.Simulate("Clear");
+WaitUntil(() => racingView.ReadUInt32(56) == 0, "clear presentation removes every temporary test override");
+
+Console.WriteLine("iRacing shared-memory fixtures passed: SDK semantics, lifecycle safety, and non-persistent presentation overrides.");
 
 void Drain() { while (events.TryDequeue(out _)) { } }
 ViewLabEvent WaitEvent(Func<ViewLabEvent, bool> predicate, string description, int timeout = 1500)

@@ -119,8 +119,10 @@ full MSIX migration solely for this API.
 
 ## D16 — Topmost is automatic presentation policy, not an ordinary feature (2026-07-13)
 
-Once every visor feature used the common scene renderer, the repaired composition-layer backend
-became the default session policy. The first frame stays on direct rendering while Topmost arms;
-direct drawing is then suppressed to prevent duplicates. Any failure permanently selects direct for
-that session. Keep `overlay_force_direct` as an advanced profile/diagnostic escape, never as a normal
-checkbox. The one-attempt/device-loss safety latch is a release invariant.
+Backend choice is automatic, but a projection-only application remains on the proven direct
+eye-texture renderer. A distinct application compositor layer latches demand for the session; the
+composition backend is prepared without submission on that transition frame, then direct common-
+scene drawing is suppressed and Topmost is appended on following frames. Literal-pixel calibration
+continues to measure the submitted game texture. Any Topmost failure permanently selects direct for
+that session. Keep `overlay_force_direct` as an advanced diagnostic escape. The one-attempt,
+no-duplicate-transition and device-loss latches are release invariants.

@@ -90,7 +90,7 @@ internal static class NotificationBrokerProgram
             if (e.Kind == ViewLabEventKind.FlagState) attentionFlag = e.Flag;
             bool safetyFlag = attentionFlag is RacingFlagState.Blue or RacingFlagState.Yellow or RacingFlagState.Debris or RacingFlagState.Red or RacingFlagState.Black or RacingFlagState.Disqualified;
             service.SetRacingAttention(attentionSpotter != SpotterState.Clear || safetyFlag);
-            if (e.Kind == ViewLabEventKind.LapTime && lapPopupEnabled)
+            if (e.Kind == ViewLabEventKind.LapTime && (lapPopupEnabled || e.IsPresentationTest))
             {
                 string suffix = !e.IsValid ? "Invalid lap" :
                     (e.IsPersonalBest ? "Personal best" : e.DeltaSeconds is double delta ? $"{delta:+0.000;-0.000;0.000} s" : string.Empty);

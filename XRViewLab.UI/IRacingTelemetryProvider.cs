@@ -292,14 +292,15 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         return RacingFlagState.Clear;
     }
 
-    private void PublishSpotter(SpotterState state)
+    private void PublishSpotter(SpotterState state, bool presentationTest = false, bool clearPresentationTests = false)
     {
         double side = state is SpotterState.CarLeft or SpotterState.TwoCarsLeft ? -1 : state is SpotterState.CarRight or SpotterState.TwoCarsRight ? 1 : state == SpotterState.CarsBothSides ? 2 : 0;
         double count = state is SpotterState.TwoCarsLeft or SpotterState.TwoCarsRight ? 2 : state == SpotterState.CarsBothSides ? 2 : state == SpotterState.Clear ? 0 : 1;
-        Publish(new ViewLabEvent { Kind = ViewLabEventKind.SpotterGlow, Spotter = state, Title = state.ToString(), Value = side, SecondaryValue = count, TimestampUtc = DateTimeOffset.UtcNow });
+        Publish(new ViewLabEvent { Kind = ViewLabEventKind.SpotterGlow, Spotter = state, Title = state.ToString(), Value = side, SecondaryValue = count,
+            IsPresentationTest = presentationTest, ClearPresentationTests = clearPresentationTests, TimestampUtc = DateTimeOffset.UtcNow });
     }
 
-    private void PublishFlag(RacingFlagState state)
+    private void PublishFlag(RacingFlagState state, bool presentationTest = false, bool clearPresentationTests = false)
     {
         uint color = state switch
         {
@@ -307,7 +308,8 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
             RacingFlagState.Yellow => 0xFFD000, RacingFlagState.Debris => 0xFF8000, RacingFlagState.Red => 0xFF2020,
             RacingFlagState.Black => 0x202020, RacingFlagState.Disqualified => 0xFF2020, RacingFlagState.Checkered => 0xFFFFFF, _ => 0
         };
-        Publish(new ViewLabEvent { Kind = ViewLabEventKind.FlagState, Flag = state, Title = state.ToString(), Color = color, TimestampUtc = DateTimeOffset.UtcNow });
+        Publish(new ViewLabEvent { Kind = ViewLabEventKind.FlagState, Flag = state, Title = state.ToString(), Color = color,
+            IsPresentationTest = presentationTest, ClearPresentationTests = clearPresentationTests, TimestampUtc = DateTimeOffset.UtcNow });
     }
 
     private void ClearPresentationState()
@@ -329,15 +331,19 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
     {
         switch (kind)
         {
-            case "Left": PublishSpotter(SpotterState.CarLeft); break;
-            case "Right": PublishSpotter(SpotterState.CarRight); break;
-            case "Both": PublishSpotter(SpotterState.CarsBothSides); break;
-            case "TwoLeft": PublishSpotter(SpotterState.TwoCarsLeft); break;
-            case "TwoRight": PublishSpotter(SpotterState.TwoCarsRight); break;
-            case "Clear": PublishSpotter(SpotterState.Clear); PublishFlag(RacingFlagState.Clear); break;
-            case "Lap": Publish(new ViewLabEvent { Kind = ViewLabEventKind.LapTime, LapNumber = 12, IsValid = true, IsPersonalBest = true, SessionId = "fixture:0", Title = "Lap 12", Body = "1:34.221", Value = 94.221, TimestampUtc = DateTimeOffset.UtcNow }); break;
-            case "Yellow": PublishFlag(RacingFlagState.Yellow); break;
-            case "Blue": PublishFlag(RacingFlagState.Blue); break;
+            case "Left": PublishSpotter(SpotterState.CarLeft, presentationTest: true); break;
+            case "Right": PublishSpotter(SpotterState.CarRight, presentationTest: true); break;
+            case "Both": PublishSpotter(SpotterState.CarsBothSides, presentationTest: true); break;
+            case "TwoLeft": PublishSpotter(SpotterState.TwoCarsLeft, presentationTest: true); break;
+            case "TwoRight": PublishSpotter(SpotterState.TwoCarsRight, presentationTest: true); break;
+            case "Clear":
+                PublishSpotter(SpotterState.Clear, presentationTest: true, clearPresentationTests: true);
+                PublishFlag(RacingFlagState.Clear, presentationTest: true, clearPresentationTests: true);
+                break;
+            case "Lap": Publish(new ViewLabEvent { Kind = ViewLabEventKind.LapTime, LapNumber = 12, IsValid = true, IsPersonalBest = true,
+                IsPresentationTest = true, SessionId = "fixture:0", Title = "Lap 12", Body = "1:34.221", Value = 94.221, TimestampUtc = DateTimeOffset.UtcNow }); break;
+            case "Yellow": PublishFlag(RacingFlagState.Yellow, presentationTest: true); break;
+            case "Blue": PublishFlag(RacingFlagState.Blue, presentationTest: true); break;
         }
         Diagnostics = "Simulated through generic event path: " + kind;
         SetStatus("Test presentation", Diagnostics);

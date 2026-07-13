@@ -33,10 +33,10 @@ internal sealed class NotificationSettings
 //   * A WinRT UserNotificationListener supplies notification text and the source app icon.
 //   * Each card is composited once (icon + title/sender + shortened body + optional thumbnail)
 //     into a fixed-size straight-alpha RGBA bitmap on the UI dispatcher.
-//   * A background timer runs the queue — slide-in, ~3 s hold, fade/slide-out, independent expiry,
-//     upward stacking — and writes compact per-card metadata to shared memory. Pixels are written
-//     only when a card first appears (guarded by a content serial), never every tick.
-// The native layer only samples the current cards; it performs no collection or decoding.
+//   * A bounded background timer advances hold/expiry and writes compact lifecycle timestamps.
+//     Pixels are written only when content changes, never for animation frames.
+// The native layer performs no collection or decoding; it evaluates fade/slide from those timestamps
+// at the game's render cadence.
 internal sealed class NotificationService : IDisposable
 {
     internal enum ServiceState { Ready, PermissionNotGranted, UnsupportedDeployment, ListenerInitializationFailure, InternalRendererFailure }
@@ -47,7 +47,7 @@ internal sealed class NotificationService : IDisposable
     private const int CardW = 336;
     private const int CardH = 96;
     private const int CardPixels = CardW * CardH * 4;
-    private const int CardMetaBytes = 32; // active,id,width,height,alpha,slideRight,stackIndex,contentSerial
+    private const int CardMetaBytes = 32; // active,id,width,height,enterTick,leaveTick,stackIndex,contentSerial
     private const int CardStride = CardMetaBytes + CardPixels;
     private const int HeaderBytes = 16;
     private const int BlockSize = HeaderBytes + MaxCards * CardStride;
@@ -109,7 +109,7 @@ internal sealed class NotificationService : IDisposable
         {
             _map = MemoryMappedFile.CreateOrOpen(MapName, BlockSize, MemoryMappedFileAccess.ReadWrite);
             _view = _map.CreateViewAccessor(0, BlockSize, MemoryMappedFileAccess.ReadWrite);
-            _view.Write(0, Magic); _view.Write(4, 1u); // version
+            _view.Write(0, Magic); _view.Write(4, 2u); // version 2: native evaluates animation from timestamps
         }
         catch (Exception ex) { SetStatus(ServiceState.InternalRendererFailure, ex.GetType().Name + ": " + ex.Message); }
     }
@@ -121,7 +121,7 @@ internal sealed class NotificationService : IDisposable
         if (settings.Enabled)
         {
             EnsureListener(requestAccess);
-            if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 33);
+            if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 50);
         }
         else
         {
@@ -168,7 +168,7 @@ internal sealed class NotificationService : IDisposable
     {
         if (_view == null) { SetStatus(ServiceState.InternalRendererFailure, "Shared-memory card bridge was not created."); return; }
         var s = _settings;
-        if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 33);
+        if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 50);
         _ui.Invoke(() =>
         {
             var icon = new DrawingVisual();
@@ -189,7 +189,7 @@ internal sealed class NotificationService : IDisposable
     public void EnqueueEvent(ViewLabEvent e)
     {
         if (_view == null) return;
-        if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 33);
+        if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 50);
         var s=_settings;
         _ui.Invoke(() => AddComposedCard(_nextId++, "ViewLab event", e.Title ?? e.Kind.ToString(), e.Body ?? $"Value {e.Value:0.###}", null, s));
     }
@@ -274,7 +274,19 @@ internal sealed class NotificationService : IDisposable
         }
     }
 
-    public void SetRacingAttention(bool active) => _racingAttentionActive = active;
+    public void SetRacingAttention(bool active)
+    {
+        if (_racingAttentionActive == active) return;
+        _racingAttentionActive = active;
+        if (!active)
+        {
+            long now = Environment.TickCount64;
+            lock (_lock)
+                foreach (Card card in _cards.Where(c => c.IsDesktop && c.EligibleTick == 0))
+                    card.EligibleTick = now;
+        }
+        WriteBlock();
+    }
 
     private static string NotificationKey(UserNotification n)
     {
@@ -326,6 +338,7 @@ internal sealed class NotificationService : IDisposable
         if (desktop) TechnicalEvent?.Invoke(card.DelayedReported ? "delayed" : "received", appName, title);
         foreach (Card old in dropped.Where(c => c.IsDesktop))
             TechnicalEvent?.Invoke("expired", old.SourceApp ?? "Notification", old.Title);
+        WriteBlock();
     }
 
     private static (byte[] rgba, int w, int h) ComposeCard(string appName, string title, string body, BitmapSource? icon, NotificationSettings s)
@@ -389,7 +402,7 @@ internal sealed class NotificationService : IDisposable
         return s.Length <= max ? s : s.Substring(0, max - 1) + "…";
     }
 
-    // Advance animation state and publish. Runs on the timer thread (off the render path).
+    // Advance queue lifecycle. Native evaluates the timestamped animation every rendered frame.
     private void Tick()
     {
         var s = _settings;
@@ -397,6 +410,7 @@ internal sealed class NotificationService : IDisposable
         if (_listenerReady && now - Interlocked.Read(ref _lastRefreshTick) >= 2000)
             _ = RefreshAsync(); // bounded safety poll in case NotificationChanged is missed
         var historyEvents = new List<Card>();
+        bool changed = false;
         lock (_lock)
         {
             int max = Math.Clamp(s.MaxVisible, 1, MaxCards);
@@ -410,27 +424,26 @@ internal sealed class NotificationService : IDisposable
                     if (now - c.BornTick >= 5000) { c.ExpiryReported = true; toRemove.Add(c); historyEvents.Add(c); }
                     continue;
                 }
-                if (c.EligibleTick == 0) c.EligibleTick = now;
+                if (c.EligibleTick == 0) { c.EligibleTick = now; changed = true; }
                 long age = now - c.EligibleTick;
-                if (c.LeaveTick == 0 && age >= RiseMs + (long)s.DurationMs) c.LeaveTick = now;
+                if (c.LeaveTick == 0 && age >= RiseMs + (long)s.DurationMs) { c.LeaveTick = now; changed = true; }
                 if (c.LeaveTick != 0 && now - c.LeaveTick >= LeaveMs)
                 {
                     toRemove.Add(c);
                     if (c.IsDesktop && !c.ExpiryReported) { c.ExpiryReported = true; historyEvents.Add(c); }
                 }
             }
-            foreach (var c in toRemove) _cards.Remove(c);
+            foreach (var c in toRemove) { _cards.Remove(c); changed = true; }
         }
         foreach (Card c in historyEvents)
             TechnicalEvent?.Invoke("expired", c.SourceApp ?? "Notification", c.Title);
-        WriteBlock();
+        if (changed) WriteBlock();
     }
 
     private void WriteBlock()
     {
         if (_view == null) return;
         var s = _settings;
-        long now = Environment.TickCount64;
         List<Card> visible;
         lock (_lock)
         {
@@ -447,20 +460,12 @@ internal sealed class NotificationService : IDisposable
         {
             if (slot >= MaxCards) break;
             int baseOff = HeaderBytes + (int)slot * CardStride;
-            long age = now - c.EligibleTick;
-            float alpha = 1f, slide = 0f;
-            if (age < RiseMs) { float p = age / (float)RiseMs; alpha = p; slide = 1f - p; }
-            if (c.LeaveTick != 0)
-            {
-                float p = Math.Clamp((now - c.LeaveTick) / (float)LeaveMs, 0f, 1f);
-                alpha = 1f - p; slide = p;
-            }
             _view.Write(baseOff + 0, 1u);
             _view.Write(baseOff + 4, c.Id);
             _view.Write(baseOff + 8, (uint)c.Width);
             _view.Write(baseOff + 12, (uint)c.Height);
-            _view.Write(baseOff + 16, alpha);
-            _view.Write(baseOff + 20, slide);
+            _view.Write(baseOff + 16, unchecked((uint)c.EligibleTick));
+            _view.Write(baseOff + 20, unchecked((uint)c.LeaveTick));
             _view.Write(baseOff + 24, slot); // stackIndex
             _view.Write(baseOff + 28, c.ContentSerial);
             if (c.PixelsDirty && c.Rgba.Length == CardPixels)

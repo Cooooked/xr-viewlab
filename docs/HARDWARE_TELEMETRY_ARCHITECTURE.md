@@ -37,12 +37,13 @@ same snapshot contract, but this build deliberately does not add another install
 Samples older than two seconds become `Stale`, never zero. Unsupported providers leave their
 metric unavailable. Failure is local to that provider; rendering and the other metrics continue.
 The catalogue UI shows provider, unit and runtime-detection status. Enabled widgets pack in saved
-order, wrap at the configured two-to-eight widgets per row, and retain unavailable selections.
+order into one row and retain unavailable selections. Widget scale applies proportionally to rings,
+text, spacing and row bounds.
 
 ## Persistence
 
 INI settings use explicit `telemetry_settings_version=1`, per-widget enable/order keys,
-`hud_max_per_row`, `hud_sys_warning`, and `hud_sys_critical`. The separate 64-byte
+the legacy `hud_max_per_row` migration field, `hud_sys_warning`, and `hud_sys_critical`. The separate 64-byte
 `Local\XRViewLabTelemetryConfigV1` mapping carries live catalogue state and leaves the established
 208-byte v7 overlay mapping unchanged. Old explicit CPU/GPU/APP/VR keys are honoured; otherwise the
 default is CPU/GPU/SYS/VR.

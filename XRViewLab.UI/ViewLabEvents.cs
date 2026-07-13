@@ -58,6 +58,8 @@ internal readonly struct ViewLabEvent
     public int LapNumber { get; init; }
     public bool IsValid { get; init; }
     public bool IsPersonalBest { get; init; }
+    public bool IsPresentationTest { get; init; }
+    public bool ClearPresentationTests { get; init; }
     public bool? IsSessionBest { get; init; }
     public double? DeltaSeconds { get; init; }
     public string? SessionId { get; init; }

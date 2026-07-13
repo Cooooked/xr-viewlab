@@ -1095,7 +1095,6 @@ public partial class MainWindow : Window
 			widget.Enabled = ReadBoolSetting($"hud_widget_{widget.Id}_enabled", widget.Id is "cpu" or "gpu" or "sys" or "vr");
 		var orderedWidgets = _hudWidgets.OrderBy(w => ReadRangeSetting($"hud_widget_{w.Id}_order", Array.IndexOf(HudWidgetIds, w.Id), 0, HudWidgetIds.Length - 1)).ToList();
 		_hudWidgets.Clear(); foreach (HudWidgetOption widget in orderedWidgets) _hudWidgets.Add(widget);
-		HudMaxPerRowCombo.SelectedIndex = (int)ReadRangeSetting("hud_max_per_row", 4, 2, 8) - 2;
 		HudSysWarningSlider.Value = ReadRangeSetting("hud_sys_warning", 30, 10, 60);
 		HudSysCriticalSlider.Value = ReadRangeSetting("hud_sys_critical", 10, 0, 30);
 		HudGraphModeCombo.SelectedIndex = (int)ReadRangeSetting(HudGraphModeKey, 0, 0, 3);
@@ -1574,14 +1573,29 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		foreach(var widget in _hudWidgets)widget.Enabled=defaults.Contains(widget.Id);
 		var ordered=defaults.Select(id=>_hudWidgets.First(w=>w.Id==id)).Concat(_hudWidgets.Where(w=>!defaults.Contains(w.Id))).ToList();
 		_hudWidgets.Clear();foreach(var widget in ordered)_hudWidgets.Add(widget);
-		HudMaxPerRowCombo.SelectedIndex=2;HudSysWarningSlider.Value=30;HudSysCriticalSlider.Value=10;
+		HudSysWarningSlider.Value=30;HudSysCriticalSlider.Value=10;
 		HudLayout_Changed(sender,new RoutedEventArgs());
 	}
 
 	private void HudGraphMode_Changed(object sender, SelectionChangedEventArgs e)
 	{
 		UpdateGraphChannelAvailability();
+		EnsureGraphModeHasChannel();
 		HudLayout_Changed(sender, e);
+	}
+
+	private void EnsureGraphModeHasChannel()
+	{
+		if (HudGraphFrameIntervalCheck == null) return;
+		int mode = HudGraphModeCombo?.SelectedIndex ?? 0;
+		var compatible = mode switch
+		{
+			0 => new[] { HudGraphBudgetDeviationCheck },
+			1 => new[] { HudGraphFrameIntervalCheck, HudGraphAppWorkCheck, HudGraphWaitDurationCheck, HudGraphSubmitDurationCheck, HudGraphDisplayPeriodCheck },
+			2 => new[] { HudGraphFpsCheck },
+			_ => new[] { HudGraphFrameIntervalCheck, HudGraphAppWorkCheck },
+		};
+		if (compatible.All(check => check?.IsChecked != true)) compatible[0].IsChecked = true;
 	}
 
 	private void UpdateGraphChannelAvailability()
@@ -1630,7 +1644,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		for(int slot=0;slot<_hudWidgets.Count;++slot) { int id=Array.IndexOf(HudWidgetIds,_hudWidgets[slot].Id); if(id<0)continue; if(_hudWidgets[slot].Enabled)widgetMask|=1u<<id; widgetOrder|=(uint)id<<(slot*8); }
 		var graphChecks=new[]{HudGraphFrameIntervalCheck,HudGraphFpsCheck,HudGraphBudgetDeviationCheck,HudGraphAppWorkCheck,HudGraphWaitDurationCheck,HudGraphSubmitDurationCheck,HudGraphDisplayPeriodCheck};
 		uint graphChannels=0; for(int i=0;i<graphChecks.Length;++i)if(graphChecks[i].IsChecked==true)graphChannels|=1u<<i;
-		_telemetryConfig.Publish(_hudWidgets, (HudMaxPerRowCombo?.SelectedIndex ?? 2) + 2, HudSysWarningSlider?.Value ?? 30, HudSysCriticalSlider?.Value ?? 10);
+		_telemetryConfig.Publish(_hudWidgets, _hudWidgets.Count, HudSysWarningSlider?.Value ?? 30, HudSysCriticalSlider?.Value ?? 10);
 		_liveState.Publish(mask,
 			MaskEnabledCheck.IsChecked == true, !ReadBoolSetting(OverlayForceDirectKey, false), MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
 			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, MaskInnerBridgeSlider.Value,
@@ -1951,7 +1965,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_order", order.ToString(CultureInfo.InvariantCulture), ConfigPath);
 		}
 		WritePrivateProfileString("Settings", TelemetrySettingsVersionKey, "1", ConfigPath);
-		WritePrivateProfileString("Settings", "hud_max_per_row", ((HudMaxPerRowCombo?.SelectedIndex ?? 2)+2).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "hud_max_per_row", HudWidgetIds.Length.ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", "hud_sys_warning", (HudSysWarningSlider?.Value ?? 30).ToString("0",CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", "hud_sys_critical", (HudSysCriticalSlider?.Value ?? 10).ToString("0",CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudGraphModeKey, Math.Max(0, HudGraphModeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);

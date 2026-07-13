@@ -17,6 +17,7 @@ internal sealed class RacingStateService : IDisposable
     private SpotterState _spotter;
     private RacingFlagState _flag;
     private uint _flagColor;
+    private uint _presentationFlags;
 
     public RacingStateService() : this(Name) { }
     internal RacingStateService(string name)
@@ -29,16 +30,25 @@ internal sealed class RacingStateService : IDisposable
 
     public void Publish(ViewLabEvent e, double lapDurationMs)
     {
+        if (e.ClearPresentationTests) _presentationFlags = 0;
         switch (e.Kind)
         {
-            case ViewLabEventKind.SpotterGlow: _spotter = e.Spotter; PublishState(); break;
-            case ViewLabEventKind.FlagState: _flag = e.Flag; _flagColor = e.Color; PublishState(); break;
+            case ViewLabEventKind.SpotterGlow:
+                _spotter = e.Spotter;
+                _presentationFlags = e.IsPresentationTest && e.Spotter != SpotterState.Clear ? _presentationFlags | 1u : _presentationFlags & ~1u;
+                PublishState(); break;
+            case ViewLabEventKind.FlagState:
+                _flag = e.Flag; _flagColor = e.Color;
+                _presentationFlags = e.IsPresentationTest && e.Flag != RacingFlagState.Clear ? _presentationFlags | 2u : _presentationFlags & ~2u;
+                PublishState(); break;
             case ViewLabEventKind.LapTime:
+                _presentationFlags = e.IsPresentationTest ? _presentationFlags | 4u : _presentationFlags & ~4u;
                 uint flags = 1u | (e.IsValid ? 2u : 0u) | (e.IsPersonalBest ? 4u : 0u) |
                     (e.DeltaSeconds.HasValue ? 8u : 0u);
                 _view.Write(28, flags); _view.Write(32, e.LapNumber);
                 _view.Write(36, (float)e.Value); _view.Write(40, (float)(e.DeltaSeconds ?? 0));
                 _view.Write(48, Environment.TickCount64 + (long)Math.Clamp(lapDurationMs, 1000, 15000));
+                _view.Write(56, _presentationFlags);
                 PublishGeneration();
                 break;
         }
@@ -46,13 +56,13 @@ internal sealed class RacingStateService : IDisposable
 
     public void Clear()
     {
-        _spotter = SpotterState.Clear; _flag = RacingFlagState.Clear; _flagColor = 0;
+        _spotter = SpotterState.Clear; _flag = RacingFlagState.Clear; _flagColor = 0; _presentationFlags = 0;
         _view.Write(28, 0u); _view.Write(48, 0L); PublishState();
     }
 
     private void PublishState()
     {
-        _view.Write(16, (uint)_spotter); _view.Write(20, (uint)_flag); _view.Write(24, _flagColor);
+        _view.Write(16, (uint)_spotter); _view.Write(20, (uint)_flag); _view.Write(24, _flagColor); _view.Write(56, _presentationFlags);
         PublishGeneration();
     }
 

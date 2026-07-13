@@ -69,7 +69,7 @@ remain startup-owned and are never overwritten by the global live snapshot.
 | `hud_enabled` | 0 | `hudEnabled` | Enables the modular performance-widget row as one stereo-coherent visor-space element. |
 | `hud_trace_visibility_mode` | 0 | graph visibility | 0 off, 1 always visible, 2 alarm only. Alarm-only records while hidden, uses sustained widget alarm state, recovery hold and a 500 ms fade. |
 | `hud_trace_enabled` | 0 | migration only | Legacy boolean read only when `hud_trace_visibility_mode` is absent; saves mirror mode != off for older builds. |
-| `overlay_force_direct` | 0 | backend diagnostics | Automatic safe topmost presentation is normal. Set to 1 only for runtime compatibility/diagnostics; it selects the legacy direct eye-texture renderer for the next session. Topmost gets one stable allocation attempt per session; any capacity, creation, render, submit or device-loss failure latches direct fallback. |
+| `overlay_force_direct` | 0 | backend diagnostics | Automatic selection keeps projection-only applications on direct eye-texture rendering and demands Topmost only after a distinct application compositor layer appears. Set to 1 only for diagnostics. Topmost gets one stable allocation attempt per session; any failure latches direct fallback. |
 | `topmost_visor_overlays` | — | — | Legacy experimental switch; ignored. Backend choice is automatic. |
 | `hud_anchor_x`, `hud_anchor_y` | 0.04, 0.05 | `hudAnchorX`, `hudAnchorY` | Normalized position within the shared binocular overlap of the cropped views; live HUD X/Y sliders (full 0–1 range). |
 | `hud_scale`, `hud_spacing`, `hud_opacity` | 1.0, 0.018, 0.70 | HUD layout | Whole-widget scale (0.15–3.0), normalized gap, and colour intensity. Rings, icons, text, spacing, and padding scale together; legacy 0.5–3.0 values retain their meaning. |
@@ -79,7 +79,7 @@ remain startup-owned and are never overwritten by the global live snapshot.
 | `telemetry_settings_version` | 1 | telemetry migration | Explicit catalogue/settings schema. Kept separate from the 208-byte v7 overlay live-state contract. |
 | `hud_widget_{cpu,gpu,app,vr,cpu_peak,cpu_frequency,ram,commit,vram,sys,fps,frame_interval}_enabled` | CPU/GPU/SYS/VR on | widget registry | Independent widget enables. Disabled widgets are omitted; unavailable configured widgets remain dormant. |
 | `hud_widget_{...}_order` | CPU,GPU,SYS,VR then catalogue | widget registry | Persisted order. Invalid/duplicate positions normalize to one occurrence of every widget. |
-| `hud_max_per_row` | 4 | HUD layout | Automatic wrapping limit, 2–8 in the UI and 1–8 in native validation. |
+| `hud_max_per_row` | 12 | migration only | Legacy field retained in the mapping/ini. Current HUD layout deliberately packs every enabled widget into one row; there is no row-limit control. |
 | `hud_sys_warning`, `hud_sys_critical` | 30, 10 | SYS inverse state | Remaining-headroom thresholds: lower is worse. Sustained state and normal alarm hold still apply. |
 | `hud_graph_mode` | 0 | `HudGraphMode` | 0 deviation ms, 1 absolute milliseconds, 2 FPS, 3 percentage of cadence-aware budget. Incompatible channels are not mixed. |
 | `hud_graph_frame_interval`, `hud_graph_fps`, `hud_graph_budget_deviation`, `hud_graph_app_work`, `hud_graph_wait_duration`, `hud_graph_submit_duration`, `hud_graph_display_period` | 0,0,1,0,0,0,0 | graph channels | Independent bounded-history lines. Sources/units are defined in `PERFORMANCE_HUD_REDESIGN.md`; default remains one understandable deviation line. |

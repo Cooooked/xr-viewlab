@@ -2,6 +2,19 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## 4.1.210 - 2026-07-13 (4.1.209 Pistol Whip presentation repair)
+
+- Restored the direct eye-texture backend for projection-only applications. Automatic Topmost now
+  arms only after a distinct application compositor layer is observed, retains its one-attempt and
+  fail-closed safety contract, and suppresses duplicates during the backend transition.
+- Kept literal-pixel calibration on the submitted game texture and corrected the 64 px grid to use
+  the proven explicit constant-colour shader.
+- Made every graph mode select or fall back to a compatible useful channel, corrected Alarm-only
+  trace transitions, and made the twelve HUD widgets one proportional single row.
+- Moved notification fade/slide evaluation to native render cadence and removed doubled fade alpha.
+- Made racing presentation tests explicit temporary overrides, so they work even when the production
+  feature is disabled without enabling or persisting it.
+
 ## Unreleased - 2026-07-13 (Bounded technical history and truthful status controls)
 
 - Added broker-owned atomic JSONL technical history for low-frequency notification dispositions,

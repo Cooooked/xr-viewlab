@@ -34,9 +34,9 @@ in-headset with one eye closed in turn.
 
 - **Purpose:** reveal hue shifts, chroma loss, banding, incorrect transfer functions, and alpha-composition errors.
 - **Coordinates:** full-width proportional bars; colour values themselves are exact shader output values.
-- **Expected:** saturated primaries/secondaries and a monotonic neutral ramp with no topmost-backend washout.
+- **Expected:** saturated primaries/secondaries and a monotonic neutral ramp. Calibration remains on the submitted game texture regardless of common-scene backend choice.
 - **A failure suggests:** pale colours indicate blend/alpha mishandling; tinted greys indicate colour-space conversion damage.
-- **Verify:** compare direct and Topmost modes in the same scene and capture, without changing normal-path colours.
+- **Verify:** compare captures before and after backend demand; the calibration pixels must remain identical.
 
 ## Frame beacon
 
