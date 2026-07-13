@@ -2,6 +2,16 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## Unreleased - 2026-07-13 (Bounded technical history and truthful status controls)
+
+- Added broker-owned atomic JSONL technical history for low-frequency notification dispositions,
+  telemetry state changes, racing cues and lap metadata. Retention is the newest 14 days, 512
+  records and 512 KiB, with the oldest entries discarded until every bound is satisfied.
+- Kept notification bodies out of the history schema and ordinary event diagnostics; source and
+  sender/title are length-limited. All persistence failures remain isolated from collection and rendering.
+- Added a user-facing clear action, deterministic corruption/retention/size/privacy fixtures, live
+  iRacing status refresh, and explicit synthetic/production-path labels for presentation controls.
+
 ## Unreleased - 2026-07-13 (Automatic topmost presentation)
 
 - Made the repaired topmost-capable backend the normal automatic policy and removed its experimental

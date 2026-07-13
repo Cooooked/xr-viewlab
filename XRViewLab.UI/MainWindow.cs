@@ -1908,6 +1908,12 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void IRacingTestLap_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Lap");
 	private void IRacingTestYellow_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Yellow");
 	private void IRacingTestBlue_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Blue");
+	private void ClearHistory_Click(object sender, RoutedEventArgs e)
+	{
+		StatusText.Text = _notificationBroker.SendCommand("clear-history")
+			? "Bounded technical history cleared."
+			: "Could not clear technical history: " + _notificationBroker.Status;
+	}
 
 	private void SaveCalibrationSettings()
 	{
@@ -1990,6 +1996,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		if (NotifyStatusText != null && NotifyEnabledCheck.IsChecked == true)
 			NotifyStatusText.Text = _notificationBroker.RefreshStatus();
+		if (IRacingStatusText != null && IRacingEnabledCheck.IsChecked == true)
+			IRacingStatusText.Text = _notificationBroker.RefreshIRacingStatus();
 		if (!_xrControl.Connected)
 		{
 			if (_xrControl.TryConnect())

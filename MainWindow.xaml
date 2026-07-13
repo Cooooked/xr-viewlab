@@ -661,7 +661,7 @@
                       <CheckBox Name="NotifyAllowlistModeCheck" Content="Treat list as allowlist (otherwise blocklist)" Foreground="#A8A8A8" Margin="0,6,0,0" Checked="NotifyControl_Changed" Unchecked="NotifyControl_Changed" />
                       <TextBlock Text="App filter (comma-separated names)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,2" />
                       <TextBox Name="NotifyFiltersBox" Height="34" AcceptsReturn="True" TextWrapping="Wrap" LostFocus="NotifyControl_Changed" />
-                      <Button Content="Test Notification" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,6,0,0" Click="TestNotification_Click" />
+                      <Button Content="Test presentation (synthetic)" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,6,0,0" Click="TestNotification_Click" ToolTip="Exercises ViewLab's real card queue and renderer without pretending a Windows notification was received." />
 
                       <Separator Margin="0,10,0,8" Background="{StaticResource BorderBrush}" Height="1" />
                       <!-- iRacing integration and real presentation-path controls -->
@@ -688,7 +688,8 @@
                       <Slider Name="IRacingFlagOpacitySlider" Minimum="0.05" Maximum="1" Value="0.6" ValueChanged="IRacingControlSlider_Changed" />
                       <TextBlock Text="Lap card duration" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,0" />
                       <Slider Name="IRacingLapDurationSlider" Minimum="1000" Maximum="15000" Value="4500" ValueChanged="IRacingControlSlider_Changed" />
-                      <WrapPanel Margin="0,6,0,0">
+                      <TextBlock Text="Presentation tests (same production path)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,2" />
+                      <WrapPanel>
                         <Button Content="Left" Style="{StaticResource RedButton}" Padding="6,2" Click="IRacingTestLeft_Click" />
                         <Button Content="Right" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestRight_Click" />
                         <Button Content="Both" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestBoth_Click" />
@@ -699,6 +700,10 @@
                         <Button Content="Yellow" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestYellow_Click" />
                         <Button Content="Blue" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestBlue_Click" />
                       </WrapPanel>
+                      <Separator Margin="0,10,0,8" Background="{StaticResource BorderBrush}" Height="1" />
+                      <TextBlock Text="TECHNICAL HISTORY" Foreground="#C08A2A" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <TextBlock Text="Keeps at most 14 days, 512 incidents or 512 KiB. Notification message bodies are never retained." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" />
+                      <Button Content="Clear technical history" Style="{StaticResource RedButton}" Padding="8,3" Margin="0,6,0,0" Click="ClearHistory_Click" />
                     </StackPanel>
                   </ScrollViewer>
                 </Border>

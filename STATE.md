@@ -4,14 +4,24 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.208 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.208.msi`
+**Current version:** 4.1.209 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.209.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
-`VIEWLAB_VALIDATION_HISTORY.md`; latest 4.1.202 has contracts/build/installer and real packaged-
-notification desktop validation. Headset presentation and affected recent systems still need
+`VIEWLAB_VALIDATION_HISTORY.md`; 4.1.202 has real packaged-notification desktop validation and
+4.1.209 has contracts/history fixtures plus clean WPF, broker, x64/Win32 native, identity-package,
+MSI and extracted-payload validation. Headset presentation and affected recent systems still need
 risk-based checks.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Bounded technical history (implemented; 2026-07-13)
+
+The independent broker records only low-frequency technical events: notification disposition and
+source/title, iRacing connection state, generic spotter/flag changes, and lap metadata. It never
+stores notification message bodies. `%LOCALAPPDATA%\XR ViewLab\history.jsonl` is atomically replaced
+and limited to the newest 14 days, 512 records and 512 KiB. Malformed/expired records are discarded
+on load, failures are swallowed outside rendering, and ordinary settings provide a clear action.
+Deterministic corruption, count, UTF-8 byte-size, field-limit, privacy-schema and clear tests pass.
 
 ## Automatic topmost backend (implemented; safety headset matrix pending, 2026-07-13)
 
@@ -125,7 +135,7 @@ per eye. Crosshair X/Y sliders reset their own axis on right-click. Deterministi
 Pistol Whip and Dirt Rally 2 headset checks remain pending. See `docs/CALIBRATION.md` for the pattern
 contract.
 
-## Visor overlays: boundary flash, crosshair, notifications, iRacing scaffold (in progress, 2026-07-12)
+## Historical overlay baseline (superseded by completed sections above, 2026-07-12)
 
 **Build:** `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.191.msi` (modular HUD widgets, APP workload,
 refresh-relative cadence states, seven-channel performance graph, live-state v7, and smaller scale;
@@ -192,7 +202,7 @@ pixel calibration patterns remain intentionally per-eye diagnostics. Headset val
   image. **Limitation:** unpackaged Win32 apps often get `RequestAccessAsync` = Denied unless an
   AppUserModelID is registered; the service fails soft and reports status. Toast payload images are
   not exposed by the listener, so the "image/thumbnail" is the source app logo where available.
-- **iRacing scaffold (inactive).** `IViewLabEventProvider`/`ViewLabEvent` seam + a labelled UI
+- **Historical iRacing scaffold (now completed).** `IViewLabEventProvider`/`ViewLabEvent` seam + a labelled UI
   section (enable, lap popup, spotter glow, flag border) + flags plumbed to the layer, which takes
   no action on them. No telemetry provider is wired up.
 
@@ -670,6 +680,11 @@ Remaining broader static-audit items not closed in this pass:
   `WOW6432Node` (Win32). A stray 32-bit entry in the 64-bit hive was removed 2026-07-10.
 
 ## Latest verification
+
+- `Tests\Invoke-HistoryFixtures.ps1` and `Tests\Verify-ViewLabContracts.ps1` passed on 2026-07-13.
+  `build.ps1` then produced 4.1.209 with 0 warnings / 0 errors for WPF, broker, signed identity
+  package, x64 native, Win32 native and WiX MSI; extracted payload version and fresh hashes passed:
+  `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.209.msi`.
 
 - `Tests\Verify-ViewLabContracts.ps1`, `Tests\Verify-PerformanceHud.ps1`, and
   `Tests\Verify-TopmostSafety.ps1` passed on integrated `master` on 2026-07-13. `build.ps1` then

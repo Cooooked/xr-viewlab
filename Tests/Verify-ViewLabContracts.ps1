@@ -397,7 +397,7 @@ Assert-Contains 'build.ps1' 'signtool\.exe' 'build signs the notification identi
 Assert-Contains 'Tests\Invoke-RealNotificationFixture.ps1' 'CardCount' 'real packaged notification fixture proves production card delivery'
 Assert-NotContains 'XRViewLab.UI\MainWindow.cs' '_notifications' 'settings window no longer owns notification collection lifetime'
 Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'IRacingEventPublished[\s\S]{0,500}NotifyEnabledCheck' 'racing telemetry cannot silently enable global Windows notifications'
-Assert-Contains 'MainWindow.xaml' 'Test Notification' 'notification test control exists'
+Assert-Contains 'MainWindow.xaml' 'Test presentation \(synthetic\)' 'truthfully labelled notification presentation test exists'
 Assert-Contains 'MainWindow.xaml' 'Name="NotifyEnabledCheck"' 'notification enable control exists'
 foreach ($ctl in @('NotifyXSlider','NotifyYSlider','NotifyScaleSlider','NotifyOpacitySlider','NotifyDurationSlider','NotifyMaxSlider','NotifyPrivacyCombo','NotifyShowIconCheck','NotifyShowImageCheck','NotifyFiltersBox')) {
     Assert-Contains 'MainWindow.xaml' "Name=`"$ctl`"" "notification control $ctl exists"
@@ -415,7 +415,7 @@ Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'NotifyPrivacyKey' 'UI persists not
 
 # Feature 4: validated iRacing shared-memory provider and generic event contract.
 Assert-Contains 'XRViewLab.UI\ViewLabEvents.cs' 'interface IViewLabEventProvider' 'generic ViewLab event provider seam exists'
-Assert-Contains 'MainWindow.xaml' 'Name="IRacingEnabledCheck"' 'iRacing scaffold enable control exists'
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingEnabledCheck"' 'iRacing integration enable control exists'
 Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' 'IRSDKMemMapFileName' 'iRacing provider opens the SDK shared-memory mapping'
 foreach ($field in @('CarLeftRight','LapCompleted','LapLastLapTime','SessionFlags')) { Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' $field "iRacing reads $field" }
 Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' 'void Simulate' 'iRacing generic events can be simulated without the simulator'
@@ -458,8 +458,8 @@ foreach ($case in @(@(120.0, 8.2), @(120.0, 8.3), @(90.0, 11.1), @(90.0, 11.2)))
     if ($ratio -ge 1.08) { throw "Contract failed: stable $($case[0]) Hz value $($case[1]) ms entered amber band (ratio=$ratio)" }
 }
 foreach ($key in @('iracing_enabled','iracing_lap_popup','iracing_spotter_glow','iracing_flag_border')) {
-    Assert-Contains 'dllmain.cpp' $key "DLL reads iRacing scaffold key $key"
-    Assert-Contains 'xr-viewlab.ini' $key "default ini carries iRacing scaffold key $key"
+    Assert-Contains 'dllmain.cpp' $key "DLL reads iRacing integration key $key"
+    Assert-Contains 'xr-viewlab.ini' $key "default ini carries iRacing integration key $key"
 }
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' '4\.0 / _viewZoom' 'preview visor stroke remains screen-space stable while zooming'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'modelRadius = PinPixelRadius / _viewZoom' 'preview pins remain constant in screen pixels'
@@ -535,5 +535,14 @@ foreach($eye in @($leftEye,$rightEye)) {
     if([Math]::Abs($recoveredX-$targetX)-gt 1e-9 -or [Math]::Abs($recoveredY-$targetY)-gt 1e-9){throw 'Contract failed: stereo target did not survive per-eye projection'}
 }
 if([Math]::Abs(($stereoPixels[0]-$leftEye.Offset)-($stereoPixels[1]-$rightEye.Offset))-lt 1e-6){throw 'Contract failed: asymmetric stereo used identical local eye pixels'}
+
+# Bounded technical history is privacy-shaped at its schema boundary. Notification bodies may be
+# rendered according to the live privacy mode but must never become a HistoryService field.
+Assert-Contains 'XRViewLab.UI\HistoryService.cs' 'MaxRecords = 512' 'technical history record count remains bounded'
+Assert-Contains 'XRViewLab.UI\HistoryService.cs' 'MaxBytes = 512 \* 1024' 'technical history file size remains bounded'
+Assert-Contains 'XRViewLab.UI\HistoryService.cs' 'TimeSpan\.FromDays\(14\)' 'technical history retention remains 14 days'
+Assert-NotContains 'XRViewLab.UI\HistoryService.cs' '\bBody\b' 'technical history schema contains no notification body'
+Assert-Contains 'MainWindow.xaml' 'Test presentation \(synthetic\)' 'synthetic notification control is labelled truthfully'
+Assert-Contains 'MainWindow.xaml' 'Clear technical history' 'technical history has a user-accessible clear action'
 
 Write-Host 'ViewLab contract verification passed.'
