@@ -1,9 +1,11 @@
 # ViewLab Vision Alignment Audit
 
-**Audit baseline:** branch `codex/topmost-incident-safety-20260713`, commit `ce7ef4d`, repository
-state inspected 2026-07-13. The current packaged build is 4.1.194; the last build recorded as
-headset-confirmed in `STATE.md` is 4.1.103. This is a source-and-documentation audit, not a claim of
-headset validation.
+**Original audit baseline:** branch `codex/topmost-incident-safety-20260713`, commit `ce7ef4d`,
+repository state inspected 2026-07-13. Correction: the former `STATE.md` field naming 4.1.103 as
+“last confirmed-good” was an incomplete documentation record, not evidence that later builds had no
+headset testing. Recent Pistol Whip and DiRT Rally 2 testing is reconstructed as far as evidence
+allows in `VIEWLAB_VALIDATION_HISTORY.md`. This remains a source audit, not a claim that every
+feature in one recent build passed a complete headset matrix.
 
 ## Executive finding
 
@@ -221,8 +223,9 @@ Changed-value gates prevent ordinary repeated samples from becoming a notificati
    bounded incident history or suppression/fallback summary.
 7. **Deployment privilege is too broad.** Running the ordinary settings UI as administrator makes
    a sensitive desktop-information feature harder and expands the consequence of UI faults.
-8. **Validation debt is substantial.** Source has advanced through many local builds while the
-   recorded headset-confirmed baseline remains much older.
+8. **Validation recording debt is substantial.** Recent source received repeated headset testing,
+   but observations were not consistently tied to build, runtime, feature and result. Some newest
+   safety and hardware-telemetry behaviour still needs targeted validation.
 9. **Documentation state is inconsistent.** Some UI/config comments still call iRacing a future
    scaffold with no telemetry even though a real provider now exists; this obscures honest status.
 

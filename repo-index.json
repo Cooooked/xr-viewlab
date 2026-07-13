@@ -18,6 +18,7 @@
     "decisions": "docs/DECISIONS.md",
     "regressions": "docs/REGRESSIONS.md",
     "verification": "docs/VERIFICATION.md",
+    "validationHistory": "VIEWLAB_VALIDATION_HISTORY.md",
     "releaseHistory": "CHANGELOG.md",
     "machineIndex": "repo-index.json",
     "toolShims": ["CLAUDE.md"],

@@ -4,8 +4,12 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.194 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.194.msi`
-**Last confirmed-good in headset:** 4.1.103 (stencil inner-eye fix confirmed by user)
+**Current version:** 4.1.195 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.195.msi`
+**Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
+testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
+narrow confirmed reference for its stencil repair, not the last headset-tested build. See
+`VIEWLAB_VALIDATION_HISTORY.md`; latest 4.1.195 integration baseline has contracts/build validation
+only and still needs risk-based headset checks for affected recent systems.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
 
 ## Hardware telemetry platform (implementation complete; build/headset validation pending, 2026-07-13)
@@ -44,7 +48,7 @@ validation remains pending. See
 
 ## Overlay coordinate unification (in progress, 2026-07-13)
 
-The first `OverlayCoordinateResolver` pass incorrectly mapped normalized coordinates independently into each eye and used each asymmetric full-FOV midpoint for the crosshair. This produced two monocular stickers and contaminated both direct and topmost output. The resolver now builds shared selected/full tangent bounds from both eyes, chooses one visor-space target, and projects it independently into each eye viewport. Crosshair zero is shared tangent `(0,0)`; normalized offsets and Lens Pinned clamping happen in shared tangent space. HUD and trace both render binocularly. Projection capture still stops after the primary layer to prevent repeated OpenComposite texture draws. Headset validation remains pending and no release is authorised.
+The first `OverlayCoordinateResolver` pass incorrectly mapped normalized coordinates independently into each eye and used each asymmetric full-FOV midpoint for the crosshair. This produced two monocular stickers and contaminated both direct and topmost output. The resolver now builds shared selected/full tangent bounds from both eyes, chooses one visor-space target, and projects it independently into each eye viewport. Crosshair zero is shared tangent `(0,0)`; normalized offsets and Lens Pinned clamping happen in shared tangent space. HUD and trace both render binocularly. Projection capture still stops after the primary layer to prevent repeated OpenComposite texture draws. Manual headset testing found the original two-sticker regression and subsequently confirmed restored binocular overlap, crosshair fusion and flat crop behaviour. Exact build attribution is incomplete; newer HUD/telemetry and safety changes still require targeted validation. No release is authorised.
 
 **Safety-critical Topmost repair:** the 2026-07-13 DiRT Rally incident was caused by Topmost
 swapchain churn followed by 193 unbounded allocation retries during device/display-stack failure.
@@ -378,7 +382,10 @@ values (vertical/horizontal render height) still control the full render dimensi
 center. `mask_size`/`visor_size` controls only the unified visor opening scale: its default `1.0`
 preserves the full existing opening, and lower values cover more of the already-rendered image.
 It does not affect crop tangents, submitted FOV, render resolution, or GPU savings.
-Everything below is NOT headset-confirmed; last confirmed-good remains 4.1.103.
+The following section is retained historical implementation context. Its old blanket statement that
+everything after 4.1.103 lacked headset testing was incorrect: later builds were repeatedly tested,
+but documentation often omitted exact build attribution. Treat each specific pending/confirmed note
+on its own merits and use `VIEWLAB_VALIDATION_HISTORY.md` for the consolidated evidence record.
 
 ## Current headset blockers (2026-07-11)
 
@@ -610,6 +617,13 @@ Remaining broader static-audit items not closed in this pass:
   `WOW6432Node` (Win32). A stray 32-bit entry in the 64-bit hive was removed 2026-07-10.
 
 ## Latest verification
+
+- `Tests\Verify-ViewLabContracts.ps1`, `Tests\Verify-PerformanceHud.ps1`, and
+  `Tests\Verify-TopmostSafety.ps1` passed on integrated `master` on 2026-07-13. `build.ps1` then
+  produced 4.1.195 with 0 warnings / 0 errors for WPF, x64 native, Win32 native, WiX MSI, extracted
+  payload version and fresh-binary hashes: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.195.msi`.
+- Manual headset evidence after 4.1.103 is now recorded without pretending that the incomplete old
+  log meant no testing occurred. See `VIEWLAB_VALIDATION_HISTORY.md`.
 
 - `Tests\Verify-ViewLabContracts.ps1` and `Tests\Verify-PerformanceHud.ps1` passed on 2026-07-13.
 - The isolated native telemetry smoke test produced 20 samples in 5 seconds, full six-input SYS

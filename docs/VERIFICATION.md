@@ -10,8 +10,16 @@
 3. **Log verification:** launch the game, read `%LOCALAPPDATA%\XR ViewLab\ViewLab.log` — the
    `config:` line shows every value the DLL actually loaded; `OK draw executed` lines confirm
    the visor pipeline runs. Proves plumbing, NOT visuals.
-4. **In-headset verification:** the only proof of visual correctness. The user does this, or use
-   the ReShade screenshot workflow below.
+4. **Manual desktop verification:** exercise settings, permissions, lifecycle and diagnostics
+   without claiming headset output.
+5. **In-headset verification:** the only proof of visual correctness. Record the game, runtime,
+   affected features and result in `VIEWLAB_VALIDATION_HISTORY.md`. A screenshot proves submitted
+   pixels; a human headset observation proves perceived stereo/lens behaviour.
+
+Verification is risk-based. Every implementation change gets contracts and a build. Test the
+affected subsystem in the relevant runtime. Reserve the broader Pistol Whip + DiRT Rally matrix for
+release candidates and changes to shared projection, rendering, device lifetime, installer or
+profile state. Do not treat an omitted test as a failure, nor a narrow pass as global acceptance.
 
 ## Test environment (do not guess alternate paths)
 
@@ -31,6 +39,8 @@
 - Toggling ViewLab on/off: use the big ENABLED/DISABLED button in the ViewLab UI (it handles
   both registry hives). Don't hand-edit layer registration.
 - MSI install may reset live ini keys (REGRESSIONS R6) — re-check settings in the UI after install.
+- Recording a headset result should take one row, not a small coronation. Use the template in
+  `VIEWLAB_VALIDATION_HISTORY.md`.
 
 ## In-HMD screenshot workflow (agent-driven visual verification)
 
