@@ -36,6 +36,7 @@ not preserve the exact build number for every observation. Do not invent finer p
 | 4.1.205 | 2026-07-13 | Packaged racing presentation candidate | Contracts, iRacing fixtures, full build/MSI payload | WPF controls, broker, generic mapping, native x64/Win32 spotter/flag/card consumers | Passed with zero warnings/errors; aligns notification header field order. Behavioural deployment proof remains the installed 4.1.204 run; headset visuals still pending. |
 | 4.1.206 | 2026-07-13 | Racing attention policy | Contracts, broker build, full build/MSI payload | Desktop-card bounded hold/expiry during spatial and safety-flag cues | Passed with zero warnings/errors. Policy timing and simultaneous headset appearance remain unverified visually. |
 | 4.1.207 | 2026-07-13 | Performance Trace visibility modes | Contracts, full build/MSI payload | Off/always/alarm-only state, hold/fade and responsible-channel emphasis | Passed WPF, broker, x64/Win32 and MSI validation with zero warnings/errors. Alarm transition appearance needs headset/runtime timing verification. |
+| 4.1.208 | 2026-07-13 | Automatic Topmost candidate | Contracts, full build/MSI payload | Default automatic policy, first-frame direct arm, duplicate suppression, diagnostic force-direct key, existing fail-closed latch | Passed with zero warnings/errors. Safety-critical Pistol Whip then DiRT headset/device-loss matrix is deliberately still pending. |
 
 ## Recording the next test
 

@@ -37,7 +37,7 @@ public partial class MainWindow : Window
 
 	// Render options
 	private const string MaskEnabledKey = "mask_enabled";
-	private const string TopmostVisorOverlaysKey = "topmost_visor_overlays";
+	private const string OverlayForceDirectKey = "overlay_force_direct";
 	private const string MaskSizeKey = "mask_size";
 	private const string MaskRoundedKey = "mask_rounded";
 	private const string MaskCornerKey = "mask_corner";
@@ -1042,7 +1042,6 @@ public partial class MainWindow : Window
 		HorizontalBox.Text = FormatScale(value);
 		// Mask (visor): absolute bounds, default 1.0 = no mask on that axis.
 		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
-		TopmostVisorOverlaysCheck.IsChecked = ReadBoolSetting(TopmostVisorOverlaysKey, fallback: false);
 		MaskSizeSlider.Value = ReadRangeSetting(MaskSizeKey, 1.0, 0.1, 1.0);
 		MaskRoundedCheck.IsChecked = ReadBoolSetting(MaskRoundedKey, fallback: true);
 		MaskVerticalBox.Text = FormatScale(ReadScaleSetting("mask_vertical", 1.0));
@@ -1602,7 +1601,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		Directory.CreateDirectory(ConfigDirectory);
 		WritePrivateProfileString("Settings", MaskEnabledKey, MaskEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", TopmostVisorOverlaysKey, TopmostVisorOverlaysCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskRoundedKey, MaskRoundedCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HorizVisualMaskBothKey, HorizVisualMaskBothCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HorizOuterEyeMaskKey, HorizOuterEyeMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
@@ -1634,7 +1632,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		uint graphChannels=0; for(int i=0;i<graphChecks.Length;++i)if(graphChecks[i].IsChecked==true)graphChannels|=1u<<i;
 		_telemetryConfig.Publish(_hudWidgets, (HudMaxPerRowCombo?.SelectedIndex ?? 2) + 2, HudSysWarningSlider?.Value ?? 30, HudSysCriticalSlider?.Value ?? 10);
 		_liveState.Publish(mask,
-			MaskEnabledCheck.IsChecked == true, TopmostVisorOverlaysCheck.IsChecked == true, MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
+			MaskEnabledCheck.IsChecked == true, !ReadBoolSetting(OverlayForceDirectKey, false), MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
 			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, MaskInnerBridgeSlider.Value,
 			MaskInnerBridgeRiseSlider.Value, MaskInnerBridgePeakXSlider.Value, MaskInnerBridgeSteepnessSlider.Value,
 			HudEnabledCheck.IsChecked == true, Math.Max(0, HudTraceVisibilityCombo.SelectedIndex), HudXSlider.Value, HudYSlider.Value, HudScaleSlider.Value,

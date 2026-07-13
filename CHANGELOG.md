@@ -2,6 +2,17 @@
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+## Unreleased - 2026-07-13 (Automatic topmost presentation)
+
+- Made the repaired topmost-capable backend the normal automatic policy and removed its experimental
+  checkbox from ordinary settings. `overlay_force_direct=1` remains a session-start diagnostic escape.
+- Confirmed common-scene parity for visor, calibration, HUD, Trace, crosshair, notifications, lap
+  cards, spotter glow and flag border; all use the same renderer/coordinates in both backends.
+- Suppressed direct visor drawing once Topmost is armed, including captured-projection fallback, so
+  no frame receives duplicate direct and composition-layer masks.
+- Preserved first-frame direct presentation, one allocation attempt/session, stable capacity,
+  device-loss latch, bounded failure and immediate next-frame direct fallback.
+
 ## Unreleased - 2026-07-13 (Performance Trace visibility)
 
 - Replaced the ambiguous graph checkbox with explicit Off, Always visible and Alarm only modes,

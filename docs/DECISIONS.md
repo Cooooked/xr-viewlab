@@ -116,3 +116,11 @@ the settings window and game. The ordinary WPF settings process runs asInvoker; 
 changes elevate through a narrow command only when registration changes. Rejected: an AUMID-only
 shortcut (does not grant listener capability), permanent elevation, collection in the game, and a
 full MSIX migration solely for this API.
+
+## D16 — Topmost is automatic presentation policy, not an ordinary feature (2026-07-13)
+
+Once every visor feature used the common scene renderer, the repaired composition-layer backend
+became the default session policy. The first frame stays on direct rendering while Topmost arms;
+direct drawing is then suppressed to prevent duplicates. Any failure permanently selects direct for
+that session. Keep `overlay_force_direct` as an advanced profile/diagnostic escape, never as a normal
+checkbox. The one-attempt/device-loss safety latch is a release invariant.

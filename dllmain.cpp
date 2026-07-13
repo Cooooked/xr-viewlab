@@ -670,7 +670,8 @@ void ConsumeLiveState() {
     hudAlarmHoldMs = std::clamp((double)stable.alarmHoldMs, 0.0, 10000.0);
     hudTraceEnabled = (stable.traceFlags & 1u) != 0;
     hudTraceVisibilityMode = !hudTraceEnabled ? 0u : (stable.traceFlags & 2u) != 0 ? 2u : 1u;
-    topmostVisorOverlays = (stable.topmostFlags & 1u) != 0;
+    // Backend selection is session-owned and profile-aware. Live UI snapshots must not override a
+    // per-game diagnostic force-direct policy halfway through a session.
     hudWidgetMask=(hudWidgetMask&~0x0Full)|(stable.hudWidgetMask&0x0Fu);
     hudWidgetOrderPacked=stable.hudWidgetOrder;
     hudGraphChannels=stable.hudGraphChannels&0x7Fu;
@@ -3452,7 +3453,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                     Log("d3d11 mask DIAG: no eye layout yet for this swapchain (captured on first xrEndFrame; mask starts next frame)\n");
             } else {
                 for (size_t i = 0; i < views.size(); ++i) {
-                    if (maskEnabled) {
+                    if (maskEnabled && (!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked)) {
                         DrawVisorBorderToTexture(tex, arrSize, scFormat, views[i], views,
                             i < rtvs.size() ? rtvs[i] : nullptr);
                     }
@@ -3566,7 +3567,7 @@ void LoadConfig() {
         (ReadBoolSetting(L"hud_graph_submit_duration",false)?GraphSubmitDuration:0u)|
         (ReadBoolSetting(L"hud_graph_display_period",false)?GraphDisplayPeriod:0u);
     hudGraphMode=(HudGraphMode)std::clamp((int)ReadDoubleSetting(L"hud_graph_mode",0.0),0,3);
-    topmostVisorOverlays = ReadBoolSetting(L"topmost_visor_overlays", false);
+    topmostVisorOverlays = !ReadBoolSetting(L"overlay_force_direct", false);
     hudAlarmOnly = ReadBoolSetting(L"hud_alarm_only", false);
     hudAlarmHoldMs = std::clamp(ReadDoubleSetting(L"hud_alarm_hold_ms", 1500.0), 0.0, 10000.0);
     hudDebugValues = ReadBoolSetting(L"hud_debug_values", false);
@@ -4242,7 +4243,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     if (enabled && g_d3d11Mask.initialized && !g_rendererDeviceLost.load(std::memory_order_acquire) &&
         session == g_d3d11Mask.session) {
         const bool releaseDrewVisor = g_releaseDrewVisorThisFrame.exchange(false);
-        if (maskEnabled && !releaseDrewVisor) {
+        if (maskEnabled && (!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked) && !releaseDrewVisor) {
             DrawCapturedProjectionTextures(true, "visor");
         }
     }

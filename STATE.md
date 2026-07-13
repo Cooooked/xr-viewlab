@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-13
-**Current version:** 4.1.207 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.207.msi`
+**Current version:** 4.1.208 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.208.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
@@ -12,6 +12,15 @@ narrow confirmed reference for its stencil repair, not the last headset-tested b
 notification desktop validation. Headset presentation and affected recent systems still need
 risk-based checks.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Automatic topmost backend (implemented; safety headset matrix pending, 2026-07-13)
+
+Safe topmost-capable presentation is now the normal session policy and the experimental checkbox is
+gone. The common scene includes visor, calibration, HUD/Trace, crosshair, notification/lap cards and
+racing cues. Frame one remains direct while a single allocation arms; subsequent direct visor/scene
+drawing is suppressed. Any capacity, render, submit or device-loss failure latches the session to
+direct fallback. `overlay_force_direct=1` is the hidden profile/diagnostic escape. The historical
+incident makes the ordered Pistol Whip then DiRT headset safety matrix mandatory before release.
 
 ## Performance Trace modes (implemented; headset validation pending, 2026-07-13)
 
