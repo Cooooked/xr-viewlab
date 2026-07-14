@@ -191,6 +191,17 @@ internal sealed class NotificationService : IDisposable
         _ui.Invoke(() => AddComposedCard(_nextId++, "ViewLab event", e.Title ?? e.Kind.ToString(), e.Body ?? $"Value {e.Value:0.###}", null, s));
     }
 
+    // Reuses the same shared-memory card pipeline as desktop-notification mirroring: a track
+    // change becomes a card with the track title, artist as the body line, and cover art in the
+    // icon slot. No transport controls are exposed — this is a passive "now playing" card only.
+    public void EnqueueMediaCard(string title, string artist, BitmapSource? artwork)
+    {
+        if (_view == null) return;
+        if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 50);
+        var s = _settings;
+        _ui.Invoke(() => AddComposedCard(_nextId++, "Now playing", title, artist, artwork, s));
+    }
+
     private async System.Threading.Tasks.Task RefreshAsync()
     {
         if (_listener == null || Interlocked.Exchange(ref _refreshActive, 1) != 0) return;

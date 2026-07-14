@@ -63,6 +63,14 @@ internal static class NotificationBrokerProgram
         service.StatusChanged += () => WriteStatus(service.State.ToString(), service.Status, identityReady);
         var racingState = new RacingStateService();
         var racingProvider = new IRacingTelemetryProvider();
+        var mediaProvider = new MediaSessionEventProvider();
+        bool mediaNotifyEnabled = ReadBool("media_notify_enabled", false);
+        mediaProvider.TrackChanged += info => dispatcher.BeginInvoke(() =>
+        {
+            if (mediaNotifyEnabled && service.State != NotificationService.ServiceState.InternalRendererFailure)
+                service.EnqueueMediaCard(info.Title, info.Artist, info.Artwork);
+        });
+        if (mediaNotifyEnabled) mediaProvider.Start();
         bool racingEnabled = ReadBool("iracing_enabled", false);
         bool lapPopupEnabled = ReadBool("iracing_lap_popup", false);
         double lapDurationMs = ReadDouble("iracing_lap_duration_ms", 4500, 1000, 15000);
@@ -110,6 +118,12 @@ internal static class NotificationBrokerProgram
                 racingEnabled = nextRacingEnabled;
                 if (racingEnabled) racingProvider.Start(); else { racingProvider.Stop(); racingState.Clear(); attentionSpotter=SpotterState.Clear; attentionFlag=RacingFlagState.Clear; service.SetRacingAttention(false); }
             }
+            bool nextMediaNotifyEnabled = ReadBool("media_notify_enabled", false);
+            if (nextMediaNotifyEnabled != mediaNotifyEnabled)
+            {
+                mediaNotifyEnabled = nextMediaNotifyEnabled;
+                if (mediaNotifyEnabled) mediaProvider.Start(); else mediaProvider.Stop();
+            }
         }, dispatcher);
         settingsTimer.Start();
 
@@ -141,7 +155,7 @@ internal static class NotificationBrokerProgram
                             case "simulate-yellow": racingProvider.Simulate("Yellow"); break;
                             case "simulate-blue": racingProvider.Simulate("Blue"); break;
                             case "shutdown":
-                                settingsTimer.Stop(); racingProvider.Dispose(); racingState.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
+                                settingsTimer.Stop(); racingProvider.Dispose(); racingState.Dispose(); mediaProvider.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
                         }
                     });
                     if (received == "shutdown") return;
