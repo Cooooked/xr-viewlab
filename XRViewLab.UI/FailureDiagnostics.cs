@@ -11,16 +11,19 @@ public enum FailureCertainty { Confirmed, Likely }
 // than asserting a cause the evidence doesn't actually establish.
 public sealed record FailureFinding(string Category, string Summary, string Evidence, FailureCertainty Certainty, string Recommendation);
 
-// Turns ViewLab's existing native log lines (and a UI-side crash marker, if any) into a short list
-// of plain-English explanations. Every category here maps to a real, already-logged signal in
-// dllmain.cpp — this class does not invent new failure detection, only interprets what's already
-// written. Kept dependency-free (no file I/O) so the classification rules are fixture-testable;
-// the caller supplies the log text and a couple of already-known facts (layer registration state,
-// whether any log line exists for "today").
+// Turns ViewLab's existing signals — native log lines, a UI-side crash marker, and the
+// notification broker's own status/iRacing status files — into a short list of plain-English
+// explanations. Every category here maps to a real, already-recorded signal somewhere in ViewLab
+// (dllmain.cpp's log, or the separate notification-broker process's status files); this class does
+// not invent new failure detection, only interprets what's already written. Kept dependency-free
+// (no file I/O) so the classification rules are fixture-testable; the caller reads the files and
+// supplies their contents.
 public static class FailureDiagnostics
 {
 	public static IReadOnlyList<FailureFinding> Analyze(string logText, bool layerRegisteredInRegistry, bool anyLogLineToday,
-		CrashMarker.Record? uiCrash = null)
+		CrashMarker.Record? uiCrash = null,
+		string? notificationBrokerState = null, string? notificationBrokerDetail = null,
+		string? iRacingDiagnostics = null)
 	{
 		var findings = new List<FailureFinding>();
 		string[] lines = string.IsNullOrEmpty(logText) ? Array.Empty<string>() : logText.Split('\n');
@@ -82,6 +85,52 @@ public static class FailureDiagnostics
 				"iRacing telemetry could not be read",
 				"The iRacing SDK's shared-memory layout did not match what ViewLab expects, so telemetry (spotter, flags, laps) was unavailable this session.",
 				iracingLayout.Trim(),
+				FailureCertainty.Confirmed,
+				"Usually means iRacing wasn't running or its telemetry wasn't active yet when ViewLab checked. Make sure you're in a live session, not just the sim launcher."));
+		}
+
+		// Notification broker states (from its own status file — this runs in a separate process
+		// from the OpenXR layer, so these never appear in ViewLab.log).
+		(string Category, string Summary, string Recommendation)? brokerFinding = notificationBrokerState switch
+		{
+			"PermissionNotGranted" => (
+				"Windows didn't grant notification-mirroring permission",
+				"ViewLab's notification broker needs Windows' notification-listener permission to mirror desktop notifications into the visor, and it hasn't been granted.",
+				"Open ViewLab's notification settings and click \"Request access\", then approve the Windows permission prompt."),
+			"UnsupportedDeployment" => (
+				"Notification mirroring isn't supported on this install",
+				"The notification broker could not register the package identity it needs for Windows to allow notification mirroring.",
+				"Repair or reinstall ViewLab; this typically means a required signing certificate or package file is missing."),
+			"ListenerInitializationFailure" => (
+				"Notification listener failed to start",
+				"ViewLab's notification broker could not start Windows' notification listener.",
+				"Restart the notification broker from ViewLab's settings. If it keeps failing, check Windows notification settings for ViewLab."),
+			"InternalRendererFailure" => (
+				"Notification card renderer failed",
+				"The notification broker could not create its shared-memory bridge to the visor, so notification cards cannot be shown this session.",
+				"Restart ViewLab. If this persists, another process may be holding the same shared-memory name."),
+			"BrokerError" => (
+				"Notification broker's command channel failed",
+				"The notification broker lost its internal command channel and could not process requests from the settings window.",
+				"Restart the notification broker from ViewLab's settings."),
+			_ => null
+		};
+		if (brokerFinding is { } bf)
+		{
+			findings.Add(new FailureFinding(bf.Category, bf.Summary, notificationBrokerDetail ?? notificationBrokerState ?? "", FailureCertainty.Confirmed, bf.Recommendation));
+		}
+
+		// The iRacing SDK layout rejection is actually thrown and recorded inside the notification
+		// broker process (IRacingTelemetryProvider), not dllmain.cpp — the logText-based check above
+		// is a defensive fallback in case that ever changes, but real data arrives here instead.
+		bool iracingLayoutFromDiagnostics = iRacingDiagnostics != null &&
+			(iRacingDiagnostics.Contains("Invalid SDK", StringComparison.Ordinal) || iRacingDiagnostics.Contains("Required SDK variable", StringComparison.Ordinal));
+		if (iracingLayoutFromDiagnostics && iracingLayout == null)
+		{
+			findings.Add(new FailureFinding(
+				"iRacing telemetry could not be read",
+				"The iRacing SDK's shared-memory layout did not match what ViewLab expects, so telemetry (spotter, flags, laps) was unavailable this session.",
+				iRacingDiagnostics!.Trim(),
 				FailureCertainty.Confirmed,
 				"Usually means iRacing wasn't running or its telemetry wasn't active yet when ViewLab checked. Make sure you're in a live session, not just the sim launcher."));
 		}

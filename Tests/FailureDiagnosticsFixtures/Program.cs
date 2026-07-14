@@ -55,6 +55,34 @@ Require(crash.Any(f => f.Category.Contains("crashed") && f.Certainty == FailureC
 Require(crash.Single(f => f.Category.Contains("crashed")).Evidence.Contains("NullReferenceException"),
 	"crash finding quotes the actual exception type, not a generic message");
 
+// Notification broker failures arrive via its own status file, never via ViewLab.log.
+var brokerPermission = FailureDiagnostics.Analyze("", true, true, notificationBrokerState: "PermissionNotGranted",
+	notificationBrokerDetail: "UserNotificationListenerAccessStatus=Denied.");
+Require(brokerPermission.Any(f => f.Category.Contains("permission") && f.Certainty == FailureCertainty.Confirmed),
+	"notification broker permission-not-granted is reported as Confirmed");
+Require(brokerPermission.Single(f => f.Category.Contains("permission")).Evidence.Contains("Denied"),
+	"broker permission finding quotes the actual access status, not a summary");
+
+var brokerRenderer = FailureDiagnostics.Analyze("", true, true, notificationBrokerState: "InternalRendererFailure",
+	notificationBrokerDetail: "IOException: sharing violation");
+Require(brokerRenderer.Any(f => f.Category.Contains("renderer") && f.Certainty == FailureCertainty.Confirmed),
+	"notification broker internal renderer failure is reported as Confirmed");
+
+var brokerNone = FailureDiagnostics.Analyze("", true, true, notificationBrokerState: null);
+Require(!brokerNone.Any(f => f.Category.Contains("Notification") || f.Category.Contains("notification-mirroring") || f.Category.Contains("permission")),
+	"a healthy or absent broker status file produces no broker finding");
+
+// The real iRacing SDK layout rejection arrives via the broker's iracing-status.json diagnostics
+// text, not ViewLab.log (IRacingTelemetryProvider throws in-process, not in the native layer).
+var iracingFromDiagnostics = FailureDiagnostics.Analyze("", true, true,
+	iRacingDiagnostics: "SDK read failed: Required SDK variable 'CarLeftRight' is missing or invalid.");
+Require(iracingFromDiagnostics.Any(f => f.Category.Contains("iRacing") && f.Certainty == FailureCertainty.Confirmed),
+	"real iRacing layout rejection (from broker diagnostics) is reported as Confirmed");
+
+// A normal "Disconnected" idle state (iRacing simply isn't running) must never be flagged.
+var iracingIdle = FailureDiagnostics.Analyze("", true, true, iRacingDiagnostics: "Waiting for the iRacing SDK mapping.");
+Require(!iracingIdle.Any(f => f.Category.Contains("iRacing")), "normal iRacing idle/disconnected state is not treated as a failure");
+
 // Multiple simultaneous signals all surface — findings are additive, not first-match-wins.
 var combined = FailureDiagnostics.Analyze(deviceRemovedLog + "d3d11 mask: PS compile failed hr=0x1\n", true, true);
 Require(combined.Count(f => f.Certainty == FailureCertainty.Confirmed) >= 2,

@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 
@@ -51,7 +52,12 @@ public partial class FailureDiagnosticsWindow : Window
 		// Read (and clear) the crash marker once per window session, not once per Refresh click —
 		// otherwise clicking Refresh would silently make a real crash finding disappear.
 		if (!_crashRead) { _crashForThisWindowSession = CrashMarker.TryReadAndClear(_configDirectory); _crashRead = true; }
-		var findings = FailureDiagnostics.Analyze(logText, _layerRegistered, anyLogLineToday, _crashForThisWindowSession);
+
+		(string? state, string? detail) broker = ReadJsonStateDetail(Path.Combine(_configDirectory, "notification-broker-status.json"));
+		(string? state, string? detail) iracing = ReadJsonStateDetail(Path.Combine(_configDirectory, "iracing-status.json"));
+
+		var findings = FailureDiagnostics.Analyze(logText, _layerRegistered, anyLogLineToday, _crashForThisWindowSession,
+			broker.state, broker.detail, iracing.detail);
 
 		Row[] rows = findings.Select(f => new Row
 		{
@@ -78,6 +84,19 @@ public partial class FailureDiagnosticsWindow : Window
 				CertaintyBrush = Brushes.Transparent
 			}};
 		}
+	}
+
+	private static (string? state, string? detail) ReadJsonStateDetail(string path)
+	{
+		try
+		{
+			if (!File.Exists(path)) return (null, null);
+			using var doc = JsonDocument.Parse(File.ReadAllText(path));
+			string? state = doc.RootElement.TryGetProperty("state", out var s) ? s.GetString() : null;
+			string? detail = doc.RootElement.TryGetProperty("detail", out var d) ? d.GetString() : null;
+			return (state, detail);
+		}
+		catch { return (null, null); /* an unreadable or malformed status file is "no signal", not an error */ }
 	}
 
 	private void Refresh_Click(object sender, RoutedEventArgs e) => LoadFindings();
