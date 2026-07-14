@@ -1,5 +1,12 @@
 # Decision log
 
+## D22 — VR session duration is monotonic OpenXR-session lifetime
+
+The visor session timer starts only after a successful `xrCreateSession` and resets during the
+matching `xrDestroySession`. Elapsed duration uses `GetTickCount64`, while `GetLocalTime` supplies
+only the separate wall-clock row. Rejected: settings-app uptime, process start time, and wall-clock
+subtraction; none truthfully measures the active OpenXR session and wall time can jump.
+
 ## D21 — Hardware telemetry is snapshot-only at the render boundary
 
 All Windows, PDH, DXGI and future vendor sensor work belongs to a bounded telemetry provider worker.

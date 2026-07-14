@@ -3,8 +3,8 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-07-13
-**Current version:** 4.1.211 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.211.msi`
+**Updated:** 2026-07-14
+**Current version:** 4.1.212 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.212.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
@@ -13,6 +13,43 @@ narrow confirmed reference for its stencil repair, not the last headset-tested b
 and has clean contracts/fixtures plus WPF, broker, x64/Win32 native, signed identity package, MSI and
 extracted-payload validation. Its narrow Pistol Whip headset matrix is mandatory before DiRT.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Experimental cleanup (complete; 2026-07-14)
+
+The isolated generic technical-history experiment is removed from UI, broker, persistence, tests and
+canonical documentation without changing live notification or racing presentation. The Topmost
+failure latch is now atomic across release/end-frame paths. The reusable right-click slider reset
+helper and its invariant-culture fixtures are retained.
+
+## Clock and VR session timer (implemented; headset validation pending, 2026-07-14)
+
+A dedicated compact two-line visor card shows 24-hour local time and elapsed time since the current
+successful `xrCreateSession`. Elapsed time uses monotonic uptime, resets at `xrDestroySession`, and
+is independent of notification and performance-alarm state. Position, angular scale and opacity are
+configurable in ordinary settings and read at the next VR session. Formatter fixtures, WPF and x64
+native builds pass; binocular fusion, physical scale, legibility and Direct/Topmost presentation still
+require headset validation.
+
+## Visible visor feature backlog (ordered)
+
+1. **Clock/session timer:** base clock + elapsed session card implemented; stopwatch/countdown modes
+   remain a later extension after the base widget passes headset validation.
+2. **Network HUD:** next. Add reliable ping/loss/jitter/instability/disconnect signals to the existing
+   HUD; unavailable data must stay unavailable rather than becoming zero.
+3. **Performance trace markers:** bind, exact timestamp, sequence, visor confirmation, real trace
+   storage and post-session graph navigation. Never route markers through generic history.
+4. **Post-session performance recording:** build the bounded recorder/viewer needed by trace markers,
+   using only metrics ViewLab actually observes; include zoom/range inspection and spike summaries.
+5. **Sticky note:** one short wrapped note with position/size/opacity and a show/hide bind; no note manager.
+6. **OBS indicator:** subtle recording/stream border or corner. Whether ViewLab can be excluded from
+   the captured output remains an explicit real-capture-path test question.
+7. **Music change card:** PC-side track-change detection feeding a brief title/artist/artwork card;
+   no permanent media controls.
+8. **Failure explanation:** evidence-ranked confirmed/probable/unknown causes without invented certainty.
+9. **Incremental iRacing modules:** fuel/laps/position/incidents/pit/delta/relatives one at a time;
+   isolated logic tests only until the user's broken finger permits driving validation.
+10. **Notification visual redesign:** slimmer cards, cleaner hierarchy and subtler animation only;
+    no privacy, policy, scheduling or reduced-motion expansion.
 
 ## Elite Dangerous startup crash repair (2026-07-13, headset verified)
 
@@ -39,15 +76,6 @@ pixels; the grid uses explicit constant colour. Graph/trace/HUD policy is isolat
 with executable fixtures. Notifications carry lifecycle timestamps for native per-frame animation;
 racing tests use temporary non-persistent gate overrides. Managed/native builds and deterministic
 fixtures pass. MSI 4.1.210 is built; its narrow Pistol Whip headset check remains required before DiRT.
-
-## Bounded technical history (implemented; 2026-07-13)
-
-The independent broker records only low-frequency technical events: notification disposition and
-source/title, iRacing connection state, generic spotter/flag changes, and lap metadata. It never
-stores notification message bodies. `%LOCALAPPDATA%\XR ViewLab\history.jsonl` is atomically replaced
-and limited to the newest 14 days, 512 records and 512 KiB. Malformed/expired records are discarded
-on load, failures are swallowed outside rendering, and ordinary settings provide a clear action.
-Deterministic corruption, count, UTF-8 byte-size, field-limit, privacy-schema and clear tests pass.
 
 ## Automatic topmost backend (repaired; safety headset matrix pending, 2026-07-13)
 
@@ -708,11 +736,17 @@ Remaining broader static-audit items not closed in this pass:
 
 ## Latest verification
 
-- `Tests\Invoke-HistoryFixtures.ps1` and `Tests\Verify-ViewLabContracts.ps1` passed on 2026-07-13.
-  `build.ps1` then produced 4.1.209 with 0 warnings / 0 errors for WPF, broker, signed identity
+- Clock/session formatter fixtures, slider-default fixtures, iRacing fixtures, RenderPolicy fixtures,
+  performance-HUD contracts, Topmost safety contracts and repository contracts passed on 2026-07-14.
+  `build.ps1` then built WPF, broker, signed identity package, x64/Win32 native layers and MSI with
+  validated fresh payload hashes: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.212.msi`. Clock widget
+  binocular appearance and Direct/Topmost behaviour remain pending headset validation.
+
+- `Tests\Verify-ViewLabContracts.ps1` passed on 2026-07-13. `build.ps1` then produced 4.1.209
+  with 0 warnings / 0 errors for WPF, broker, signed identity
   package, x64 native, Win32 native and WiX MSI; extracted payload version and fresh hashes passed:
   `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.209.msi`.
-- All HUD, Topmost, iRacing and history deterministic suites then passed. A fresh independent
+- All HUD, Topmost and iRacing deterministic suites then passed. A fresh independent
   packaged Windows toast reached the installed production broker as exactly one card (ID 2). See
   `VIEWLAB_RELEASE_VALIDATION.md` for the deliberately pending 4.1.209 headset/game safety matrix.
 

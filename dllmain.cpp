@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "HardwareTelemetry.h"
 #include "RenderPolicy.h"
+#include "ClockWidget.h"
 
 namespace {
 constexpr const char* LayerName = "XR_APILAYER_cooooked_xrviewlab";
@@ -212,6 +213,13 @@ bool notifyEnabled = false;
 bool topmostVisorOverlays = false;
 double notifyX = 0.98, notifyY = 0.98, notifyScale = 1.0, notifyOpacity = 1.0;
 
+// ---- Dedicated clock and OpenXR-session timer widget ----
+// The session clock starts at successful xrCreateSession and uses monotonic uptime; local time is
+// read only for display. It is deliberately independent of notifications and performance alarms.
+bool clockWidgetEnabled = false;
+double clockWidgetX = 0.50, clockWidgetY = 0.10, clockWidgetScale = 1.0, clockWidgetOpacity = 0.82;
+std::atomic<uint64_t> g_clockSessionStartTick{0};
+
 // ---- Generic racing presentation (iRacing is one broker-side producer) ----
 bool iracingEnabled = false, iracingLapPopup = false, iracingSpotterGlow = false, iracingFlagBorder = false;
 double iracingSpotterWidth = 0.12, iracingSpotterStrength = 1.0, iracingSpotterOpacity = 0.65, iracingSpotterFade = 1.8;
@@ -234,7 +242,7 @@ inline bool AnyCalibrationPattern() {
 // Notifications are "active" only while at least one card is live in the shared queue; that is
 // evaluated per-frame in the draw path, so the coarse gate here simply includes notifyEnabled.
 inline bool BoundaryFlashActive() { return g_boundaryDragActive || g_boundaryReleaseTick != 0; }
-inline bool AnyViewLabOverlay() { return crosshairEnabled || notifyEnabled || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
+inline bool AnyViewLabOverlay() { return clockWidgetEnabled || crosshairEnabled || notifyEnabled || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
 inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || hudEnabled || hudTraceEnabled || AnyViewLabOverlay(); }
 
 uint64_t FileTimeToUint64(const FILETIME& time) {
@@ -840,7 +848,7 @@ struct TopmostLayerState {
     bool ready = false;
 };
 TopmostLayerState g_topmostLayer;
-bool g_topmostLayerBlocked = false;
+std::atomic<bool> g_topmostLayerBlocked{false};
 bool g_topmostLayerAttempted = false;
 bool g_topmostLayerDemanded = false;
 std::atomic<bool> g_rendererDeviceLost{false};
@@ -897,7 +905,7 @@ bool RendererDeviceHealthy(const char* stage) {
     const HRESULT reason = g_d3d11Mask.device->GetDeviceRemovedReason();
     if (SUCCEEDED(reason)) return true;
     g_rendererDeviceLost.store(true, std::memory_order_release);
-    g_topmostLayerBlocked = true;
+    g_topmostLayerBlocked.store(true, std::memory_order_release);
     if (!g_rendererDeviceLossLogged.exchange(true)) {
         Log("d3d11 safety: device removed stage=%s reason=0x%08X pid=%lu thread=%lu; "
             "all ViewLab rendering disabled for this session\n",
@@ -2874,13 +2882,14 @@ void DrawViewLabOverlaysToTexture(
         else boundaryAlpha = 1.f - (float)elapsed / (float)kBoundaryFadeMs;
     }
     const bool wantBoundary = boundaryAlpha > 0.001f;
+    const bool wantClock = clockWidgetEnabled && clockWidgetOpacity > 0.001;
     const bool wantCrosshair = crosshairEnabled && crosshairAlpha > 0.001f;
     ConsumeRacingState();
     const bool wantSpotter = ((iracingEnabled && iracingSpotterGlow) || (g_racingStable.presentationFlags & 1u)) && g_racingStable.spotterState != 0;
     const bool wantFlag = ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
     bool wantNotify = false;
     if ((notifyEnabled || (iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u)) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 2) wantNotify = true; }
-    if (!wantBoundary && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
+    if (!wantBoundary && !wantClock && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
 
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
     if (texDesc.Width == 0 || texDesc.Height == 0) return;
@@ -3005,6 +3014,59 @@ void DrawViewLabOverlaysToTexture(
         flushFlat(cr,cg,cb,a);
     }
 
+    // Dedicated two-line clock card. The upper clock is local wall time; the lower hourglass is
+    // monotonic time since this OpenXR session was created. It never enters the notification queue.
+    if (wantClock) {
+        SYSTEMTIME local{}; GetLocalTime(&local);
+        const uint64_t nowTick = GetTickCount64();
+        const uint64_t startTick = g_clockSessionStartTick.load(std::memory_order_acquire);
+        const auto text = viewlab::clock_widget::Format(local.wHour, local.wMinute,
+            startTick != 0 && nowTick >= startTick ? nowTick - startTick : 0);
+        const float pxPerTanX = stereo ? w/(sR-sL) : w*.5f;
+        const float pxPerTanY = stereo ? h/(sU-sD) : h*.5f;
+        const float referenceUnit = (float)clockWidgetScale * (2.f/1080.f);
+        const float glyphX = (std::max)(1.f, floorf(referenceUnit*pxPerTanX*2.1f+.5f));
+        const float glyphY = (std::max)(1.f, floorf(referenceUnit*pxPerTanY*2.1f+.5f));
+        const float padX=4.f*glyphX,padY=2.5f*glyphY,iconW=8.f*glyphX,rowH=7.f*glyphY;
+        const float cardW=padX*2+iconW+2.f*glyphX+47.f*glyphX;
+        const float cardH=padY*2+rowH*2+3.f*glyphY;
+        const float sharedLeft=stereo?xFromTan(oL):(float)l,sharedRight=stereo?xFromTan(oR):(float)rr_;
+        const float sharedTop=stereo?yFromTan(oU):(float)t,sharedBottom=stereo?yFromTan(oD):(float)bb_;
+        float cx=anchorX(clockWidgetX),cy=anchorY(clockWidgetY);
+        cx=sharedRight-sharedLeft>cardW?std::clamp(cx,sharedLeft+cardW*.5f,sharedRight-cardW*.5f):(sharedLeft+sharedRight)*.5f;
+        cy=sharedBottom-sharedTop>cardH?std::clamp(cy,sharedTop+cardH*.5f,sharedBottom-cardH*.5f):(sharedTop+sharedBottom)*.5f;
+        const float x0=cx-cardW*.5f,y0=cy-cardH*.5f,x1=cx+cardW*.5f,y1=cy+cardH*.5f;
+        const float opacity=(float)clockWidgetOpacity;
+        rectFill(x0,y0,x1,y1,.035f,.050f,.070f,.88f*opacity); flushFlat(.035f,.050f,.070f,.88f*opacity);
+        rectFill(x0,y0,x0+glyphX,y1,.18f,.82f,1.f,.90f*opacity); flushFlat(.18f,.82f,1.f,.90f*opacity);
+        const float dividerY=y0+padY+rowH+1.5f*glyphY;
+        rectFill(x0+padX,dividerY,x1-padX,dividerY+(std::max)(1.f,glyphY*.35f),.18f,.28f,.36f,.70f*opacity); flushFlat(.18f,.28f,.36f,.70f*opacity);
+
+        static const unsigned char font[11][7]={
+            {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E},{0x04,0x0C,0x04,0x04,0x04,0x04,0x0E},
+            {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F},{0x1F,0x02,0x04,0x02,0x01,0x11,0x0E},
+            {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02},{0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E},
+            {0x06,0x08,0x10,0x1E,0x11,0x11,0x0E},{0x1F,0x01,0x02,0x04,0x04,0x04,0x04},
+            {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E},{0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C},
+            {0x00,0x04,0x04,0x00,0x04,0x04,0x00}
+        };
+        auto drawClockText=[&](float tx,float ty,const char* value,float cr,float cg,float cb,float alpha){
+            for(const char* p=value;*p;++p){const int gi=*p==':'?10:(*p>='0'&&*p<='9'?*p-'0':-1);if(gi>=0)for(int row=0;row<7;++row){const unsigned char bits=font[gi][row];for(int col=0;col<5;){if(bits&(0x10>>col)){const int first=col;while(col<5&&(bits&(0x10>>col)))++col;rectFill(tx+first*glyphX,ty+row*glyphY,tx+col*glyphX,ty+(row+1)*glyphY,cr,cg,cb,alpha);}else ++col;}}tx+=6.f*glyphX;}flushFlat(cr,cg,cb,alpha);
+        };
+        const float iconX=x0+padX, textX=iconX+iconW+2.f*glyphX;
+        const float firstY=y0+padY,secondY=dividerY+2.f*glyphY;
+        // Square clock face with two hands.
+        const float ith=(std::max)(1.f,glyphX*.7f),ic=iconX+3.f*glyphX,iy=firstY+3.5f*glyphY;
+        rectFill(iconX,firstY,iconX+6*glyphX,firstY+ith,.18f,.82f,1.f,opacity);rectFill(iconX,firstY+7*glyphY-ith,iconX+6*glyphX,firstY+7*glyphY,.18f,.82f,1.f,opacity);
+        rectFill(iconX,firstY,iconX+ith,firstY+7*glyphY,.18f,.82f,1.f,opacity);rectFill(iconX+6*glyphX-ith,firstY,iconX+6*glyphX,firstY+7*glyphY,.18f,.82f,1.f,opacity);
+        rectFill(ic-ith*.5f,firstY+glyphY,ic+ith*.5f,iy+.5f*glyphY,.18f,.82f,1.f,opacity);rectFill(ic,iy-ith*.5f,iconX+5*glyphX,iy+ith*.5f,.18f,.82f,1.f,opacity);flushFlat(.18f,.82f,1.f,opacity);
+        // Hourglass for elapsed session time.
+        rectFill(iconX,secondY,iconX+6*glyphX,secondY+ith,.42f,.72f,.86f,opacity);rectFill(iconX,secondY+7*glyphY-ith,iconX+6*glyphX,secondY+7*glyphY,.42f,.72f,.86f,opacity);
+        for(int step=0;step<3;++step){rectFill(iconX+(step+1)*glyphX,secondY+(step+1)*glyphY,iconX+(step+2)*glyphX,secondY+(step+2)*glyphY,.42f,.72f,.86f,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(step+1)*glyphY,iconX+(5-step)*glyphX,secondY+(step+2)*glyphY,.42f,.72f,.86f,opacity);rectFill(iconX+(step+1)*glyphX,secondY+(5-step)*glyphY,iconX+(step+2)*glyphX,secondY+(6-step)*glyphY,.42f,.72f,.86f,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(5-step)*glyphY,iconX+(5-step)*glyphX,secondY+(6-step)*glyphY,.42f,.72f,.86f,opacity);}flushFlat(.42f,.72f,.86f,opacity);
+        drawClockText(textX,firstY,text.local.data(),.92f,.96f,1.f,opacity);
+        drawClockText(textX,secondY,text.session.data(),.55f,.82f,.94f,opacity);
+    }
+
     // Feature 2: CS-style static crosshair at the calibrated stereo centre. CS reference pixels
     // are scaled to eye pixels by the VR scale and eye height, keeping angular size stable across
     // eye-buffer resolutions; every span is pixel-snapped for sharp edges.
@@ -3124,8 +3186,7 @@ void DestroyTopmostLayer() {
 }
 
 void BlockTopmostLayer(const char* stage, int64_t result) {
-    const bool firstFailure = !g_topmostLayerBlocked;
-    g_topmostLayerBlocked = true;
+    const bool firstFailure = !g_topmostLayerBlocked.exchange(true, std::memory_order_acq_rel);
     const HRESULT deviceReason = g_d3d11Mask.device
         ? g_d3d11Mask.device->GetDeviceRemovedReason() : E_POINTER;
     if (FAILED(deviceReason) && g_d3d11Mask.device)
@@ -3144,7 +3205,7 @@ void BlockTopmostLayer(const char* stage, int64_t result) {
 }
 
 bool EnsureTopmostLayer(XrSession session, uint32_t width, uint32_t height, int64_t preferredFormat) {
-    if (g_topmostLayerBlocked) return false;
+    if (g_topmostLayerBlocked.load(std::memory_order_acquire)) return false;
     if (g_topmostLayer.ready) {
         if (g_topmostLayer.session==session && width<=g_topmostLayer.width &&
             height<=g_topmostLayer.height && g_topmostLayer.format==preferredFormat) return true;
@@ -3434,7 +3495,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
     // overwritten by the app and is guaranteed present when the runtime composites.
     // Independent of the visibility-mask path; that path must never suppress this.
 
-    if (enabled && (maskEnabled || ((!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked) && AnyDirectOverlay())) &&
+    if (enabled && (maskEnabled || ((!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked.load(std::memory_order_acquire)) && AnyDirectOverlay())) &&
         g_d3d11Mask.initialized && g_d3d11Mask.context && RendererDeviceHealthy("xrReleaseSwapchainImage")) {
         ID3D11Texture2D* tex = nullptr;
         uint32_t arrSize = 1;
@@ -3471,7 +3532,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                 if (!g_diagReleaseNoLayout.exchange(true))
                     Log("d3d11 mask DIAG: no eye layout yet for this swapchain (captured on first xrEndFrame; mask starts next frame)\n");
             } else {
-                const bool directCommon=!topmostVisorOverlays||!g_topmostLayer.ready||g_topmostLayerBlocked;
+                const bool directCommon=!topmostVisorOverlays||!g_topmostLayer.ready||g_topmostLayerBlocked.load(std::memory_order_acquire);
                 for (size_t i = 0; i < views.size(); ++i) {
                     if (maskEnabled && directCommon) {
                         DrawVisorBorderToTexture(tex, arrSize, scFormat, views[i], views,
@@ -3618,6 +3679,11 @@ void LoadConfig() {
     notifyY = std::clamp(ReadDoubleSetting(L"notify_y", 0.98), 0.0, 1.0);
     notifyScale = std::clamp(ReadDoubleSetting(L"notify_scale", 1.0), 0.25, 3.0);
     notifyOpacity = std::clamp(ReadDoubleSetting(L"notify_opacity", 1.0), 0.1, 1.0);
+    clockWidgetEnabled = ReadBoolSetting(L"clock_widget_enabled", false);
+    clockWidgetX = std::clamp(ReadDoubleSetting(L"clock_widget_x", 0.50), 0.0, 1.0);
+    clockWidgetY = std::clamp(ReadDoubleSetting(L"clock_widget_y", 0.10), 0.0, 1.0);
+    clockWidgetScale = std::clamp(ReadDoubleSetting(L"clock_widget_scale", 1.0), 0.50, 2.0);
+    clockWidgetOpacity = std::clamp(ReadDoubleSetting(L"clock_widget_opacity", 0.82), 0.10, 1.0);
     // Generic racing presentation settings.
     iracingEnabled = ReadBoolSetting(L"iracing_enabled", false);
     iracingLapPopup = ReadBoolSetting(L"iracing_lap_popup", false);
@@ -4076,10 +4142,11 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
     DestroyTopmostLayer();
     g_rendererDeviceLost.store(false, std::memory_order_release);
     g_rendererDeviceLossLogged.store(false, std::memory_order_release);
-    g_topmostLayerBlocked=false;
+    g_topmostLayerBlocked.store(false, std::memory_order_release);
     g_topmostLayerAttempted=false;
     g_topmostLayerDemanded=false;
     g_d3d11Mask.session = *session;
+    g_clockSessionStartTick.store(GetTickCount64(), std::memory_order_release);
     const auto* d3d11Binding = reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(
         FindStructInChain(createInfo->next, XR_TYPE_GRAPHICS_BINDING_D3D11_KHR));
     viewlab::telemetry::Start();
@@ -4107,10 +4174,11 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
     if (session == g_topmostLayer.session) DestroyTopmostLayer();
-    g_topmostLayerBlocked=false;
+    g_topmostLayerBlocked.store(false, std::memory_order_release);
     g_topmostLayerAttempted=false;
     g_topmostLayerDemanded=false;
     if (session == g_d3d11Mask.session) {
+        g_clockSessionStartTick.store(0, std::memory_order_release);
         viewlab::telemetry::Stop();
         viewlab::telemetry::SetPreferredAdapterLuid(0);
         ReleaseD3D11MaskRenderer();
@@ -4293,7 +4361,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     if (enabled && g_d3d11Mask.initialized && !g_rendererDeviceLost.load(std::memory_order_acquire) &&
         session == g_d3d11Mask.session) {
         const bool releaseDrewVisor = g_releaseDrewVisorThisFrame.exchange(false);
-        if (maskEnabled && (!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked) && !releaseDrewVisor) {
+        if (maskEnabled && (!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked.load(std::memory_order_acquire)) && !releaseDrewVisor) {
             DrawCapturedProjectionTextures(true, "visor");
         }
     }
@@ -4302,7 +4370,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     std::vector<const XrCompositionLayerBaseHeader*> submittedLayers;
     TopmostSubmission topmostSubmission;
     bool submittedTopmost=false;
-    if (topmostVisorOverlays && g_topmostLayerDemanded && primaryProjection && !g_topmostLayerBlocked &&
+    if (topmostVisorOverlays && g_topmostLayerDemanded && primaryProjection &&
+        !g_topmostLayerBlocked.load(std::memory_order_acquire) &&
         !g_rendererDeviceLost.load(std::memory_order_acquire)) {
         const bool wasReady=g_topmostLayer.ready;
         if (RenderTopmostLayer(session,primaryProjection,topmostSubmission)) {

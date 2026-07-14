@@ -60,8 +60,6 @@ internal static class NotificationBrokerProgram
     private static void Run(Dispatcher dispatcher, string initialCommand, bool identityReady)
     {
         var service = new NotificationService(dispatcher);
-        var history = new HistoryService();
-        service.TechnicalEvent += (disposition, source, title) => history.Record("notification", disposition, source, title);
         service.StatusChanged += () => WriteStatus(service.State.ToString(), service.Status, identityReady);
         var racingState = new RacingStateService();
         var racingProvider = new IRacingTelemetryProvider();
@@ -70,22 +68,13 @@ internal static class NotificationBrokerProgram
         double lapDurationMs = ReadDouble("iracing_lap_duration_ms", 4500, 1000, 15000);
         SpotterState attentionSpotter = SpotterState.Clear;
         RacingFlagState attentionFlag = RacingFlagState.Clear;
-        string lastRacingHistoryStatus = string.Empty;
         racingProvider.DiagnosticsChanged += () =>
         {
             WriteIRacingStatus(racingProvider.Status, racingProvider.Diagnostics);
-            if (lastRacingHistoryStatus != racingProvider.Status)
-            {
-                lastRacingHistoryStatus = racingProvider.Status;
-                history.Record("telemetry", "state", "iRacing", detail: racingProvider.Status);
-            }
         };
         racingProvider.EventPublished += (_, e) => dispatcher.BeginInvoke(() =>
         {
             racingState.Publish(e, lapDurationMs);
-            history.Record("racing", e.Kind.ToString(), "iRacing", e.Title,
-                e.Kind == ViewLabEventKind.LapTime ? $"lap={e.LapNumber};valid={e.IsValid};pb={e.IsPersonalBest};delta={e.DeltaSeconds?.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture) ?? "n/a"};session={e.SessionId}" :
-                e.Kind == ViewLabEventKind.SpotterGlow ? e.Spotter.ToString() : e.Flag.ToString());
             if (e.Kind == ViewLabEventKind.SpotterGlow) attentionSpotter = e.Spotter;
             if (e.Kind == ViewLabEventKind.FlagState) attentionFlag = e.Flag;
             bool safetyFlag = attentionFlag is RacingFlagState.Blue or RacingFlagState.Yellow or RacingFlagState.Debris or RacingFlagState.Red or RacingFlagState.Black or RacingFlagState.Disqualified;
@@ -151,7 +140,6 @@ internal static class NotificationBrokerProgram
                             case "simulate-lap": racingProvider.Simulate("Lap"); break;
                             case "simulate-yellow": racingProvider.Simulate("Yellow"); break;
                             case "simulate-blue": racingProvider.Simulate("Blue"); break;
-                            case "clear-history": history.Clear(); break;
                             case "shutdown":
                                 settingsTimer.Stop(); racingProvider.Dispose(); racingState.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
                         }

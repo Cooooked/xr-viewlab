@@ -87,6 +87,11 @@ public partial class MainWindow : Window
 	private const string HudSafeMarginKey = "hud_safe_margin";
 	private const string HudClampKey = "hud_clamp_to_visible";
 	private const string HudGraphModeKey = "hud_graph_mode";
+	private const string ClockWidgetEnabledKey = "clock_widget_enabled";
+	private const string ClockWidgetXKey = "clock_widget_x";
+	private const string ClockWidgetYKey = "clock_widget_y";
+	private const string ClockWidgetScaleKey = "clock_widget_scale";
+	private const string ClockWidgetOpacityKey = "clock_widget_opacity";
 	private const string TelemetrySettingsVersionKey = "telemetry_settings_version";
 	private static readonly string[] HudWidgetIds = { "cpu", "gpu", "app", "vr", "cpu_peak", "cpu_frequency", "ram", "commit", "vram", "sys", "fps", "frame_interval" };
 	private static readonly string[] HudGraphChannelIds = { "frame_interval", "fps", "budget_deviation", "app_work", "wait_duration", "submit_duration", "display_period" };
@@ -1075,6 +1080,11 @@ public partial class MainWindow : Window
 		CalZonePlateCheck.IsChecked = ReadBoolSetting(CalibrationZonePlateKey, fallback: false);
 		CalClippingCheck.IsChecked = ReadBoolSetting(CalibrationClippingStepsKey, fallback: false);
 		CalMotionCheck.IsChecked = ReadBoolSetting(CalibrationMotionStripKey, fallback: false);
+		ClockWidgetEnabledCheck.IsChecked = ReadBoolSetting(ClockWidgetEnabledKey, fallback: false);
+		ClockWidgetXSlider.Value = ReadRangeSetting(ClockWidgetXKey, 0.50, 0.0, 1.0);
+		ClockWidgetYSlider.Value = ReadRangeSetting(ClockWidgetYKey, 0.10, 0.0, 1.0);
+		ClockWidgetScaleSlider.Value = ReadRangeSetting(ClockWidgetScaleKey, 1.0, 0.50, 2.0);
+		ClockWidgetOpacitySlider.Value = ReadRangeSetting(ClockWidgetOpacityKey, 0.82, 0.10, 1.0);
 		HudEnabledCheck.IsChecked = ReadBoolSetting(HudEnabledKey, fallback: false);
 		string traceModeText = ReadSetting(HudTraceVisibilityKey, string.Empty);
 		HudTraceVisibilityCombo.SelectedIndex = int.TryParse(traceModeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int traceMode)
@@ -1442,6 +1452,17 @@ public partial class MainWindow : Window
 		SaveGlobalSettings();
 	}
 
+	// Generic right-click reset for sliders that don't need bespoke per-control logic: set
+	// Tag="<default>" in XAML and wire MouseRightButtonUp here. Missing/malformed Tag is a no-op
+	// rather than an error, so it's safe to reuse on a slider that hasn't been given a Tag yet.
+	private void SliderResetToTag_RightClick(object sender, MouseButtonEventArgs e)
+	{
+		if (_loading) return;
+		if (sender is not Slider slider || !SliderDefaults.TryParse(slider.Tag, out double value)) return;
+		e.Handled = true;
+		slider.Value = value;
+	}
+
 	private void RenderSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
 		if (!_loading && !_syncingControls && TotalBox != null && TopBox != null && BottomBox != null && HorizontalBox != null)
@@ -1630,6 +1651,20 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		SaveCalibrationSettings();
 		PublishLiveState();
 		StatusText.Text = "Calibration setting applied live.";
+	}
+
+	private void ClockWidgetControl_Changed(object sender, RoutedEventArgs e) => SaveClockWidgetSettings();
+	private void ClockWidgetSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => SaveClockWidgetSettings();
+	private void SaveClockWidgetSettings()
+	{
+		if (_loading || ClockWidgetEnabledCheck == null || ClockWidgetXSlider == null) return;
+		Directory.CreateDirectory(ConfigDirectory);
+		WritePrivateProfileString("Settings", ClockWidgetEnabledKey, ClockWidgetEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", ClockWidgetXKey, ClockWidgetXSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", ClockWidgetYKey, ClockWidgetYSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", ClockWidgetScaleKey, ClockWidgetScaleSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", ClockWidgetOpacityKey, ClockWidgetOpacitySlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		StatusText.Text = "Clock widget saved. Start the next VR session to apply it.";
 	}
 
 	private void PublishLiveState()
@@ -1922,13 +1957,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void IRacingTestLap_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Lap");
 	private void IRacingTestYellow_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Yellow");
 	private void IRacingTestBlue_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Blue");
-	private void ClearHistory_Click(object sender, RoutedEventArgs e)
-	{
-		StatusText.Text = _notificationBroker.SendCommand("clear-history")
-			? "Bounded technical history cleared."
-			: "Could not clear technical history: " + _notificationBroker.Status;
-	}
-
 	private void SaveCalibrationSettings()
 	{
 		Directory.CreateDirectory(ConfigDirectory);

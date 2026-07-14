@@ -15,9 +15,10 @@ function Forbid([string]$Pattern, [string]$Message) {
 
 # Source contracts: failure is latched without teardown, device removal suppresses both backends,
 # allocation is attempted once per session, and submitted-rectangle jitter cannot recreate it.
-Require 'void BlockTopmostLayer[\s\S]*?g_topmostLayerBlocked\s*=\s*true' 'failure must latch for the session'
+Require 'std::atomic<bool> g_topmostLayerBlocked' 'failure latch must be race-free'
+Require 'void BlockTopmostLayer[\s\S]*?g_topmostLayerBlocked\.exchange\(true' 'failure must latch for the session'
 Forbid 'void BlockTopmostLayer[\s\S]{0,1600}DestroyTopmostLayer\(\)' 'failure path must not destroy runtime resources'
-Require 'bool EnsureTopmostLayer[\s\S]*?if \(g_topmostLayerBlocked\) return false' 'blocked sessions never create another swapchain'
+Require 'bool EnsureTopmostLayer[\s\S]*?g_topmostLayerBlocked\.load\(' 'blocked sessions never create another swapchain'
 Require 'g_topmostLayerAttempted\s*=\s*true[\s\S]*?nextXrCreateSwapchain' 'allocation attempt is latched before entering the runtime'
 Require 'width<=g_topmostLayer\.width[\s\S]*?height<=g_topmostLayer\.height' 'smaller submitted rectangles reuse stable capacity'
 Require 'projection capacity changed' 'capacity changes fail closed instead of reallocating'

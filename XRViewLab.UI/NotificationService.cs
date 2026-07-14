@@ -66,8 +66,6 @@ internal sealed class NotificationService : IDisposable
         public long EligibleTick;  // desktop cards start only after racing-attention hold clears
         public long LeaveTick;     // when it started leaving; 0 = not yet
         public bool IsDesktop;
-        public string? SourceApp, Title;
-        public bool ShownReported, DelayedReported, ExpiryReported;
         public bool PixelsDirty = true;
     }
 
@@ -95,7 +93,6 @@ internal sealed class NotificationService : IDisposable
     public string Status { get; private set; } = "Notifications idle.";
     public ServiceState State { get; private set; } = ServiceState.UnsupportedDeployment;
     public event Action? StatusChanged;
-    public event Action<string, string, string?>? TechnicalEvent; // disposition, source, title; never body
 
     private void SetStatus(ServiceState state, string detail)
     {
@@ -234,7 +231,7 @@ internal sealed class NotificationService : IDisposable
             lock (_lock) { if (_seen.ContainsKey(key)) continue; }
 
             string appName = Safe(() => n.AppInfo?.DisplayInfo?.DisplayName) ?? "Notification";
-            if (!PassesFilter(appName, settings)) { lock (_lock) { _seen[key] = 0; } TechnicalEvent?.Invoke("suppressed", appName, appName); continue; }
+            if (!PassesFilter(appName, settings)) { lock (_lock) { _seen[key] = 0; } continue; }
 
             string title = appName, body = string.Empty;
             try
@@ -326,18 +323,13 @@ internal sealed class NotificationService : IDisposable
         long now = Environment.TickCount64;
         bool desktop = sourceKey != null;
         var card = new Card { Id = id, SourceKey = sourceKey, Rgba = rgba, Width = w, Height = h, ContentSerial = id,
-            BornTick = now, EligibleTick = desktop && _racingAttentionActive ? 0 : now, IsDesktop = desktop,
-            SourceApp = appName, Title = title, DelayedReported = desktop && _racingAttentionActive, PixelsDirty = true };
-        List<Card> dropped = new();
+            BornTick = now, EligibleTick = desktop && _racingAttentionActive ? 0 : now, IsDesktop = desktop, PixelsDirty = true };
         lock (_lock)
         {
             _cards.Add(card);
             // Age out anything beyond a generous backlog cap so memory stays bounded.
-            while (_cards.Count > MaxCards * 2) { dropped.Add(_cards[0]); _cards.RemoveAt(0); }
+            while (_cards.Count > MaxCards * 2) _cards.RemoveAt(0);
         }
-        if (desktop) TechnicalEvent?.Invoke(card.DelayedReported ? "delayed" : "received", appName, title);
-        foreach (Card old in dropped.Where(c => c.IsDesktop))
-            TechnicalEvent?.Invoke("expired", old.SourceApp ?? "Notification", old.Title);
         WriteBlock();
     }
 
@@ -409,7 +401,6 @@ internal sealed class NotificationService : IDisposable
         long now = Environment.TickCount64;
         if (_listenerReady && now - Interlocked.Read(ref _lastRefreshTick) >= 2000)
             _ = RefreshAsync(); // bounded safety poll in case NotificationChanged is missed
-        var historyEvents = new List<Card>();
         bool changed = false;
         lock (_lock)
         {
@@ -421,7 +412,7 @@ internal sealed class NotificationService : IDisposable
             {
                 if (c.IsDesktop && _racingAttentionActive)
                 {
-                    if (now - c.BornTick >= 5000) { c.ExpiryReported = true; toRemove.Add(c); historyEvents.Add(c); }
+                    if (now - c.BornTick >= 5000) toRemove.Add(c);
                     continue;
                 }
                 if (c.EligibleTick == 0) { c.EligibleTick = now; changed = true; }
@@ -430,13 +421,10 @@ internal sealed class NotificationService : IDisposable
                 if (c.LeaveTick != 0 && now - c.LeaveTick >= LeaveMs)
                 {
                     toRemove.Add(c);
-                    if (c.IsDesktop && !c.ExpiryReported) { c.ExpiryReported = true; historyEvents.Add(c); }
                 }
             }
             foreach (var c in toRemove) { _cards.Remove(c); changed = true; }
         }
-        foreach (Card c in historyEvents)
-            TechnicalEvent?.Invoke("expired", c.SourceApp ?? "Notification", c.Title);
         if (changed) WriteBlock();
     }
 
@@ -473,7 +461,6 @@ internal sealed class NotificationService : IDisposable
                 _view.WriteArray(baseOff + CardMetaBytes, c.Rgba, 0, CardPixels);
                 c.PixelsDirty = false;
             }
-            if (c.IsDesktop && !c.ShownReported) { c.ShownReported = true; TechnicalEvent?.Invoke("shown", c.SourceApp ?? "Notification", c.Title); }
             slot++;
         }
         _view.Write(8, (uint)visible.Count);

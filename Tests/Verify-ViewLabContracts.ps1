@@ -332,7 +332,7 @@ Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 7u\)' 'live
 Assert-Contains 'dllmain.cpp' 'snapshot\.version != 7' 'DLL consumes live-state contract version 7'
 Assert-NotContains 'MainWindow.xaml' 'TopmostVisorOverlaysCheck' 'ordinary UI does not expose backend implementation choice'
 Assert-Contains 'dllmain.cpp' '!ReadBoolSetting\(L"overlay_force_direct", false\)' 'automatic topmost is the normal session policy'
-Assert-Contains 'dllmain.cpp' 'maskEnabled && \(!topmostVisorOverlays \|\| !g_topmostLayer.ready \|\| g_topmostLayerBlocked\)' 'direct visor is suppressed once topmost is ready to avoid duplicates'
+Assert-Contains 'dllmain.cpp' 'maskEnabled && \(!topmostVisorOverlays \|\| !g_topmostLayer.ready \|\| g_topmostLayerBlocked\.load\(std::memory_order_acquire\)\)' 'direct visor is suppressed once topmost is ready to avoid duplicates'
 Assert-Contains 'dllmain.cpp' 'XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT' 'topmost layer submits transparent source alpha'
 Assert-NotContains 'dllmain.cpp' 'XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT' 'topmost compositor does not multiply its premultiplied target twice'
 Assert-Contains 'dllmain.cpp' 'tracked->second\.format' 'topmost layer derives colour format from the primary projection swapchain'
@@ -453,7 +453,7 @@ Assert-Contains 'dllmain.cpp' 'angularDisparity=0' 'crosshair diagnostics report
 Assert-Contains 'dllmain.cpp' 'const float inset=floorf\(th\*\.5f\)\+2\.f' 'boundary flash is inset fully inside the eye scissor'
 Assert-Contains 'dllmain.cpp' 'boundaryPxPerTan' 'boundary flash stroke thickness is angular/screen stable under crop changes'
 Assert-Contains 'dllmain.cpp' 'sharedSelectedL' 'render-area overlays use shared binocular tangent bounds'
-Assert-Contains 'dllmain.cpp' 'maskEnabled \|\| \(\(!topmostVisorOverlays \|\| !g_topmostLayer\.ready \|\| g_topmostLayerBlocked\)' 'direct visor rendering resumes after a topmost failure'
+Assert-Contains 'dllmain.cpp' 'maskEnabled \|\| \(\(!topmostVisorOverlays \|\| !g_topmostLayer\.ready \|\| g_topmostLayerBlocked\.load\(std::memory_order_acquire\)\)' 'direct visor rendering resumes after a topmost failure'
 Assert-Contains 'dllmain.cpp' 'if\(maskEnabled\) DrawVisorBorderToTexture' 'topmost backend also draws the visor mask'
 
 # Stable display cadence straddles the theoretical interval slightly; these displayed values must
@@ -542,13 +542,21 @@ foreach($eye in @($leftEye,$rightEye)) {
 }
 if([Math]::Abs(($stereoPixels[0]-$leftEye.Offset)-($stereoPixels[1]-$rightEye.Offset))-lt 1e-6){throw 'Contract failed: asymmetric stereo used identical local eye pixels'}
 
-# Bounded technical history is privacy-shaped at its schema boundary. Notification bodies may be
-# rendered according to the live privacy mode but must never become a HistoryService field.
-Assert-Contains 'XRViewLab.UI\HistoryService.cs' 'MaxRecords = 512' 'technical history record count remains bounded'
-Assert-Contains 'XRViewLab.UI\HistoryService.cs' 'MaxBytes = 512 \* 1024' 'technical history file size remains bounded'
-Assert-Contains 'XRViewLab.UI\HistoryService.cs' 'TimeSpan\.FromDays\(14\)' 'technical history retention remains 14 days'
-Assert-NotContains 'XRViewLab.UI\HistoryService.cs' '\bBody\b' 'technical history schema contains no notification body'
 Assert-Contains 'MainWindow.xaml' 'Test presentation \(synthetic\)' 'synthetic notification control is labelled truthfully'
-Assert-Contains 'MainWindow.xaml' 'Clear technical history' 'technical history has a user-accessible clear action'
+
+# Dedicated clock/session widget: independent overlay, monotonic OpenXR-session lifetime, and
+# complete UI -> ini -> native key wiring. It must not regress into the notification queue.
+foreach ($key in @('clock_widget_enabled','clock_widget_x','clock_widget_y','clock_widget_scale','clock_widget_opacity')) {
+    Assert-Contains 'XRViewLab.UI\MainWindow.cs' $key "UI persists $key"
+    Assert-Contains 'dllmain.cpp' $key "native layer reads $key"
+}
+Assert-IniValue 'clock_widget_enabled' '0'
+Assert-Contains 'dllmain.cpp' 'g_clockSessionStartTick\.store\(GetTickCount64\(\)' 'session timer starts at successful OpenXR session creation'
+Assert-Contains 'dllmain.cpp' 'g_clockSessionStartTick\.store\(0' 'session timer resets at OpenXR session destruction'
+Assert-Contains 'dllmain.cpp' 'clockWidgetEnabled \|\| crosshairEnabled' 'clock participates in the common direct/topmost overlay gate'
+Assert-Contains 'dllmain.cpp' 'viewlab::clock_widget::Format' 'native renderer uses the tested clock formatter'
+Assert-Contains 'MainWindow.xaml' 'CLOCK \+ SESSION' 'clock widget has dedicated ordinary settings UI'
+if (Test-Path -LiteralPath (Join-Path $Root 'XRViewLab.UI\HistoryService.cs')) { throw 'Contract failed: removed technical-history service returned' }
+Assert-NotContains 'NotificationBroker\Program.cs' 'clear-history|HistoryService' 'broker no longer owns experimental generic history'
 
 Write-Host 'ViewLab contract verification passed.'

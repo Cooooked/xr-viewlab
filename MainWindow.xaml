@@ -512,6 +512,19 @@
                       <CheckBox Name="CalClippingCheck" Content="Black / white clipping steps" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Reveals crushed blacks and clipped whites." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
                       <CheckBox Name="CalMotionCheck" Content="Motion strip" Foreground="#A8A8A8" ToolTip="Reveals temporal smearing and reprojection artefacts." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
+                      <TextBlock Text="CLOCK + SESSION" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
+                      <CheckBox Name="ClockWidgetEnabledCheck" Content="Show local time and VR session timer" Foreground="#A8A8A8" Margin="0,4,0,0" Checked="ClockWidgetControl_Changed" Unchecked="ClockWidgetControl_Changed" />
+                      <TextBlock Text="A compact two-line visor card. Session time starts when the game creates its OpenXR session." TextWrapping="Wrap" Width="280" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,2,0,4" />
+                      <TextBlock Text="Position X" Foreground="{StaticResource MutedBrush}" FontSize="10" />
+                      <Slider Name="ClockWidgetXSlider" Minimum="0" Maximum="1" Value="0.5" Tag="0.5" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Horizontal position in the shared binocular view. Right-click to reset." />
+                      <TextBlock Text="Position Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="ClockWidgetYSlider" Minimum="0" Maximum="1" Value="0.1" Tag="0.1" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical position in the shared binocular view. Right-click to reset." />
+                      <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="ClockWidgetScaleSlider" Minimum="0.5" Maximum="2" Value="1" Tag="1" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Whole-widget scale. Right-click to reset." />
+                      <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="ClockWidgetOpacitySlider" Minimum="0.1" Maximum="1" Value="0.82" Tag="0.82" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Card and text opacity. Right-click to reset." />
+                      <TextBlock Text="Applies when the next VR session starts." Foreground="#C08A2A" FontSize="9" Margin="0,3,0,0" />
+                      <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="PERFORMANCE HUD" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
                       <CheckBox Name="HudEnabledCheck" Content="HUD symbols" Foreground="#A8A8A8" Margin="0,4,0,0" ToolTip="Modular CPU, GPU, APP-workload, and VR-cadence widgets rendered identically in both eyes." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                       <TextBlock Text="HUD X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,0" />
@@ -519,7 +532,7 @@
                       <TextBlock Text="HUD Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudYSlider" Minimum="0" Maximum="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Vertical position within the shared binocular view." />
                       <TextBlock Text="HUD scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="HudScaleSlider" Minimum="0.15" Maximum="3" Value="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Scales rings, icons, numbers, spacing, and padding together. Existing 0.5–3.0 sizes are preserved." />
+                      <Slider Name="HudScaleSlider" Minimum="0.15" Maximum="3" Value="1" Tag="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Scales rings, icons, numbers, spacing, and padding together. Existing 0.5–3.0 sizes are preserved. Right-click to reset." />
                       <CheckBox Name="HudAlarmOnlyCheck" Content="Alarm-only symbols (critical/unstable)" Foreground="#A8A8A8" Margin="0,6,0,0" ToolTip="Shows only widgets with a sustained critical or unstable state; recovery uses hysteresis and a hold." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                       <TextBlock Text="Widgets (enabled and order)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,2" />
                       <ListBox Name="HudWidgetList" Background="Transparent" BorderThickness="0" Padding="0">
@@ -540,8 +553,8 @@
                         </ListBox>
                         <Button Margin="0,6,0,0" HorizontalAlignment="Right" Content="Restore CPU/GPU/SYS/VR" Click="HudDefaults_Click" Padding="6,2" FontSize="9"/>
                         <TextBlock Text="SYS warning / critical remaining headroom" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,1"/>
-                        <Slider Name="HudSysWarningSlider" Minimum="10" Maximum="60" Value="30" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" ToolTip="Amber at or below this remaining-headroom percentage."/>
-                        <Slider Name="HudSysCriticalSlider" Minimum="0" Maximum="30" Value="10" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" ToolTip="Red at or below this remaining-headroom percentage."/>
+                        <Slider Name="HudSysWarningSlider" Minimum="10" Maximum="60" Value="30" Tag="30" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Amber at or below this remaining-headroom percentage. Right-click to reset."/>
+                        <Slider Name="HudSysCriticalSlider" Minimum="0" Maximum="30" Value="10" Tag="10" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Red at or below this remaining-headroom percentage. Right-click to reset."/>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="PERFORMANCE GRAPH" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
                       <TextBlock Text="Visibility" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1" />
@@ -564,19 +577,19 @@
                         </StackPanel>
                       </Expander>
                       <TextBlock Text="Graph X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,0" />
-                      <Slider Name="HudTraceXSlider" Minimum="0" Maximum="1" Value="0.05" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Horizontal position of the frame-pacing trace." />
+                      <Slider Name="HudTraceXSlider" Minimum="0" Maximum="1" Value="0.05" Tag="0.05" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Horizontal position of the frame-pacing trace. Right-click to reset." />
                       <TextBlock Text="Graph Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="HudTraceYSlider" Minimum="0" Maximum="1" Value="0.75" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Vertical position of the frame-pacing trace." />
+                      <Slider Name="HudTraceYSlider" Minimum="0" Maximum="1" Value="0.75" Tag="0.75" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical position of the frame-pacing trace. Right-click to reset." />
                       <TextBlock Text="Graph height" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="HudTraceScaleSlider" Minimum="0.25" Maximum="3" Value="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Vertical size of the frame-pacing trace." />
+                      <Slider Name="HudTraceScaleSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical size of the frame-pacing trace. Right-click to reset." />
                       <TextBlock Text="Graph width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="HudTraceWidthSlider" Minimum="0.1" Maximum="1" Value="0.42" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Width of the frame-pacing trace as a fraction of the visible view." />
+                      <Slider Name="HudTraceWidthSlider" Minimum="0.1" Maximum="1" Value="0.42" Tag="0.42" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Width of the frame-pacing trace as a fraction of the visible view. Right-click to reset." />
                       <TextBlock Text="Graph history (samples)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="HudTraceHistorySlider" Minimum="30" Maximum="600" Value="120" ValueChanged="HudLayoutSlider_Changed" ToolTip="Number of frames kept in the trace; newest at the right, scrolling left." />
+                      <Slider Name="HudTraceHistorySlider" Minimum="30" Maximum="600" Value="120" Tag="120" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Number of frames kept in the trace; newest at the right, scrolling left. Right-click to reset." />
                       <TextBlock Text="Graph scale / deviation sensitivity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="HudTraceSensitivitySlider" Minimum="0.5" Maximum="8" Value="2" ValueChanged="HudLayoutSlider_Changed" ToolTip="Deviation mode uses ±ms; absolute-ms mode uses this as a minimum scale before budget auto-scaling." />
+                      <Slider Name="HudTraceSensitivitySlider" Minimum="0.5" Maximum="8" Value="2" Tag="2" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Deviation mode uses ±ms; absolute-ms mode uses this as a minimum scale before budget auto-scaling. Right-click to reset." />
                       <TextBlock Text="Safe margin" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="HudSafeMarginSlider" Minimum="0" Maximum="0.25" Value="0.025" ValueChanged="HudLayoutSlider_Changed" />
+                      <Slider Name="HudSafeMarginSlider" Minimum="0" Maximum="0.25" Value="0.025" Tag="0.025" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <CheckBox Name="HudClampCheck" Content="Keep HUD inside visible region" Foreground="#A8A8A8" Margin="0,4,0,0" Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                     </StackPanel>
                   </ScrollViewer>
@@ -598,17 +611,17 @@
                       <Slider Name="CrosshairOffsetYSlider" Minimum="-1" Maximum="1" Value="0" ValueChanged="CrosshairPosition_Changed" MouseRightButtonUp="CrosshairOffset_ResetRightClick" />
                       <Button Content="Reset Crosshair Position" Style="{StaticResource RedButton}" Padding="8,2" Margin="0,4,0,2" HorizontalAlignment="Left" Click="CrosshairPosition_Reset" />
                       <TextBlock Text="Size" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
-                      <Slider Name="CrosshairSizeSlider" Minimum="0" Maximum="30" Value="5" ValueChanged="CrosshairControlSlider_Changed" />
+                      <Slider Name="CrosshairSizeSlider" Minimum="0" Maximum="30" Value="5" Tag="5" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Gap (may be negative)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="CrosshairGapSlider" Minimum="-10" Maximum="20" Value="-2" ValueChanged="CrosshairControlSlider_Changed" />
+                      <Slider Name="CrosshairGapSlider" Minimum="-10" Maximum="20" Value="-2" Tag="-2" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Thickness" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="CrosshairThicknessSlider" Minimum="0.1" Maximum="10" Value="1" ValueChanged="CrosshairControlSlider_Changed" />
+                      <Slider Name="CrosshairThicknessSlider" Minimum="0.1" Maximum="10" Value="1" Tag="1" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Outline thickness" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="CrosshairOutlineThicknessSlider" Minimum="0" Maximum="5" Value="1" ValueChanged="CrosshairControlSlider_Changed" />
+                      <Slider Name="CrosshairOutlineThicknessSlider" Minimum="0" Maximum="5" Value="1" Tag="1" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Alpha" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="CrosshairAlphaSlider" Minimum="0" Maximum="1" Value="1" ValueChanged="CrosshairControlSlider_Changed" />
+                      <Slider Name="CrosshairAlphaSlider" Minimum="0" Maximum="1" Value="1" Tag="1" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="ViewLab VR scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="CrosshairScaleSlider" Minimum="0.1" Maximum="5" Value="1" ValueChanged="CrosshairControlSlider_Changed" />
+                      <Slider Name="CrosshairScaleSlider" Minimum="0.1" Maximum="5" Value="1" Tag="1" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <WrapPanel Margin="0,6,0,0">
                         <CheckBox Name="CrosshairDotCheck" Content="Centre dot" Foreground="#A8A8A8" Margin="0,0,10,0" Checked="CrosshairControl_Changed" Unchecked="CrosshairControl_Changed" />
                         <CheckBox Name="CrosshairOutlineCheck" Content="Outline" Foreground="#A8A8A8" Margin="0,0,10,0" Checked="CrosshairControl_Changed" Unchecked="CrosshairControl_Changed" />
@@ -634,17 +647,17 @@
                       <CheckBox Name="NotifyEnabledCheck" Content="Enable notifications" Foreground="#A8A8A8" Checked="NotifyControl_Changed" Unchecked="NotifyControl_Changed" />
                       <TextBlock Name="NotifyStatusText" Text="" Foreground="{StaticResource MutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,2,0,0" />
                       <TextBlock Text="Position X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
-                      <Slider Name="NotifyXSlider" Minimum="0" Maximum="1" Value="0.98" ValueChanged="NotifyControlSlider_Changed" />
+                      <Slider Name="NotifyXSlider" Minimum="0" Maximum="1" Value="0.98" Tag="0.98" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Position Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="NotifyYSlider" Minimum="0" Maximum="1" Value="0.98" ValueChanged="NotifyControlSlider_Changed" />
+                      <Slider Name="NotifyYSlider" Minimum="0" Maximum="1" Value="0.98" Tag="0.98" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="NotifyScaleSlider" Minimum="0.25" Maximum="3" Value="1" ValueChanged="NotifyControlSlider_Changed" />
+                      <Slider Name="NotifyScaleSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="NotifyOpacitySlider" Minimum="0.1" Maximum="1" Value="1" ValueChanged="NotifyControlSlider_Changed" />
+                      <Slider Name="NotifyOpacitySlider" Minimum="0.1" Maximum="1" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Display duration (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="NotifyDurationSlider" Minimum="500" Maximum="15000" Value="3000" ValueChanged="NotifyControlSlider_Changed" />
+                      <Slider Name="NotifyDurationSlider" Minimum="500" Maximum="15000" Value="3000" Tag="3000" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Max visible" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="NotifyMaxSlider" Minimum="1" Maximum="6" Value="3" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="NotifyControlSlider_Changed" />
+                      <Slider Name="NotifyMaxSlider" Minimum="1" Maximum="6" Value="3" Tag="3" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Message privacy" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,2" />
                       <ComboBox Name="NotifyPrivacyCombo" SelectionChanged="NotifyControl_Changed">
                         <ComboBoxItem Content="Full content" IsSelected="True" />
@@ -670,21 +683,21 @@
                       <CheckBox Name="IRacingSpotterGlowCheck" Content="Peripheral spotter glow" Foreground="#8A8A8A" Margin="0,4,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
                       <CheckBox Name="IRacingFlagBorderCheck" Content="Flag-state border" Foreground="#8A8A8A" Margin="0,4,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
                       <TextBlock Text="Spotter width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,0" />
-                      <Slider Name="IRacingSpotterWidthSlider" Minimum="0.03" Maximum="0.35" Value="0.12" ValueChanged="IRacingControlSlider_Changed" />
+                      <Slider Name="IRacingSpotterWidthSlider" Minimum="0.03" Maximum="0.35" Value="0.12" Tag="0.12" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Spotter strength / opacity / inward fade" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
-                      <Slider Name="IRacingSpotterStrengthSlider" Minimum="0.1" Maximum="2" Value="1" ValueChanged="IRacingControlSlider_Changed" />
-                      <Slider Name="IRacingSpotterOpacitySlider" Minimum="0.05" Maximum="1" Value="0.65" ValueChanged="IRacingControlSlider_Changed" />
-                      <Slider Name="IRacingSpotterFadeSlider" Minimum="0.25" Maximum="4" Value="1.8" ValueChanged="IRacingControlSlider_Changed" />
+                      <Slider Name="IRacingSpotterStrengthSlider" Minimum="0.1" Maximum="2" Value="1" Tag="1" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                      <Slider Name="IRacingSpotterOpacitySlider" Minimum="0.05" Maximum="1" Value="0.65" Tag="0.65" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                      <Slider Name="IRacingSpotterFadeSlider" Minimum="0.25" Maximum="4" Value="1.8" Tag="1.8" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <WrapPanel Margin="0,3,0,0">
                         <Border Name="IRacingSpotterColorPreview" Width="20" Height="20" Background="#FF4500" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,0,6,0" />
                         <TextBox Name="IRacingSpotterColorBox" Width="90" Text="FF4500" />
                         <Button Content="Apply colour" Style="{StaticResource RedButton}" Padding="8,2" Margin="6,0,0,0" Click="IRacingSpotterColor_Apply" />
                       </WrapPanel>
                       <TextBlock Text="Flag border width / opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,0" />
-                      <Slider Name="IRacingFlagWidthSlider" Minimum="0.003" Maximum="0.12" Value="0.018" ValueChanged="IRacingControlSlider_Changed" />
-                      <Slider Name="IRacingFlagOpacitySlider" Minimum="0.05" Maximum="1" Value="0.6" ValueChanged="IRacingControlSlider_Changed" />
+                      <Slider Name="IRacingFlagWidthSlider" Minimum="0.003" Maximum="0.12" Value="0.018" Tag="0.018" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                      <Slider Name="IRacingFlagOpacitySlider" Minimum="0.05" Maximum="1" Value="0.6" Tag="0.6" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Lap card duration" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,0" />
-                      <Slider Name="IRacingLapDurationSlider" Minimum="1000" Maximum="15000" Value="4500" ValueChanged="IRacingControlSlider_Changed" />
+                      <Slider Name="IRacingLapDurationSlider" Minimum="1000" Maximum="15000" Value="4500" Tag="4500" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Presentation tests (same production path)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,2" />
                       <WrapPanel>
                         <Button Content="Left" Style="{StaticResource RedButton}" Padding="6,2" Click="IRacingTestLeft_Click" />
@@ -697,10 +710,6 @@
                         <Button Content="Yellow" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestYellow_Click" />
                         <Button Content="Blue" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestBlue_Click" />
                       </WrapPanel>
-                      <Separator Margin="0,10,0,8" Background="{StaticResource BorderBrush}" Height="1" />
-                      <TextBlock Text="TECHNICAL HISTORY" Foreground="#C08A2A" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
-                      <TextBlock Text="Keeps at most 14 days, 512 incidents or 512 KiB. Notification message bodies are never retained." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" />
-                      <Button Content="Clear technical history" Style="{StaticResource RedButton}" Padding="8,3" Margin="0,6,0,0" Click="ClearHistory_Click" />
                     </StackPanel>
                   </ScrollViewer>
                 </Border>

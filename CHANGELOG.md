@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased - 2026-07-14 (Clock and VR session timer)
+
+- Added a compact dedicated visor card with current 24-hour local time and elapsed OpenXR-session
+  time, rendered through the same binocular Direct/Topmost overlay path as established overlays.
+- Added position, scale and opacity settings; elapsed duration uses monotonic time and resets for
+  every successfully created OpenXR session.
+- Removed the isolated generic technical-history experiment, including persistence, broker hooks,
+  settings, fixtures and canonical documentation. Live notifications and racing cues are unchanged.
+- Retained the atomic Topmost failure latch and reusable invariant-culture right-click slider reset
+  helper while removing the experimental surface.
+
 ## 4.1.211
 
 - Prevent visibility-mask filtering from returning an empty eye mesh. Indivisible one-triangle
@@ -19,16 +30,6 @@
 - Moved notification fade/slide evaluation to native render cadence and removed doubled fade alpha.
 - Made racing presentation tests explicit temporary overrides, so they work even when the production
   feature is disabled without enabling or persisting it.
-
-## Unreleased - 2026-07-13 (Bounded technical history and truthful status controls)
-
-- Added broker-owned atomic JSONL technical history for low-frequency notification dispositions,
-  telemetry state changes, racing cues and lap metadata. Retention is the newest 14 days, 512
-  records and 512 KiB, with the oldest entries discarded until every bound is satisfied.
-- Kept notification bodies out of the history schema and ordinary event diagnostics; source and
-  sender/title are length-limited. All persistence failures remain isolated from collection and rendering.
-- Added a user-facing clear action, deterministic corruption/retention/size/privacy fixtures, live
-  iRacing status refresh, and explicit synthetic/production-path labels for presentation controls.
 
 ## Unreleased - 2026-07-13 (Automatic topmost presentation)
 
