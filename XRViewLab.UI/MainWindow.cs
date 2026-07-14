@@ -349,6 +349,21 @@ public partial class MainWindow : Window
 		Process.Start(new ProcessStartInfo { FileName = logPath, UseShellExecute = true });
 	}
 
+	private void WhatHappened_Click(object sender, MouseButtonEventArgs e)
+	{
+		bool layerRegistered;
+		try
+		{
+			using RegistryKey? key = Registry.LocalMachine.OpenSubKey(OpenXrRegistryRoot);
+			layerRegistered = key != null && key.GetValueNames().Any(v =>
+				v.Contains("XR_APILAYER_cooooked_xrviewlab.json", StringComparison.OrdinalIgnoreCase));
+		}
+		catch { layerRegistered = false; }
+
+		FailureDiagnosticsWindow window = new(ConfigDirectory, layerRegistered) { Owner = this };
+		window.ShowDialog();
+	}
+
 	private void CheckManifestHealth()
 	{
 		try
@@ -746,6 +761,7 @@ public partial class MainWindow : Window
 			FooterUpdCol.Width      = new GridLength(1, GridUnitType.Auto);
 			VersionText.HorizontalAlignment  = HorizontalAlignment.Left;
 			OpenLogButton.HorizontalAlignment   = HorizontalAlignment.Center;
+			WhatHappenedButton.HorizontalAlignment = HorizontalAlignment.Center;
 			SupportFooterTextBlock.HorizontalAlignment = HorizontalAlignment.Center;
 			UpdatesButton.HorizontalAlignment   = HorizontalAlignment.Right;
 			StatusText.Visibility = Visibility.Collapsed;
@@ -764,11 +780,13 @@ public partial class MainWindow : Window
 			FooterUpdCol.Width      = new GridLength(1, GridUnitType.Auto);
 			VersionText.HorizontalAlignment  = HorizontalAlignment.Left;
 			OpenLogButton.HorizontalAlignment   = HorizontalAlignment.Right;
+			WhatHappenedButton.HorizontalAlignment = HorizontalAlignment.Right;
 			SupportFooterTextBlock.HorizontalAlignment = HorizontalAlignment.Right;
 			UpdatesButton.HorizontalAlignment   = HorizontalAlignment.Right;
 			StatusText.Visibility = fw >= 900.0 ? Visibility.Visible : Visibility.Collapsed;
 		}
 
+		WhatHappenedButton.Text = mini ? "?" : "What happened?";
 		SupportFooterTextBlock.Text = mini ? "Support" : SupportFooterText;
 		SupportFooterTextBlock.ToolTip = SupportFooterText;
 		UpdatesButton.Text = mini ? "Upd" : "Update";

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\XRViewLab.UI\FailureDiagnostics.cs" Link="FailureDiagnostics.cs" />
+    <Compile Include="..\..\XRViewLab.UI\CrashMarker.cs" Link="CrashMarker.cs" />
+  </ItemGroup>
+</Project>

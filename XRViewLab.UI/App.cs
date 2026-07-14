@@ -1,8 +1,10 @@
 using System;
+using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 using Microsoft.Win32;
 
 namespace XRViewLab.UI;
@@ -16,6 +18,8 @@ public class App : Application
 	private static extern int SetForegroundWindow(IntPtr hWnd);
 
 	private const string MutexName = "XRViewLabSingleInstance";
+
+	private static string ConfigDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XR ViewLab");
 
 	public void InitializeComponent()
 	{
@@ -46,8 +50,22 @@ public class App : Application
 			return;
 		}
 
+		// Record an unhandled exception before the process goes down, so the next launch can
+		// explain what happened instead of the window just vanishing. Never swallows the crash —
+		// only observes it on the way out.
+		AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+		{
+			if (e.ExceptionObject is Exception ex) CrashMarker.Write(ConfigDirectory, ex);
+		};
+
 		App app = new App();
 		app.InitializeComponent();
+		app.DispatcherUnhandledException += (_, e) =>
+		{
+			CrashMarker.Write(ConfigDirectory, e.Exception);
+			// Deliberately not marking e.Handled — swallowing a UI-thread exception would leave
+			// the app running in an unknown, possibly corrupted state, which is worse than exiting.
+		};
 		app.Run();
 	}
 
