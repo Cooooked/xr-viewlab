@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased - 2026-07-14 (Network HUD expansion)
+
+- Added optional PING, LOSS, JIT and NET widgets to the existing modular HUD. A bounded worker sends
+  one Windows ICMP echo per second to a configurable IPv4 target and publishes rolling 20-probe loss,
+  successful-probe jitter, latency and stable/unstable/unreachable state outside the render thread.
+- Kept all network widgets off by default and labels explicit: these values describe the configured
+  probe path, not private game-server telemetry. Three consecutive misses produce an `OFF` warning.
+
 ## Unreleased - 2026-07-14 (Clock and VR session timer)
 
 - Added a compact dedicated visor card with current 24-hour local time and elapsed OpenXR-session

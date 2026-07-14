@@ -1,7 +1,10 @@
 #ifndef PCH_H
 #define PCH_H
 
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
+#pragma comment(lib, "ws2_32.lib")
 
 #include <algorithm>
 #include <array>

@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-14
-**Current version:** 4.1.212 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.212.msi`
+**Current version:** 4.1.213 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.213.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
@@ -30,12 +30,21 @@ configurable in ordinary settings and read at the next VR session. Formatter fix
 native builds pass; binocular fusion, physical scale, legibility and Direct/Topmost presentation still
 require headset validation.
 
+## Network HUD expansion (implemented; headset validation pending, 2026-07-14)
+
+The existing modular HUD catalogue now includes optional PING latency, rolling 20-probe LOSS,
+successful-probe JIT and NET stability widgets. The bounded hardware worker sends at most one Windows
+ICMP echo per second to `network_probe_target` (default `1.1.1.1`); it never blocks the OpenXR render
+thread. Three consecutive misses mark the configured path `OFF`; elevated loss, jitter or latency is
+`BAD`. All four widgets default off. These are truthful probe-path measurements, not inferred game-
+server statistics. Live provider reachability, headset legibility and overhead remain to validate.
+
 ## Visible visor feature backlog (ordered)
 
 1. **Clock/session timer:** base clock + elapsed session card implemented; stopwatch/countdown modes
    remain a later extension after the base widget passes headset validation.
-2. **Network HUD:** next. Add reliable ping/loss/jitter/instability/disconnect signals to the existing
-   HUD; unavailable data must stay unavailable rather than becoming zero.
+2. **Network HUD:** implemented; headset validation pending. Optional PING/LOSS/JIT/NET widgets
+   probe a labelled configurable IPv4 path once per second. They do not claim game-server telemetry.
 3. **Performance trace markers:** bind, exact timestamp, sequence, visor confirmation, real trace
    storage and post-session graph navigation. Never route markers through generic history.
 4. **Post-session performance recording:** build the bounded recorder/viewer needed by trace markers,
@@ -735,6 +744,12 @@ Remaining broader static-audit items not closed in this pass:
   `WOW6432Node` (Win32). A stray 32-bit entry in the 64-bit hive was removed 2026-07-10.
 
 ## Latest verification
+
+- Network rolling-window fixtures, the real telemetry-worker smoke test, performance-HUD contracts
+  and repository contracts passed on 2026-07-14. `build.ps1` then built WPF, broker, signed identity,
+  x64/Win32 native layers and the MSI with fresh payload validation:
+  `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.213.msi`. The smoke test exercised the configured ICMP
+  path; HUD placement, legibility and runtime overhead remain pending headset validation.
 
 - Clock/session formatter fixtures, slider-default fixtures, iRacing fixtures, RenderPolicy fixtures,
   performance-HUD contracts, Topmost safety contracts and repository contracts passed on 2026-07-14.

@@ -9,7 +9,7 @@ function Require($text,$pattern,$message){if($text-notmatch$pattern){throw "Perf
 function Forbid($text,$pattern,$message){if($text-match$pattern){throw "Performance HUD contract failed: $message"}}
 
 Require $native 'enum class HudWidgetId' 'widget registry identifier is absent'
-foreach($id in 'CpuPeak','CpuFrequency','Ram','Commit','Vram','Sys','Fps','FrameInterval'){Require $native $id "catalogue widget $id is absent"}
+foreach($id in 'CpuPeak','CpuFrequency','Ram','Commit','Vram','Sys','Fps','FrameInterval','NetworkPing','NetworkLoss','NetworkJitter','NetworkStatus'){Require $native $id "catalogue widget $id is absent"}
 Require $native 'viewlab::telemetry::TryGetSnapshot' 'renderer does not consume the isolated telemetry snapshot'
 Require $hardware 'void Run\(\)' 'bounded worker is absent'
 Require $hardware 'wait_for\(waitLock,std::chrono::milliseconds\(kSamplePeriodMs\)' 'worker cadence is not bounded'
@@ -17,6 +17,8 @@ Require $hardware 'QueryVideoMemoryInfo' 'DXGI budget provider is absent'
 Require $hardware 'GetPerformanceInfo' 'commit provider is absent'
 Require $hardware 'GlobalMemoryStatusEx' 'RAM provider is absent'
 Require $hardware 'Processor Information\(\*\).*% Processor Utility' 'peak-core provider is absent'
+Require $hardware 'IcmpSendEcho' 'bounded Windows network probe is absent'
+Require $hardware 'now-p\.lastNetworkProbeMs>=1000' 'network probe cadence is not bounded to one per second'
 Require $hardware 'strongest=\*std::max_element' 'SYS is not bottleneck-aware'
 Require $native 'OrderedHudWidgets' 'enabled widgets are not normalized into persisted order'
 Require $native 'drawWidgetCount' 'renderer is still fixed-slot rather than packed'
@@ -35,8 +37,11 @@ Require $policy 'case 2: return GraphFps' 'FPS mode admits incompatible units'
 Require $ui 'HudScaleSlider" Minimum="0\.15"' 'small HUD scale is unavailable'
 foreach($name in 'HudWidgetList','HudGraphModeCombo','HudGraphFrameIntervalCheck','HudGraphFpsCheck','HudGraphBudgetDeviationCheck','HudGraphAppWorkCheck','HudGraphWaitDurationCheck','HudGraphSubmitDurationCheck','HudGraphDisplayPeriodCheck'){Require $ui "Name=`"$name`"" "UI control $name is absent"}
 foreach($name in 'HudSysWarningSlider','HudSysCriticalSlider'){Require $ui "Name=`"$name`"" "telemetry UI control $name is absent"}
+Require $ui 'Name="NetworkProbeTargetBox"' 'network probe target is not configurable'
 Forbid $ui 'HudMaxPerRowCombo' 'obsolete maximum-per-row control remains despite the single-row contract'
-Require (Get-Content (Join-Path $Root 'Tests\RenderPolicyFixtures.cpp') -Raw) 'twelve widgets remain one row' 'single-row HUD layout lacks an executable fixture'
+$fixtures=Get-Content (Join-Path $Root 'Tests\RenderPolicyFixtures.cpp') -Raw
+Require $fixtures 'network probe reports RTT, loss and jitter truthfully' 'network rolling metrics lack an executable fixture'
+Require $fixtures 'three consecutive misses produce a disconnect warning' 'network disconnect policy lacks an executable fixture'
 Require $live '_view\.Write\(4, 7u\)' 'live mapping is not version 7'
 Require $telemetryLive 'XRViewLabTelemetryConfigV1' 'versioned telemetry extension mapping is absent'
 foreach($offset in 192,196,200,204){Require $live "_view\.Write\($offset," "live mapping field at $offset is absent"}

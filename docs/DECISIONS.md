@@ -1,5 +1,13 @@
 # Decision log
 
+## D23 — Generic network HUD measures a declared probe path, not the game server
+
+ViewLab sends at most one ICMP echo per second from the bounded telemetry worker to a configurable
+numeric IPv4 target. PING is successful round-trip time, LOSS is the rolling 20-probe failure rate,
+JIT is mean absolute change between successful RTTs, and OFF requires three consecutive misses.
+Rejected: labelling arbitrary process endpoints or OS counters as game packet loss; a generic OpenXR
+layer does not possess the game's authoritative networking telemetry.
+
 ## D22 — VR session duration is monotonic OpenXR-session lifetime
 
 The visor session timer starts only after a successful `xrCreateSession` and resets during the

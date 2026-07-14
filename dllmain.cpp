@@ -107,12 +107,16 @@ float g_hudTraceVisibilityAlpha = 0.f;
 viewlab::policy::TraceVisibilityState g_hudTraceVisibilityState{};
 bool hudAlarmOnly = false;
 double hudAlarmHoldMs = 1500.0;
+double networkPingWarningMs=80.0,networkPingCriticalMs=150.0;
+double networkLossWarning=2.0,networkLossCritical=5.0;
+double networkJitterWarningMs=15.0,networkJitterCriticalMs=30.0;
 uint32_t hudUpdateIntervalMs = 100;
 bool hudDebugValues = false;
 double hudDebugCpu = 52.0, hudDebugGpu = 98.0, hudDebugSystem = 44.0, hudDebugVr = 18.0;
 enum class HudWidgetId : uint8_t {
     Cpu=0, Gpu=1, App=2, Vr=3, CpuPeak=4, CpuFrequency=5,
-    Ram=6, Commit=7, Vram=8, Sys=9, Fps=10, FrameInterval=11, Count=12
+    Ram=6, Commit=7, Vram=8, Sys=9, Fps=10, FrameInterval=11,
+    NetworkPing=12, NetworkLoss=13, NetworkJitter=14, NetworkStatus=15, Count=16
 };
 constexpr size_t kHudWidgetCount=static_cast<size_t>(HudWidgetId::Count);
 enum class HudMetricState : uint8_t { OnTarget=0, Warning=1, Critical=2, Reprojection=3, Unstable=4, Unavailable=5 };
@@ -131,11 +135,13 @@ constexpr std::array<HudWidgetDescriptor,kHudWidgetCount> kHudWidgetRegistry{{
     {HudWidgetId::CpuPeak,"PEAK","%",0,false}, {HudWidgetId::CpuFrequency,"CLK","MHz",0,false},
     {HudWidgetId::Ram,"RAM","%",0,false}, {HudWidgetId::Commit,"CMT","%",0,false},
     {HudWidgetId::Vram,"VRAM","%",0,false}, {HudWidgetId::Sys,"SYS","%",0,false},
-    {HudWidgetId::Fps,"FPS","fps",0,true}, {HudWidgetId::FrameInterval,"FT","ms",1,true}
+    {HudWidgetId::Fps,"FPS","fps",0,true}, {HudWidgetId::FrameInterval,"FT","ms",1,true},
+    {HudWidgetId::NetworkPing,"PING","ms",0,false}, {HudWidgetId::NetworkLoss,"LOSS","%",0,false},
+    {HudWidgetId::NetworkJitter,"JIT","ms",0,false}, {HudWidgetId::NetworkStatus,"NET","state",0,false}
 }};
 uint64_t hudWidgetMask = (1ull<<0)|(1ull<<1)|(1ull<<3)|(1ull<<9);
 uint32_t hudWidgetOrderPacked = 0x03020100u; // four widget IDs, low byte first
-std::array<uint8_t,kHudWidgetCount> hudWidgetOrder{{0,1,9,3,2,4,5,6,7,8,10,11}};
+std::array<uint8_t,kHudWidgetCount> hudWidgetOrder{{0,1,9,3,2,4,5,6,7,8,10,11,12,13,14,15}};
 uint32_t hudMaxPerRow=static_cast<uint32_t>(kHudWidgetCount); // legacy mapping field; renderer is deliberately one row
 uint32_t hudGraphChannels = GraphBudgetDeviation;
 HudGraphMode hudGraphMode = HudGraphMode::Deviation;
@@ -430,6 +436,10 @@ void UpdateHudMetrics() {
         copyHardware(HudWidgetId::Commit,viewlab::telemetry::MetricId::CommitPressure);
         copyHardware(HudWidgetId::Vram,viewlab::telemetry::MetricId::VramPressure);
         copyHardware(HudWidgetId::Sys,viewlab::telemetry::MetricId::SystemHeadroom);
+        copyHardware(HudWidgetId::NetworkPing,viewlab::telemetry::MetricId::NetworkPing);
+        copyHardware(HudWidgetId::NetworkLoss,viewlab::telemetry::MetricId::NetworkLoss);
+        copyHardware(HudWidgetId::NetworkJitter,viewlab::telemetry::MetricId::NetworkJitter);
+        copyHardware(HudWidgetId::NetworkStatus,viewlab::telemetry::MetricId::NetworkStatus);
     }
     {
         std::lock_guard<std::mutex> lock(g_hudTimingMutex);
@@ -443,6 +453,10 @@ void UpdateHudMetrics() {
         const HudMetric& metric=g_hudMetrics[i]; HudMetricState desired=HudMetricState::Unavailable;
         if(metric.available) {
             if(i==(size_t)HudWidgetId::Sys) desired=metric.value<=hudSysCriticalThreshold?HudMetricState::Critical:metric.value<=hudSysWarningThreshold?HudMetricState::Warning:HudMetricState::OnTarget;
+            else if(i==(size_t)HudWidgetId::NetworkPing) desired=metric.value>=networkPingCriticalMs?HudMetricState::Critical:metric.value>=networkPingWarningMs?HudMetricState::Warning:HudMetricState::OnTarget;
+            else if(i==(size_t)HudWidgetId::NetworkLoss) desired=metric.value>=networkLossCritical?HudMetricState::Critical:metric.value>=networkLossWarning?HudMetricState::Warning:HudMetricState::OnTarget;
+            else if(i==(size_t)HudWidgetId::NetworkJitter) desired=metric.value>=networkJitterCriticalMs?HudMetricState::Critical:metric.value>=networkJitterWarningMs?HudMetricState::Warning:HudMetricState::OnTarget;
+            else if(i==(size_t)HudWidgetId::NetworkStatus) desired=metric.value>=2?HudMetricState::Critical:metric.value>=1?HudMetricState::Warning:HudMetricState::OnTarget;
             else if(i==(size_t)HudWidgetId::CpuFrequency||i==(size_t)HudWidgetId::Fps) desired=HudMetricState::OnTarget;
             else if(i==(size_t)HudWidgetId::Vr||i==(size_t)HudWidgetId::FrameInterval) {const double ratio=g_hudEffectiveBudgetMs>0?metric.value/g_hudEffectiveBudgetMs:0;desired=ratio>1.08?HudMetricState::Critical:ratio>1.03?HudMetricState::Warning:HudMetricState::OnTarget;}
             else desired=metric.value>=hudRedThreshold?HudMetricState::Critical:metric.value>=hudGreenThreshold?HudMetricState::Warning:HudMetricState::OnTarget;
@@ -590,6 +604,7 @@ void ConsumeTelemetryConfig() {
     if(!g_telemetryConfig||g_telemetryConfig->magic!=0x31435456u||g_telemetryConfig->version!=1||g_telemetryConfig->size!=64||g_telemetryConfig->generation==g_telemetryConfigGeneration)return;
     const TelemetryConfigBlock stable=*g_telemetryConfig;if(stable.generation!=g_telemetryConfig->generation)return;
     hudWidgetMask=stable.widgetMask&((1ull<<kHudWidgetCount)-1);hudMaxPerRow=std::clamp(stable.maxPerRow,1u,16u);hudSysWarningThreshold=std::clamp((double)stable.sysWarning,10.0,60.0);hudSysCriticalThreshold=std::clamp((double)stable.sysCritical,0.0,hudSysWarningThreshold);
+    viewlab::telemetry::SetNetworkProbeEnabled((hudWidgetMask & (0xFull<<12)) != 0);
     std::array<bool,kHudWidgetCount> seen{};size_t n=0;for(uint8_t id:stable.order)if(id<kHudWidgetCount&&!seen[id]){hudWidgetOrder[n++]=id;seen[id]=true;}for(uint8_t id=0;id<kHudWidgetCount;++id)if(!seen[id])hudWidgetOrder[n++]=id;
     g_telemetryConfigGeneration=stable.generation;
 }
@@ -1148,6 +1163,12 @@ double ReadDoubleSetting(const wchar_t* key, double fallback) {
     }
 
     return value;
+}
+
+std::wstring ReadStringSetting(const wchar_t* key, const wchar_t* fallback) {
+    wchar_t buffer[256]{};
+    GetPrivateProfileStringW(L"Settings",key,fallback,buffer,static_cast<DWORD>(std::size(buffer)),ConfigPath().c_str());
+    return buffer;
 }
 
 std::wstring CurrentProcessPath() {
@@ -2677,7 +2698,7 @@ void DrawCalibrationOverlayToTexture(
         // Compact 5x7 pixel HUD font with a dedicated decimal-point glyph. Row bits are
         // rendered as merged horizontal runs at an integer pixel scale, so digits stay
         // crisp at small sizes and "13.3" can never collapse into "133".
-        static const unsigned char kHudFont[12][7] = {
+        static const unsigned char kHudFont[19][7] = {
             {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, // 0
             {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E}, // 1
             {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}, // 2
@@ -2690,8 +2711,15 @@ void DrawCalibrationOverlayToTexture(
             {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C}, // 9
             {0x00,0x00,0x00,0x00,0x00,0x0C,0x0C}, // .
             {0x00,0x00,0x00,0x0E,0x00,0x00,0x00}, // -
+            {0x11,0x12,0x14,0x18,0x14,0x12,0x11}, // K
+            {0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E}, // B
+            {0x0E,0x11,0x11,0x1F,0x11,0x11,0x11}, // A
+            {0x1E,0x11,0x11,0x11,0x11,0x11,0x1E}, // D
+            {0x1F,0x10,0x10,0x1E,0x10,0x10,0x10}, // F
+            {0x04,0x04,0x04,0x04,0x04,0x00,0x04}, // !
+            {0x11,0x11,0x0A,0x04,0x0A,0x11,0x11}, // X
         };
-        auto glyphIdx = [](char c) -> int { if (c >= '0' && c <= '9') return c - '0'; if (c == '.') return 10; if (c == '-') return 11; return -1; };
+        auto glyphIdx = [](char c) -> int { if (c >= '0' && c <= '9') return c - '0'; if (c == 'O') return 0; if (c == '.') return 10; if (c == '-') return 11; if(c=='K')return 12;if(c=='B')return 13;if(c=='A')return 14;if(c=='D')return 15;if(c=='F')return 16;if(c=='!')return 17;if(c=='X')return 18;return -1; };
         auto glyphAdvance = [&](char c) { return c == '.' ? pxs * 4 : pxs * 6; };
         auto textWidth = [&](const char* s) { int tw = 0; for (const char* p = s; *p; ++p) tw += glyphAdvance(*p); return (float)(tw - pxs); };
         auto drawText = [&](float centreX, float topY, const char* s, float rr, float gg, float bb) {
@@ -2733,6 +2761,9 @@ void DrawCalibrationOverlayToTexture(
             const float fillFrac = !metric.available ? 0.f
                 : (item == (int)HudWidgetId::Vr || item == (int)HudWidgetId::FrameInterval) ? (snap.budgetMs > 0.0 ? std::clamp((float)(metric.value / snap.budgetMs), 0.f, 1.f) : 0.f)
                 : item == (int)HudWidgetId::Sys ? std::clamp((float)(metric.value/100.0),0.f,1.f)
+                : item == (int)HudWidgetId::NetworkPing ? std::clamp((float)(metric.value/networkPingCriticalMs),0.f,1.f)
+                : item == (int)HudWidgetId::NetworkJitter ? std::clamp((float)(metric.value/networkJitterCriticalMs),0.f,1.f)
+                : item == (int)HudWidgetId::NetworkStatus ? std::clamp((float)(metric.value/2.0),0.f,1.f)
                 : std::clamp((float)(metric.value/100.0), 0.f, 1.f);
             ring(cx,cy,fillFrac,rr,gg,bb);
             const float q=unit*.095f, stroke=(std::max)(1.25f,unit*.022f);
@@ -2751,6 +2782,10 @@ void DrawCalibrationOverlayToTexture(
                 line(cx-q*2.8f,cy-q*.8f,cx-q*2.2f,cy-q*1.8f,stroke,rr,gg,bb); line(cx-q*2.2f,cy-q*1.8f,cx+q*2.2f,cy-q*1.8f,stroke,rr,gg,bb); line(cx+q*2.2f,cy-q*1.8f,cx+q*2.8f,cy-q*.8f,stroke,rr,gg,bb);
                 line(cx+q*2.8f,cy-q*.8f,cx+q*2.1f,cy+q*1.8f,stroke,rr,gg,bb); line(cx+q*2.1f,cy+q*1.8f,cx+q*.7f,cy+q*1.8f,stroke,rr,gg,bb); line(cx+q*.7f,cy+q*1.8f,cx,cy+q*.8f,stroke,rr,gg,bb); line(cx,cy+q*.8f,cx-q*.7f,cy+q*1.8f,stroke,rr,gg,bb); line(cx-q*.7f,cy+q*1.8f,cx-q*2.1f,cy+q*1.8f,stroke,rr,gg,bb); line(cx-q*2.1f,cy+q*1.8f,cx-q*2.8f,cy-q*.8f,stroke,rr,gg,bb);
                 rectLine(cx-q*1.7f,cy-q*.7f,cx-q*.5f,cy+q*.4f,stroke,rr,gg,bb); rectLine(cx+q*.5f,cy-q*.7f,cx+q*1.7f,cy+q*.4f,stroke,rr,gg,bb);
+            } else if(item>=(int)HudWidgetId::NetworkPing) {
+                // Shared network-path mark: three rising signal bars. Colour and the value/status
+                // text distinguish latency, loss, jitter and reachability without a separate panel.
+                for(int k=0;k<3;++k){const float bh=q*(1.2f+k*.9f);rectLine(cx-q*2.4f+k*q*1.7f,cy+q*2.2f-bh,cx-q*1.5f+k*q*1.7f,cy+q*2.2f,stroke,rr,gg,bb);}
             } else {
                 // Secondary mark differs by catalogue slot; the ring and number remain the
                 // primary glanceable language at very small scales.
@@ -2764,6 +2799,7 @@ void DrawCalibrationOverlayToTexture(
             // time in milliseconds with exactly one decimal place (e.g. 8.3, 11.1, 13.9).
             char text[16];
             if (!metric.available) { text[0]='-'; text[1]='-'; text[2]='\0'; }
+            else if(item==(int)HudWidgetId::NetworkStatus) {const char* status=metric.value>=2?"OFF":metric.value>=1?"BAD":"OK";strcpy_s(text,status);}
             else if (widget.decimals == 1) snprintf(text, sizeof(text), "%.1f", metric.value);
             else snprintf(text, sizeof(text), "%d", std::clamp(static_cast<int>(std::round(metric.value)),0,9999));
             drawText(cx, cy + radius + numberGap, text, rr, gg, bb);
@@ -3627,7 +3663,7 @@ void LoadConfig() {
     hudTraceEnabled = ReadBoolSetting(L"hud_trace_enabled", false);
     hudTraceVisibilityMode = (uint32_t)std::clamp((int)ReadDoubleSetting(L"hud_trace_visibility_mode",hudTraceEnabled?1.0:0.0),0,2);
     hudTraceEnabled = hudTraceVisibilityMode != 0;
-    constexpr const wchar_t* widgetKeys[kHudWidgetCount]={L"cpu",L"gpu",L"app",L"vr",L"cpu_peak",L"cpu_frequency",L"ram",L"commit",L"vram",L"sys",L"fps",L"frame_interval"};
+    constexpr const wchar_t* widgetKeys[kHudWidgetCount]={L"cpu",L"gpu",L"app",L"vr",L"cpu_peak",L"cpu_frequency",L"ram",L"commit",L"vram",L"sys",L"fps",L"frame_interval",L"network_ping",L"network_loss",L"network_jitter",L"network_status"};
     hudWidgetMask=0;
     for(size_t i=0;i<kHudWidgetCount;++i){wchar_t key[80]{};swprintf_s(key,L"hud_widget_%s_enabled",widgetKeys[i]);const bool defaultOn=i==0||i==1||i==3||i==9;if(ReadBoolSetting(key,defaultOn))hudWidgetMask|=1ull<<i;}
     std::array<std::pair<int,uint8_t>,kHudWidgetCount> ordered{};
@@ -3637,6 +3673,16 @@ void LoadConfig() {
     hudMaxPerRow=(uint32_t)std::clamp(ReadDoubleSetting(L"hud_max_per_row",static_cast<double>(kHudWidgetCount)),1.0,16.0);
     hudSysWarningThreshold=std::clamp(ReadDoubleSetting(L"hud_sys_warning",30.0),10.0,60.0);
     hudSysCriticalThreshold=std::clamp(ReadDoubleSetting(L"hud_sys_critical",10.0),0.0,hudSysWarningThreshold);
+    networkPingWarningMs=std::clamp(ReadDoubleSetting(L"network_ping_warning_ms",80.0),1.0,1000.0);
+    networkPingCriticalMs=std::clamp(ReadDoubleSetting(L"network_ping_critical_ms",150.0),networkPingWarningMs,5000.0);
+    networkLossWarning=std::clamp(ReadDoubleSetting(L"network_loss_warning",2.0),0.1,100.0);
+    networkLossCritical=std::clamp(ReadDoubleSetting(L"network_loss_critical",5.0),networkLossWarning,100.0);
+    networkJitterWarningMs=std::clamp(ReadDoubleSetting(L"network_jitter_warning_ms",15.0),0.1,1000.0);
+    networkJitterCriticalMs=std::clamp(ReadDoubleSetting(L"network_jitter_critical_ms",30.0),networkJitterWarningMs,5000.0);
+    IN_ADDR probeAddress{};const std::wstring probeTarget=ReadStringSetting(L"network_probe_target",L"1.1.1.1");
+    const bool validProbeTarget=InetPtonW(AF_INET,probeTarget.c_str(),&probeAddress)==1;
+    viewlab::telemetry::SetNetworkProbeTarget(validProbeTarget?probeAddress.S_un.S_addr:0);
+    viewlab::telemetry::SetNetworkProbeEnabled(validProbeTarget && (hudWidgetMask & (0xFull<<12)) != 0);
     hudWidgetOrderPacked=PackHudWidgetOrder({
         (int)ReadDoubleSetting(L"hud_widget_cpu_order",0.0),
         (int)ReadDoubleSetting(L"hud_widget_gpu_order",1.0),

@@ -1,14 +1,18 @@
 #include "pch.h"
 #include "HardwareTelemetry.h"
+#include "NetworkProbe.h"
 
 #include <condition_variable>
 #include <dxgi1_4.h>
+#include <iphlpapi.h>
+#include <icmpapi.h>
 #include <powrprof.h>
 #include <psapi.h>
 #include <thread>
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "powrprof.lib")
 #pragma comment(lib, "psapi.lib")
+#pragma comment(lib, "iphlpapi.lib")
 
 namespace viewlab::telemetry { namespace {
 struct ProcessorPowerInformation {
@@ -20,6 +24,8 @@ std::thread worker;
 std::atomic<bool> stopping{false};
 std::atomic<bool> running{false};
 std::atomic<uint64_t> preferredLuid{0};
+std::atomic<uint32_t> networkProbeTarget{0};
+std::atomic<bool> networkProbeEnabled{false};
 std::mutex wakeMutex, snapshotMutex, lifecycleMutex;
 std::condition_variable wakeCondition;
 Snapshot published{};
@@ -36,6 +42,9 @@ void SetSample(Snapshot& s, MetricId id, double value, uint64_t now, double used
     m.value=Ema(m.availability==Availability::Available?m.value:0.0,value);
     m.used=used; m.capacity=capacity; m.sampledAtMs=now; m.availability=Availability::Available;
 }
+void SetInstantSample(Snapshot& s, MetricId id, double value, uint64_t now) {
+    auto& m=s.metrics[static_cast<size_t>(id)];m.value=value;m.used=0;m.capacity=0;m.sampledAtMs=now;m.availability=Availability::Available;
+}
 
 struct Providers {
     PDH_HQUERY gpuQuery=nullptr, cpuQuery=nullptr;
@@ -47,6 +56,9 @@ struct Providers {
     DWORD logicalProcessors=0;
     std::vector<ProcessorPowerInformation> power;
     std::array<uint8_t,65536> pdhBuffer{};
+    HANDLE icmp=INVALID_HANDLE_VALUE;
+    viewlab::network::Window networkWindow{};
+    uint64_t lastNetworkProbeMs=0;
 
     void Init() {
         SYSTEM_INFO info{}; GetSystemInfo(&info); logicalProcessors=(std::max<DWORD>)(1,info.dwNumberOfProcessors);
@@ -60,12 +72,14 @@ struct Providers {
             PdhCollectQueryData(cpuQuery);
         }
         CreateDXGIFactory1(__uuidof(IDXGIFactory1),reinterpret_cast<void**>(&factory));
+        icmp=IcmpCreateFile();
     }
     void Shutdown() {
         if(adapter)adapter->Release(); adapter=nullptr;
         if(factory)factory->Release(); factory=nullptr;
         if(gpuQuery)PdhCloseQuery(gpuQuery); gpuQuery=nullptr; gpuCounter=nullptr;
         if(cpuQuery)PdhCloseQuery(cpuQuery); cpuQuery=nullptr; cpuCounter=nullptr;
+        if(icmp!=INVALID_HANDLE_VALUE)IcmpCloseHandle(icmp);icmp=INVALID_HANDLE_VALUE;
     }
     bool SelectAdapter(uint64_t luid) {
         if(adapter && adapterLuid==luid)return true;
@@ -123,6 +137,21 @@ void Run() {
             PERFORMANCE_INFORMATION perf{sizeof(perf)};if(GetPerformanceInfo(&perf,sizeof(perf))&&perf.CommitLimit){double used=double(perf.CommitTotal)*double(perf.PageSize)/1073741824.0,limit=double(perf.CommitLimit)*double(perf.PageSize)/1073741824.0;SetSample(next,MetricId::CommitPressure,100.0*used/limit,now,used,limit);}
             uint64_t luid=preferredLuid.load();if(!luid)luid=selected;if(p.SelectAdapter(luid)){DXGI_QUERY_VIDEO_MEMORY_INFO info{};if(SUCCEEDED(p.adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&info))&&info.Budget){double used=info.CurrentUsage/1073741824.0,budget=info.Budget/1073741824.0;SetSample(next,MetricId::VramPressure,100.0*used/budget,now,used,budget);}}
         }
+        if(networkProbeEnabled.load(std::memory_order_acquire) && p.icmp!=INVALID_HANDLE_VALUE && now-p.lastNetworkProbeMs>=1000) {
+            p.lastNetworkProbeMs=now;
+            const IPAddr target=networkProbeTarget.load(std::memory_order_acquire);
+            if(target) {
+                char payload[16]="ViewLab network";
+                std::array<uint8_t,sizeof(ICMP_ECHO_REPLY)+64> reply{};
+                const DWORD replies=IcmpSendEcho(p.icmp,target,payload,(WORD)sizeof(payload),nullptr,reply.data(),(DWORD)reply.size(),250);
+                double rtt=0.0; if(replies){auto* echo=reinterpret_cast<ICMP_ECHO_REPLY*>(reply.data());rtt=echo->RoundTripTime;}
+                const auto stats=p.networkWindow.Record(replies!=0,rtt);
+                if(replies)SetSample(next,MetricId::NetworkPing,stats.pingMs,now);
+                SetSample(next,MetricId::NetworkLoss,stats.lossPercent,now);
+                if(stats.successfulSamples>=2)SetSample(next,MetricId::NetworkJitter,stats.jitterMs,now);
+                SetInstantSample(next,MetricId::NetworkStatus,static_cast<double>(stats.state),now);
+            }
+        }
         std::array<double,6> pressures{};size_t n=0;auto add=[&](MetricId id,bool memory){auto&m=next.metrics[(size_t)id];if(m.availability==Availability::Available&&now-m.sampledAtMs<=kStaleAfterMs)pressures[n++]=memory?MemoryPressure(m.value,70,95):std::clamp(m.value/100.0,0.0,1.0);};
         add(MetricId::CpuUtilisation,false);add(MetricId::CpuPeakCore,false);add(MetricId::GpuUtilisation,false);add(MetricId::RamPressure,true);add(MetricId::CommitPressure,true);add(MetricId::VramPressure,true);
         if(n){double strongest=*std::max_element(pressures.begin(),pressures.begin()+n);SetSample(next,MetricId::SystemHeadroom,100.0*(1.0-strongest),now);next.headroomCoverage=(uint32_t)n;}
@@ -138,5 +167,7 @@ void Run() {
 void Start(){std::lock_guard<std::mutex> lock(lifecycleMutex);if(running.exchange(true))return;stopping.store(false);worker=std::thread(Run);}
 void Stop(){std::lock_guard<std::mutex> lock(lifecycleMutex);if(!running.load()&&!worker.joinable())return;stopping.store(true);wakeCondition.notify_all();if(worker.joinable())worker.join();}
 void SetPreferredAdapterLuid(uint64_t luid){preferredLuid.store(luid,std::memory_order_release);}
+void SetNetworkProbeTarget(uint32_t ipv4NetworkOrder){networkProbeTarget.store(ipv4NetworkOrder,std::memory_order_release);}
+void SetNetworkProbeEnabled(bool enabled){networkProbeEnabled.store(enabled,std::memory_order_release);}
 bool TryGetSnapshot(Snapshot& snapshot){if(!snapshotMutex.try_lock())return false;snapshot=published;snapshotMutex.unlock();return snapshot.generation!=0;}
 }

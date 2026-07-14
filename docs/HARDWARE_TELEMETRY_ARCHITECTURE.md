@@ -33,6 +33,10 @@ same snapshot contract, but this build deliberately does not add another install
 | `vr` | VR cadence | QPC wait-to-wait interval | ms | per frame | stable cadence samples |
 | `fps` | effective FPS | 1000 / rolling frame interval | fps | per frame | stable cadence samples |
 | `frame_interval` | frame interval | rolling wait-to-wait interval | ms | per frame | stable cadence samples |
+| `network_ping` | probe RTT | Windows `IcmpSendEcho` to configured IPv4 target | ms | 1 s | latest successful reply |
+| `network_loss` | rolling probe loss | failed replies / newest 20 probes | % | 1 s | first completed probe |
+| `network_jitter` | rolling probe jitter | mean absolute RTT delta between successful replies | ms | 1 s | two successful probes |
+| `network_status` | probe-path stability | latency/loss/jitter policy; OFF after 3 misses | state | 1 s | first completed probe |
 
 Samples older than two seconds become `Stale`, never zero. Unsupported providers leave their
 metric unavailable. Failure is local to that provider; rendering and the other metrics continue.

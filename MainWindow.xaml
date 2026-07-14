@@ -555,6 +555,9 @@
                         <TextBlock Text="SYS warning / critical remaining headroom" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,1"/>
                         <Slider Name="HudSysWarningSlider" Minimum="10" Maximum="60" Value="30" Tag="30" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Amber at or below this remaining-headroom percentage. Right-click to reset."/>
                         <Slider Name="HudSysCriticalSlider" Minimum="0" Maximum="30" Value="10" Tag="10" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Red at or below this remaining-headroom percentage. Right-click to reset."/>
+                        <TextBlock Text="Network probe target (IPv4)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,1"/>
+                        <TextBox Name="NetworkProbeTargetBox" Text="1.1.1.1" LostFocus="NetworkProbeTarget_Changed" ToolTip="PING/LOSS/JIT/NET measure this ICMP path. It is not automatically the game server."/>
+                        <TextBlock Text="Network widgets are off by default. Probe target changes apply next VR session." TextWrapping="Wrap" Foreground="#C08A2A" FontSize="9" Margin="0,2,0,0"/>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="PERFORMANCE GRAPH" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
                       <TextBlock Text="Visibility" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1" />

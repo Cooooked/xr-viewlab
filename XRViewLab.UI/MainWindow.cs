@@ -93,7 +93,8 @@ public partial class MainWindow : Window
 	private const string ClockWidgetScaleKey = "clock_widget_scale";
 	private const string ClockWidgetOpacityKey = "clock_widget_opacity";
 	private const string TelemetrySettingsVersionKey = "telemetry_settings_version";
-	private static readonly string[] HudWidgetIds = { "cpu", "gpu", "app", "vr", "cpu_peak", "cpu_frequency", "ram", "commit", "vram", "sys", "fps", "frame_interval" };
+	private static readonly string[] HudWidgetIds = { "cpu", "gpu", "app", "vr", "cpu_peak", "cpu_frequency", "ram", "commit", "vram", "sys", "fps", "frame_interval", "network_ping", "network_loss", "network_jitter", "network_status" };
+	private const string NetworkProbeTargetKey = "network_probe_target";
 	private static readonly string[] HudGraphChannelIds = { "frame_interval", "fps", "budget_deviation", "app_work", "wait_duration", "submit_duration", "display_period" };
 
 	// Feature 2: crosshair
@@ -167,7 +168,11 @@ public partial class MainWindow : Window
 		new() { MetricId=8, Id="vram", Label="VRAM — budget pressure", Provider="DXGI 1.4", Unit="%", ToolTip="Local video-memory use relative to the OS budget." },
 		new() { MetricId=9, Id="sys", Label="SYS — remaining headroom", Provider="ViewLab composite", Unit="%", ToolTip="Remaining capacity after the strongest valid pressure; higher is healthier." },
 		new() { MetricId=10, Id="fps", Label="FPS — effective cadence", Provider="OpenXR timing", Unit="fps", ToolTip="1000 divided by application frame interval." },
-		new() { MetricId=11, Id="frame_interval", Label="FT — frame interval", Provider="OpenXR timing", Unit="ms", ToolTip="Rolling application frame interval." }
+		new() { MetricId=11, Id="frame_interval", Label="FT — frame interval", Provider="OpenXR timing", Unit="ms", ToolTip="Rolling application frame interval." },
+		new() { MetricId=12, Id="network_ping", Label="PING — probe round trip", Provider="Windows ICMP / configured target", Unit="ms", ToolTip="Round-trip latency to the configured IPv4 probe target; not game-server latency unless that target is the game server." },
+		new() { MetricId=13, Id="network_loss", Label="LOSS — rolling probe loss", Provider="Windows ICMP / 20 probes", Unit="%", ToolTip="Failed echo probes in the rolling 20-sample window." },
+		new() { MetricId=14, Id="network_jitter", Label="JIT — rolling probe jitter", Provider="Windows ICMP / successful probes", Unit="ms", ToolTip="Mean absolute RTT change across recent successful probes." },
+		new() { MetricId=15, Id="network_status", Label="NET — probe stability", Provider="ViewLab probe state", Unit="OK/BAD/OFF", ToolTip="OK, unstable, or three consecutive missed probes. This describes the configured path, not hidden game netcode." }
 	};
 
 	private bool _loading = true;
@@ -1125,6 +1130,7 @@ public partial class MainWindow : Window
 		_hudWidgets.Clear(); foreach (HudWidgetOption widget in orderedWidgets) _hudWidgets.Add(widget);
 		HudSysWarningSlider.Value = ReadRangeSetting("hud_sys_warning", 30, 10, 60);
 		HudSysCriticalSlider.Value = ReadRangeSetting("hud_sys_critical", 10, 0, 30);
+		NetworkProbeTargetBox.Text = ReadSetting(NetworkProbeTargetKey, "1.1.1.1");
 		HudGraphModeCombo.SelectedIndex = (int)ReadRangeSetting(HudGraphModeKey, 0, 0, 3);
 		HudGraphFrameIntervalCheck.IsChecked = ReadBoolSetting("hud_graph_frame_interval", false);
 		HudGraphFpsCheck.IsChecked = ReadBoolSetting("hud_graph_fps", false);
@@ -1592,6 +1598,17 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	}
 
 	private void HudLayoutSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => HudLayout_Changed(sender, e);
+	private void NetworkProbeTarget_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading || NetworkProbeTargetBox == null) return;
+		string target=(NetworkProbeTargetBox.Text??string.Empty).Trim();
+		if (!System.Net.IPAddress.TryParse(target,out var address) || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+		{
+			StatusText.Text="Network probe target must be a numeric IPv4 address.";return;
+		}
+		WritePrivateProfileString("Settings",NetworkProbeTargetKey,target,ConfigPath);
+		StatusText.Text="Network probe target saved. Start the next VR session to apply it.";
+	}
 
 	private void HudWidgetToggle_Changed(object sender, RoutedEventArgs e) => HudLayout_Changed(sender, e);
 
@@ -2014,6 +2031,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", "hud_max_per_row", HudWidgetIds.Length.ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", "hud_sys_warning", (HudSysWarningSlider?.Value ?? 30).ToString("0",CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", "hud_sys_critical", (HudSysCriticalSlider?.Value ?? 10).ToString("0",CultureInfo.InvariantCulture), ConfigPath);
+		if (NetworkProbeTargetBox != null) WritePrivateProfileString("Settings",NetworkProbeTargetKey,(NetworkProbeTargetBox.Text??"1.1.1.1").Trim(),ConfigPath);
 		WritePrivateProfileString("Settings", HudGraphModeKey, Math.Max(0, HudGraphModeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		var graphChecks = new[] { HudGraphFrameIntervalCheck, HudGraphFpsCheck, HudGraphBudgetDeviationCheck, HudGraphAppWorkCheck, HudGraphWaitDurationCheck, HudGraphSubmitDurationCheck, HudGraphDisplayPeriodCheck };
 		for (int i = 0; i < graphChecks.Length; ++i)

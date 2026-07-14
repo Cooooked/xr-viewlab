@@ -1,5 +1,6 @@
 #include "../RenderPolicy.h"
 #include "../ClockWidget.h"
+#include "../NetworkProbe.h"
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -14,6 +15,13 @@ int main() {
     Check(Format(7, 5, 0).local == std::array<char, 6>{'0','7',':','0','5','\0'}, "clock uses fixed 24-hour local time");
     Check(Format(23, 59, 3723000).session == std::array<char, 9>{'0','1',':','0','2',':','0','3','\0'}, "session timer formats monotonic elapsed time");
     Check(Format(0, 0, 500000000).session == std::array<char, 9>{'9','9',':','5','9',':','5','9','\0'}, "session timer has a stable display cap");
+    viewlab::network::Window network;
+    auto net = network.Record(true, 20); net = network.Record(true, 30);
+    Check(net.pingMs == 30 && net.lossPercent == 0 && net.jitterMs == 10, "network probe reports RTT, loss and jitter truthfully");
+    net = network.Record(false, 0);
+    Check(net.lossPercent > 0 && net.state != viewlab::network::State::Disconnected, "one missed probe is loss, not a disconnect");
+    network.Record(false, 0); net = network.Record(false, 0);
+    Check(net.state == viewlab::network::State::Disconnected, "three consecutive misses produce a disconnect warning");
     using namespace viewlab::policy;
     Check(EffectiveGraphChannels(0, GraphFps) == GraphBudgetDeviation, "deviation mode cannot become empty");
     Check(EffectiveGraphChannels(1, GraphBudgetDeviation) == GraphFrameInterval, "milliseconds mode gains a valid channel");

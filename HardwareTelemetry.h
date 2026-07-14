@@ -7,7 +7,8 @@ namespace viewlab::telemetry {
 
 enum class MetricId : uint8_t {
     CpuUtilisation, CpuPeakCore, CpuFrequency, GpuUtilisation,
-    RamPressure, CommitPressure, VramPressure, SystemHeadroom, Count
+    RamPressure, CommitPressure, VramPressure, SystemHeadroom,
+    NetworkPing, NetworkLoss, NetworkJitter, NetworkStatus, Count
 };
 
 enum class Availability : uint8_t {
@@ -36,6 +37,8 @@ struct Snapshot {
 void Start();
 void Stop();
 void SetPreferredAdapterLuid(uint64_t luid);
+void SetNetworkProbeTarget(uint32_t ipv4NetworkOrder);
+void SetNetworkProbeEnabled(bool enabled);
 bool TryGetSnapshot(Snapshot& snapshot); // never blocks the caller
 
 } // namespace viewlab::telemetry
