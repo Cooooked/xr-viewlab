@@ -12,7 +12,7 @@ var variables = new (string Name, int Type, int Offset)[]
 {
     ("CarLeftRight", 2, 0), ("LapCompleted", 2, 4), ("LapLastLapTime", 4, 8),
     ("SessionFlags", 3, 12), ("SessionNum", 2, 16), ("SessionUniqueID", 2, 20),
-    ("LapBestLap", 2, 24), ("LapBestLapTime", 4, 28),
+    ("LapBestLap", 2, 24), ("LapBestLapTime", 4, 28), ("FuelLevelPct", 4, 32),
 };
 
 view.Write(0, 2); view.Write(4, 1); view.Write(8, 60);
@@ -27,11 +27,11 @@ for (int i = 0; i < variables.Length; i++)
 }
 
 int tick = 0;
-void Sample(int spotter = 1, int lap = 0, float lapTime = -1, uint flags = 0, int session = 1, int unique = 100, int bestLap = -1, float bestTime = -1)
+void Sample(int spotter = 1, int lap = 0, float lapTime = -1, uint flags = 0, int session = 1, int unique = 100, int bestLap = -1, float bestTime = -1, float fuelPct = 1f)
 {
     view.Write(Buffer + 0, spotter); view.Write(Buffer + 4, lap); view.Write(Buffer + 8, lapTime);
     view.Write(Buffer + 12, flags); view.Write(Buffer + 16, session); view.Write(Buffer + 20, unique);
-    view.Write(Buffer + 24, bestLap); view.Write(Buffer + 28, bestTime); view.Flush();
+    view.Write(Buffer + 24, bestLap); view.Write(Buffer + 28, bestTime); view.Write(Buffer + 32, fuelPct); view.Flush();
     view.Write(48, ++tick); view.Flush();
 }
 
@@ -122,6 +122,21 @@ Sample(lap: 2, lapTime: 89, session: 2, unique: 101, bestLap: 2, bestTime: 89);
 lap = WaitEvent(e => e.Kind == ViewLabEventKind.LapTime, "new-session lap");
 Assert(lap.SessionId == "101:2" && lap.LapNumber == 2, "new session identity is authoritative"); Drain();
 
+// Fuel warning: fires once on crossing below the default 10% threshold, and clears via hysteresis
+// (1.5x the threshold) rather than the instant it ticks back above the raw cutoff.
+Sample(lap: 2, session: 2, unique: 101, bestLap: 2, bestTime: 89, fuelPct: 0.20f); Thread.Sleep(40);
+Assert(!events.Any(e => e.Kind == ViewLabEventKind.FuelWarning), "fuel above threshold does not warn");
+Sample(lap: 2, session: 2, unique: 101, bestLap: 2, bestTime: 89, fuelPct: 0.08f);
+ViewLabEvent fuel = WaitEvent(e => e.Kind == ViewLabEventKind.FuelWarning, "fuel crossing below threshold warns once");
+Assert(Math.Abs(fuel.Value - 0.08) < 0.001, "fuel warning carries the actual fuel fraction");
+Sample(lap: 2, session: 2, unique: 101, bestLap: 2, bestTime: 89, fuelPct: 0.07f); Thread.Sleep(40);
+Assert(!events.Any(e => e.Kind == ViewLabEventKind.FuelWarning), "fuel warning does not repeat while still low");
+Sample(lap: 2, session: 2, unique: 101, bestLap: 2, bestTime: 89, fuelPct: 0.20f); Thread.Sleep(40);
+Assert(!events.Any(e => e.Kind == ViewLabEventKind.FuelWarning), "refuelling above the hysteresis band clears silently, without a card");
+Sample(lap: 2, session: 2, unique: 101, bestLap: 2, bestTime: 89, fuelPct: 0.08f);
+WaitEvent(e => e.Kind == ViewLabEventKind.FuelWarning, "fuel warning fires again after a fresh crossing");
+Drain();
+
 Sample(spotter: 99);
 WaitUntil(() => provider.Status == "Disconnected" && provider.Diagnostics.Contains("Invalid CarLeftRight"), "invalid enum fails closed");
 view.Write(52, Capacity - 8); view.Flush(); view.Write(48, ++tick); view.Flush();
@@ -148,6 +163,11 @@ WaitUntil(() => (racingView.ReadUInt32(56) & 4u) != 0 && racingView.ReadInt32(32
     "lap presentation test bypasses disabled feature gates");
 provider.Simulate("Clear");
 WaitUntil(() => racingView.ReadUInt32(56) == 0, "clear presentation removes every temporary test override");
+
+Drain();
+provider.Simulate("LowFuel");
+ViewLabEvent lowFuel = WaitEvent(e => e.Kind == ViewLabEventKind.FuelWarning, "fuel warning presentation test");
+Assert(lowFuel.IsPresentationTest && Math.Abs(lowFuel.Value - 0.08) < 0.001, "fuel warning presentation test carries a real fuel value");
 
 Console.WriteLine("iRacing shared-memory fixtures passed: SDK semantics, lifecycle safety, and non-persistent presentation overrides.");
 

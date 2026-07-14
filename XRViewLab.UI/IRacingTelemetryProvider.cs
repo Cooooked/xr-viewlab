@@ -34,6 +34,16 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
     private int _lastLap = -1;
     private double _personalBest = double.NaN;
     private string? _sessionId;
+    private bool _fuelWarningFired;
+    private double _fuelWarningThresholdPct = 0.10;
+
+    // Settable by the broker from its own settings poll; not part of the SDK layout. Clamped to a
+    // sane range so a malformed ini value can't disable the warning (0) or fire it constantly (1).
+    public double FuelWarningThresholdPct
+    {
+        get => Volatile.Read(ref _fuelWarningThresholdPct);
+        set => Volatile.Write(ref _fuelWarningThresholdPct, Math.Clamp(value, 0.01, 0.5));
+    }
 
     private readonly record struct Variable(int Type, int Offset, int Count);
 
@@ -250,6 +260,22 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         if (double.IsFinite(reportedBest) && reportedBest > 0) _personalBest = reportedBest;
         else if (double.IsFinite(lastLapTime) && lastLapTime > 0 && (!double.IsFinite(_personalBest) || lastLapTime < _personalBest)) _personalBest = lastLapTime;
         _lastLap = lap;
+
+        // FuelLevelPct is optional — absent on some cars/older SDK builds. Its absence means "no
+        // fuel data available," not zero fuel, so the warning simply never fires in that case.
+        double fuelPct = ReadValue("FuelLevelPct", buffer);
+        if (double.IsFinite(fuelPct))
+        {
+            double threshold = FuelWarningThresholdPct;
+            if (fuelPct < threshold && !_fuelWarningFired)
+            {
+                _fuelWarningFired = true;
+                Publish(new ViewLabEvent { Kind = ViewLabEventKind.FuelWarning, Value = fuelPct, SessionId = sessionId,
+                    Title = "Low fuel", Body = $"{Math.Round(fuelPct * 100)}% remaining", TimestampUtc = DateTimeOffset.UtcNow });
+            }
+            else if (fuelPct > threshold * 1.5) _fuelWarningFired = false; // hysteresis: refuelling clears the warning
+        }
+
         Diagnostics = $"tick={_lastTick}, session={sessionId}, CarLeftRight={rawSpotter}/{spotter}, LapCompleted={lap}, SessionFlags=0x{rawFlags:X}/{flag}";
     }
 
@@ -322,6 +348,7 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
     {
         _lastLap = -1; _personalBest = double.NaN; _sessionId = null;
         _spotter = (SpotterState)(-1); _flag = (RacingFlagState)(-1);
+        _fuelWarningFired = false;
     }
 
     private static string FormatLap(double seconds) => TimeSpan.FromSeconds(seconds).ToString(@"m\:ss\.fff");
@@ -344,6 +371,8 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
                 IsPresentationTest = true, SessionId = "fixture:0", Title = "Lap 12", Body = "1:34.221", Value = 94.221, TimestampUtc = DateTimeOffset.UtcNow }); break;
             case "Yellow": PublishFlag(RacingFlagState.Yellow, presentationTest: true); break;
             case "Blue": PublishFlag(RacingFlagState.Blue, presentationTest: true); break;
+            case "LowFuel": Publish(new ViewLabEvent { Kind = ViewLabEventKind.FuelWarning, Value = 0.08, SessionId = "fixture:0",
+                IsPresentationTest = true, Title = "Low fuel", Body = "8% remaining", TimestampUtc = DateTimeOffset.UtcNow }); break;
         }
         Diagnostics = "Simulated through generic event path: " + kind;
         SetStatus("Test presentation", Diagnostics);

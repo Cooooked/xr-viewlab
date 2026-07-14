@@ -19,6 +19,9 @@ internal enum ViewLabEventKind
     SpotterGlow,
     // Flag-state border: Color carries the flag colour; a full-frame border tint.
     FlagState,
+    // Low-fuel warning card: a transient card (Title = "Low fuel", Body = "8% remaining"). Fires
+    // once per threshold crossing, not every sample — Value carries the fuel fraction (0..1).
+    FuelWarning,
 }
 
 internal enum SpotterState

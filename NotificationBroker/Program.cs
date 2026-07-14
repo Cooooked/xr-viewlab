@@ -76,6 +76,8 @@ internal static class NotificationBrokerProgram
         bool racingEnabled = ReadBool("iracing_enabled", false);
         bool lapPopupEnabled = ReadBool("iracing_lap_popup", false);
         double lapDurationMs = ReadDouble("iracing_lap_duration_ms", 4500, 1000, 15000);
+        bool fuelWarningEnabled = ReadBool("iracing_fuel_warning", false);
+        racingProvider.FuelWarningThresholdPct = ReadDouble("iracing_fuel_warning_threshold_pct", 10, 1, 50) / 100.0;
         SpotterState attentionSpotter = SpotterState.Clear;
         RacingFlagState attentionFlag = RacingFlagState.Clear;
         racingProvider.DiagnosticsChanged += () =>
@@ -95,6 +97,8 @@ internal static class NotificationBrokerProgram
                     (e.IsPersonalBest ? "Personal best" : e.DeltaSeconds is double delta ? $"{delta:+0.000;-0.000;0.000} s" : string.Empty);
                 service.EnqueueEvent(new ViewLabEvent { Kind = e.Kind, Title = e.Title, Body = string.IsNullOrEmpty(suffix) ? e.Body : $"{e.Body}  {suffix}", Value = e.Value, TimestampUtc = e.TimestampUtc });
             }
+            if (e.Kind == ViewLabEventKind.FuelWarning && (fuelWarningEnabled || e.IsPresentationTest))
+                service.EnqueueEvent(e);
         });
         if (racingEnabled) racingProvider.Start(); else { racingProvider.Stop(); racingState.Clear(); }
 
@@ -115,6 +119,8 @@ internal static class NotificationBrokerProgram
             bool nextRacingEnabled = ReadBool("iracing_enabled", false);
             lapPopupEnabled = ReadBool("iracing_lap_popup", false);
             lapDurationMs = ReadDouble("iracing_lap_duration_ms", 4500, 1000, 15000);
+            fuelWarningEnabled = ReadBool("iracing_fuel_warning", false);
+            racingProvider.FuelWarningThresholdPct = ReadDouble("iracing_fuel_warning_threshold_pct", 10, 1, 50) / 100.0;
             if (nextRacingEnabled != racingEnabled)
             {
                 racingEnabled = nextRacingEnabled;
@@ -158,6 +164,7 @@ internal static class NotificationBrokerProgram
                             case "simulate-lap": racingProvider.Simulate("Lap"); break;
                             case "simulate-yellow": racingProvider.Simulate("Yellow"); break;
                             case "simulate-blue": racingProvider.Simulate("Blue"); break;
+                            case "simulate-lowfuel": racingProvider.Simulate("LowFuel"); break;
                             case "shutdown":
                                 settingsTimer.Stop(); racingProvider.Dispose(); racingState.Dispose(); mediaProvider.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
                         }

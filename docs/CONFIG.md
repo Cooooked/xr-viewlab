@@ -123,6 +123,7 @@ remain startup-owned and are never overwritten by the global live snapshot.
 | `iracing_spotter_color` | 16729344 (`FF4500`) | racing renderer | Decimal `0xRRGGBB` colour for side glows. |
 | `iracing_flag_width`, `iracing_flag_opacity` | 0.018, 0.60 | racing renderer | Inner flag-border width as eye-min-dimension fraction and alpha. Flag colour comes from the generic prioritised state. |
 | `iracing_lap_duration_ms` | 4500 | broker card queue | Lap result card lifetime, clamped to 1000–15000 ms. Independent of Windows-notification permission. |
+| `iracing_fuel_warning`, `iracing_fuel_warning_threshold_pct` | 0, 10 | iRacing provider | Fires a transient card once per crossing below the threshold, from the SDK's optional `FuelLevelPct`. Absent on cars/tracks that don't report it — no warning fires in that case. Clears via hysteresis (1.5× the threshold) rather than the instant fuel ticks back above the raw cutoff. |
 | `crop_experiment_mode` | — | — | **Removed 2026-07-11** (experimental crop-fix purge) — code and UI gone; key ignored. Root cause of the edge smear was VD fixed foveated encoding: `docs/FIXED_FOVEATION.md`. |
 | `edge_smear_fix`, `edge_smear_pixels` | — | — | **Removed 2026-07-11** — edge-guard code deleted; keys ignored. |
 | `lod_popin_fix` | 0 | — | **Removed** — code disabled; key ignored. |

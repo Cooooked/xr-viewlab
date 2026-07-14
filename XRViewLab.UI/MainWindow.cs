@@ -136,6 +136,8 @@ public partial class MainWindow : Window
 	private const string IRacingLapPopupKey = "iracing_lap_popup";
 	private const string IRacingSpotterGlowKey = "iracing_spotter_glow";
 	private const string IRacingFlagBorderKey = "iracing_flag_border";
+	private const string IRacingFuelWarningKey = "iracing_fuel_warning";
+	private const string IRacingFuelWarningThresholdKey = "iracing_fuel_warning_threshold_pct";
 	private const string IRacingSpotterWidthKey = "iracing_spotter_width";
 	private const string IRacingSpotterStrengthKey = "iracing_spotter_strength";
 	private const string IRacingSpotterOpacityKey = "iracing_spotter_opacity";
@@ -1193,6 +1195,8 @@ public partial class MainWindow : Window
 		IRacingLapPopupCheck.IsChecked = ReadBoolSetting(IRacingLapPopupKey, false);
 		IRacingSpotterGlowCheck.IsChecked = ReadBoolSetting(IRacingSpotterGlowKey, false);
 		IRacingFlagBorderCheck.IsChecked = ReadBoolSetting(IRacingFlagBorderKey, false);
+		IRacingFuelWarningCheck.IsChecked = ReadBoolSetting(IRacingFuelWarningKey, false);
+		IRacingFuelWarningThresholdSlider.Value = ReadRangeSetting(IRacingFuelWarningThresholdKey, 10.0, 1.0, 50.0);
 		IRacingSpotterWidthSlider.Value = ReadRangeSetting(IRacingSpotterWidthKey, 0.12, 0.03, 0.35);
 		IRacingSpotterStrengthSlider.Value = ReadRangeSetting(IRacingSpotterStrengthKey, 1.0, 0.1, 2.0);
 		IRacingSpotterOpacitySlider.Value = ReadRangeSetting(IRacingSpotterOpacityKey, 0.65, 0.05, 1.0);
@@ -1961,7 +1965,9 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", IRacingLapPopupKey, IRacingLapPopupCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", IRacingSpotterGlowKey, IRacingSpotterGlowCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", IRacingFlagBorderKey, IRacingFlagBorderCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", IRacingFuelWarningKey, IRacingFuelWarningCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		var c = CultureInfo.InvariantCulture;
+		WritePrivateProfileString("Settings", IRacingFuelWarningThresholdKey, IRacingFuelWarningThresholdSlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", IRacingSpotterWidthKey, IRacingSpotterWidthSlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", IRacingSpotterStrengthKey, IRacingSpotterStrengthSlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", IRacingSpotterOpacityKey, IRacingSpotterOpacitySlider.Value.ToString("0.###", c), ConfigPath);
