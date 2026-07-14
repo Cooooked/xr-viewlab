@@ -587,4 +587,16 @@ Assert-Contains 'dllmain.cpp' 'viewlab::sticky_note::Wrap' 'native note uses bou
 Assert-Contains 'MainWindow.xaml' 'Name="StickyNoteTextBox" MaxLength="120"' 'sticky note input is short and bounded'
 Assert-NotContains 'dllmain.cpp' 'NotifyCardBlock.*sticky|sticky.*NotifyCardBlock' 'sticky note must not enter the notification queue'
 
+# OBS indication uses GetRecordStatus, not process presence, and makes no capture-exclusion claim.
+foreach ($key in @('obs_indicator_enabled','obs_websocket_url','obs_websocket_password','obs_indicator_opacity','obs_indicator_thickness')) {
+    Assert-Contains 'XRViewLab.UI\MainWindow.cs' $key "UI persists $key"
+}
+Assert-Contains 'NotificationBroker\Program.cs' 'obs_indicator_enabled' 'broker owns OBS state polling'
+Assert-Contains 'XRViewLab.UI\ObsRecordingProvider.cs' 'GetRecordStatus' 'indicator queries actual OBS recording state'
+Assert-Contains 'XRViewLab.UI\ObsRecordingProvider.cs' 'Local\\\\XRViewLabObsRecordingState' 'OBS state uses a dedicated broker-to-native mapping'
+Assert-Contains 'dllmain.cpp' 'ObsRecordingActive' 'native renderer consumes OBS recording state'
+Assert-Contains 'dllmain.cpp' 'Capture exclusion is unclaimed' 'native source preserves capture-exclusion caveat'
+Assert-Contains 'MainWindow.xaml' 'Capture exclusion is unverified' 'UI does not make an untested exclusion claim'
+Assert-IniValue 'obs_indicator_enabled' '0'
+
 Write-Host 'ViewLab contract verification passed.'

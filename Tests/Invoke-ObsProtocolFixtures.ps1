@@ -1,0 +1,1 @@
+$ErrorActionPreference='Stop';dotnet run --project (Join-Path $PSScriptRoot 'ObsProtocolFixtures\ObsProtocolFixtures.csproj') -c Release;if($LASTEXITCODE-ne0){throw "OBS protocol fixtures failed: $LASTEXITCODE"}

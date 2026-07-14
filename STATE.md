@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-14
-**Current version:** 4.1.215 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.215.msi`
+**Current version:** 4.1.216 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.216.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
@@ -57,6 +57,15 @@ path. Position, angular size and opacity are configurable. A rising-edge F6–F1
 toggles visibility without entering the notification queue. Headset scale, fusion and bind validation
 remain pending.
 
+## OBS recording indicator (implemented; real OBS/headset validation pending, 2026-07-14)
+
+The medium-integrity broker can authenticate to a configured local OBS WebSocket v5 endpoint and
+poll the real `GetRecordStatus` response. Only `outputActive=true` publishes recording state to a
+dedicated mapping; process presence is not evidence. Native rendering adds restrained red corners
+with adjustable opacity/thickness. OBS was not running and port 4455 was closed during implementation,
+so live integration remains unverified. The cue is drawn into submitted eye textures and must be
+assumed visible in captures until a real game-capture/display-capture matrix proves otherwise.
+
 ## Visible visor feature backlog (ordered)
 
 1. **Clock/session timer:** base clock + elapsed session card implemented; stopwatch/countdown modes
@@ -69,8 +78,8 @@ remain pending.
    zoom/range inspection and spike summaries remain later extensions.
 5. **Sticky note:** implemented; headset validation pending. One short wrapped note with
    position/size/opacity and a show/hide bind; no note manager.
-6. **OBS indicator:** subtle recording/stream border or corner. Whether ViewLab can be excluded from
-   the captured output remains an explicit real-capture-path test question.
+6. **OBS indicator:** implemented; real OBS/headset validation pending. Authenticated recording-state
+   query and subtle red corners are wired. Capture exclusion remains explicitly unverified.
 7. **Music change card:** PC-side track-change detection feeding a brief title/artist/artwork card;
    no permanent media controls.
 8. **Failure explanation:** evidence-ranked confirmed/probable/unknown causes without invented certainty.
@@ -763,6 +772,11 @@ Remaining broader static-audit items not closed in this pass:
   `WOW6432Node` (Win32). A stray 32-bit entry in the 64-bit hive was removed 2026-07-10.
 
 ## Latest verification
+
+- OBS WebSocket v5 authentication and `GetRecordStatus` response fixtures, repository contracts and
+  native/WPF/broker builds passed on 2026-07-14. `build.ps1` produced validated x64/Win32 MSI:
+  `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.216.msi`. OBS was not running and localhost port 4455
+  was closed, so live state, headset corners and capture inclusion/exclusion remain explicitly unverified.
 
 - Sticky-note normalization/wrapping/bounds fixtures and repository contracts passed on 2026-07-14.
   `build.ps1` then built WPF, broker, signed identity, x64/Win32 native layers and validated MSI:

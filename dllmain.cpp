@@ -250,6 +250,9 @@ int stickyNoteToggleKey=VK_F7;
 bool g_stickyNoteKeyDown=false;
 std::atomic<bool> g_stickyNoteVisible{false};
 
+bool obsIndicatorEnabled=false;
+double obsIndicatorOpacity=.72,obsIndicatorThickness=.009;
+
 // ---- Generic racing presentation (iRacing is one broker-side producer) ----
 bool iracingEnabled = false, iracingLapPopup = false, iracingSpotterGlow = false, iracingFlagBorder = false;
 double iracingSpotterWidth = 0.12, iracingSpotterStrength = 1.0, iracingSpotterOpacity = 0.65, iracingSpotterFade = 1.8;
@@ -273,7 +276,7 @@ inline bool AnyCalibrationPattern() {
 // evaluated per-frame in the draw path, so the coarse gate here simply includes notifyEnabled.
 inline bool BoundaryFlashActive() { return g_boundaryDragActive || g_boundaryReleaseTick != 0; }
 inline bool TraceMarkerConfirmationActive() { return g_traceMarkerConfirmationUntil.load(std::memory_order_acquire)>GetTickCount64(); }
-inline bool AnyViewLabOverlay() { return clockWidgetEnabled || (stickyNoteEnabled&&g_stickyNoteVisible.load(std::memory_order_acquire)&&!stickyNoteText.empty()) || crosshairEnabled || notifyEnabled || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
+inline bool AnyViewLabOverlay() { return clockWidgetEnabled || obsIndicatorEnabled || (stickyNoteEnabled&&g_stickyNoteVisible.load(std::memory_order_acquire)&&!stickyNoteText.empty()) || crosshairEnabled || notifyEnabled || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
 inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || hudEnabled || hudTraceEnabled || AnyViewLabOverlay(); }
 
 uint64_t FileTimeToUint64(const FILETIME& time) {
@@ -679,6 +682,14 @@ void ConnectNotify() {
     if (!g_notify) { CloseHandle(g_notifyMap); g_notifyMap = nullptr; }
 }
 void DisconnectNotify() { if (g_notify) { UnmapViewOfFile(g_notify); g_notify = nullptr; } if (g_notifyMap) { CloseHandle(g_notifyMap); g_notifyMap = nullptr; } g_notifyNextConnectTick = 0; }
+
+#pragma pack(push,4)
+struct ObsRecordingStateBlock{uint32_t magic,version,generation,state;};
+#pragma pack(pop)
+HANDLE g_obsStateMap=nullptr;const ObsRecordingStateBlock* g_obsState=nullptr;uint64_t g_obsNextConnectTick=0;
+void ConnectObsState(){if(g_obsState)return;const uint64_t now=GetTickCount64();if(now<g_obsNextConnectTick)return;g_obsNextConnectTick=now+1000;g_obsStateMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabObsRecordingState");if(g_obsStateMap)g_obsState=(const ObsRecordingStateBlock*)MapViewOfFile(g_obsStateMap,FILE_MAP_READ,0,0,sizeof(ObsRecordingStateBlock));if(!g_obsState&&g_obsStateMap){CloseHandle(g_obsStateMap);g_obsStateMap=nullptr;}}
+bool ObsRecordingActive(){if(!obsIndicatorEnabled)return false;ConnectObsState();if(!g_obsState||g_obsState->magic!=0x314F4C56u||g_obsState->version!=1)return false;const auto first=*g_obsState;MemoryBarrier();return first.generation==g_obsState->generation&&first.state==2;}
+void DisconnectObsState(){if(g_obsState)UnmapViewOfFile(g_obsState);if(g_obsStateMap)CloseHandle(g_obsStateMap);g_obsState=nullptr;g_obsStateMap=nullptr;g_obsNextConnectTick=0;}
 
 // Generic racing presentation bridge. The producer owns simulator-specific telemetry and writes
 // generation last; native sees only stable spotter/flag/lap semantics.
@@ -2998,6 +3009,7 @@ void DrawViewLabOverlaysToTexture(
     const bool wantBoundary = boundaryAlpha > 0.001f;
     const bool wantClock = clockWidgetEnabled && clockWidgetOpacity > 0.001;
     const bool wantSticky=stickyNoteEnabled&&g_stickyNoteVisible.load(std::memory_order_acquire)&&!stickyNoteText.empty()&&stickyNoteOpacity>.001;
+    const bool wantObs=ObsRecordingActive();
     const uint64_t markerUntil=g_traceMarkerConfirmationUntil.load(std::memory_order_acquire);
     const uint32_t markerNumber=g_traceMarkerConfirmation.load(std::memory_order_acquire);
     const bool wantTraceMarker=markerNumber!=0 && markerUntil>GetTickCount64();
@@ -3007,7 +3019,7 @@ void DrawViewLabOverlaysToTexture(
     const bool wantFlag = ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
     bool wantNotify = false;
     if ((notifyEnabled || (iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u)) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 2) wantNotify = true; }
-    if (!wantBoundary && !wantClock && !wantSticky && !wantTraceMarker && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
+    if (!wantBoundary && !wantClock && !wantSticky && !wantObs && !wantTraceMarker && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
 
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
     if (texDesc.Width == 0 || texDesc.Height == 0) return;
@@ -3131,6 +3143,13 @@ void DrawViewLabOverlaysToTexture(
         rectFill(ir-th,it,ir,ib,cr,cg,cb,a);          // right
         flushFlat(cr,cg,cb,a);
     }
+
+    // OBS state comes from an authenticated local obs-websocket query in the broker. Four short
+    // corners are deliberately less intrusive than a full border. Capture exclusion is unclaimed:
+    // this is drawn into the submitted eye texture and must be treated as capturable until proven otherwise.
+    if(wantObs){const float th=std::clamp((float)obsIndicatorThickness*minDim,2.f,minDim*.04f),len=(std::max)(th*5.f,minDim*.055f),in=3.f,a=(float)obsIndicatorOpacity;
+        rectFill(l+in,t+in,l+in+len,t+in+th,1.f,.04f,.04f,a);rectFill(l+in,t+in,l+in+th,t+in+len,1.f,.04f,.04f,a);rectFill(rr_-in-len,t+in,rr_-in,t+in+th,1.f,.04f,.04f,a);rectFill(rr_-in-th,t+in,rr_-in,t+in+len,1.f,.04f,.04f,a);
+        rectFill(l+in,bb_-in-th,l+in+len,bb_-in,1.f,.04f,.04f,a);rectFill(l+in,bb_-in-len,l+in+th,bb_-in,1.f,.04f,.04f,a);rectFill(rr_-in-len,bb_-in-th,rr_-in,bb_-in,1.f,.04f,.04f,a);rectFill(rr_-in-th,bb_-in-len,rr_-in,bb_-in,1.f,.04f,.04f,a);flushFlat(1.f,.04f,.04f,a);}
 
     // A bind press earns an immediate numbered visor acknowledgement even when the live graph is
     // hidden. The same number and QPC timestamp are stored in the actual session trace.
@@ -3849,6 +3868,9 @@ void LoadConfig() {
     stickyNoteOpacity=std::clamp(ReadDoubleSetting(L"sticky_note_opacity",.85),.1,1.0);
     stickyNoteToggleKey=(int)std::clamp(ReadDoubleSetting(L"sticky_note_toggle_vk",VK_F7),1.0,255.0);
     g_stickyNoteVisible.store(stickyNoteEnabled,std::memory_order_release);g_stickyNoteKeyDown=false;
+    obsIndicatorEnabled=ReadBoolSetting(L"obs_indicator_enabled",false);
+    obsIndicatorOpacity=std::clamp(ReadDoubleSetting(L"obs_indicator_opacity",.72),.1,1.0);
+    obsIndicatorThickness=std::clamp(ReadDoubleSetting(L"obs_indicator_thickness",.009),.002,.04);
     // Generic racing presentation settings.
     iracingEnabled = ReadBoolSetting(L"iracing_enabled", false);
     iracingLapPopup = ReadBoolSetting(L"iracing_lap_popup", false);
@@ -4352,6 +4374,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
         DisconnectLiveState();
         DisconnectTelemetryConfig();
         DisconnectNotify();
+        DisconnectObsState();
         DisconnectRacingState();
     }
     g_rendererDeviceLost.store(false, std::memory_order_release);

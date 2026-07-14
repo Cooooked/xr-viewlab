@@ -64,6 +64,8 @@ internal static class NotificationBrokerProgram
         var racingState = new RacingStateService();
         var racingProvider = new IRacingTelemetryProvider();
         var mediaProvider = new MediaSessionEventProvider();
+        using var obsProvider = new ObsRecordingProvider();
+        bool obsEnabled=ReadBool("obs_indicator_enabled",false);string obsEndpoint=Read("obs_websocket_url","ws://127.0.0.1:4455"),obsPassword=Read("obs_websocket_password","");obsProvider.Update(obsEnabled,obsEndpoint,obsPassword);
         bool mediaNotifyEnabled = ReadBool("media_notify_enabled", false);
         mediaProvider.TrackChanged += info => dispatcher.BeginInvoke(() =>
         {
@@ -124,6 +126,8 @@ internal static class NotificationBrokerProgram
                 mediaNotifyEnabled = nextMediaNotifyEnabled;
                 if (mediaNotifyEnabled) mediaProvider.Start(); else mediaProvider.Stop();
             }
+            bool nextObsEnabled=ReadBool("obs_indicator_enabled",false);string nextObsEndpoint=Read("obs_websocket_url","ws://127.0.0.1:4455"),nextObsPassword=Read("obs_websocket_password","");
+            if(nextObsEnabled!=obsEnabled||nextObsEndpoint!=obsEndpoint||nextObsPassword!=obsPassword){obsEnabled=nextObsEnabled;obsEndpoint=nextObsEndpoint;obsPassword=nextObsPassword;obsProvider.Update(obsEnabled,obsEndpoint,obsPassword);}
         }, dispatcher);
         settingsTimer.Start();
 

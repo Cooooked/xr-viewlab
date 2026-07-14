@@ -115,6 +115,15 @@
       "invariants": ["one note only", "input is capped at 120 characters and native output at four lines", "visibility bind is rising-edge triggered", "note never enters notification shared memory", "both eyes use the common shared-tangent Direct/Topmost overlay path"],
       "keywords": ["sticky note", "visor note", "reminder", "show hide bind", "overlay"]
     },
+    "obsRecordingIndicator": {
+      "what": "Optional subtle native recording cue driven by authenticated real OBS WebSocket recording state",
+      "files": ["XRViewLab.UI/ObsRecordingProvider.cs", "XRViewLab.UI/ObsWebSocketProtocol.cs", "NotificationBroker/Program.cs", "dllmain.cpp", "MainWindow.xaml", "XRViewLab.UI/MainWindow.cs", "xr-viewlab.ini"],
+      "symbols": ["ObsRecordingProvider", "ObsWebSocketProtocol", "ObsRecordingActive", "ObsRecordingStateBlock", "DrawViewLabOverlaysToTexture"],
+      "tests": ["Tests/Invoke-ObsProtocolFixtures.ps1", "Tests/ObsProtocolFixtures/Program.cs", "Tests/Verify-ViewLabContracts.ps1"],
+      "docs": ["docs/ARCHITECTURE.md", "docs/CONFIG.md", "docs/DECISIONS.md#d19"],
+      "invariants": ["OBS process presence is never recording evidence", "broker uses WebSocket v5 GetRecordStatus", "native reads a generation-stable dedicated mapping", "capture exclusion is unverified and must not be claimed", "cue defaults off"],
+      "keywords": ["OBS", "recording", "obs-websocket", "GetRecordStatus", "red corners", "capture exclusion"]
+    },
     "visorOverlays": {
       "what": "Stereo visor overlays sharing HUD tangent-space anchoring: boundary flash, static CS crosshair with matching previews, real Windows notifications from an independent packaged broker, and generic events from an optional iRacing SDK provider.",
       "files": ["RenderPolicy.h", "dllmain.cpp", "MainWindow.xaml", "XRViewLab.UI/MainWindow.cs", "XRViewLab.UI/LiveStateService.cs", "XRViewLab.UI/CrosshairConfig.cs", "XRViewLab.UI/CrosshairPreview.cs", "XRViewLab.UI/NotificationBrokerClient.cs", "XRViewLab.UI/NotificationService.cs", "NotificationBroker/Program.cs", "NotificationBroker/AppxManifest.xml.template", "XRViewLab.UI/ViewLabEvents.cs", "XRViewLab.UI/IRacingTelemetryProvider.cs", "XRViewLab.UI/RacingStateService.cs", "xr-viewlab.ini"],

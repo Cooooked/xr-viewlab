@@ -157,3 +157,11 @@ The visor note is one short startup-configured string, rendered by the native co
 toggled by a rising-edge bind. Text is capped, normalized and wrapped into four lines before geometry
 is emitted. It does not enter the notification card queue and it does not grow into persistence for
 multiple notes, rich text, editing inside VR or a note-management subsystem.
+
+## D19 — OBS state is queried, and capture exclusion is unclaimed (2026-07-14)
+
+The broker uses OBS WebSocket v5 authentication and `GetRecordStatus`; an OBS process or open window
+is not recording evidence. Native consumes a tiny dedicated state mapping and draws only when OBS
+reports an active recording output. The cue is inside ViewLab's submitted-eye-texture overlay path,
+so it is expected to be capturable by some OBS sources. ViewLab must not advertise capture exclusion
+without a real source-by-source recording test.

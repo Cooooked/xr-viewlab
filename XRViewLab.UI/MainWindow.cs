@@ -129,6 +129,7 @@ public partial class MainWindow : Window
 	private const string NotifyAllowlistModeKey = "notify_allowlist_mode";
 	private const string NotifyFiltersKey = "notify_app_filters";
 	private const string MediaNotifyEnabledKey = "media_notify_enabled";
+	private const string ObsIndicatorEnabledKey="obs_indicator_enabled",ObsWebSocketUrlKey="obs_websocket_url",ObsWebSocketPasswordKey="obs_websocket_password",ObsIndicatorOpacityKey="obs_indicator_opacity",ObsIndicatorThicknessKey="obs_indicator_thickness";
 
 	// iRacing provider and generic racing presentation
 	private const string IRacingEnabledKey = "iracing_enabled";
@@ -1184,6 +1185,8 @@ public partial class MainWindow : Window
 		NotifyAllowlistModeCheck.IsChecked = ReadBoolSetting(NotifyAllowlistModeKey, false);
 		NotifyFiltersBox.Text = ReadSetting(NotifyFiltersKey, string.Empty);
 		MediaNotifyEnabledCheck.IsChecked = ReadBoolSetting(MediaNotifyEnabledKey, false);
+		ObsIndicatorEnabledCheck.IsChecked=ReadBoolSetting(ObsIndicatorEnabledKey,false);ObsWebSocketUrlBox.Text=ReadSetting(ObsWebSocketUrlKey,"ws://127.0.0.1:4455");ObsWebSocketPasswordBox.Password=ReadSetting(ObsWebSocketPasswordKey,string.Empty);
+		ObsIndicatorOpacitySlider.Value=ReadRangeSetting(ObsIndicatorOpacityKey,.72,.1,1);ObsIndicatorThicknessSlider.Value=ReadRangeSetting(ObsIndicatorThicknessKey,.009,.002,.04);
 
 		// iRacing provider and generic racing presentation
 		IRacingEnabledCheck.IsChecked = ReadBoolSetting(IRacingEnabledKey, false);
@@ -1892,7 +1895,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	// ---- Feature 3: notifications UI -----------------------------------------------------------
 	private void ApplyNotificationSettings(bool requestAccess = false)
 	{
-		if (NotifyEnabledCheck.IsChecked == true || requestAccess)
+		if (NotifyEnabledCheck.IsChecked == true || ObsIndicatorEnabledCheck.IsChecked==true || requestAccess)
 			_notificationBroker.Start(requestAccess);
 		if (NotifyStatusText != null) NotifyStatusText.Text = _notificationBroker.RefreshStatus();
 	}
@@ -1945,6 +1948,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", NotifyAllowlistModeKey, NotifyAllowlistModeCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", NotifyFiltersKey, NotifyFiltersBox.Text ?? string.Empty, ConfigPath);
 		WritePrivateProfileString("Settings", MediaNotifyEnabledKey, MediaNotifyEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings",ObsIndicatorEnabledKey,ObsIndicatorEnabledCheck.IsChecked==true?"1":"0",ConfigPath);WritePrivateProfileString("Settings",ObsWebSocketUrlKey,ObsWebSocketUrlBox.Text?.Trim()??"ws://127.0.0.1:4455",ConfigPath);WritePrivateProfileString("Settings",ObsWebSocketPasswordKey,ObsWebSocketPasswordBox.Password??string.Empty,ConfigPath);
+		WritePrivateProfileString("Settings",ObsIndicatorOpacityKey,ObsIndicatorOpacitySlider.Value.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings",ObsIndicatorThicknessKey,ObsIndicatorThicknessSlider.Value.ToString("0.###",c),ConfigPath);
 	}
 
 	// ---- iRacing integration UI ----------------------------------------------------------------

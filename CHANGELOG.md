@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased - 2026-07-14 (OBS recording indicator)
+
+- Added an optional broker-side OBS WebSocket v5 connection that authenticates locally and queries
+  `GetRecordStatus`; merely finding an OBS process does not light the cue.
+- Added subtle adjustable red visor corners while recording is active. Capture exclusion is not
+  claimed: the cue is drawn into submitted eye textures and a real OBS capture-path test is pending.
+
 ## Unreleased - 2026-07-14 (Sticky note visor widget)
 
 - Added one short native visor note with bounded four-line word wrapping, shared-binocular position,

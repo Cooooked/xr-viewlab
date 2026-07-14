@@ -695,6 +695,15 @@
                       <TextBox Name="NotifyFiltersBox" Height="34" AcceptsReturn="True" TextWrapping="Wrap" LostFocus="NotifyControl_Changed" />
                       <Button Content="Test presentation (synthetic)" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,6,0,0" Click="TestNotification_Click" ToolTip="Exercises ViewLab's real card queue and renderer without pretending a Windows notification was received." />
                       <CheckBox Name="MediaNotifyEnabledCheck" Content="Now-playing card on track change" Foreground="#A8A8A8" Margin="0,8,0,0" Checked="NotifyControl_Changed" Unchecked="NotifyControl_Changed" ToolTip="Shows a transient card with track title, artist and artwork when the OS 'Now Playing' session changes track. No transport controls." />
+                      <TextBlock Text="OBS RECORDING CUE" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,10,0,2"/>
+                      <CheckBox Name="ObsIndicatorEnabledCheck" Content="Red visor corners while OBS records" Checked="NotifyControl_Changed" Unchecked="NotifyControl_Changed"/>
+                      <TextBlock Text="Uses OBS WebSocket GetRecordStatus. Enable the server in OBS Tools → WebSocket Server Settings." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,2,0,2"/>
+                      <TextBox Name="ObsWebSocketUrlBox" Text="ws://127.0.0.1:4455" LostFocus="NotifyControl_Changed" ToolTip="Local OBS WebSocket endpoint."/>
+                      <PasswordBox Name="ObsWebSocketPasswordBox" Margin="0,3,0,0" LostFocus="NotifyControl_Changed" ToolTip="OBS WebSocket password. Stored in the local ViewLab ini; leave empty only when OBS authentication is disabled."/>
+                      <TextBlock Text="Cue opacity / thickness" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,1"/>
+                      <Slider Name="ObsIndicatorOpacitySlider" Minimum="0.1" Maximum="1" Value="0.72" Tag="0.72" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick"/>
+                      <Slider Name="ObsIndicatorThicknessSlider" Minimum="0.002" Maximum="0.04" Value="0.009" Tag="0.009" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick"/>
+                      <TextBlock Text="Capture exclusion is unverified. Because this is drawn into the submitted eye texture, assume it may appear in recordings." TextWrapping="Wrap" Foreground="#C08A2A" FontSize="9" Margin="0,3,0,0"/>
 
                       <Separator Margin="0,10,0,8" Background="{StaticResource BorderBrush}" Height="1" />
                       <!-- iRacing integration and real presentation-path controls -->

@@ -32,6 +32,8 @@
     <Compile Remove="Tests\**" />
     <Compile Remove="XRViewLab.UI\NotificationService.cs" />
     <Compile Remove="XRViewLab.UI\MediaSessionEventProvider.cs" />
+    <Compile Remove="XRViewLab.UI\ObsRecordingProvider.cs" />
+    <Compile Remove="XRViewLab.UI\ObsWebSocketProtocol.cs" />
     <Page Remove="temp_repo\**" />
     <Page Remove="ReShadeSource\**" />
     <Page Remove="backups\**" />
