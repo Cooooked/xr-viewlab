@@ -157,6 +157,8 @@ struct HudMetric { double value = 0.0; bool available = false; };
 struct HudFrameSample {
     double actualMs = 0.0, targetMs = 0.0, deviationMs = 0.0;
     double appWorkMs = 0.0, waitDurationMs = 0.0, submitDurationMs = 0.0, displayPeriodMs = 0.0;
+    int64_t qpc = 0;
+    uint32_t markerNumber = 0;
     bool overBudget = false;
 };
 HudMetric g_hudMetrics[kHudWidgetCount];
@@ -169,6 +171,19 @@ LARGE_INTEGER g_hudQpcFrequency{};
 double g_hudAppRawPercent = 0.0, g_hudAppSmoothedPercent = 0.0;
 double g_hudLastAppWorkMs = 0.0, g_hudLastWaitDurationMs = 0.0, g_hudLastSubmitDurationMs = 0.0;
 std::mutex g_hudTimingMutex;
+// The post-session recording is the same QPC sample stream used by the visor trace, retained in a
+// bounded ring for persistence at xrDestroySession. Markers are events in this stream, never log lines.
+constexpr size_t kSessionTraceCapacity = 216000; // one hour at 60 samples/s; oldest samples roll off
+std::vector<HudFrameSample> g_sessionTraceSamples;
+size_t g_sessionTraceStart = 0;
+struct PerformanceTraceMarker { uint32_t number = 0; int64_t qpc = 0; };
+std::vector<PerformanceTraceMarker> g_sessionTraceMarkers;
+int64_t g_sessionTraceStartQpc = 0;
+bool performanceTraceRecording = true, g_traceMarkerKeyDown = false;
+int performanceTraceMarkerKey = VK_F8;
+uint32_t g_pendingTraceMarker = 0, g_nextTraceMarker = 1;
+std::atomic<uint32_t> g_traceMarkerConfirmation{0};
+std::atomic<uint64_t> g_traceMarkerConfirmationUntil{0};
 // Effective application cadence detection. The app's real frame interval is the QPC time
 // between successive xrWaitFrame returns (the runtime throttles the app there, so under
 // ASW/SSW/reprojection the interval settles at an integer multiple of the display period).
@@ -248,7 +263,8 @@ inline bool AnyCalibrationPattern() {
 // Notifications are "active" only while at least one card is live in the shared queue; that is
 // evaluated per-frame in the draw path, so the coarse gate here simply includes notifyEnabled.
 inline bool BoundaryFlashActive() { return g_boundaryDragActive || g_boundaryReleaseTick != 0; }
-inline bool AnyViewLabOverlay() { return clockWidgetEnabled || crosshairEnabled || notifyEnabled || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
+inline bool TraceMarkerConfirmationActive() { return g_traceMarkerConfirmationUntil.load(std::memory_order_acquire)>GetTickCount64(); }
+inline bool AnyViewLabOverlay() { return clockWidgetEnabled || crosshairEnabled || notifyEnabled || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
 inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || hudEnabled || hudTraceEnabled || AnyViewLabOverlay(); }
 
 uint64_t FileTimeToUint64(const FILETIME& time) {
@@ -308,12 +324,13 @@ double ReadGpuAdapterUtilization(uint64_t& selectedAdapterLuid) {
 #endif
 // Frame-pacing trace samples: one per app frame interval, deviation measured against the
 // effective (cadence-aware) frame budget so the baseline is correct under half-rate modes.
-void RecordHudFrameSample(double actualMs, double targetMs) {
+void RecordHudFrameSample(double actualMs, double targetMs, int64_t qpc) {
     if (!std::isfinite(actualMs) || !std::isfinite(targetMs) || actualMs < 0.0 || targetMs <= 0.0) return;
     HudFrameSample sample{};
     sample.actualMs=actualMs; sample.targetMs=targetMs; sample.deviationMs=actualMs-targetMs;
     sample.appWorkMs=g_hudLastAppWorkMs; sample.waitDurationMs=g_hudLastWaitDurationMs;
     sample.submitDurationMs=g_hudLastSubmitDurationMs; sample.displayPeriodMs=g_hudDisplayPeriodMs;
+    sample.qpc=qpc; sample.markerNumber=g_pendingTraceMarker; g_pendingTraceMarker=0;
     sample.overBudget=actualMs > targetMs * 1.03;
     const size_t index = (g_hudFrameHistoryStart + g_hudFrameHistoryCount) % g_hudFrameHistory.size();
     if (g_hudFrameHistoryCount == g_hudFrameHistory.size()) {
@@ -322,6 +339,10 @@ void RecordHudFrameSample(double actualMs, double targetMs) {
     } else {
         g_hudFrameHistory[index] = sample;
         ++g_hudFrameHistoryCount;
+    }
+    if (performanceTraceRecording) {
+        if (g_sessionTraceSamples.size() < kSessionTraceCapacity) g_sessionTraceSamples.push_back(sample);
+        else { g_sessionTraceSamples[g_sessionTraceStart]=sample; g_sessionTraceStart=(g_sessionTraceStart+1)%kSessionTraceCapacity; }
     }
 }
 // APP workload is the application-side wall-clock window after xrBeginFrame returns and before
@@ -364,7 +385,7 @@ void UpdateHudCadence(const LARGE_INTEGER& waitStop, XrDuration displayPeriod) {
             }
             g_hudEffectiveBudgetMs = g_hudDisplayPeriodMs * g_hudCadenceMultiple;
             g_hudFrameTimeMs = g_hudFrameTimeMs > 0.0 ? g_hudFrameTimeMs * 0.8 + intervalMs * 0.2 : intervalMs;
-            RecordHudFrameSample(intervalMs, g_hudEffectiveBudgetMs);
+            RecordHudFrameSample(intervalMs, g_hudEffectiveBudgetMs, waitStop.QuadPart);
         }
     }
     g_hudLastWaitStop = waitStop;
@@ -972,6 +993,48 @@ std::filesystem::path UserDataDirectory() {
     }
 
     return localAppData / L"XR ViewLab";
+}
+
+std::filesystem::path LatestPerformanceTracePath() {
+    return UserDataDirectory() / L"PerformanceTraces" / L"latest.csv";
+}
+
+void BeginPerformanceTraceSession(int64_t startQpc) {
+    std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+    g_sessionTraceSamples.clear();
+    if (g_sessionTraceSamples.capacity() < kSessionTraceCapacity) g_sessionTraceSamples.reserve(kSessionTraceCapacity);
+    g_sessionTraceStart=0; g_sessionTraceMarkers.clear(); g_sessionTraceMarkers.reserve(256);
+    g_sessionTraceStartQpc=startQpc; g_nextTraceMarker=1; g_pendingTraceMarker=0; g_traceMarkerKeyDown=false;
+    g_traceMarkerConfirmation.store(0,std::memory_order_release);
+    g_traceMarkerConfirmationUntil.store(0,std::memory_order_release);
+}
+
+void CapturePerformanceTraceMarker(int64_t qpc) {
+    if (!performanceTraceRecording || g_sessionTraceStartQpc<=0 || g_sessionTraceMarkers.size()>=999) return;
+    const uint32_t number=g_nextTraceMarker++;
+    g_sessionTraceMarkers.push_back({number,qpc});
+    g_pendingTraceMarker=number;
+    g_traceMarkerConfirmation.store(number,std::memory_order_release);
+    g_traceMarkerConfirmationUntil.store(GetTickCount64()+1500,std::memory_order_release);
+}
+
+void SavePerformanceTraceSession() {
+    std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+    if (!performanceTraceRecording || g_sessionTraceSamples.empty() || g_sessionTraceStartQpc<=0) return;
+    std::error_code ec; const auto path=LatestPerformanceTracePath();
+    std::filesystem::create_directories(path.parent_path(),ec); if(ec)return;
+    const auto temporary=path.wstring()+L".tmp"; FILE* file=nullptr;
+    if(_wfopen_s(&file,temporary.c_str(),L"wb")!=0||!file)return;
+    LARGE_INTEGER frequency{};QueryPerformanceFrequency(&frequency);
+    fprintf(file,"ViewLabPerformanceTrace,1\nfrequency,%lld\nstart_qpc,%lld\n",
+        (long long)frequency.QuadPart,(long long)g_sessionTraceStartQpc);
+    fprintf(file,"type,sequence,qpc,elapsed_ms,actual_ms,target_ms,deviation_ms,app_ms,wait_ms,submit_ms,display_ms,marker\n");
+    const size_t count=g_sessionTraceSamples.size();
+    for(size_t i=0;i<count;++i){const auto&s=g_sessionTraceSamples[(g_sessionTraceStart+i)%count];const double elapsed=frequency.QuadPart>0?1000.0*(double)(s.qpc-g_sessionTraceStartQpc)/(double)frequency.QuadPart:0.0;
+        fprintf(file,"S,%zu,%lld,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%u\n",i+1,(long long)s.qpc,elapsed,s.actualMs,s.targetMs,s.deviationMs,s.appWorkMs,s.waitDurationMs,s.submitDurationMs,s.displayPeriodMs,s.markerNumber);}
+    for(const auto&m:g_sessionTraceMarkers){const double elapsed=frequency.QuadPart>0?1000.0*(double)(m.qpc-g_sessionTraceStartQpc)/(double)frequency.QuadPart:0.0;fprintf(file,"M,%u,%lld,%.6f,,,,,,,,%u\n",m.number,(long long)m.qpc,elapsed,m.number);}
+    fclose(file);std::filesystem::remove(path,ec);ec.clear();std::filesystem::rename(temporary,path,ec);
+    if(ec)std::filesystem::remove(temporary,ec);else Log("Performance trace: saved %zu real samples and %zu markers to %ls\n",count,g_sessionTraceMarkers.size(),path.c_str());
 }
 
 std::filesystem::path LogPath() {
@@ -2862,6 +2925,12 @@ void DrawCalibrationOverlayToTexture(
                         (std::max)(1.2f,unit*.018f)*(responsible?1.55f:1.f),style.r*traceIntensity,style.g*traceIntensity,style.b*traceIntensity);
                 }
             }
+            for(size_t i=0;i<visible;++i)if(snap.samples[base+i].markerNumber!=0){
+                const float markerX=firstX+dx*i;
+                line(markerX,traceTop,markerX,traceBottom,(std::max)(1.5f,unit*.022f),.15f*traceIntensity,1.f*traceIntensity,.92f*traceIntensity);
+                char label[16]{};snprintf(label,sizeof(label),"M%u",snap.samples[base+i].markerNumber);
+                drawText(markerX,traceTop-numberHeight-unit*.05f,label,.15f*traceIntensity,1.f*traceIntensity,.92f*traceIntensity);
+            }
         }
         }
     }
@@ -2919,13 +2988,16 @@ void DrawViewLabOverlaysToTexture(
     }
     const bool wantBoundary = boundaryAlpha > 0.001f;
     const bool wantClock = clockWidgetEnabled && clockWidgetOpacity > 0.001;
+    const uint64_t markerUntil=g_traceMarkerConfirmationUntil.load(std::memory_order_acquire);
+    const uint32_t markerNumber=g_traceMarkerConfirmation.load(std::memory_order_acquire);
+    const bool wantTraceMarker=markerNumber!=0 && markerUntil>GetTickCount64();
     const bool wantCrosshair = crosshairEnabled && crosshairAlpha > 0.001f;
     ConsumeRacingState();
     const bool wantSpotter = ((iracingEnabled && iracingSpotterGlow) || (g_racingStable.presentationFlags & 1u)) && g_racingStable.spotterState != 0;
     const bool wantFlag = ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
     bool wantNotify = false;
     if ((notifyEnabled || (iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u)) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 2) wantNotify = true; }
-    if (!wantBoundary && !wantClock && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
+    if (!wantBoundary && !wantClock && !wantTraceMarker && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
 
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
     if (texDesc.Width == 0 || texDesc.Height == 0) return;
@@ -3048,6 +3120,17 @@ void DrawViewLabOverlaysToTexture(
         rectFill(il,it,il+th,ib,cr,cg,cb,a);          // left
         rectFill(ir-th,it,ir,ib,cr,cg,cb,a);          // right
         flushFlat(cr,cg,cb,a);
+    }
+
+    // A bind press earns an immediate numbered visor acknowledgement even when the live graph is
+    // hidden. The same number and QPC timestamp are stored in the actual session trace.
+    if(wantTraceMarker){
+        const float scale=(std::max)(2.f,minDim/540.f),cx=anchorX(.5),top=anchorY(.06),cardW=42.f*scale,cardH=19.f*scale;
+        rectFill(cx-cardW*.5f,top,cx+cardW*.5f,top+cardH,.025f,.065f,.075f,.88f);flushFlat(.025f,.065f,.075f,.88f);
+        rectFill(cx-cardW*.5f,top,cx-cardW*.5f+2.f*scale,top+cardH,.15f,1.f,.92f,1.f);flushFlat(.15f,1.f,.92f,1.f);
+        static const uint8_t digits[10][5]={{7,5,5,5,7},{2,6,2,2,7},{7,1,7,4,7},{7,1,7,1,7},{5,5,7,1,1},{7,4,7,1,7},{7,4,7,5,7},{7,1,1,1,1},{7,5,7,5,7},{7,5,7,1,7}};
+        char value[8]{};snprintf(value,sizeof(value),"%u",markerNumber);const size_t n=strlen(value);float x=cx-(float)n*2.f*scale;
+        for(const char*p=value;*p;++p){const int d=*p-'0';for(int row=0;row<5;++row)for(int col=0;col<3;++col)if(d>=0&&d<=9&&(digits[d][row]&(4>>col)))rectFill(x+col*scale,top+4.f*scale+row*scale,x+(col+1)*scale,top+4.f*scale+(row+1)*scale,.15f,1.f,.92f,1.f);x+=4.f*scale;}flushFlat(.15f,1.f,.92f,1.f);
     }
 
     // Dedicated two-line clock card. The upper clock is local wall time; the lower hourglass is
@@ -3663,6 +3746,8 @@ void LoadConfig() {
     hudTraceEnabled = ReadBoolSetting(L"hud_trace_enabled", false);
     hudTraceVisibilityMode = (uint32_t)std::clamp((int)ReadDoubleSetting(L"hud_trace_visibility_mode",hudTraceEnabled?1.0:0.0),0,2);
     hudTraceEnabled = hudTraceVisibilityMode != 0;
+    performanceTraceRecording=ReadBoolSetting(L"performance_trace_recording",true);
+    performanceTraceMarkerKey=(int)std::clamp(ReadDoubleSetting(L"performance_trace_marker_vk",VK_F8),1.0,255.0);
     constexpr const wchar_t* widgetKeys[kHudWidgetCount]={L"cpu",L"gpu",L"app",L"vr",L"cpu_peak",L"cpu_frequency",L"ram",L"commit",L"vram",L"sys",L"fps",L"frame_interval",L"network_ping",L"network_loss",L"network_jitter",L"network_status"};
     hudWidgetMask=0;
     for(size_t i=0;i<kHudWidgetCount;++i){wchar_t key[80]{};swprintf_s(key,L"hud_widget_%s_enabled",widgetKeys[i]);const bool defaultOn=i==0||i==1||i==3||i==9;if(ReadBoolSetting(key,defaultOn))hudWidgetMask|=1ull<<i;}
@@ -4193,6 +4278,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
     g_topmostLayerDemanded=false;
     g_d3d11Mask.session = *session;
     g_clockSessionStartTick.store(GetTickCount64(), std::memory_order_release);
+    LARGE_INTEGER traceStart{};QueryPerformanceCounter(&traceStart);BeginPerformanceTraceSession(traceStart.QuadPart);
     const auto* d3d11Binding = reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(
         FindStructInChain(createInfo->next, XR_TYPE_GRAPHICS_BINDING_D3D11_KHR));
     viewlab::telemetry::Start();
@@ -4224,6 +4310,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
     g_topmostLayerAttempted=false;
     g_topmostLayerDemanded=false;
     if (session == g_d3d11Mask.session) {
+        SavePerformanceTraceSession();
         g_clockSessionStartTick.store(0, std::memory_order_release);
         viewlab::telemetry::Stop();
         viewlab::telemetry::SetPreferredAdapterLuid(0);
@@ -4260,6 +4347,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrWaitFrame(
         // The runtime throttles the app inside xrWaitFrame, so the wait-to-wait interval is
         // the app's true frame cadence — the input for reprojection-aware budget detection.
         UpdateHudCadence(stop, frameState->predictedDisplayPeriod);
+        const bool markerDown=(GetAsyncKeyState(performanceTraceMarkerKey)&0x8000)!=0;
+        if(markerDown&&!g_traceMarkerKeyDown)CapturePerformanceTraceMarker(stop.QuadPart);
+        g_traceMarkerKeyDown=markerDown;
     }
     return result;
 }

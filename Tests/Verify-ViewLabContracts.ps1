@@ -559,4 +559,20 @@ Assert-Contains 'MainWindow.xaml' 'CLOCK \+ SESSION' 'clock widget has dedicated
 if (Test-Path -LiteralPath (Join-Path $Root 'XRViewLab.UI\HistoryService.cs')) { throw 'Contract failed: removed technical-history service returned' }
 Assert-NotContains 'NotificationBroker\Program.cs' 'clear-history|HistoryService' 'broker no longer owns experimental generic history'
 
+# Performance markers belong to the real QPC trace from bind through post-session inspection.
+foreach ($key in @('performance_trace_recording','performance_trace_marker_vk')) {
+    Assert-Contains 'XRViewLab.UI\MainWindow.cs' $key "UI persists $key"
+    Assert-Contains 'dllmain.cpp' $key "native layer reads $key"
+}
+Assert-IniValue 'performance_trace_recording' '1'
+Assert-IniValue 'performance_trace_marker_vk' '119'
+Assert-Contains 'dllmain.cpp' 'CapturePerformanceTraceMarker\(stop\.QuadPart\)' 'bind edge is stamped with the actual xrWaitFrame QPC timestamp'
+Assert-Contains 'dllmain.cpp' 'sample\.qpc=qpc; sample\.markerNumber=g_pendingTraceMarker' 'marker is attached to the real visor trace stream'
+Assert-Contains 'dllmain.cpp' 'ViewLabPerformanceTrace,1' 'native recorder writes a versioned real-trace format'
+Assert-Contains 'dllmain.cpp' 'SavePerformanceTraceSession\(\)' 'OpenXR session lifecycle persists the trace'
+Assert-Contains 'XRViewLab.UI\PerformanceTrace.cs' 'PerformanceTraceSample' 'post-session reader consumes trace samples'
+Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml.cs' 'foreach\(var m in _trace\.Markers\)' 'post-session graph draws numbered marker events'
+Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml.cs' 'PreviousMarker_Click|NextMarker_Click' 'post-session graph supports marker navigation'
+Assert-NotContains 'dllmain.cpp' 'HistoryService.*PerformanceTrace|PerformanceTrace.*HistoryService' 'trace markers must never use generic history'
+
 Write-Host 'ViewLab contract verification passed.'

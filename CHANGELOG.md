@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased - 2026-07-14 (Real performance trace markers)
+
+- Added an F6–F12 configurable marker bind (F8 by default). Each rising edge receives an exact QPC
+  timestamp and sequence number in the native performance sample stream, plus a brief numbered visor
+  confirmation and a numbered line on the live trace.
+- Added a bounded native session recorder that atomically saves the real trace at OpenXR session end,
+  and a post-session graph that draws and navigates those same numbered marker events. Generic history
+  and notification storage are not involved.
+
 ## Unreleased - 2026-07-14 (Network HUD expansion)
 
 - Added optional PING, LOSS, JIT and NET widgets to the existing modular HUD. A bounded worker sends

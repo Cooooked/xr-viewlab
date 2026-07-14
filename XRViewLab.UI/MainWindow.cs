@@ -82,6 +82,8 @@ public partial class MainWindow : Window
 	private const string HudTraceWidthKey = "hud_trace_width";
 	private const string HudTraceHistoryKey = "hud_trace_history";
 	private const string HudTraceVisibilityKey = "hud_trace_visibility_mode";
+	private const string PerformanceTraceRecordingKey = "performance_trace_recording";
+	private const string PerformanceTraceMarkerVkKey = "performance_trace_marker_vk";
 	private const string HudAlarmOnlyKey = "hud_alarm_only";
 	private const string HudAlarmHoldKey = "hud_alarm_hold_ms";
 	private const string HudSafeMarginKey = "hud_safe_margin";
@@ -1112,6 +1114,8 @@ public partial class MainWindow : Window
 		string traceModeText = ReadSetting(HudTraceVisibilityKey, string.Empty);
 		HudTraceVisibilityCombo.SelectedIndex = int.TryParse(traceModeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int traceMode)
 			? Math.Clamp(traceMode, 0, 2) : (ReadBoolSetting(HudTraceEnabledKey, fallback: false) ? 1 : 0);
+		PerformanceTraceRecordingCheck.IsChecked = ReadBoolSetting(PerformanceTraceRecordingKey, fallback: true);
+		PerformanceTraceMarkerKeyCombo.SelectedIndex = Math.Clamp((int)ReadRangeSetting(PerformanceTraceMarkerVkKey, 119, 117, 123)-117,0,6);
 		HudXSlider.Value = ReadRangeSetting(HudAnchorXKey, 0.04, 0.0, 1.0);
 		HudYSlider.Value = ReadRangeSetting(HudAnchorYKey, 0.05, 0.0, 1.0);
 		HudScaleSlider.Value = ReadRangeSetting(HudScaleKey, 1.0, 0.15, 3.0);
@@ -2009,6 +2013,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		int traceVisibility = Math.Max(0, HudTraceVisibilityCombo.SelectedIndex);
 		WritePrivateProfileString("Settings", HudTraceVisibilityKey, traceVisibility.ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudTraceEnabledKey, traceVisibility != 0 ? "1" : "0", ConfigPath); // legacy migration key
+		WritePrivateProfileString("Settings",PerformanceTraceRecordingKey,PerformanceTraceRecordingCheck.IsChecked==true?"1":"0",ConfigPath);
+		WritePrivateProfileString("Settings",PerformanceTraceMarkerVkKey,(117+Math.Max(0,PerformanceTraceMarkerKeyCombo.SelectedIndex)).ToString(CultureInfo.InvariantCulture),ConfigPath);
 		WritePrivateProfileString("Settings", HudAnchorXKey, HudXSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudAnchorYKey, HudYSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudScaleKey, HudScaleSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
@@ -2036,6 +2042,19 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		var graphChecks = new[] { HudGraphFrameIntervalCheck, HudGraphFpsCheck, HudGraphBudgetDeviationCheck, HudGraphAppWorkCheck, HudGraphWaitDurationCheck, HudGraphSubmitDurationCheck, HudGraphDisplayPeriodCheck };
 		for (int i = 0; i < graphChecks.Length; ++i)
 			WritePrivateProfileString("Settings", $"hud_graph_{HudGraphChannelIds[i]}", graphChecks[i].IsChecked == true ? "1" : "0", ConfigPath);
+	}
+
+	private void PerformanceTraceSetting_Changed(object sender, RoutedEventArgs e)
+	{
+		if (!_loading) { SaveCalibrationSettings(); StatusText.Text="Trace marker bind applies when the next VR session starts."; }
+	}
+
+	private void OpenPerformanceTrace_Click(object sender, RoutedEventArgs e)
+	{
+		string path=Path.Combine(ConfigDirectory,"PerformanceTraces","latest.csv");
+		if(!File.Exists(path)){MessageBox.Show(this,"No completed VR-session trace exists yet. End a recorded OpenXR session first.","ViewLab performance trace",MessageBoxButton.OK,MessageBoxImage.Information);return;}
+		try { new PerformanceTraceWindow(path){Owner=this}.Show(); }
+		catch(Exception ex){MessageBox.Show(this,$"The last performance trace could not be opened:\n{ex.Message}","ViewLab performance trace",MessageBoxButton.OK,MessageBoxImage.Warning);}
 	}
 
 	private void ReShadeMenuSetting_Changed(object sender, RoutedEventArgs e) { }

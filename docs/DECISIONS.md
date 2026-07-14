@@ -141,3 +141,12 @@ scene drawing is suppressed and Topmost is appended on following frames. Literal
 continues to measure the submitted game texture. Any Topmost failure permanently selects direct for
 that session. Keep `overlay_force_direct` as an advanced diagnostic escape. The one-attempt,
 no-duplicate-transition and device-loss latches are release invariants.
+
+## D17 — Performance markers are events in the real QPC trace (2026-07-14)
+
+A marker bind is sampled on its rising edge beside successful `xrWaitFrame`, stamped with that QPC
+counter, assigned a monotonic session sequence and placed into the same native sample stream that
+feeds the visor trace. The post-session file is a versioned, bounded recording of those samples and
+marker events, written atomically at session destruction. Generic UI history, notification queues and
+human-readable logs are expressly not trace storage: they cannot preserve frame-relative timing and
+would make the graph a decorative reconstruction rather than evidence.

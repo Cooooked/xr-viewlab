@@ -87,6 +87,8 @@ remain startup-owned and are never overwritten by the global live snapshot.
 | `hud_trace_x`, `hud_trace_y` | 0.05, 0.75 | graph layout | Live graph position within the shared binocular overlap. Legacy key names are retained for migration. |
 | `hud_trace_scale`, `hud_trace_width` | 1.0, 0.42 | graph layout | Live graph height multiplier (0.25–3) and width fraction (0.1–1). |
 | `hud_trace_history` | 120 | graph history | Live sample count shown (30–600); storage is always a fixed 600-sample ring. |
+| `performance_trace_recording` | 1 | native trace recorder | Retains a bounded one-hour ring of the same QPC samples used by the visor graph and atomically writes `%LOCALAPPDATA%\XR ViewLab\PerformanceTraces\latest.csv` when the OpenXR session ends. This is independent of generic logs/history. |
+| `performance_trace_marker_vk` | 119 (F8) | native trace marker | Windows virtual-key code for a rising-edge marker bind (UI offers F6–F12). Each press receives an exact QPC timestamp, numbered visor confirmation and post-session graph marker. Read at session startup. |
 | `crosshair_offset_x`, `crosshair_offset_y` | 0, 0 | `crosshairOffsetX`, `crosshairOffsetY` | User calibration in normalized full-lens tangent coordinates. Applied to the lens-centre target before Lens Pinned clamping. |
 | `hud_alarm_only` | 0 | `hudAlarmOnly` | Hides widgets unless their sustained state is critical/unstable or within the post-recovery hold. Enabled alarming widgets pack together; the graph remains independent. |
 | `hud_alarm_hold_ms` | 1500 | `hudAlarmHoldMs` | How long a red indicator stays visible after its metric recovers (0–10000 ms). |

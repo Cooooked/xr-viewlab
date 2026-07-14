@@ -560,6 +560,12 @@
                         <TextBlock Text="Network widgets are off by default. Probe target changes apply next VR session." TextWrapping="Wrap" Foreground="#C08A2A" FontSize="9" Margin="0,2,0,0"/>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="PERFORMANCE GRAPH" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
+                      <CheckBox Name="PerformanceTraceRecordingCheck" Content="Record real session trace" IsChecked="True" Margin="0,5,0,0" Checked="PerformanceTraceSetting_Changed" Unchecked="PerformanceTraceSetting_Changed" ToolTip="Keeps a bounded native copy of the same QPC samples used by the visor graph and saves it when the OpenXR session ends."/>
+                      <TextBlock Text="Numbered marker bind" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1"/>
+                      <ComboBox Name="PerformanceTraceMarkerKeyCombo" SelectionChanged="PerformanceTraceSetting_Changed" ToolTip="Press once in VR for a numbered visor confirmation and an exact timestamp in the session trace.">
+                        <ComboBoxItem Content="F6"/><ComboBoxItem Content="F7"/><ComboBoxItem Content="F8"/><ComboBoxItem Content="F9"/><ComboBoxItem Content="F10"/><ComboBoxItem Content="F11"/><ComboBoxItem Content="F12"/>
+                      </ComboBox>
+                      <Button Content="Open last session graph" Margin="0,5,0,2" Padding="7,3" Click="OpenPerformanceTrace_Click"/>
                       <TextBlock Text="Visibility" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1" />
                       <ComboBox Name="HudTraceVisibilityCombo" SelectionChanged="HudLayout_Changed" ToolTip="Off, continuously visible, or shown only for sustained performance trouble with recovery hold and fade.">
                         <ComboBoxItem Content="Off"/><ComboBoxItem Content="Always visible"/><ComboBoxItem Content="Alarm only"/>

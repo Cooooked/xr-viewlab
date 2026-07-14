@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-14
-**Current version:** 4.1.213 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.213.msi`
+**Current version:** 4.1.214 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.214.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
@@ -39,16 +39,26 @@ thread. Three consecutive misses mark the configured path `OFF`; elevated loss, 
 `BAD`. All four widgets default off. These are truthful probe-path measurements, not inferred game-
 server statistics. Live provider reachability, headset legibility and overhead remain to validate.
 
+## Real performance trace markers (implemented; build/headset validation pending, 2026-07-14)
+
+The configurable F6–F12 bind (F8 default) now creates a rising-edge event with its exact QPC timestamp
+and sequence number inside the native sample stream used by the visor graph. A numbered visor badge
+confirms the press, the live graph retains its numbered line while in range, and a bounded one-hour
+ring is atomically written to `PerformanceTraces\latest.csv` when the OpenXR session ends. The settings
+app opens that real trace in a dedicated post-session actual-versus-target graph with previous/next
+marker navigation. No generic history or notification storage participates. The deterministic trace
+round-trip and full build pass; headset bind/legibility validation remains pending.
+
 ## Visible visor feature backlog (ordered)
 
 1. **Clock/session timer:** base clock + elapsed session card implemented; stopwatch/countdown modes
    remain a later extension after the base widget passes headset validation.
 2. **Network HUD:** implemented; headset validation pending. Optional PING/LOSS/JIT/NET widgets
    probe a labelled configurable IPv4 path once per second. They do not claim game-server telemetry.
-3. **Performance trace markers:** bind, exact timestamp, sequence, visor confirmation, real trace
-   storage and post-session graph navigation. Never route markers through generic history.
-4. **Post-session performance recording:** build the bounded recorder/viewer needed by trace markers,
-   using only metrics ViewLab actually observes; include zoom/range inspection and spike summaries.
+3. **Performance trace markers:** implemented; build/headset validation pending. Bind, exact QPC
+   timestamp, sequence, visor confirmation, real trace storage and post-session graph navigation are wired.
+4. **Post-session performance recording:** bounded actual/target recorder and marker viewer implemented;
+   zoom/range inspection and spike summaries remain later extensions.
 5. **Sticky note:** one short wrapped note with position/size/opacity and a show/hide bind; no note manager.
 6. **OBS indicator:** subtle recording/stream border or corner. Whether ViewLab can be excluded from
    the captured output remains an explicit real-capture-path test question.
@@ -744,6 +754,12 @@ Remaining broader static-audit items not closed in this pass:
   `WOW6432Node` (Win32). A stray 32-bit entry in the 64-bit hive was removed 2026-07-10.
 
 ## Latest verification
+
+- Performance-trace fixtures round-tripped real samples, exact marker timestamp/sequence and the
+  marker-to-sample association on 2026-07-14; repository and HUD contracts passed. `build.ps1` then
+  built WPF, broker, signed identity, x64/Win32 native layers and the validated MSI:
+  `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.214.msi`. In-headset bind acknowledgement and a real
+  completed-session graph remain pending headset/game validation.
 
 - Network rolling-window fixtures, the real telemetry-worker smoke test, performance-HUD contracts
   and repository contracts passed on 2026-07-14. `build.ps1` then built WPF, broker, signed identity,
