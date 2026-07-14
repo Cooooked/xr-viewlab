@@ -351,30 +351,39 @@ internal sealed class NotificationService : IDisposable
         using (var dc = dv.RenderOpen())
         {
             var panel = new Rect(0, 0, w, h);
-            dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(235, 18, 20, 24)), null, panel, 12, 12);
-            dc.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(255, 60, 200, 180)), 2), new Rect(1, 1, w - 2, h - 2), 12, 12);
+            // Restrained surface: a dim neutral panel, a slim colour accent on the leading edge
+            // instead of a full saturated ring, and a barely-there hairline for definition.
+            dc.PushClip(new RectangleGeometry(panel, 10, 10));
+            dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(238, 20, 21, 25)), null, panel);
+            dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(255, 60, 190, 170)), null, new Rect(0, 0, 3, h));
+            dc.Pop();
+            dc.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(28, 255, 255, 255)), 1), new Rect(0.5, 0.5, w - 1, h - 1), 10, 10);
 
-            double x = 12;
+            const double iconSize = 44;
+            double x = 16;
             if (icon != null)
             {
-                dc.DrawImage(icon, new Rect(12, 24, 48, 48));
-                x = 72;
+                double iconY = (h - iconSize) / 2;
+                dc.PushClip(new RectangleGeometry(new Rect(x, iconY, iconSize, iconSize), 6, 6));
+                dc.DrawImage(icon, new Rect(x, iconY, iconSize, iconSize));
+                dc.Pop();
+                x += iconSize + 12;
             }
 
             var typeface = new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
             var bodyType = new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-            var titleBrush = new SolidColorBrush(Color.FromRgb(240, 244, 248));
-            var bodyBrush = new SolidColorBrush(Color.FromRgb(176, 184, 196));
+            var titleBrush = new SolidColorBrush(Color.FromRgb(244, 246, 249));
+            var bodyBrush = new SolidColorBrush(Color.FromRgb(142, 150, 162));
 
             var t = new FormattedText(Shorten(title, 42), System.Globalization.CultureInfo.CurrentUICulture,
-                FlowDirection.LeftToRight, typeface, 16, titleBrush, 1.0) { MaxTextWidth = w - x - 12, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
-            dc.DrawText(t, new Point(x, 16));
+                FlowDirection.LeftToRight, typeface, 15.5, titleBrush, 1.0) { MaxTextWidth = w - x - 14, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
+            dc.DrawText(t, new Point(x, 22));
 
             if (!string.IsNullOrEmpty(body))
             {
                 var b = new FormattedText(Shorten(body, 120), System.Globalization.CultureInfo.CurrentUICulture,
-                    FlowDirection.LeftToRight, bodyType, 12.5, bodyBrush, 1.0) { MaxTextWidth = w - x - 12, MaxLineCount = 2, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
-                dc.DrawText(b, new Point(x, 42));
+                    FlowDirection.LeftToRight, bodyType, 12, bodyBrush, 1.0) { MaxTextWidth = w - x - 14, MaxLineCount = 2, Trimming = System.Windows.TextTrimming.CharacterEllipsis, LineHeight = 15 };
+                dc.DrawText(b, new Point(x, 46));
             }
         }
 
