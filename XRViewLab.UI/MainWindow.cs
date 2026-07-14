@@ -128,6 +128,7 @@ public partial class MainWindow : Window
 	private const string NotifyShowImageKey = "notify_show_image";
 	private const string NotifyAllowlistModeKey = "notify_allowlist_mode";
 	private const string NotifyFiltersKey = "notify_app_filters";
+	private const string MediaNotifyEnabledKey = "media_notify_enabled";
 
 	// iRacing provider and generic racing presentation
 	private const string IRacingEnabledKey = "iracing_enabled";
@@ -1182,6 +1183,7 @@ public partial class MainWindow : Window
 		NotifyShowImageCheck.IsChecked = ReadBoolSetting(NotifyShowImageKey, true);
 		NotifyAllowlistModeCheck.IsChecked = ReadBoolSetting(NotifyAllowlistModeKey, false);
 		NotifyFiltersBox.Text = ReadSetting(NotifyFiltersKey, string.Empty);
+		MediaNotifyEnabledCheck.IsChecked = ReadBoolSetting(MediaNotifyEnabledKey, false);
 
 		// iRacing provider and generic racing presentation
 		IRacingEnabledCheck.IsChecked = ReadBoolSetting(IRacingEnabledKey, false);
@@ -1942,6 +1944,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", NotifyShowImageKey, NotifyShowImageCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", NotifyAllowlistModeKey, NotifyAllowlistModeCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", NotifyFiltersKey, NotifyFiltersBox.Text ?? string.Empty, ConfigPath);
+		WritePrivateProfileString("Settings", MediaNotifyEnabledKey, MediaNotifyEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
 	}
 
 	// ---- iRacing integration UI ----------------------------------------------------------------

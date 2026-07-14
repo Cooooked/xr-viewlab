@@ -694,6 +694,7 @@
                       <TextBlock Text="App filter (comma-separated names)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,2" />
                       <TextBox Name="NotifyFiltersBox" Height="34" AcceptsReturn="True" TextWrapping="Wrap" LostFocus="NotifyControl_Changed" />
                       <Button Content="Test presentation (synthetic)" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,6,0,0" Click="TestNotification_Click" ToolTip="Exercises ViewLab's real card queue and renderer without pretending a Windows notification was received." />
+                      <CheckBox Name="MediaNotifyEnabledCheck" Content="Now-playing card on track change" Foreground="#A8A8A8" Margin="0,8,0,0" Checked="NotifyControl_Changed" Unchecked="NotifyControl_Changed" ToolTip="Shows a transient card with track title, artist and artwork when the OS 'Now Playing' session changes track. No transport controls." />
 
                       <Separator Margin="0,10,0,8" Background="{StaticResource BorderBrush}" Height="1" />
                       <!-- iRacing integration and real presentation-path controls -->
