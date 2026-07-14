@@ -608,6 +608,19 @@
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" MaxHeight="560">
                   <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Width="300">
+                      <TextBlock Text="STICKY NOTE" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <CheckBox Name="StickyNoteEnabledCheck" Content="Show one visor note" Checked="StickyNote_Changed" Unchecked="StickyNote_Changed"/>
+                      <TextBox Name="StickyNoteTextBox" MaxLength="120" Margin="0,5,0,0" LostFocus="StickyNote_Changed" ToolTip="Up to 120 characters; native rendering wraps to four short lines."/>
+                      <TextBlock Text="Show/hide bind" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1"/>
+                      <ComboBox Name="StickyNoteToggleKeyCombo" SelectionChanged="StickyNote_Changed"><ComboBoxItem Content="F6"/><ComboBoxItem Content="F7"/><ComboBoxItem Content="F8"/><ComboBoxItem Content="F9"/><ComboBoxItem Content="F10"/><ComboBoxItem Content="F11"/><ComboBoxItem Content="F12"/></ComboBox>
+                      <TextBlock Text="Position X / Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1"/>
+                      <Slider Name="StickyNoteXSlider" Minimum="0" Maximum="1" Value="0.78" Tag="0.78" ValueChanged="StickyNoteSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick"/>
+                      <Slider Name="StickyNoteYSlider" Minimum="0" Maximum="1" Value="0.22" Tag="0.22" ValueChanged="StickyNoteSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick"/>
+                      <TextBlock Text="Size / opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1"/>
+                      <Slider Name="StickyNoteScaleSlider" Minimum="0.5" Maximum="2.5" Value="1" Tag="1" ValueChanged="StickyNoteSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick"/>
+                      <Slider Name="StickyNoteOpacitySlider" Minimum="0.1" Maximum="1" Value="0.85" Tag="0.85" ValueChanged="StickyNoteSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick"/>
+                      <TextBlock Text="Settings apply at the next VR session." Foreground="#C08A2A" FontSize="9" Margin="0,3,0,0"/>
+                      <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1"/>
                       <!-- Crosshair -->
                       <TextBlock Text="STATIC CROSSHAIR" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
                       <TextBlock Text="A static, game-agnostic Counter-Strike crosshair at ViewLab's calibrated stereo centre. Dynamic spread/recoil are ignored." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,6" />

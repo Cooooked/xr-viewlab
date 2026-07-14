@@ -150,3 +150,10 @@ feeds the visor trace. The post-session file is a versioned, bounded recording o
 marker events, written atomically at session destruction. Generic UI history, notification queues and
 human-readable logs are expressly not trace storage: they cannot preserve frame-relative timing and
 would make the graph a decorative reconstruction rather than evidence.
+
+## D18 — Sticky note is one bounded native widget (2026-07-14)
+
+The visor note is one short startup-configured string, rendered by the native common overlay path and
+toggled by a rising-edge bind. Text is capped, normalized and wrapped into four lines before geometry
+is emitted. It does not enter the notification card queue and it does not grow into persistence for
+multiple notes, rich text, editing inside VR or a note-management subsystem.

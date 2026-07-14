@@ -553,7 +553,7 @@ foreach ($key in @('clock_widget_enabled','clock_widget_x','clock_widget_y','clo
 Assert-IniValue 'clock_widget_enabled' '0'
 Assert-Contains 'dllmain.cpp' 'g_clockSessionStartTick\.store\(GetTickCount64\(\)' 'session timer starts at successful OpenXR session creation'
 Assert-Contains 'dllmain.cpp' 'g_clockSessionStartTick\.store\(0' 'session timer resets at OpenXR session destruction'
-Assert-Contains 'dllmain.cpp' 'clockWidgetEnabled \|\| crosshairEnabled' 'clock participates in the common direct/topmost overlay gate'
+Assert-Contains 'dllmain.cpp' 'clockWidgetEnabled.*crosshairEnabled' 'clock participates in the common direct/topmost overlay gate'
 Assert-Contains 'dllmain.cpp' 'viewlab::clock_widget::Format' 'native renderer uses the tested clock formatter'
 Assert-Contains 'MainWindow.xaml' 'CLOCK \+ SESSION' 'clock widget has dedicated ordinary settings UI'
 if (Test-Path -LiteralPath (Join-Path $Root 'XRViewLab.UI\HistoryService.cs')) { throw 'Contract failed: removed technical-history service returned' }
@@ -574,5 +574,17 @@ Assert-Contains 'XRViewLab.UI\PerformanceTrace.cs' 'PerformanceTraceSample' 'pos
 Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml.cs' 'foreach\(var m in _trace\.Markers\)' 'post-session graph draws numbered marker events'
 Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml.cs' 'PreviousMarker_Click|NextMarker_Click' 'post-session graph supports marker navigation'
 Assert-NotContains 'dllmain.cpp' 'HistoryService.*PerformanceTrace|PerformanceTrace.*HistoryService' 'trace markers must never use generic history'
+
+# One bounded sticky note is a native visor widget, not a note manager or notification card.
+foreach ($key in @('sticky_note_enabled','sticky_note_text','sticky_note_x','sticky_note_y','sticky_note_scale','sticky_note_opacity','sticky_note_toggle_vk')) {
+    Assert-Contains 'XRViewLab.UI\MainWindow.cs' $key "UI persists $key"
+    Assert-Contains 'dllmain.cpp' $key "native layer reads $key"
+}
+Assert-IniValue 'sticky_note_enabled' '0'
+Assert-IniValue 'sticky_note_toggle_vk' '118'
+Assert-Contains 'dllmain.cpp' 'stickyDown&&!g_stickyNoteKeyDown' 'sticky note bind is rising-edge triggered'
+Assert-Contains 'dllmain.cpp' 'viewlab::sticky_note::Wrap' 'native note uses bounded tested wrapping'
+Assert-Contains 'MainWindow.xaml' 'Name="StickyNoteTextBox" MaxLength="120"' 'sticky note input is short and bounded'
+Assert-NotContains 'dllmain.cpp' 'NotifyCardBlock.*sticky|sticky.*NotifyCardBlock' 'sticky note must not enter the notification queue'
 
 Write-Host 'ViewLab contract verification passed.'

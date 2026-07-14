@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-14
-**Current version:** 4.1.214 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.214.msi`
+**Current version:** 4.1.215 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.215.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
@@ -49,6 +49,14 @@ app opens that real trace in a dedicated post-session actual-versus-target graph
 marker navigation. No generic history or notification storage participates. The deterministic trace
 round-trip and full build pass; headset bind/legibility validation remains pending.
 
+## Sticky note visor widget (implemented; headset validation pending, 2026-07-14)
+
+One optional 120-character note is normalized and word-wrapped by tested native logic into at most
+four lines, then drawn as a compact yellow card through the shared binocular Direct/Topmost overlay
+path. Position, angular size and opacity are configurable. A rising-edge F6–F12 bind (F7 default)
+toggles visibility without entering the notification queue. Headset scale, fusion and bind validation
+remain pending.
+
 ## Visible visor feature backlog (ordered)
 
 1. **Clock/session timer:** base clock + elapsed session card implemented; stopwatch/countdown modes
@@ -59,7 +67,8 @@ round-trip and full build pass; headset bind/legibility validation remains pendi
    timestamp, sequence, visor confirmation, real trace storage and post-session graph navigation are wired.
 4. **Post-session performance recording:** bounded actual/target recorder and marker viewer implemented;
    zoom/range inspection and spike summaries remain later extensions.
-5. **Sticky note:** one short wrapped note with position/size/opacity and a show/hide bind; no note manager.
+5. **Sticky note:** implemented; headset validation pending. One short wrapped note with
+   position/size/opacity and a show/hide bind; no note manager.
 6. **OBS indicator:** subtle recording/stream border or corner. Whether ViewLab can be excluded from
    the captured output remains an explicit real-capture-path test question.
 7. **Music change card:** PC-side track-change detection feeding a brief title/artist/artwork card;
@@ -754,6 +763,11 @@ Remaining broader static-audit items not closed in this pass:
   `WOW6432Node` (Win32). A stray 32-bit entry in the 64-bit hive was removed 2026-07-10.
 
 ## Latest verification
+
+- Sticky-note normalization/wrapping/bounds fixtures and repository contracts passed on 2026-07-14.
+  `build.ps1` then built WPF, broker, signed identity, x64/Win32 native layers and validated MSI:
+  `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.215.msi`. Note fusion, physical scale and the show/hide
+  bind remain pending headset validation.
 
 - Performance-trace fixtures round-tripped real samples, exact marker timestamp/sequence and the
   marker-to-sample association on 2026-07-14; repository and HUD contracts passed. `build.ps1` then

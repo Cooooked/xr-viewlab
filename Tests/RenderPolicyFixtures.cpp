@@ -1,6 +1,7 @@
 #include "../RenderPolicy.h"
 #include "../ClockWidget.h"
 #include "../NetworkProbe.h"
+#include "../StickyNote.h"
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -15,6 +16,10 @@ int main() {
     Check(Format(7, 5, 0).local == std::array<char, 6>{'0','7',':','0','5','\0'}, "clock uses fixed 24-hour local time");
     Check(Format(23, 59, 3723000).session == std::array<char, 9>{'0','1',':','0','2',':','0','3','\0'}, "session timer formats monotonic elapsed time");
     Check(Format(0, 0, 500000000).session == std::array<char, 9>{'9','9',':','5','9',':','5','9','\0'}, "session timer has a stable display cap");
+    const auto note=viewlab::sticky_note::Wrap(L"bring fuel and check the very long setup note",12);
+    Check(note.count>=2&&note.lines[0]=="BRING FUEL", "sticky note wraps words and normalizes case");
+    const auto clipped=viewlab::sticky_note::Wrap(std::wstring(140,L'X'),10);
+    Check(clipped.count==4&&clipped.lines[3].substr(clipped.lines[3].size()-3)=="...", "sticky note is bounded to four lines");
     viewlab::network::Window network;
     auto net = network.Record(true, 20); net = network.Record(true, 30);
     Check(net.pingMs == 30 && net.lossPercent == 0 && net.jitterMs == 10, "network probe reports RTT, loss and jitter truthfully");

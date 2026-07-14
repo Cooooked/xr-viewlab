@@ -100,6 +100,10 @@ remain startup-owned and are never overwritten by the global live snapshot.
 | `clock_widget_enabled` | 0 | `clockWidgetEnabled` | Enables the dedicated two-line local-clock and OpenXR-session timer visor widget. It is not a notification or performance alarm. |
 | `clock_widget_x`, `clock_widget_y` | 0.50, 0.10 | clock layout | Widget centre in the shared binocular render-area frame (0–1). Bounds are clamped to the current shared overlap. |
 | `clock_widget_scale`, `clock_widget_opacity` | 1.0, 0.82 | clock layout | Whole-widget angular scale (0.5–2.0) and card/text opacity (0.1–1.0). Values are read at OpenXR session startup. |
+| `sticky_note_enabled`, `sticky_note_text` | 0, empty | sticky note widget | Enables one native visor note. Text is capped at 120 printable characters, uppercased and word-wrapped into at most four lines; this is deliberately not a note manager or notification. |
+| `sticky_note_x`, `sticky_note_y` | 0.78, 0.22 | sticky note layout | Note centre in the shared binocular render-area frame, clamped so the card stays visible. |
+| `sticky_note_scale`, `sticky_note_opacity` | 1.0, 0.85 | sticky note layout | Angular glyph/card scale (0.5–2.5) and composited alpha (0.1–1.0). |
+| `sticky_note_toggle_vk` | 118 (F7) | sticky note bind | Windows virtual-key code for the rising-edge show/hide bind; UI offers F6–F12. The note starts visible when enabled at session creation. |
 | `crosshair_enabled` | 0 | `crosshairEnabled` | Static CS-style crosshair at the calibrated stereo centre (both eyes, zero disparity). |
 | `crosshair_size`, `crosshair_gap`, `crosshair_thickness` | 5, -2, 1 | crosshair | CS reference-pixel size, gap (may be negative), and arm thickness. One CS pixel is a fixed tangent span (`2/1080`), projected with each eye's X/Y pixels-per-tangent density and pixel-snapped; crop changes cannot alter angular size or convergence. |
 | `crosshair_dot`, `crosshair_outline`, `crosshair_outline_thickness`, `crosshair_tstyle` | 0, 1, 1, 0 | crosshair | Centre dot, black outline + its thickness, and T-style (top arm hidden). The outlined green built-in default is immediately visible when enabled; no import is required. |

@@ -2,6 +2,7 @@
 #include "HardwareTelemetry.h"
 #include "RenderPolicy.h"
 #include "ClockWidget.h"
+#include "StickyNote.h"
 
 namespace {
 constexpr const char* LayerName = "XR_APILAYER_cooooked_xrviewlab";
@@ -241,6 +242,14 @@ bool clockWidgetEnabled = false;
 double clockWidgetX = 0.50, clockWidgetY = 0.10, clockWidgetScale = 1.0, clockWidgetOpacity = 0.82;
 std::atomic<uint64_t> g_clockSessionStartTick{0};
 
+// ---- Single sticky-note visor widget ----
+bool stickyNoteEnabled=false;
+double stickyNoteX=.78,stickyNoteY=.22,stickyNoteScale=1.0,stickyNoteOpacity=.85;
+std::wstring stickyNoteText;
+int stickyNoteToggleKey=VK_F7;
+bool g_stickyNoteKeyDown=false;
+std::atomic<bool> g_stickyNoteVisible{false};
+
 // ---- Generic racing presentation (iRacing is one broker-side producer) ----
 bool iracingEnabled = false, iracingLapPopup = false, iracingSpotterGlow = false, iracingFlagBorder = false;
 double iracingSpotterWidth = 0.12, iracingSpotterStrength = 1.0, iracingSpotterOpacity = 0.65, iracingSpotterFade = 1.8;
@@ -264,7 +273,7 @@ inline bool AnyCalibrationPattern() {
 // evaluated per-frame in the draw path, so the coarse gate here simply includes notifyEnabled.
 inline bool BoundaryFlashActive() { return g_boundaryDragActive || g_boundaryReleaseTick != 0; }
 inline bool TraceMarkerConfirmationActive() { return g_traceMarkerConfirmationUntil.load(std::memory_order_acquire)>GetTickCount64(); }
-inline bool AnyViewLabOverlay() { return clockWidgetEnabled || crosshairEnabled || notifyEnabled || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
+inline bool AnyViewLabOverlay() { return clockWidgetEnabled || (stickyNoteEnabled&&g_stickyNoteVisible.load(std::memory_order_acquire)&&!stickyNoteText.empty()) || crosshairEnabled || notifyEnabled || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
 inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || hudEnabled || hudTraceEnabled || AnyViewLabOverlay(); }
 
 uint64_t FileTimeToUint64(const FILETIME& time) {
@@ -2988,6 +2997,7 @@ void DrawViewLabOverlaysToTexture(
     }
     const bool wantBoundary = boundaryAlpha > 0.001f;
     const bool wantClock = clockWidgetEnabled && clockWidgetOpacity > 0.001;
+    const bool wantSticky=stickyNoteEnabled&&g_stickyNoteVisible.load(std::memory_order_acquire)&&!stickyNoteText.empty()&&stickyNoteOpacity>.001;
     const uint64_t markerUntil=g_traceMarkerConfirmationUntil.load(std::memory_order_acquire);
     const uint32_t markerNumber=g_traceMarkerConfirmation.load(std::memory_order_acquire);
     const bool wantTraceMarker=markerNumber!=0 && markerUntil>GetTickCount64();
@@ -2997,7 +3007,7 @@ void DrawViewLabOverlaysToTexture(
     const bool wantFlag = ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
     bool wantNotify = false;
     if ((notifyEnabled || (iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u)) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 2) wantNotify = true; }
-    if (!wantBoundary && !wantClock && !wantTraceMarker && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
+    if (!wantBoundary && !wantClock && !wantSticky && !wantTraceMarker && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
 
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
     if (texDesc.Width == 0 || texDesc.Height == 0) return;
@@ -3132,6 +3142,22 @@ void DrawViewLabOverlaysToTexture(
         char value[8]{};snprintf(value,sizeof(value),"%u",markerNumber);const size_t n=strlen(value);float x=cx-(float)n*2.f*scale;
         for(const char*p=value;*p;++p){const int d=*p-'0';for(int row=0;row<5;++row)for(int col=0;col<3;++col)if(d>=0&&d<=9&&(digits[d][row]&(4>>col)))rectFill(x+col*scale,top+4.f*scale+row*scale,x+(col+1)*scale,top+4.f*scale+(row+1)*scale,.15f,1.f,.92f,1.f);x+=4.f*scale;}flushFlat(.15f,1.f,.92f,1.f);
     }
+
+    if(wantSticky){
+        const auto wrapped=viewlab::sticky_note::Wrap(stickyNoteText);if(wrapped.count){
+        const float pxPerTanX=stereo?w/(sR-sL):w*.5f,pxPerTanY=stereo?h/(sU-sD):h*.5f;
+        const float ref=(float)stickyNoteScale*(2.f/1080.f),gx=(std::max)(1.f,floorf(ref*pxPerTanX*1.65f+.5f)),gy=(std::max)(1.f,floorf(ref*pxPerTanY*1.65f+.5f));
+        size_t longest=1;for(size_t i=0;i<wrapped.count;++i)longest=(std::max)(longest,wrapped.lines[i].size());
+        const float pad=3.f*gx,cardW=pad*2+(float)(longest*6-1)*gx,cardH=pad*2+(float)wrapped.count*8.f*gy-gy;
+        float cx=anchorX(stickyNoteX),cy=anchorY(stickyNoteY);const float sharedL=stereo?xFromTan(oL):(float)l,sharedR=stereo?xFromTan(oR):(float)rr_,sharedT=stereo?yFromTan(oU):(float)t,sharedB=stereo?yFromTan(oD):(float)bb_;
+        cx=sharedR-sharedL>cardW?std::clamp(cx,sharedL+cardW*.5f,sharedR-cardW*.5f):(sharedL+sharedR)*.5f;cy=sharedB-sharedT>cardH?std::clamp(cy,sharedT+cardH*.5f,sharedB-cardH*.5f):(sharedT+sharedB)*.5f;
+        const float x0=cx-cardW*.5f,y0=cy-cardH*.5f,a=(float)stickyNoteOpacity;
+        rectFill(x0,y0,x0+cardW,y0+cardH,.94f,.76f,.28f,.92f*a);flushFlat(.94f,.76f,.28f,.92f*a);rectFill(x0,y0,x0+cardW,y0+gy,.35f,.24f,.06f,.32f*a);flushFlat(.35f,.24f,.06f,.32f*a);
+        static const uint8_t font[36][7]={
+          {14,17,19,21,25,17,14},{4,12,4,4,4,4,14},{14,17,1,2,4,8,31},{30,1,1,14,1,1,30},{2,6,10,18,31,2,2},{31,16,30,1,1,17,14},{6,8,16,30,17,17,14},{31,1,2,4,8,8,8},{14,17,17,14,17,17,14},{14,17,17,15,1,2,12},
+          {14,17,17,31,17,17,17},{30,17,17,30,17,17,30},{14,17,16,16,16,17,14},{30,17,17,17,17,17,30},{31,16,16,30,16,16,31},{31,16,16,30,16,16,16},{14,17,16,23,17,17,15},{17,17,17,31,17,17,17},{14,4,4,4,4,4,14},{7,2,2,2,2,18,12},{17,18,20,24,20,18,17},{16,16,16,16,16,16,31},{17,27,21,21,17,17,17},{17,25,21,19,17,17,17},{14,17,17,17,17,17,14},{30,17,17,30,16,16,16},{14,17,17,17,21,18,13},{30,17,17,30,20,18,17},{15,16,16,14,1,1,30},{31,4,4,4,4,4,4},{17,17,17,17,17,17,14},{17,17,17,17,17,10,4},{17,17,17,21,21,21,10},{17,17,10,4,10,17,17},{17,17,10,4,4,4,4},{31,1,2,4,8,16,31}};
+        float ty=y0+pad;for(size_t rowIndex=0;rowIndex<wrapped.count;++rowIndex){float tx=x0+pad;for(char c:wrapped.lines[rowIndex]){int gi=c>='0'&&c<='9'?c-'0':c>='A'&&c<='Z'?10+c-'A':-1;if(gi>=0)for(int row=0;row<7;++row)for(int col=0;col<5;++col)if(font[gi][row]&(16>>col))rectFill(tx+col*gx,ty+row*gy,tx+(col+1)*gx,ty+(row+1)*gy,.08f,.065f,.035f,.95f*a);else{}else if(c=='.')rectFill(tx+2*gx,ty+6*gy,tx+3*gx,ty+7*gy,.08f,.065f,.035f,.95f*a);else if(c=='!'){rectFill(tx+2*gx,ty,tx+3*gx,ty+5*gy,.08f,.065f,.035f,.95f*a);rectFill(tx+2*gx,ty+6*gy,tx+3*gx,ty+7*gy,.08f,.065f,.035f,.95f*a);}tx+=6*gx;}ty+=8*gy;}flushFlat(.08f,.065f,.035f,.95f*a);
+        }}
 
     // Dedicated two-line clock card. The upper clock is local wall time; the lower hourglass is
     // monotonic time since this OpenXR session was created. It never enters the notification queue.
@@ -3815,6 +3841,14 @@ void LoadConfig() {
     clockWidgetY = std::clamp(ReadDoubleSetting(L"clock_widget_y", 0.10), 0.0, 1.0);
     clockWidgetScale = std::clamp(ReadDoubleSetting(L"clock_widget_scale", 1.0), 0.50, 2.0);
     clockWidgetOpacity = std::clamp(ReadDoubleSetting(L"clock_widget_opacity", 0.82), 0.10, 1.0);
+    stickyNoteEnabled=ReadBoolSetting(L"sticky_note_enabled",false);
+    stickyNoteText=ReadStringSetting(L"sticky_note_text",L"");
+    stickyNoteX=std::clamp(ReadDoubleSetting(L"sticky_note_x",.78),0.0,1.0);
+    stickyNoteY=std::clamp(ReadDoubleSetting(L"sticky_note_y",.22),0.0,1.0);
+    stickyNoteScale=std::clamp(ReadDoubleSetting(L"sticky_note_scale",1.0),.5,2.5);
+    stickyNoteOpacity=std::clamp(ReadDoubleSetting(L"sticky_note_opacity",.85),.1,1.0);
+    stickyNoteToggleKey=(int)std::clamp(ReadDoubleSetting(L"sticky_note_toggle_vk",VK_F7),1.0,255.0);
+    g_stickyNoteVisible.store(stickyNoteEnabled,std::memory_order_release);g_stickyNoteKeyDown=false;
     // Generic racing presentation settings.
     iracingEnabled = ReadBoolSetting(L"iracing_enabled", false);
     iracingLapPopup = ReadBoolSetting(L"iracing_lap_popup", false);
@@ -4350,6 +4384,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrWaitFrame(
         const bool markerDown=(GetAsyncKeyState(performanceTraceMarkerKey)&0x8000)!=0;
         if(markerDown&&!g_traceMarkerKeyDown)CapturePerformanceTraceMarker(stop.QuadPart);
         g_traceMarkerKeyDown=markerDown;
+        const bool stickyDown=(GetAsyncKeyState(stickyNoteToggleKey)&0x8000)!=0;
+        if(stickyDown&&!g_stickyNoteKeyDown&&stickyNoteEnabled)g_stickyNoteVisible.store(!g_stickyNoteVisible.load(std::memory_order_acquire),std::memory_order_release);
+        g_stickyNoteKeyDown=stickyDown;
     }
     return result;
 }

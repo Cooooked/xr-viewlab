@@ -106,6 +106,15 @@
       "invariants": ["elapsed time uses monotonic uptime and never wall-clock subtraction", "the epoch is successful xrCreateSession and resets at xrDestroySession", "the widget is independent of notifications and performance alarms", "both eyes use the common shared-tangent Direct/Topmost overlay path"],
       "keywords": ["clock", "local time", "VR session", "session timer", "elapsed", "visor widget"]
     },
+    "stickyNoteWidget": {
+      "what": "One bounded native visor note with shared-binocular placement and an edge-triggered visibility bind",
+      "files": ["StickyNote.h", "dllmain.cpp", "MainWindow.xaml", "XRViewLab.UI/MainWindow.cs", "xr-viewlab.ini"],
+      "symbols": ["viewlab::sticky_note::Wrap", "stickyNoteEnabled", "g_stickyNoteVisible", "DrawViewLabOverlaysToTexture", "XRViewLab_xrWaitFrame", "StickyNote_Changed"],
+      "tests": ["Tests/RenderPolicyFixtures.cpp", "Tests/Invoke-RenderPolicyFixtures.ps1", "Tests/Verify-ViewLabContracts.ps1"],
+      "docs": ["docs/ARCHITECTURE.md", "docs/CONFIG.md", "docs/DECISIONS.md#d18"],
+      "invariants": ["one note only", "input is capped at 120 characters and native output at four lines", "visibility bind is rising-edge triggered", "note never enters notification shared memory", "both eyes use the common shared-tangent Direct/Topmost overlay path"],
+      "keywords": ["sticky note", "visor note", "reminder", "show hide bind", "overlay"]
+    },
     "visorOverlays": {
       "what": "Stereo visor overlays sharing HUD tangent-space anchoring: boundary flash, static CS crosshair with matching previews, real Windows notifications from an independent packaged broker, and generic events from an optional iRacing SDK provider.",
       "files": ["RenderPolicy.h", "dllmain.cpp", "MainWindow.xaml", "XRViewLab.UI/MainWindow.cs", "XRViewLab.UI/LiveStateService.cs", "XRViewLab.UI/CrosshairConfig.cs", "XRViewLab.UI/CrosshairPreview.cs", "XRViewLab.UI/NotificationBrokerClient.cs", "XRViewLab.UI/NotificationService.cs", "NotificationBroker/Program.cs", "NotificationBroker/AppxManifest.xml.template", "XRViewLab.UI/ViewLabEvents.cs", "XRViewLab.UI/IRacingTelemetryProvider.cs", "XRViewLab.UI/RacingStateService.cs", "xr-viewlab.ini"],

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased - 2026-07-14 (Sticky note visor widget)
+
+- Added one short native visor note with bounded four-line word wrapping, shared-binocular position,
+  angular size and opacity controls. It remains independent of notification cards.
+- Added an F6–F12 configurable rising-edge show/hide bind (F7 default). The note starts visible when
+  enabled and settings are applied at the next OpenXR session.
+
 ## Unreleased - 2026-07-14 (Real performance trace markers)
 
 - Added an F6–F12 configurable marker bind (F8 by default). Each rising edge receives an exact QPC

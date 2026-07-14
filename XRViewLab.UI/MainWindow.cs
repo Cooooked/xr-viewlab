@@ -94,6 +94,7 @@ public partial class MainWindow : Window
 	private const string ClockWidgetYKey = "clock_widget_y";
 	private const string ClockWidgetScaleKey = "clock_widget_scale";
 	private const string ClockWidgetOpacityKey = "clock_widget_opacity";
+	private const string StickyNoteEnabledKey="sticky_note_enabled",StickyNoteTextKey="sticky_note_text",StickyNoteXKey="sticky_note_x",StickyNoteYKey="sticky_note_y",StickyNoteScaleKey="sticky_note_scale",StickyNoteOpacityKey="sticky_note_opacity",StickyNoteToggleVkKey="sticky_note_toggle_vk";
 	private const string TelemetrySettingsVersionKey = "telemetry_settings_version";
 	private static readonly string[] HudWidgetIds = { "cpu", "gpu", "app", "vr", "cpu_peak", "cpu_frequency", "ram", "commit", "vram", "sys", "fps", "frame_interval", "network_ping", "network_loss", "network_jitter", "network_status" };
 	private const string NetworkProbeTargetKey = "network_probe_target";
@@ -1110,6 +1111,10 @@ public partial class MainWindow : Window
 		ClockWidgetYSlider.Value = ReadRangeSetting(ClockWidgetYKey, 0.10, 0.0, 1.0);
 		ClockWidgetScaleSlider.Value = ReadRangeSetting(ClockWidgetScaleKey, 1.0, 0.50, 2.0);
 		ClockWidgetOpacitySlider.Value = ReadRangeSetting(ClockWidgetOpacityKey, 0.82, 0.10, 1.0);
+		StickyNoteEnabledCheck.IsChecked=ReadBoolSetting(StickyNoteEnabledKey,false);StickyNoteTextBox.Text=ReadSetting(StickyNoteTextKey,string.Empty);
+		StickyNoteXSlider.Value=ReadRangeSetting(StickyNoteXKey,.78,0,1);StickyNoteYSlider.Value=ReadRangeSetting(StickyNoteYKey,.22,0,1);
+		StickyNoteScaleSlider.Value=ReadRangeSetting(StickyNoteScaleKey,1,.5,2.5);StickyNoteOpacitySlider.Value=ReadRangeSetting(StickyNoteOpacityKey,.85,.1,1);
+		StickyNoteToggleKeyCombo.SelectedIndex=Math.Clamp((int)ReadRangeSetting(StickyNoteToggleVkKey,118,117,123)-117,0,6);
 		HudEnabledCheck.IsChecked = ReadBoolSetting(HudEnabledKey, fallback: false);
 		string traceModeText = ReadSetting(HudTraceVisibilityKey, string.Empty);
 		HudTraceVisibilityCombo.SelectedIndex = int.TryParse(traceModeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int traceMode)
@@ -2043,6 +2048,17 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		for (int i = 0; i < graphChecks.Length; ++i)
 			WritePrivateProfileString("Settings", $"hud_graph_{HudGraphChannelIds[i]}", graphChecks[i].IsChecked == true ? "1" : "0", ConfigPath);
 	}
+
+	private void StickyNote_Changed(object sender,RoutedEventArgs e)
+	{
+		if(_loading||StickyNoteEnabledCheck==null)return;Directory.CreateDirectory(ConfigDirectory);
+		WritePrivateProfileString("Settings",StickyNoteEnabledKey,StickyNoteEnabledCheck.IsChecked==true?"1":"0",ConfigPath);
+		WritePrivateProfileString("Settings",StickyNoteTextKey,(StickyNoteTextBox.Text??string.Empty).Replace("\r"," ").Replace("\n"," ").Trim(),ConfigPath);
+		WritePrivateProfileString("Settings",StickyNoteXKey,StickyNoteXSlider.Value.ToString("0.###",CultureInfo.InvariantCulture),ConfigPath);WritePrivateProfileString("Settings",StickyNoteYKey,StickyNoteYSlider.Value.ToString("0.###",CultureInfo.InvariantCulture),ConfigPath);
+		WritePrivateProfileString("Settings",StickyNoteScaleKey,StickyNoteScaleSlider.Value.ToString("0.###",CultureInfo.InvariantCulture),ConfigPath);WritePrivateProfileString("Settings",StickyNoteOpacityKey,StickyNoteOpacitySlider.Value.ToString("0.###",CultureInfo.InvariantCulture),ConfigPath);
+		WritePrivateProfileString("Settings",StickyNoteToggleVkKey,(117+Math.Max(0,StickyNoteToggleKeyCombo.SelectedIndex)).ToString(CultureInfo.InvariantCulture),ConfigPath);StatusText.Text="Sticky note saved. Start the next VR session to apply it.";
+	}
+	private void StickyNoteSlider_Changed(object sender,RoutedPropertyChangedEventArgs<double> e)=>StickyNote_Changed(sender,e);
 
 	private void PerformanceTraceSetting_Changed(object sender, RoutedEventArgs e)
 	{
