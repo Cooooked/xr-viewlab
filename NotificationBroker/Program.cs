@@ -64,7 +64,7 @@ internal static class NotificationBrokerProgram
         var racingState = new RacingStateService();
         var racingProvider = new IRacingTelemetryProvider();
         var mediaProvider = new MediaSessionEventProvider();
-        using var obsProvider = new ObsRecordingProvider();
+        var obsProvider = new ObsRecordingProvider();
         bool obsEnabled=ReadBool("obs_indicator_enabled",false);string obsEndpoint=Read("obs_websocket_url","ws://127.0.0.1:4455"),obsPassword=Read("obs_websocket_password","");obsProvider.Update(obsEnabled,obsEndpoint,obsPassword);
         bool mediaNotifyEnabled = ReadBool("media_notify_enabled", false);
         mediaProvider.TrackChanged += info => dispatcher.BeginInvoke(() =>
@@ -166,7 +166,7 @@ internal static class NotificationBrokerProgram
                             case "simulate-blue": racingProvider.Simulate("Blue"); break;
                             case "simulate-lowfuel": racingProvider.Simulate("LowFuel"); break;
                             case "shutdown":
-                                settingsTimer.Stop(); racingProvider.Dispose(); racingState.Dispose(); mediaProvider.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
+                                settingsTimer.Stop(); racingProvider.Dispose(); racingState.Dispose(); mediaProvider.Dispose(); obsProvider.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
                         }
                     });
                     if (received == "shutdown") return;
