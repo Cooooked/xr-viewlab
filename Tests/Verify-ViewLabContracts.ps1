@@ -599,4 +599,11 @@ Assert-Contains 'dllmain.cpp' 'Capture exclusion is unclaimed' 'native source pr
 Assert-Contains 'MainWindow.xaml' 'Capture exclusion is unverified' 'UI does not make an untested exclusion claim'
 Assert-IniValue 'obs_indicator_enabled' '0'
 
+Assert-Contains 'XRViewLab.UI\MediaSessionEventProvider.cs' 'GlobalSystemMediaTransportControlsSessionManager' 'music provider uses Windows Now Playing state'
+Assert-Contains 'XRViewLab.UI\MediaSessionEventProvider.cs' '_manager\.CurrentSessionChanged \+= OnCurrentSessionChanged' 'music provider registers a stable session-change handler'
+Assert-Contains 'XRViewLab.UI\MediaSessionEventProvider.cs' '_manager\.CurrentSessionChanged -= OnCurrentSessionChanged' 'music provider unregisters the exact handler'
+Assert-Contains 'NotificationBroker\Program.cs' 'EnqueueMediaCard' 'track changes enter the brief notification card pipeline'
+Assert-NotContains 'XRViewLab.UI\MediaSessionEventProvider.cs' 'TryPlayAsync|TryPauseAsync|TrySkipNextAsync|TrySkipPreviousAsync' 'music feature has no transport controls'
+Assert-IniValue 'media_notify_enabled' '0'
+
 Write-Host 'ViewLab contract verification passed.'

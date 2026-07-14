@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased - 2026-07-14 (Music track-change card completion)
+
+- Completed the opt-in Windows Now Playing (SMTC) provider for brief title/artist/artwork cards with
+  no permanent controls and deduplication across pause, seek and volume changes.
+- Corrected the provider lifecycle to unsubscribe the exact session-change handler on stop, allowing
+  clean broker reconfiguration without retained duplicate callbacks.
+
 ## Unreleased - 2026-07-14 (OBS recording indicator)
 
 - Added an optional broker-side OBS WebSocket v5 connection that authenticates locally and queries

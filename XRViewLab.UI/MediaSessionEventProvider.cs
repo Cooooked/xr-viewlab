@@ -32,7 +32,7 @@ internal sealed class MediaSessionEventProvider : IDisposable
         try
         {
             _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
-            _manager.CurrentSessionChanged += (_, _) => AttachCurrentSession();
+            _manager.CurrentSessionChanged += OnCurrentSessionChanged;
             AttachCurrentSession();
             Status = "Media session watcher active.";
         }
@@ -46,7 +46,7 @@ internal sealed class MediaSessionEventProvider : IDisposable
     public void Stop()
     {
         if (_session != null) { _session.MediaPropertiesChanged -= OnPropertiesChanged; _session = null; }
-        if (_manager != null) _manager.CurrentSessionChanged -= (_, _) => AttachCurrentSession();
+        if (_manager != null) _manager.CurrentSessionChanged -= OnCurrentSessionChanged;
         _manager = null;
         _lastKey = null;
         _started = false;
@@ -63,6 +63,8 @@ internal sealed class MediaSessionEventProvider : IDisposable
             _ = RefreshAsync();
         }
     }
+
+    private void OnCurrentSessionChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args) => AttachCurrentSession();
 
     private void OnPropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args) => _ = RefreshAsync();
 

@@ -165,3 +165,10 @@ is not recording evidence. Native consumes a tiny dedicated state mapping and dr
 reports an active recording output. The cue is inside ViewLab's submitted-eye-texture overlay path,
 so it is expected to be capturable by some OBS sources. ViewLab must not advertise capture exclusion
 without a real source-by-source recording test.
+
+## D20 — Music is an event card, not a media controller (2026-07-14)
+
+Use Windows SMTC's current-session and media-properties events outside the game. Emit only when the
+trimmed title+artist key changes, include artwork when available, and reuse the brief notification-card
+pipeline. Do not add polling fallback, playback controls, a permanent now-playing widget or repeated
+cards for seek/pause/volume events. Provider lifecycle must unsubscribe the exact registered delegate.

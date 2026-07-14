@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-14
-**Current version:** 4.1.216 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.216.msi`
+**Current version:** 4.1.217 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.217.msi`
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
@@ -66,6 +66,14 @@ with adjustable opacity/thickness. OBS was not running and port 4455 was closed 
 so live integration remains unverified. The cue is drawn into submitted eye textures and must be
 assumed visible in captures until a real game-capture/display-capture matrix proves otherwise.
 
+## Music track-change notification (implemented; live player/headset validation pending, 2026-07-14)
+
+The broker's opt-in Windows SMTC provider follows the current OS Now Playing session, deduplicates on
+trimmed title+artist, decodes optional artwork and emits a brief card through the existing notification
+pipeline only when the track changes. Pause, seek and volume changes do not replay it; there are no
+permanent transport controls. The provider now retains the exact session-change handler so stop/restart
+unsubscribes correctly. Dedup fixtures and broker builds pass; a live player/artwork/headset pass remains.
+
 ## Visible visor feature backlog (ordered)
 
 1. **Clock/session timer:** base clock + elapsed session card implemented; stopwatch/countdown modes
@@ -80,8 +88,8 @@ assumed visible in captures until a real game-capture/display-capture matrix pro
    position/size/opacity and a show/hide bind; no note manager.
 6. **OBS indicator:** implemented; real OBS/headset validation pending. Authenticated recording-state
    query and subtle red corners are wired. Capture exclusion remains explicitly unverified.
-7. **Music change card:** PC-side track-change detection feeding a brief title/artist/artwork card;
-   no permanent media controls.
+7. **Music change card:** implemented; live player/headset validation pending. PC-side track-change
+   detection feeds a brief title/artist/artwork card with no permanent media controls.
 8. **Failure explanation:** evidence-ranked confirmed/probable/unknown causes without invented certainty.
 9. **Incremental iRacing modules:** fuel/laps/position/incidents/pit/delta/relatives one at a time;
    isolated logic tests only until the user's broken finger permits driving validation.
@@ -772,6 +780,11 @@ Remaining broader static-audit items not closed in this pass:
   `WOW6432Node` (Win32). A stray 32-bit entry in the 64-bit hive was removed 2026-07-10.
 
 ## Latest verification
+
+- Music dedup/lifecycle contracts and fixtures passed on 2026-07-14. `build.ps1` then built WPF,
+  broker, signed identity, x64/Win32 native layers and validated MSI:
+  `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.217.msi`. A real SMTC player, artwork decode and brief
+  headset card remain pending live validation.
 
 - OBS WebSocket v5 authentication and `GetRecordStatus` response fixtures, repository contracts and
   native/WPF/broker builds passed on 2026-07-14. `build.ps1` produced validated x64/Win32 MSI:

@@ -124,6 +124,15 @@
       "invariants": ["OBS process presence is never recording evidence", "broker uses WebSocket v5 GetRecordStatus", "native reads a generation-stable dedicated mapping", "capture exclusion is unverified and must not be claimed", "cue defaults off"],
       "keywords": ["OBS", "recording", "obs-websocket", "GetRecordStatus", "red corners", "capture exclusion"]
     },
+    "musicTrackChange": {
+      "what": "Opt-in brief title, artist and artwork card emitted only when the Windows Now Playing track changes",
+      "files": ["XRViewLab.UI/MediaSessionEventProvider.cs", "XRViewLab.UI/NotificationService.cs", "NotificationBroker/Program.cs", "MainWindow.xaml", "XRViewLab.UI/MainWindow.cs", "xr-viewlab.ini"],
+      "symbols": ["MediaSessionEventProvider", "MediaTrackInfo", "TrackKey", "EnqueueMediaCard", "OnCurrentSessionChanged"],
+      "tests": ["Tests/Invoke-MediaSessionFixtures.ps1", "Tests/MediaSessionFixtures/Program.cs", "Tests/Verify-ViewLabContracts.ps1"],
+      "docs": ["docs/ARCHITECTURE.md", "docs/CONFIG.md", "docs/DECISIONS.md#d20"],
+      "invariants": ["opt-in and default off", "unchanged title plus artist never replays a card", "pause seek and volume changes do not emit", "artwork is optional", "no transport controls or permanent widget", "start and stop use the same named event handler"],
+      "keywords": ["music", "track change", "SMTC", "Now Playing", "title", "artist", "artwork"]
+    },
     "visorOverlays": {
       "what": "Stereo visor overlays sharing HUD tangent-space anchoring: boundary flash, static CS crosshair with matching previews, real Windows notifications from an independent packaged broker, and generic events from an optional iRacing SDK provider.",
       "files": ["RenderPolicy.h", "dllmain.cpp", "MainWindow.xaml", "XRViewLab.UI/MainWindow.cs", "XRViewLab.UI/LiveStateService.cs", "XRViewLab.UI/CrosshairConfig.cs", "XRViewLab.UI/CrosshairPreview.cs", "XRViewLab.UI/NotificationBrokerClient.cs", "XRViewLab.UI/NotificationService.cs", "NotificationBroker/Program.cs", "NotificationBroker/AppxManifest.xml.template", "XRViewLab.UI/ViewLabEvents.cs", "XRViewLab.UI/IRacingTelemetryProvider.cs", "XRViewLab.UI/RacingStateService.cs", "xr-viewlab.ini"],
