@@ -71,7 +71,7 @@ and live visor adjustments take effect without INI I/O on the render path.
 | Config read (ini) | `LoadConfig`, `ReadBoolSetting`, `ReadDoubleSetting`, `ReadStringSetting` |
 | Config read (per-app registry) | `ReadProfileDword`, `ReadProfileDouble`, `SignedMillisToUnit` (encoding: signed = (v+1)*1000, unsigned = v*1000) |
 | FOV / resolution crop (the perf feature) | `XRViewLab_xrLocateViews` (crops FOV tangents), `XRViewLab_xrEnumerateViewConfigurationViews` (reduces recommended size) |
-| Crop-boundary diagnostics | `LocateViewsSnapshot`, `StoreLocateViewsSnapshot`, `TakeLocateViewsSnapshot`, `ValidateSubImage` (read-only exact session/display-time submission comparison) |
+| Renderer pipeline diagnostics | `LocateViewsEvidence`, `XRViewLab_xrCreateReferenceSpace`, `XRViewLab_xrWaitFrame`, `XRViewLab_xrBeginFrame`, `XRViewLab_xrLocateViews`, swapchain acquire/wait/release hooks and `XRViewLab_xrEndFrame`. Bounded verbose `PIPE` records correlate predicted display time, QPC timing, reference-space identity/type, original/cropped locate poses and FOV, submitted layer/view poses and FOV, sub-images, swapchain image lifecycle, prior-layout age and runtime submission result. They are evidence only and never select policy by application identity. |
 | D3D11 mask renderer init | `InitD3D11MaskRenderer` (compiles shaders via d3dcompiler; FreeLibrary ordering is load-bearing — REGRESSIONS R1) |
 | Visor draw entry (Technique C Direct) | `XRViewLab_xrReleaseSwapchainImage` → `DrawVisorBorderToTexture` |
 | Calibration diagnostics | `DrawCalibrationPatternsToTexture`, `DrawCalibrationGridToTexture`, `DrawCalibrationOverlayToTexture`, `AnyCalibrationPattern`, `g_calibrationFrameSerial`; ten optional patterns draw after the visor. `Tests/CalibrationReferenceFixtures` audits all UI→INI→native keys and captures deterministic full, vertical-crop and horizontal-crop PNG references for every tool. Pixel-measurement tools use literal submitted-texture pixels and the complete eye rectangle. See `docs/CALIBRATION.md`. |
@@ -306,6 +306,23 @@ a user-facing width control. Notification cards use one tangent width/height and
 X/Y density. The render-boundary flash is the exception: it is a per-eye inner outline of the final
 submitted rectangle, with angularly stable stroke thickness and inset beyond half its stroke so
 scissoring cannot remove it.
+
+**Direct projection-context invariant (repaired 2026-07-17):** `ProjectionFrameContext` owns the complete ordered
+view set for the selected primary projection layer. Every entry binds submitted pose/FOV and the exact
+`XrSwapchainSubImage` destination. `TrackedSwapchain` owns only image lifecycle and D3D11 resources. A release selects
+all entries targeting that swapchain, then draws each destination against the complete projection context; texture
+ownership therefore cannot collapse binocular coordinates. The representation is independent of packing and covers
+all valid primary-stereo sub-image topologies: one array swapchain, separate swapchains, atlas rectangles in a shared
+slice, overlapping targets in required view-array order, and arbitrary mixtures of handle, slice and rectangle.
+Release order is irrelevant. A destroyed destination invalidates the prior context until the next projection submit.
+
+Original full FOV comes only from the locate record matched to the submitted session/display time and only when the
+application submitted that located cropped FOV unchanged. Otherwise the submitted FOV is authoritative, as OpenXR
+permits applications to alter located pose/FOV. Submitted poses remain in the context for future orientation-aware
+policy; the matched Pools/Pistol traces reject pose differences as this incident's cause. This claim concerns
+sub-image topology within ViewLab's selected primary-stereo D3D11 projection path. Multiple independent projection
+layers and non-stereo view configurations remain separate capability/presentation questions; they are not silently
+relabelled as swapchain layouts.
 
 Calibration grid, ruler, gratings, colour bars, beacon, edge probes, checkerboards, zone plate,
 clipping steps, and motion strip are explicitly **per-eye texture diagnostics**, not fused visor

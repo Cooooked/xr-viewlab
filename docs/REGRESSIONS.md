@@ -3,6 +3,23 @@
 > Institutional scar tissue. Read before touching the areas named here. Append an entry whenever
 > a significant regression occurs: what / why / how detected / fix / how to never repeat it.
 
+## R31 — Swapchain ownership is not stereo projection context
+
+**What:** fused direct-to-eye overlays were correct in Pistol Whip but appeared as separated left/right ghosts in
+Pools under the same native VDXR runtime. **Why:** `TrackedSwapchain.eyeViews` served two unrelated roles: selecting
+the texture destinations owned by a swapchain and supplying the complete view set to `OverlayCoordinateResolver`.
+Pistol placed both eyes in one two-slice array swapchain, so the vector happened to be binocular. Pools used separate
+single-slice eye swapchains, so every release supplied only one eye and shared tangent bounds collapsed to that eye's
+asymmetric FOV. **How detected:** matched PID-bound `PIPE` traces rejected timing, locate/FOV, pose/orientation,
+reference-space and runtime-submission differences before identifying swapchain topology as the first divergence;
+the old traces recorded Pools `eyes=1` versus Pistol `eyes=2`. **Fix:** one immutable, display-time-correlated
+`ProjectionFrameContext` owns the ordered submitted views and their sub-image bindings. A release selects only its
+target views while coordinate resolution always receives the complete projection view set. Correlated original FOV
+is accepted only when the application submitted the matched located cropped FOV unchanged. **Never again:** texture
+ownership must never define stereo context. Executable topology fixtures cover array slices, separate swapchains,
+atlas rectangles, mixed packing, overlap order and release order. Contracts pin the context/target split; the matched
+4.1.243 headset matrix passed Pools, Pistol Whip, Eleven Table Tennis and DiRT Rally 2 menu/cockpit without title rules.
+
 ## R30 — Successful compositor submission did not mean visible presentation
 
 **What:** a translated D3D11 session loaded `mask_enabled=1`, rendered all enabled features and returned

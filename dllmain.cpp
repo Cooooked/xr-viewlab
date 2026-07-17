@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "HardwareTelemetry.h"
 #include "RenderPolicy.h"
+#include "ProjectionTopology.h"
 #include "ViewLabBridge/BridgeCore.h"
 #include "ClockWidget.h"
 #include "StickyNote.h"
@@ -289,6 +290,7 @@ double iracingSpotterWidth = 0.12, iracingSpotterStrength = 1.0, iracingSpotterO
 double iracingFlagWidth = 0.018, iracingFlagOpacity = 0.60;
 uint32_t iracingSpotterColor = 0xFF4500;
 struct HudTrackedFrame {
+    uint64_t frameSerial = 0;
     XrTime displayTime = 0;
     XrDuration displayPeriod = 0;
     LARGE_INTEGER waitStart{}, waitStop{}, beginStart{}, beginStop{}, endStart{}, endStop{};
@@ -900,9 +902,68 @@ struct EyeView {
     XrRect2Di rect{};       // sub-image rect within the texture for this eye
     uint32_t arraySlice = 0; // texture-array slice for this eye
     uint32_t viewIndex = 0;  // projection view index: 0 = left, 1 = right for primary stereo
+    XrPosef pose{};          // submitted projection pose; diagnostics expose assumptions about stereo alignment
     XrFovf fov{};
     XrFovf fullFov{};
 };
+
+struct ProjectionFrameContext {
+    XrSession session = XR_NULL_HANDLE;
+    XrTime displayTime = 0;
+    XrSpace space = XR_NULL_HANDLE;
+    uint64_t frameSerial = 0;
+    viewlab::projection::FrameTopology<XrSwapchain, EyeView> topology;
+
+    bool ValidFor(XrSession expectedSession) const {
+        return session == expectedSession && !topology.views.empty();
+    }
+};
+
+// Bounded verbose-only renderer evidence. A direct eye-texture overlay is rendered before
+// xrEndFrame, so it necessarily consumes the previous submitted layout. Keep enough correlated
+// state to prove whether that layout, the latest locate result, and the current submission are
+// actually equivalent instead of assuming that every application drives OpenXR identically.
+struct LocateViewsEvidence {
+    uint64_t callSerial = 0;
+    XrSession session = XR_NULL_HANDLE;
+    XrTime displayTime = 0;
+    XrSpace space = XR_NULL_HANDLE;
+    XrViewStateFlags viewStateFlags = 0;
+    uint32_t viewCount = 0;
+    std::array<XrView, 2> original{};
+    std::array<XrView, 2> cropped{};
+};
+std::mutex g_pipelineEvidenceMutex;
+std::deque<LocateViewsEvidence> g_locateViewsEvidence;
+std::unordered_map<XrSpace, XrReferenceSpaceType> g_referenceSpaceTypes;
+std::atomic<uint64_t> g_pipelineFrameSerial{0};
+std::atomic<uint64_t> g_pipelineLocateSerial{0};
+std::atomic<uint64_t> g_pipelineSwapchainSerial{0};
+constexpr size_t kLocateEvidenceCapacity = 64;
+bool TracePipelineSerial(uint64_t serial) { return verboseLogging && (serial <= 900 || serial % 300 == 0); }
+const char* ReferenceSpaceTypeName(XrReferenceSpaceType type) {
+    switch (type) {
+    case XR_REFERENCE_SPACE_TYPE_VIEW: return "VIEW";
+    case XR_REFERENCE_SPACE_TYPE_LOCAL: return "LOCAL";
+    case XR_REFERENCE_SPACE_TYPE_STAGE: return "STAGE";
+#ifdef XR_REFERENCE_SPACE_TYPE_LOCAL_FLOOR_EXT
+    case XR_REFERENCE_SPACE_TYPE_LOCAL_FLOOR_EXT: return "LOCAL_FLOOR_EXT";
+#endif
+    default: return "OTHER";
+    }
+}
+XrReferenceSpaceType TrackedReferenceSpaceType(XrSpace space) {
+    std::lock_guard<std::mutex> lock(g_pipelineEvidenceMutex);
+    const auto found = g_referenceSpaceTypes.find(space);
+    return found == g_referenceSpaceTypes.end() ? static_cast<XrReferenceSpaceType>(0) : found->second;
+}
+void LogPipelinePose(const char* stage, uint64_t serial, uint32_t viewIndex, const XrPosef& pose, const XrFovf& fov) {
+    LogVerbose("PIPE %s serial=%llu view=%u pose_p=(%.6f,%.6f,%.6f) pose_q=(%.7f,%.7f,%.7f,%.7f) fov=(L %.7f R %.7f U %.7f D %.7f)\n",
+        stage, static_cast<unsigned long long>(serial), viewIndex,
+        pose.position.x, pose.position.y, pose.position.z,
+        pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w,
+        fov.angleLeft, fov.angleRight, fov.angleUp, fov.angleDown);
+}
 
 enum class OverlayPlacement { RenderArea, FullLens, LensPinned };
 struct OverlayCoordinateResolver {
@@ -962,9 +1023,10 @@ struct TrackedSwapchain {
     std::vector<ID3D11Texture2D*> textures;  // runtime textures; not AddRef'd
     std::vector<ID3D11RenderTargetView*> rtvs; // runtime texture RTVs, indexed image * arraySize + slice
     uint32_t lastAcquiredIndex = UINT32_MAX;
-    // Per-eye layout captured from the projection layer in xrEndFrame. Stable
-    // across frames, so the previous frame's layout is used at release time.
-    std::vector<EyeView> eyeViews;
+    uint64_t createSerial = 0;
+    uint64_t acquireSerial = 0;
+    uint64_t waitSerial = 0;
+    uint64_t releaseSerial = 0;
 };
 struct TopmostLayerState {
     XrSession session = XR_NULL_HANDLE;
@@ -985,6 +1047,11 @@ std::atomic<bool> g_rendererDeviceLossLogged{false};
 std::atomic<bool> g_topmostSubmissionLogged{false};
 
 std::mutex g_swapchainMutex;
+// Previous submitted primary projection. Release-time drawing happens before the
+// current xrEndFrame, so it consumes this complete frame-level context. It is
+// deliberately independent of g_swapchains: texture ownership never defines which
+// other views participate in shared projection coordinates.
+ProjectionFrameContext g_primaryProjectionContext;
 // Serializes renderer lifetime and immediate-context use across OpenXR hooks. The D3D11
 // immediate context and its state objects must not be released while another hook draws.
 std::recursive_mutex g_rendererMutex;
@@ -1639,6 +1706,7 @@ void ReleaseD3D11MaskRenderer() {
             ReleaseTrackedSwapchainResources(kv.second);
         }
         g_swapchains.clear();
+        g_primaryProjectionContext = ProjectionFrameContext{};
     }
     if (g_d3d11Mask.vb)      { g_d3d11Mask.vb->Release();      g_d3d11Mask.vb = nullptr; }
     if (g_d3d11Mask.dss)     { g_d3d11Mask.dss->Release();     g_d3d11Mask.dss = nullptr; }
@@ -3612,7 +3680,7 @@ bool RenderTopmostLayer(XrSession session, const XrCompositionLayerProjection* s
         XrFovf full=source->views[i].fov;
         if(i<g_d3d11Mask.latestViewCount) full=g_d3d11Mask.latestOriginalViews[i].fov;
         eyes.push_back(EyeView{{{0,0},{source->views[i].subImage.imageRect.extent.width,
-            source->views[i].subImage.imageRect.extent.height}},i,i,source->views[i].fov,full});
+            source->views[i].subImage.imageRect.extent.height}},i,i,source->views[i].pose,source->views[i].fov,full});
     }
     bool rendered=true; HRESULT renderResult=S_OK;
     for(uint32_t i=0;i<viewCount;++i) {
@@ -3656,29 +3724,34 @@ void DrawCapturedProjectionTextures(bool drawVisor, const char* tag) {
         ID3D11Texture2D* tex = nullptr;
         uint32_t arrSize = 1;
         int64_t format = 0;
-        std::vector<EyeView> views;
+        std::vector<EyeView> targets;
+        std::vector<EyeView> projectionViews;
         std::vector<ID3D11RenderTargetView*> rtvs;
     };
 
     std::vector<PendingDraw> pending;
     {
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
+        if (!g_primaryProjectionContext.ValidFor(g_d3d11Mask.session)) return;
+        const std::vector<EyeView> projectionViews = g_primaryProjectionContext.topology.AllViews();
         for (const auto& kv : g_swapchains) {
             const TrackedSwapchain& ts = kv.second;
+            const std::vector<EyeView> targets = g_primaryProjectionContext.topology.TargetsFor(kv.first);
             if (ts.session != g_d3d11Mask.session ||
                 ts.lastAcquiredIndex >= ts.textures.size() ||
-                ts.eyeViews.empty()) {
+                targets.empty()) {
                 continue;
             }
             PendingDraw draw{
                 ts.textures[ts.lastAcquiredIndex],
                 ts.arraySize,
                 ts.format,
-                ts.eyeViews,
+                targets,
+                projectionViews,
                 {}};
             if (draw.tex) draw.tex->AddRef();
-            draw.rtvs.reserve(draw.views.size());
-            for (const EyeView& ev : draw.views) {
+            draw.rtvs.reserve(draw.targets.size());
+            for (const EyeView& ev : draw.targets) {
                 draw.rtvs.push_back(CachedRtvFor(ts, ts.lastAcquiredIndex, ev.arraySlice));
             }
             pending.push_back(std::move(draw));
@@ -3688,10 +3761,10 @@ void DrawCapturedProjectionTextures(bool drawVisor, const char* tag) {
     size_t eyeCount = 0;
     for (const PendingDraw& p : pending) {
         if (p.tex == nullptr) continue;
-        for (size_t i = 0; i < p.views.size(); ++i) {
-            const EyeView& ev = p.views[i];
+        for (size_t i = 0; i < p.targets.size(); ++i) {
+            const EyeView& ev = p.targets[i];
             if (drawVisor) {
-                DrawVisorBorderToTexture(p.tex, p.arrSize, p.format, ev, p.views,
+                DrawVisorBorderToTexture(p.tex, p.arrSize, p.format, ev, p.projectionViews,
                     i < p.rtvs.size() ? p.rtvs[i] : nullptr);
             }
             ++eyeCount;
@@ -3758,6 +3831,38 @@ void RebuildCachedRtvs(TrackedSwapchain& ts) {
 
 // ---- Swapchain tracking for the D3D11 visor ----
 
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateReferenceSpace(
+    XrSession session, const XrReferenceSpaceCreateInfo* info, XrSpace* space) {
+    if (!nextXrCreateReferenceSpace) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    const XrResult result = nextXrCreateReferenceSpace(session, info, space);
+    if (XR_SUCCEEDED(result) && info && space && *space != XR_NULL_HANDLE) {
+        {
+            std::lock_guard<std::mutex> lock(g_pipelineEvidenceMutex);
+            g_referenceSpaceTypes[*space] = info->referenceSpaceType;
+        }
+        LogVerbose("PIPE space-create handle=%p type=%s(%d) pose_p=(%.6f,%.6f,%.6f) pose_q=(%.7f,%.7f,%.7f,%.7f) result=%d\n",
+            reinterpret_cast<void*>(*space), ReferenceSpaceTypeName(info->referenceSpaceType),
+            static_cast<int>(info->referenceSpaceType), info->poseInReferenceSpace.position.x,
+            info->poseInReferenceSpace.position.y, info->poseInReferenceSpace.position.z,
+            info->poseInReferenceSpace.orientation.x, info->poseInReferenceSpace.orientation.y,
+            info->poseInReferenceSpace.orientation.z, info->poseInReferenceSpace.orientation.w, result);
+    }
+    return result;
+}
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySpace(XrSpace space) {
+    if (!nextXrDestroySpace) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    const XrReferenceSpaceType type = TrackedReferenceSpaceType(space);
+    const XrResult result = nextXrDestroySpace(space);
+    LogVerbose("PIPE space-destroy handle=%p type=%s(%d) result=%d\n",
+        reinterpret_cast<void*>(space), ReferenceSpaceTypeName(type), static_cast<int>(type), result);
+    if (XR_SUCCEEDED(result)) {
+        std::lock_guard<std::mutex> lock(g_pipelineEvidenceMutex);
+        g_referenceSpaceTypes.erase(space);
+    }
+    return result;
+}
+
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSwapchain(
     XrSession session, const XrSwapchainCreateInfo* info, XrSwapchain* swapchain) {
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
@@ -3772,6 +3877,13 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSwapchain(
         ts.sampleCount = info->sampleCount;
         ts.format    = info->format;
         ts.usageFlags = info->usageFlags;
+        ts.createSerial = g_pipelineSwapchainSerial.fetch_add(1) + 1;
+        LogVerbose("PIPE swapchain-create serial=%llu handle=%p session=%p size=%ux%u array=%u samples=%u faces=%u mips=%u format=%lld usage=0x%llX createFlags=0x%llX result=%d\n",
+            static_cast<unsigned long long>(ts.createSerial), reinterpret_cast<void*>(*swapchain),
+            reinterpret_cast<void*>(session), info->width, info->height, info->arraySize,
+            info->sampleCount, info->faceCount, info->mipCount, static_cast<long long>(info->format),
+            static_cast<unsigned long long>(info->usageFlags),
+            static_cast<unsigned long long>(info->createFlags), r);
     }
     return r;
 }
@@ -3789,6 +3901,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateSwapchainImages(
             it->second.textures.resize(*count, nullptr);
             for (uint32_t i = 0; i < *count; ++i) it->second.textures[i] = d3d[i].texture;
             RebuildCachedRtvs(it->second);
+            LogVerbose("PIPE swapchain-images serial=%llu handle=%p count=%u type=%d\n",
+                static_cast<unsigned long long>(it->second.createSerial),
+                reinterpret_cast<void*>(swapchain), *count, static_cast<int>(images->type));
         }
     }
     return r;
@@ -3800,9 +3915,41 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrAcquireSwapchainImage(
     if (r == XR_SUCCESS && imageIndex) {
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
         auto it = g_swapchains.find(swapchain);
-        if (it != g_swapchains.end()) it->second.lastAcquiredIndex = *imageIndex;
+        if (it != g_swapchains.end()) {
+            it->second.lastAcquiredIndex = *imageIndex;
+            const uint64_t serial = ++it->second.acquireSerial;
+            if (TracePipelineSerial(serial))
+                LogVerbose("PIPE swapchain-acquire scSerial=%llu acquire=%llu handle=%p image=%u frame=%llu result=%d\n",
+                    static_cast<unsigned long long>(it->second.createSerial),
+                    static_cast<unsigned long long>(serial), reinterpret_cast<void*>(swapchain), *imageIndex,
+                    static_cast<unsigned long long>(g_pipelineFrameSerial.load()), r);
+        }
     }
     return r;
+}
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrWaitSwapchainImage(
+    XrSwapchain swapchain, const XrSwapchainImageWaitInfo* info) {
+    if (!nextXrWaitSwapchainImage) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    LARGE_INTEGER start{}, stop{};
+    QueryPerformanceCounter(&start);
+    const XrResult result = nextXrWaitSwapchainImage(swapchain, info);
+    QueryPerformanceCounter(&stop);
+    std::lock_guard<std::mutex> lock(g_swapchainMutex);
+    const auto found = g_swapchains.find(swapchain);
+    if (found != g_swapchains.end()) {
+        const uint64_t serial = ++found->second.waitSerial;
+        if (TracePipelineSerial(serial)) {
+            const double milliseconds = g_hudQpcFrequency.QuadPart > 0 && stop.QuadPart >= start.QuadPart
+                ? 1000.0 * static_cast<double>(stop.QuadPart - start.QuadPart) / g_hudQpcFrequency.QuadPart : -1.0;
+            LogVerbose("PIPE swapchain-wait scSerial=%llu wait=%llu handle=%p image=%u timeout=%lld durationMs=%.4f frame=%llu result=%d\n",
+                static_cast<unsigned long long>(found->second.createSerial),
+                static_cast<unsigned long long>(serial), reinterpret_cast<void*>(swapchain),
+                found->second.lastAcquiredIndex, info ? static_cast<long long>(info->timeout) : -1LL,
+                milliseconds, static_cast<unsigned long long>(g_pipelineFrameSerial.load()), result);
+        }
+    }
+    return result;
 }
 
 std::atomic<bool> g_diagReleaseSeen{false};
@@ -3825,51 +3972,74 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
         ID3D11Texture2D* tex = nullptr;
         uint32_t arrSize = 1;
         int64_t  scFormat = 0;
-        std::vector<EyeView> views;
+        std::vector<EyeView> targetViews;
+        std::vector<EyeView> projectionViews;
         std::vector<ID3D11RenderTargetView*> rtvs;
         bool tracked = false, sessionOk = false;
+        uint64_t swapchainCreateSerial = 0, releaseSerial = 0, layoutFrameSerial = 0;
+        XrTime layoutDisplayTime = 0;
+        XrSpace layoutSpace = XR_NULL_HANDLE;
+        uint32_t releasedImageIndex = UINT32_MAX;
         {
             std::lock_guard<std::mutex> lk(g_swapchainMutex);
             auto it = g_swapchains.find(swapchain);
             if (it != g_swapchains.end()) {
                 tracked = true;
-                const TrackedSwapchain& ts = it->second;
+                TrackedSwapchain& ts = it->second;
+                swapchainCreateSerial = ts.createSerial;
+                releaseSerial = ++ts.releaseSerial;
+                layoutFrameSerial = g_primaryProjectionContext.frameSerial;
+                layoutDisplayTime = g_primaryProjectionContext.displayTime;
+                layoutSpace = g_primaryProjectionContext.space;
+                releasedImageIndex = ts.lastAcquiredIndex;
                 sessionOk = (ts.session == g_d3d11Mask.session);
                 if (sessionOk && ts.lastAcquiredIndex < ts.textures.size()) {
                     tex      = ts.textures[ts.lastAcquiredIndex];
                     if (tex) tex->AddRef();
                     arrSize  = ts.arraySize;
                     scFormat = ts.format;
-                    views    = ts.eyeViews; // copy; layout captured in xrEndFrame
-                    rtvs.reserve(views.size());
-                    for (const EyeView& ev : views) {
+                    if (g_primaryProjectionContext.ValidFor(ts.session)) {
+                        targetViews = g_primaryProjectionContext.topology.TargetsFor(swapchain);
+                        projectionViews = g_primaryProjectionContext.topology.AllViews();
+                    }
+                    rtvs.reserve(targetViews.size());
+                    for (const EyeView& ev : targetViews) {
                         rtvs.push_back(CachedRtvFor(ts, ts.lastAcquiredIndex, ev.arraySlice));
                     }
                 }
             }
         }
+        if (tracked && TracePipelineSerial(releaseSerial)) {
+            LogVerbose("PIPE swapchain-release scSerial=%llu release=%llu handle=%p image=%u currentFrame=%llu layoutFrame=%llu layoutDisplayTime=%lld layoutSpace=%p layoutSpaceType=%s targetViews=%zu projectionViews=%zu sessionMatch=%d\n",
+                static_cast<unsigned long long>(swapchainCreateSerial),
+                static_cast<unsigned long long>(releaseSerial), reinterpret_cast<void*>(swapchain),
+                releasedImageIndex, static_cast<unsigned long long>(g_pipelineFrameSerial.load()),
+                static_cast<unsigned long long>(layoutFrameSerial), static_cast<long long>(layoutDisplayTime),
+                reinterpret_cast<void*>(layoutSpace), ReferenceSpaceTypeName(TrackedReferenceSpaceType(layoutSpace)),
+                targetViews.size(), projectionViews.size(), sessionOk ? 1 : 0);
+        }
         if (!g_diagReleaseSeen.exchange(true))
-            Log("d3d11 mask DIAG: xrReleaseSwapchainImage reached (tracked=%d sessionMatch=%d eyeViews=%zu)\n",
-                tracked ? 1 : 0, sessionOk ? 1 : 0, views.size());
+            Log("d3d11 mask DIAG: xrReleaseSwapchainImage reached (tracked=%d sessionMatch=%d targetViews=%zu projectionViews=%zu)\n",
+                tracked ? 1 : 0, sessionOk ? 1 : 0, targetViews.size(), projectionViews.size());
 
         if (tracked && sessionOk && tex) {
-            if (views.empty()) {
+            if (targetViews.empty() || projectionViews.empty()) {
                 if (!g_diagReleaseNoLayout.exchange(true))
                     Log("d3d11 mask DIAG: no eye layout yet for this swapchain (captured on first xrEndFrame; mask starts next frame)\n");
             } else {
                 const bool directCommon=g_featurePresentationPlan.drawDirectCommonFeatures||
                     g_topmostLayerBlocked.load(std::memory_order_acquire);
                 bool drewVisor=false;
-                for (size_t i = 0; i < views.size(); ++i) {
+                for (size_t i = 0; i < targetViews.size(); ++i) {
                     if (maskEnabled && g_featurePresentationPlan.drawDirectVisor) {
-                        DrawVisorBorderToTexture(tex, arrSize, scFormat, views[i], views,
+                        DrawVisorBorderToTexture(tex, arrSize, scFormat, targetViews[i], projectionViews,
                             i < rtvs.size() ? rtvs[i] : nullptr);
                         drewVisor=true;
                     }
                     // Literal-pixel calibration always measures the submitted game texture. It is
                     // never silently redefined as pixels of ViewLab's separate Topmost target.
                     if (AnyCalibrationPattern() || (directCommon && ((hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace)) || AnyViewLabOverlay()))) {
-                        DrawCalibrationPatternsToTexture(tex, arrSize, scFormat, views[i], views,
+                        DrawCalibrationPatternsToTexture(tex, arrSize, scFormat, targetViews[i], projectionViews,
                             i < rtvs.size() ? rtvs[i] : nullptr,true,directCommon);
                     }
                 }
@@ -3878,7 +4048,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                 }
                 const uint32_t n = drewVisor ? g_releaseDrawLogCount.fetch_add(1) : 1;
                 if (drewVisor && n == 0)
-                    Log("visor: draw executed (%zu eye view(s))\n", views.size());
+                    Log("visor: draw executed (%zu target view(s), %zu projection view(s))\n",
+                        targetViews.size(), projectionViews.size());
                 if(drewVisor) g_releaseDrewVisorThisFrame.store(true);
             }
         } else {
@@ -3897,9 +4068,17 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySwapchain(XrSwapchain swapchai
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
         auto it = g_swapchains.find(swapchain);
         if (it != g_swapchains.end()) {
+            LogVerbose("PIPE swapchain-destroy serial=%llu handle=%p acquire=%llu wait=%llu release=%llu\n",
+                static_cast<unsigned long long>(it->second.createSerial), reinterpret_cast<void*>(swapchain),
+                static_cast<unsigned long long>(it->second.acquireSerial),
+                static_cast<unsigned long long>(it->second.waitSerial),
+                static_cast<unsigned long long>(it->second.releaseSerial));
             ReleaseTrackedSwapchainResources(it->second);
             g_swapchains.erase(it);
         }
+        // A destroyed destination invalidates the previous frame as a complete
+        // projection context. The next submitted projection repopulates it atomically.
+        g_primaryProjectionContext = ProjectionFrameContext{};
     }
     return nextXrDestroySwapchain(swapchain);
 }
@@ -4455,6 +4634,23 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrLocateViews(
         g_d3d11Mask.latestViewCount = (std::min)(*viewCountOutput, 2u);
     }
 
+    LocateViewsEvidence evidence{};
+    evidence.callSerial = g_pipelineLocateSerial.fetch_add(1) + 1;
+    evidence.session = session;
+    evidence.displayTime = viewLocateInfo->displayTime;
+    evidence.space = viewLocateInfo->space;
+    evidence.viewStateFlags = viewState ? viewState->viewStateFlags : 0;
+    evidence.viewCount = (std::min)(*viewCountOutput, 2u);
+    if (TracePipelineSerial(evidence.callSerial)) {
+        LogVerbose("PIPE locate serial=%llu frame=%llu displayTime=%lld space=%p spaceType=%s flags=0x%llX count=%u capacity=%u result=%d\n",
+            static_cast<unsigned long long>(evidence.callSerial),
+            static_cast<unsigned long long>(g_pipelineFrameSerial.load()),
+            static_cast<long long>(evidence.displayTime), reinterpret_cast<void*>(evidence.space),
+            ReferenceSpaceTypeName(TrackedReferenceSpaceType(evidence.space)),
+            static_cast<unsigned long long>(evidence.viewStateFlags), evidence.viewCount,
+            viewCapacityInput, result);
+    }
+
     const uint32_t logCount = locateViewsLogCount.fetch_add(1);
     if (maskEnabled && visibilityMaskLogCount.load() == 0 && logCount == 300) {
         const uint32_t warnCount = visorMaskNoHookLogCount.fetch_add(1);
@@ -4471,6 +4667,14 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrLocateViews(
         if (i < g_d3d11Mask.latestViewCount) {
             g_d3d11Mask.latestOriginalViews[i] = originalView;
             g_d3d11Mask.latestViews[i] = views[i];
+        }
+        if (i < evidence.viewCount) {
+            evidence.original[i] = originalView;
+            evidence.cropped[i] = views[i];
+            if (TracePipelineSerial(evidence.callSerial)) {
+                LogPipelinePose("locate-original", evidence.callSerial, i, originalView.pose, originalView.fov);
+                LogPipelinePose("locate-cropped", evidence.callSerial, i, views[i].pose, views[i].fov);
+            }
         }
         if (verboseLogging && (logCount < 20 || logCount % 300 == 0)) {
             LogVerbose("xrLocateViews[%u]: up %.5f -> %.5f down %.5f -> %.5f left %.5f -> %.5f right %.5f -> %.5f original_fov=(L %.5f R %.5f U %.5f D %.5f valid=%d) horizontal_render_width=%.3f crop_outer_edges_only=%d foveated_center=%d pitch_offset=%.5f\n",
@@ -4493,6 +4697,12 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrLocateViews(
                 compensated ? 1 : 0,
                 pitchOffset);
         }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_pipelineEvidenceMutex);
+        g_locateViewsEvidence.push_back(evidence);
+        while (g_locateViewsEvidence.size() > kLocateEvidenceCapacity) g_locateViewsEvidence.pop_front();
     }
 
     if (logCount == 0) {
@@ -4535,6 +4745,14 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
     g_topmostBackend=viewlab::bridge::OverlayBackend::DirectEyeTexture;
     g_featurePresentationPlan={true,true,viewlab::bridge::OverlayBackend::FeatureDisabled};
     g_topmostSubmissionLogged.store(false,std::memory_order_release);
+    g_pipelineFrameSerial.store(0);
+    g_pipelineLocateSerial.store(0);
+    g_pipelineSwapchainSerial.store(0);
+    {
+        std::lock_guard<std::mutex> evidenceLock(g_pipelineEvidenceMutex);
+        g_locateViewsEvidence.clear();
+        g_referenceSpaceTypes.clear();
+    }
     g_d3d11Mask.session = *session;
     g_performanceTraceSession = *session;
     g_clockSessionStartTick.store(GetTickCount64(), std::memory_order_release);
@@ -4616,9 +4834,16 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrWaitFrame(
             g_hudLastWaitDurationMs=1000.0*(double)(stop.QuadPart-start.QuadPart)/g_hudQpcFrequency.QuadPart;
         HudTrackedFrame& frame = g_hudTrackedFrames[g_hudNextWaitFrame++ % g_hudTrackedFrames.size()];
         frame = HudTrackedFrame{};
+        frame.frameSerial = g_pipelineFrameSerial.fetch_add(1) + 1;
         frame.displayTime = frameState->predictedDisplayTime;
         frame.displayPeriod = frameState->predictedDisplayPeriod;
         frame.waitStart = start; frame.waitStop = stop; frame.canBegin = true;
+        if (TracePipelineSerial(frame.frameSerial))
+            LogVerbose("PIPE wait-frame frame=%llu displayTime=%lld period=%lld shouldRender=%d qpcStart=%lld qpcStop=%lld durationMs=%.4f result=%d\n",
+                static_cast<unsigned long long>(frame.frameSerial), static_cast<long long>(frame.displayTime),
+                static_cast<long long>(frame.displayPeriod), frameState->shouldRender ? 1 : 0,
+                static_cast<long long>(start.QuadPart), static_cast<long long>(stop.QuadPart),
+                g_hudLastWaitDurationMs, result);
         // The runtime throttles the app inside xrWaitFrame, so the wait-to-wait interval is
         // the app's true frame cadence — the input for reprojection-aware budget detection.
         UpdateHudCadence(stop, frameState->predictedDisplayPeriod);
@@ -4650,7 +4875,15 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrBeginFrame(
     if (frameIndex < g_hudTrackedFrames.size()) {
         std::lock_guard<std::mutex> lock(g_hudTimingMutex);
         HudTrackedFrame& frame = g_hudTrackedFrames[frameIndex];
-        if (XR_SUCCEEDED(result)) { frame.beginStart = start; frame.beginStop = stop; }
+        if (XR_SUCCEEDED(result)) {
+            frame.beginStart = start; frame.beginStop = stop;
+            if (TracePipelineSerial(frame.frameSerial))
+                LogVerbose("PIPE begin-frame frame=%llu displayTime=%lld qpcStart=%lld qpcStop=%lld durationMs=%.4f result=%d\n",
+                    static_cast<unsigned long long>(frame.frameSerial), static_cast<long long>(frame.displayTime),
+                    static_cast<long long>(start.QuadPart), static_cast<long long>(stop.QuadPart),
+                    g_hudQpcFrequency.QuadPart > 0 ? 1000.0 * static_cast<double>(stop.QuadPart - start.QuadPart) / g_hudQpcFrequency.QuadPart : -1.0,
+                    result);
+        }
         else frame = HudTrackedFrame{};
     }
     return result;
@@ -4664,13 +4897,67 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     }
 
     size_t trackedFrameIndex = g_hudTrackedFrames.size();
+    uint64_t pipelineFrameSerial = g_pipelineFrameSerial.load();
     LARGE_INTEGER endStart{};
     QueryPerformanceCounter(&endStart);
     {
         std::lock_guard<std::mutex> lock(g_hudTimingMutex);
         for (size_t i = 0; i < g_hudTrackedFrames.size(); ++i) {
             if (g_hudTrackedFrames[i].begun && g_hudTrackedFrames[i].displayTime == frameEndInfo->displayTime) {
-                trackedFrameIndex = i; g_hudTrackedFrames[i].endStart = endStart; break;
+                trackedFrameIndex = i; g_hudTrackedFrames[i].endStart = endStart;
+                pipelineFrameSerial = g_hudTrackedFrames[i].frameSerial; break;
+            }
+        }
+    }
+
+    LocateViewsEvidence matchedLocate{};
+    bool hasMatchedLocate = false;
+    {
+        std::lock_guard<std::mutex> lock(g_pipelineEvidenceMutex);
+        for (auto it = g_locateViewsEvidence.rbegin(); it != g_locateViewsEvidence.rend(); ++it) {
+            if (it->session == session && it->displayTime == frameEndInfo->displayTime) {
+                matchedLocate = *it;
+                hasMatchedLocate = true;
+                break;
+            }
+        }
+    }
+    if (TracePipelineSerial(pipelineFrameSerial)) {
+        LogVerbose("PIPE end-enter frame=%llu displayTime=%lld blendMode=%d layers=%u locateMatch=%d locateSerial=%llu locateSpace=%p locateSpaceType=%s qpc=%lld\n",
+            static_cast<unsigned long long>(pipelineFrameSerial), static_cast<long long>(frameEndInfo->displayTime),
+            static_cast<int>(frameEndInfo->environmentBlendMode), frameEndInfo->layerCount,
+            hasMatchedLocate ? 1 : 0, static_cast<unsigned long long>(matchedLocate.callSerial),
+            reinterpret_cast<void*>(matchedLocate.space), ReferenceSpaceTypeName(TrackedReferenceSpaceType(matchedLocate.space)),
+            static_cast<long long>(endStart.QuadPart));
+        for (uint32_t layerIndex = 0; layerIndex < frameEndInfo->layerCount; ++layerIndex) {
+            const XrCompositionLayerBaseHeader* header = frameEndInfo->layers[layerIndex];
+            if (!header) {
+                LogVerbose("PIPE layer frame=%llu index=%u null=1\n",
+                    static_cast<unsigned long long>(pipelineFrameSerial), layerIndex);
+                continue;
+            }
+            LogVerbose("PIPE layer frame=%llu index=%u type=%d flags=0x%llX space=%p spaceType=%s locateSpaceEqual=%d\n",
+                static_cast<unsigned long long>(pipelineFrameSerial), layerIndex, static_cast<int>(header->type),
+                static_cast<unsigned long long>(header->layerFlags), reinterpret_cast<void*>(header->space),
+                ReferenceSpaceTypeName(TrackedReferenceSpaceType(header->space)),
+                hasMatchedLocate && header->space == matchedLocate.space ? 1 : 0);
+            if (header->type != XR_TYPE_COMPOSITION_LAYER_PROJECTION) continue;
+            const auto* projection = reinterpret_cast<const XrCompositionLayerProjection*>(header);
+            LogVerbose("PIPE projection frame=%llu layer=%u views=%u next=%p\n",
+                static_cast<unsigned long long>(pipelineFrameSerial), layerIndex, projection->viewCount,
+                const_cast<void*>(projection->next));
+            for (uint32_t viewIndex = 0; viewIndex < projection->viewCount; ++viewIndex) {
+                const auto& view = projection->views[viewIndex];
+                LogVerbose("PIPE projection-view frame=%llu layer=%u view=%u swapchain=%p rect=(%d,%d %dx%d) array=%u next=%p\n",
+                    static_cast<unsigned long long>(pipelineFrameSerial), layerIndex, viewIndex,
+                    reinterpret_cast<void*>(view.subImage.swapchain), view.subImage.imageRect.offset.x,
+                    view.subImage.imageRect.offset.y, view.subImage.imageRect.extent.width,
+                    view.subImage.imageRect.extent.height, view.subImage.imageArrayIndex,
+                    const_cast<void*>(view.next));
+                LogPipelinePose("projection", pipelineFrameSerial, viewIndex, view.pose, view.fov);
+                if (hasMatchedLocate && viewIndex < matchedLocate.viewCount)
+                    LogPipelinePose("matched-locate", pipelineFrameSerial, viewIndex,
+                        matchedLocate.cropped[viewIndex].pose, matchedLocate.cropped[viewIndex].fov);
             }
         }
     }
@@ -4693,8 +4980,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
             frameEndInfo->layerCount);
     }
 
-    // Capture the per-eye layout (swapchain -> imageRect + array
-    // slice) from the projection layer. The actual draw happens in
+    // Capture one complete ordered projection context and bind each view to its
+    // submitted swapchain sub-image. The actual draw happens in
     // xrReleaseSwapchainImage, which runs earlier in the frame loop, so the layout
     // captured here is consumed by the NEXT frame's release. Layout is stable frame to
     // frame. Not gated on the visibility-mask path — the D3D11 visor runs regardless.
@@ -4702,31 +4989,44 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
         bool foundProj = false;
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
-        // Reset captured layouts so stale eyes don't linger if the app changes layers.
-        for (auto& kv : g_swapchains) kv.second.eyeViews.clear();
+        g_primaryProjectionContext = ProjectionFrameContext{};
         for (uint32_t l = 0; l < frameEndInfo->layerCount; ++l) {
             const XrCompositionLayerBaseHeader* hdr = frameEndInfo->layers[l];
             if (hdr == nullptr || hdr->type != XR_TYPE_COMPOSITION_LAYER_PROJECTION) continue;
             foundProj = true;
             const auto* proj = reinterpret_cast<const XrCompositionLayerProjection*>(hdr);
             primaryProjection = proj;
+            g_primaryProjectionContext.session = session;
+            g_primaryProjectionContext.displayTime = frameEndInfo->displayTime;
+            g_primaryProjectionContext.space = proj->space;
+            g_primaryProjectionContext.frameSerial = pipelineFrameSerial;
+            g_primaryProjectionContext.topology.views.reserve(proj->viewCount);
             if (!g_diagProjFound.exchange(true)) {
                 Log("d3d11 mask DIAG: projection layer found (layer=%u viewCount=%u)\n",
                     l, proj->viewCount);
             }
             for (uint32_t v = 0; v < proj->viewCount; ++v) {
                 const XrCompositionLayerProjectionView& pv = proj->views[v];
-                auto it = g_swapchains.find(pv.subImage.swapchain);
-                if (it != g_swapchains.end()) {
-                    XrFovf fullFov = pv.fov;
-                    if (v < g_d3d11Mask.latestViewCount) fullFov = g_d3d11Mask.latestOriginalViews[v].fov;
-                    it->second.eyeViews.push_back(
-                        EyeView{pv.subImage.imageRect,
-                                static_cast<uint32_t>(pv.subImage.imageArrayIndex),
-                                v,
-                                pv.fov,
-                                fullFov});
+                XrFovf fullFov = pv.fov;
+                const auto sameFov = [](const XrFovf& a, const XrFovf& b) {
+                    constexpr float tolerance = 0.00001f;
+                    return fabsf(a.angleLeft - b.angleLeft) <= tolerance &&
+                        fabsf(a.angleRight - b.angleRight) <= tolerance &&
+                        fabsf(a.angleUp - b.angleUp) <= tolerance &&
+                        fabsf(a.angleDown - b.angleDown) <= tolerance;
+                };
+                if (hasMatchedLocate && v < matchedLocate.viewCount &&
+                    sameFov(pv.fov, matchedLocate.cropped[v].fov)) {
+                    fullFov = matchedLocate.original[v].fov;
                 }
+                g_primaryProjectionContext.topology.views.push_back({
+                    pv.subImage.swapchain,
+                    EyeView{pv.subImage.imageRect,
+                            static_cast<uint32_t>(pv.subImage.imageArrayIndex),
+                            v,
+                            pv.pose,
+                            pv.fov,
+                            fullFov}});
             }
             // The first projection layer is the application's primary stereo submission.
             // OpenComposite may repeat the same projection texture in additional layers; recording
@@ -4820,6 +5120,16 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         }
     }
     const XrResult result = nextXrEndFrame(session, submittedTopmost ? &submittedInfo : frameEndInfo);
+    if (TracePipelineSerial(pipelineFrameSerial)) {
+        LARGE_INTEGER submittedStop{};
+        QueryPerformanceCounter(&submittedStop);
+        LogVerbose("PIPE end-return frame=%llu submittedTopmost=%d sourceLayers=%u submittedLayers=%u qpcStart=%lld qpcStop=%lld durationMs=%.4f result=%d\n",
+            static_cast<unsigned long long>(pipelineFrameSerial), submittedTopmost ? 1 : 0,
+            frameEndInfo->layerCount, submittedTopmost ? submittedInfo.layerCount : frameEndInfo->layerCount,
+            static_cast<long long>(endStart.QuadPart), static_cast<long long>(submittedStop.QuadPart),
+            g_hudQpcFrequency.QuadPart > 0 ? 1000.0 * static_cast<double>(submittedStop.QuadPart - endStart.QuadPart) / g_hudQpcFrequency.QuadPart : -1.0,
+            result);
+    }
     if(submittedTopmost && !g_topmostSubmissionLogged.exchange(true))
         Log("topmost overlays: submitted backend=%s sourceLayers=%u submittedLayers=%u projection=%ux%u result=%d\n",
             viewlab::bridge::OverlayBackendName(g_topmostBackend),frameEndInfo->layerCount,
@@ -5114,11 +5424,20 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetInstanceProcAddr(
         Log("hook installed: xrAcquireSwapchainImage\n");
     } else if (std::strcmp(name, "xrWaitSwapchainImage") == 0) {
         nextXrWaitSwapchainImage = reinterpret_cast<PFN_xrWaitSwapchainImage>(*function);
-        Log("hook captured: xrWaitSwapchainImage\n");
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrWaitSwapchainImage);
+        Log("hook installed: xrWaitSwapchainImage\n");
     } else if (std::strcmp(name, "xrReleaseSwapchainImage") == 0) {
         nextXrReleaseSwapchainImage = reinterpret_cast<PFN_xrReleaseSwapchainImage>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrReleaseSwapchainImage);
         Log("hook installed: xrReleaseSwapchainImage\n");
+    } else if (std::strcmp(name, "xrCreateReferenceSpace") == 0) {
+        nextXrCreateReferenceSpace = reinterpret_cast<PFN_xrCreateReferenceSpace>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrCreateReferenceSpace);
+        Log("hook installed: xrCreateReferenceSpace\n");
+    } else if (std::strcmp(name, "xrDestroySpace") == 0) {
+        nextXrDestroySpace = reinterpret_cast<PFN_xrDestroySpace>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrDestroySpace);
+        Log("hook installed: xrDestroySpace\n");
     } else if (std::strcmp(name, "xrEnumerateViewConfigurationViews") == 0) {
         nextXrEnumerateViewConfigurationViews = reinterpret_cast<PFN_xrEnumerateViewConfigurationViews>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrEnumerateViewConfigurationViews);

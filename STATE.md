@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-17
-**Current version:** 4.1.240 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.240.msi`
+**Current version:** 4.1.243 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.243.msi`
 **Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
 AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
 remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
@@ -18,6 +18,63 @@ extracted-payload validation. Build 4.1.224 additionally passes the full determi
 WPF, broker, signed identity, x64/Win32 native, MSI extraction, pinned PresentMon hash/notice validation;
 its DiagMon real-game CSV and live Trace-cap checks remain mandatory before release.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Native OpenXR stereo ghosting repair (implemented and matched headset-validated, 2026-07-17)
+
+Pools shows binocular ghosting for direct-to-eye overlays under native OpenXR/VDXR while Pistol Whip does
+not; DiRT Rally 2 and Eleven Table Tennis remain good through OpenComposite/VDXR. No title rule is permitted.
+Matched build-4.1.242 `PIPE` traces prove both native titles use the same runtime, D3D11, one two-view projection
+layer and identical asymmetric runtime FOV values. Across 908 Pools and 914 Pistol Whip submitted frames every
+`xrEndFrame` had a same-session/display-time locate match. Submitted FOV never differed from the matched locate;
+Pools had only its two startup pose mismatches when the last same-time locate used VIEW while submission used
+LOCAL, and all later pose/FOV pairs were exact. Both titles submitted identical left/right orientations on every
+captured frame. Every populated release consumed exactly the prior frame's layout with zero age violations.
+
+The first causal divergence is primary-colour swapchain topology. Pools submits left and right eyes from separate
+single-slice swapchains (`array=1`, different handles, `imageArrayIndex=0`); Pistol Whip submits both from one
+two-slice array swapchain (`array=2`, one handle, indices 0/1). `TrackedSwapchain.eyeViews` is stored per swapchain,
+and `XRViewLab_xrReleaseSwapchainImage` passes only that vector into `OverlayCoordinateResolver`. Pools therefore
+resolved 1,814 colour releases with `eyes=1` and never supplied the partner eye; Pistol resolved 913 steady colour
+releases with `eyes=2`. The intended shared binocular intersection silently collapses to each eye's own asymmetric
+FOV in Pools, recreating the equal-normalized-eye-pixel stereo bug. At nominal centre the two independent full-FOV
+targets are tangent -0.26864/+0.26864 (30.07 degrees apart), instead of shared tangent zero.
+
+The renderer now retains one immutable ordered `ProjectionFrameContext` for the selected primary projection
+layer. Each entry binds the submitted view pose, FOV, full FOV, image rectangle and array slice to its destination
+swapchain, while `TrackedSwapchain` owns only texture lifecycle and D3D11 resources. Release-time drawing selects
+the target views for the released swapchain but supplies the complete projection view list to
+`OverlayCoordinateResolver`. This represents every valid primary-stereo `XrSwapchainSubImage` packing: one array
+swapchain, separate swapchains, shared-slice atlas rectangles, overlapping targets in view-array order, and mixed
+handle/slice/rectangle layouts. Swapchain destruction invalidates the prior context atomically; release order does
+not alter it. Full-lens FOV is now borrowed only from the locate result correlated by session/display time and only
+when the submitted FOV matches that located cropped FOV; an application-modified submitted FOV remains authoritative.
+No application identity, offset, or title-specific policy exists in this repair. Deterministic topology fixtures,
+the complete x64/Win32/WPF/MSI build and post-build contract suite pass. The installed 4.1.243 x64 DLL SHA-256
+matched the built payload before runtime validation.
+
+Matched 4.1.243 validation closes the incident. The user confirmed correct fused overlays in Pools, Pistol Whip,
+Eleven Table Tennis and both DiRT Rally 2 menu/cockpit states. Pools captured 918 frames and 1,834 populated split-eye
+colour releases, all `targetViews=1 projectionViews=2`; Pistol captured 921 frames and 920 populated array releases,
+all `targetViews=2 projectionViews=2`. Eleven/OpenComposite captured 911 frames and 1,819 populated split-eye
+releases, all `targetViews=1 projectionViews=2`. All three had zero locate misses, stale prior-layout ages or runtime
+submission failures. DiRT/OpenComposite submitted a side-by-side projection atlas plus two quads; 903 of the 905
+bounded menu frames and every post-confirmation cockpit checkpoint (frames 14,100–15,900) successfully appended the
+separate Topmost projection. The two startup menu transition frames remained direct/feature-disabled as designed.
+Raw PID-bound evidence and hashes are preserved under `TestResults/RendererPipeline/20260717`.
+
+Bounded verbose `PIPE` instrumentation now records predicted display timing, QPC wait/begin/end timing,
+reference-space type and pose, original/cropped locate poses and FOV, exact session/display-time correlation,
+every submitted composition layer and projection view, swapchain creation/images/acquire/wait/release, the
+layout frame consumed at release, ordered-carrier submission and runtime result. Raw matched evidence is preserved
+under `TestResults/RendererPipeline/20260717`. The DiagMonster desktop window could not be automated because
+Windows.Graphics.Capture returned `SetIsBorderRequired` 0x80004002; native PID-tagged `PIPE` capture remained
+complete and is the authoritative renderer evidence. The instrumentation changes no presentation policy, geometry,
+offsets or application-specific behaviour.
+Build 4.1.242 completed WPF, broker, signed identity, x64/Win32 native, MSI construction and extracted-payload
+validation with zero warnings or errors; the post-build contract suite passes. Automated installation was
+initially stopped by Windows Installer error 1730 because the existing per-machine package required administrator
+removal during upgrade. The user completed installation; installed and built x64 DLL SHA-256 values matched before
+the captures.
 
 ## Product polish consolidation (implemented and internally verified; headset validation pending, 2026-07-15)
 

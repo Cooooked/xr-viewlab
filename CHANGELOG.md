@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased - 2026-07-17 (cross-runtime renderer diagnosis)
+
+- Added bounded verbose `PIPE` evidence across OpenXR frame timing, locate-view pose/FOV acquisition,
+  reference-space creation, projection-layer submission and the swapchain acquire/wait/release lifecycle.
+  Diagnostics now expose whether a release-time draw consumed a stale prior-frame layout and whether the
+  submitted projection actually matches the locate result for the same session and display time. This is
+  instrumentation only: it introduces no application detection, offsets, renderer-policy or geometry change.
+- Replaced per-swapchain stereo-coordinate state with one display-time-correlated, frame-level projection context.
+  Released swapchains now select their own destination views while every fused overlay resolves against the complete
+  submitted primary-stereo view set. Array, split-swapchain, atlas and mixed sub-image layouts therefore share one
+  renderer path. Correlated original FOV is used only when the application submitted the located cropped FOV unchanged.
+- Matched headset validation passed in native VDXR split-swapchain (Pools), native VDXR array-swapchain
+  (Pistol Whip), OpenComposite split-swapchain (Eleven Table Tennis), and OpenComposite layered/atlas menu and
+  cockpit presentation (DiRT Rally 2). PID-bound telemetry showed complete two-view context with zero stale layouts,
+  locate misses, form-factor errors or failed frame submissions.
+
 ## Unreleased - 2026-07-15 (Product polish consolidation)
 
 - Made clock enable, timer lane, 12/24-hour format, theme, position, scale, opacity and visibility bind

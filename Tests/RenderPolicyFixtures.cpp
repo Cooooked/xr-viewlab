@@ -1,4 +1,5 @@
 #include "../RenderPolicy.h"
+#include "../ProjectionTopology.h"
 #include "../ClockWidget.h"
 #include "../NetworkProbe.h"
 #include "../StickyNote.h"
@@ -13,6 +14,30 @@ static void Check(bool value, const char* message) {
 }
 
 int main() {
+    struct TopologyView { unsigned viewIndex, arraySlice; int x, width; };
+    using Topology = viewlab::projection::FrameTopology<unsigned, TopologyView>;
+    const auto verifyTopology = [](const Topology& topology, unsigned firstSwapchain,
+        size_t firstTargets, unsigned secondSwapchain, size_t secondTargets, const char* message) {
+        const auto all = topology.AllViews();
+        const auto first = topology.TargetsFor(firstSwapchain);
+        const auto second = topology.TargetsFor(secondSwapchain);
+        Check(all.size() == 2 && all[0].viewIndex == 0 && all[1].viewIndex == 1 &&
+            first.size() == firstTargets && second.size() == secondTargets, message);
+    };
+    verifyTopology({{{10,{0,0,0,100}},{10,{1,1,0,100}}}},10,2,20,0,
+        "array-slice stereo retains one complete projection context");
+    verifyTopology({{{10,{0,0,0,100}},{20,{1,0,0,100}}}},10,1,20,1,
+        "split swapchains retain both views in shared projection context");
+    verifyTopology({{{10,{0,0,0,100}},{10,{1,0,100,100}}}},10,2,20,0,
+        "atlas rectangles remain independent targets in one projection context");
+    verifyTopology({{{10,{0,2,20,80}},{20,{1,5,40,60}}}},10,1,20,1,
+        "mixed swapchain slice and rectangle packing preserves submitted views");
+    const Topology overlapping{{{10,{0,0,0,100}},{10,{1,0,0,100}}}};
+    const auto overlapTargets = overlapping.TargetsFor(10);
+    Check(overlapTargets.size() == 2 && overlapTargets[0].viewIndex == 0 && overlapTargets[1].viewIndex == 1,
+        "overlapping subimages preserve OpenXR view-array order");
+    Check(overlapping.TargetsFor(20).empty() && overlapping.AllViews().size() == 2,
+        "release order and unrelated swapchains cannot truncate projection context");
     using viewlab::clock_widget::Format;
     Check(Format(7, 5, 0).local == std::array<char, 9>{'0','7',':','0','5','\0','\0','\0','\0'}, "clock uses fixed 24-hour local time");
     Check(Format(19, 5, 0, false).local == std::array<char, 9>{'0','7',':','0','5',' ','P','M','\0'}, "clock supports an explicit 12-hour display");
