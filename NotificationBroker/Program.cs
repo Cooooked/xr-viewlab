@@ -239,6 +239,7 @@ internal static class NotificationBrokerProgram
         DurationMs = ReadDouble("notify_duration_ms", 3000, 500, 15000),
         MaxVisible = (int)ReadDouble("notify_max_visible", 3, 1, 6),
         Privacy = (int)ReadDouble("notify_privacy", 0, 0, 2),
+        Theme = (int)ReadDouble("notify_theme", 0, 0, 4),
         ShowIcon = ReadBool("notify_show_icon", true),
         ShowImage = ReadBool("notify_show_image", true),
         AllowlistMode = ReadBool("notify_allowlist_mode", false),
@@ -259,7 +260,7 @@ internal static class NotificationBrokerProgram
 
     private static bool Equivalent(NotificationSettings a, NotificationSettings b) =>
         a.Enabled == b.Enabled && a.X == b.X && a.Y == b.Y && a.Scale == b.Scale && a.Opacity == b.Opacity &&
-        a.DurationMs == b.DurationMs && a.MaxVisible == b.MaxVisible && a.Privacy == b.Privacy &&
+        a.DurationMs == b.DurationMs && a.MaxVisible == b.MaxVisible && a.Privacy == b.Privacy && a.Theme == b.Theme &&
         a.ShowIcon == b.ShowIcon && a.ShowImage == b.ShowImage && a.AllowlistMode == b.AllowlistMode &&
         string.Join('\0', a.AppFilters) == string.Join('\0', b.AppFilters);
 

@@ -46,6 +46,70 @@ struct TraceVisibilityState {
     uint32_t mode = 0;
 };
 
+struct SustainedAlarmState {
+    int stableState = -1;
+    int stableSeverity = -1;
+    int pendingDirection = 0;
+    int pendingState = -1;
+    int pendingSeverity = -1;
+    uint64_t pendingSince = 0;
+    uint64_t holdUntil = 0;
+    bool visible = false;
+};
+
+inline void UpdateSustainedAlarm(SustainedAlarmState& state, int desiredState, int desiredSeverity,
+    uint64_t now, uint64_t entryMs, uint64_t recoveryMs, uint64_t holdMs) {
+    if (desiredSeverity < 0) {
+        state = SustainedAlarmState{};
+        state.stableState = desiredState;
+        state.stableSeverity = desiredSeverity;
+        return;
+    }
+    if (state.stableSeverity < 0) {
+        state.stableState = desiredSeverity >= 2 ? 0 : desiredState;
+        state.stableSeverity = desiredSeverity >= 2 ? 0 : desiredSeverity;
+        state.pendingState = desiredState;
+        state.pendingSeverity = desiredSeverity;
+        if (desiredSeverity >= 2) {
+            state.pendingDirection = 1;
+            state.pendingSince = now;
+        }
+    } else if (desiredSeverity == state.stableSeverity) {
+        state.stableState = desiredState;
+        state.pendingDirection = 0;
+        state.pendingSince = 0;
+    } else {
+        const int direction = desiredSeverity > state.stableSeverity ? 1 : -1;
+        if (state.pendingDirection != direction) {
+            state.pendingDirection = direction;
+            state.pendingSince = now;
+        }
+        state.pendingState = desiredState;
+        state.pendingSeverity = desiredSeverity;
+        const uint64_t required = direction > 0 ? entryMs : recoveryMs;
+        if (required == 0 || now - state.pendingSince >= required) {
+            state.stableState = state.pendingState;
+            state.stableSeverity = state.pendingSeverity;
+            state.pendingDirection = 0;
+            state.pendingSince = 0;
+        }
+    }
+
+    const bool desiredCritical = desiredSeverity >= 2;
+    const bool stableCritical = state.stableSeverity >= 2;
+    if (desiredCritical) {
+        state.holdUntil = 0;
+    } else if (state.visible && state.holdUntil == 0) {
+        state.holdUntil = now + holdMs;
+    }
+    if (stableCritical) {
+        state.visible = true;
+    } else if (state.visible && (state.holdUntil == 0 || now >= state.holdUntil)) {
+        state.visible = false;
+        state.holdUntil = 0;
+    }
+}
+
 inline float UpdateTraceVisibility(TraceVisibilityState& state, uint32_t mode, bool trouble,
     uint64_t now, uint64_t holdMs, uint64_t fadeMs = 500) {
     const bool changed = state.mode != mode;

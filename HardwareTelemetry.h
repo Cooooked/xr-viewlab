@@ -39,6 +39,8 @@ void Stop();
 void SetPreferredAdapterLuid(uint64_t luid);
 void SetNetworkProbeTarget(uint32_t ipv4NetworkOrder);
 void SetNetworkProbeEnabled(bool enabled);
+void SetCheckpointCallback(void (*callback)());
+void RequestCheckpoint();
 bool TryGetSnapshot(Snapshot& snapshot); // never blocks the caller
 
 } // namespace viewlab::telemetry

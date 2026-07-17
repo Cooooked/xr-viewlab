@@ -1,5 +1,88 @@
 # Decision log
 
+## D29 — Ordinary overlays share one configuration contract; history is append-only by default
+
+Clock, Performance HUD, Performance Trace, sticky note, crosshair and notifications use one catalogue
+for enable state, optional show/hide hotkey, position, scale, opacity and reset defaults. Features may
+retain genuinely specific controls, but may not privately reimplement common persistence. Existing INI
+keys remain authoritative so upgrades preserve layouts; the former sticky-note-only bind is a read/mirror
+migration input. Native visibility toggles are centralised and do not create a second presentation route.
+
+Native VR performance traces receive unique timestamped files. `latest.csv` is only a compatibility alias;
+it is not the history model. Session Graph lives in DiagMonster, supports browsing and selected-session
+comparison, and deletes only after explicit confirmation. Retention limits are user-configurable guidance,
+never permission for silent evidence deletion. Rejected: one-off overlay settings handlers, forced hotkeys,
+overwriting the only historical trace, and automatic deletion.
+
+## D28 — DiagMon sessions are portable evidence, with user-owned validity
+
+The View Lab settings process owns capture orchestration and writes portable timestamped directories
+under its local data area. Each collector reports running/complete/partial/missing/failed independently;
+a clean orchestrator exit is not proof that PresentMon or another collector produced evidence. Standard
+mode never enables WPR. Trace mode is explicit and time-bounded. Interrupted `.partial` directories are
+recoverable and become incomplete sessions rather than vanishing.
+
+ViewLab ships a hash-pinned PresentMon 2.4.1 console plus its MIT notice. It owns CSV persistence by
+streaming `--output_stdout` to the partial session with one-second durable flushes and owns shutdown by
+terminating only the session's unique ETW name. Target exit and the Trace deadline automatically run the
+same finaliser as a manual stop; merely breaking the sampling loop is forbidden.
+
+Calculated history accepts only valid normal sessions or user-selected baselines with the same target
+and compatible fingerprint. Invalid, experimental, stress-test and incomplete sessions remain inspectable
+but are excluded. Baselines use medians and IQR-derived tolerance, record their inputs and selection/
+exclusion reasons, and remain low-confidence below three comparable runs. Frame heuristics are long frames
+above `max(33.33 ms, 2x median)` and severe stutters above `max(100 ms, 3x median)`. `AllowsTearing` is
+never dropped-frame evidence. Rejected: a database server, fixed last-N comparisons, silent evidence
+deletion, WPR-by-default, title-specific core logic, and deterministic root-cause claims.
+
+## D27 — Completed-session graphs distinguish evidence from inference
+
+The graph presents native OpenXR interval, cadence, display-period, app-work, runtime-wait and submit
+series with their units and exact timestamps. Full-session rendering uses min/max-per-pixel buckets so
+spikes survive downsampling; visible-window scaling is robust to isolated outliers and calls out clipped
+spikes. Session, user-marker and persisted alarm transitions are evidence. An interval over 1.5 times
+the active cadence budget is an **estimated cadence miss**, never a claimed dropped presentation.
+Measured dropped presentations remain unavailable until ViewLab owns the PresentMon collector.
+
+Schema 2 adds a UTC/QPC anchor, GPU value and existing alarm masks to the checkpointed row without a
+parallel collector. Schema 1 remains readable. Rejected: smoothing shelves away, plotting every point
+into one giant polyline, inventing wall-clock anchors for legacy files, and reporting unavailable
+PresentMon evidence as zero.
+
+## D26 — ViewLab is the product; DiagMon is a prototype farm
+
+DiagMon supplies experiments and evidence, not a product dependency. Valuable capability is migrated
+into ViewLab one bounded feature at a time, validated there, and then owned solely by ViewLab. There is
+no DiagMon runtime, shared authority, parallel collector or parallel UI in the shipping architecture.
+Rejected: merging repositories wholesale, teaching ViewLab to read DiagMon's working folders, and
+leaving two implementations active after migration.
+
+The first migration is PresentMon-backed presentation capture: it contributes independent present
+mode, displayed-frame pacing, duration/latency and stutter evidence that OpenXR hook timings cannot
+prove. ViewLab owns orchestration, lifecycle, compact session storage, analysis and visor/desktop
+presentation. PresentMon's MIT-licensed supported collection/API components may be packaged with their
+required notice; an AMD-driver installation path is never a product prerequisite. No capture or IPC
+operation may block an OpenXR/D3D hook.
+
+Ordinary capture is compact, rolling and quota-bound. ETL/kernel/provider traces remain off unless the
+user explicitly starts a time-bounded deep diagnostic; deep output rotates in compressed chunks and
+stops at its storage cap. A checkbox must never quietly create an unbounded trace.
+
+## D25 — Session traces checkpoint before shutdown
+
+Post-session trace correctness cannot depend on `xrEndSession`, `xrDestroySession`, DLL detach, or a
+polite game process. The existing bounded telemetry worker checkpoints new records once per second and
+durably flushes them outside OpenXR hooks; lifecycle callbacks merely request a final flush. Rejected:
+file I/O on the frame thread, process-detach work under the loader lock, and further shutdown hooks.
+
+## D24 — Alarm-only means sustained critical evidence, not ordinary utilisation
+
+All HUD symbols share one elapsed-time alarm state machine: 750 ms sustained entry, 750 ms recovery,
+then the configured hold measured once from the first non-critical input. GPU uses separate 90% warning
+and 98% critical defaults because ordinary high utilisation at a flat target cadence is useful work, not
+itself a performance failure. Rejected: update-count timing, a generic 90% GPU critical threshold, and
+refreshing recovery from the latched display colour.
+
 ## D23 — Generic network HUD measures a declared probe path, not the game server
 
 ViewLab sends at most one ICMP echo per second from the bounded telemetry worker to a configurable
@@ -151,6 +234,25 @@ marker events, written atomically at session destruction. Generic UI history, no
 human-readable logs are expressly not trace storage: they cannot preserve frame-relative timing and
 would make the graph a decorative reconstruction rather than evidence.
 
+## D29 - All ViewLab presentation is frame-selected behind ViewLab Bridge (2026-07-15)
+
+Projection-only frames keep the established direct eye-texture renderer. When actual submitted topology
+shows a distinct compositor layer can cover it, ordered demand is latched while direct owns allocation.
+When a current projection supplies valid geometry, the central plan presents all common features through
+the live-proven transparent stereo projection carrier: two runtime array slices, current format/capacity,
+space, eye poses and FOV, appended after application layers. Readiness transfers every normal feature to
+that carrier and disables the obsolete direct copy; ordered failure restores the entire set to direct. A
+head-locked quad is not promoted merely
+because resource creation and `xrEndFrame` succeed; the translated menu regression proved that success is
+not visibility. Literal-pixel calibration remains on the game texture because moving it changes what it
+measures. Rejected: executable/runtime allowlists and feature-owned backend decisions.
+
+Allocation or submission failure disables only the ordered supplement and restores writable direct common
+rendering; it never classifies the game as unsupported. Legacy translation grows behind `ViewLabBridge`, a
+separately compiled native boundary. The external translator remains active until ViewLab supplies compatible
+legacy ABI/interface negotiation, compositor timing/session ownership, graphics texture submission, tracking,
+input, properties and overlays. Copying title workarounds from the technical baseline is forbidden.
+
 ## D18 — Sticky note is one bounded native widget (2026-07-14)
 
 The visor note is one short startup-configured string, rendered by the native common overlay path and
@@ -172,3 +274,48 @@ Use Windows SMTC's current-session and media-properties events outside the game.
 trimmed title+artist key changes, include artwork when available, and reuse the brief notification-card
 pipeline. Do not add polling fallback, playback controls, a permanent now-playing widget or repeated
 cards for seek/pause/volume events. Provider lifecycle must unsubscribe the exact registered delegate.
+
+## D29 - Text collections use a bounded live contract (2026-07-15)
+
+Clock numerics and common visibility binds extend the generation-safe general live-state block. Sticky
+notes use a separate fixed-capacity mapping because variable text does not belong in that per-frame numeric
+contract. The collection is capped at eight notes and 120 UTF-16 characters per note, keeps the established
+native renderer, and migrates the former single note into slot zero. This supersedes D18's one-note limit.
+UI absence leaves INI startup values operational. Notification themes remain in the off-render-thread card
+compositor; HUD symbol selection rides the existing telemetry catalogue per widget.
+
+## D30 - The visor preview edits the shared overlay model (2026-07-15)
+
+The visor canvas is an input surface over `OverlaySettingsCatalog`, not a second layout system. Each
+editable placeholder has one stable feature/collection identity and emits generic position or scale
+changes. MainWindow applies those changes to the same controls, INI keys and live-state publishers used
+by the Overlays menu. Labels and editor handles are compensated for canvas zoom in screen space, while
+the placeholder geometry continues to scale with the scene. Edge cues without an ordinary placement
+contract remain read-only. Rejected: feature-private canvas handlers and preview-only persisted values.
+
+## D31 - Preview footprint scale is uniform and singular (2026-07-15)
+
+Each preview descriptor stores an unscaled reference footprint. `OverlayPreviewReplicaLayout` applies the
+shared Scale exactly once to both axes, then uses one common fit factor if the result exceeds the canvas.
+Independent minimum/maximum axis clamps are forbidden because they turn scaling into aspect distortion.
+Performance Trace follows the same product contract: Width defines the graph's base shape and Scale affects
+both dimensions. The preview separately shows the full Quest 3 H/V 1.00 binocular reference and current crop.
+Exact content replicas require a future native layout/content data contract; labelled footprints must not be
+described as pixel-identical before that exists.
+
+## D32 - Crop clips overlays; it does not own their coordinates (2026-07-15)
+
+Ordinary overlay position, full-widget bounds and preview footprints live in the H/V 1.00 full-binocular
+coordinate space. A smaller crop changes coverage only: native rendering clips at the submitted image/FOV,
+while the editor deliberately keeps out-of-crop nodes visible so users can recover them. Angular size still
+uses current pixels-per-tangent, not raw crop dimensions. Rejected: normalizing overlay anchors into the crop,
+clamping them back into the selected FOV, or capping widget size from cropped width/height; all three make a
+crop slider silently move or deform unrelated features.
+
+## D33 - Master is stable and dev is the single working branch (2026-07-17)
+
+`master` is the validated integration baseline. Ordinary AI-assisted work happens on `dev`; changes move
+from `dev` to `master` only after the repository contracts and full build pass and the requested validation
+is recorded. Experiment or feature branches are created only on explicit request. The remote `main` ref is
+an obsolete disconnected history and is not an integration target. Force pushes, history rewrites and branch
+deletion remain prohibited without explicit user approval.

@@ -101,8 +101,8 @@ Assert-Contains 'dllmain.cpp' 'XRViewLab_xrEndFrame[\s\S]*?rendererLock\(g_rende
 # ---- UI sliders exist with the agreed ranges --------------------------------------
 Assert-Contains 'MainWindow.xaml' 'Name="MaskApexYSlider"[^>]*Minimum="-0\.5"[^>]*Maximum="0\.5"' 'main window Apex Y slider range'
 Assert-Contains 'MainWindow.xaml' 'Name="MaskSizeSlider"[^>]*Minimum="0\.1"[^>]*Maximum="1"' 'main window Size slider range'
-Assert-Contains 'MainWindow.xaml' 'Name="MaskInnerBridgePeakXSlider"[^>]*Minimum="-1"[^>]*Maximum="2"' 'main window extended Peak X slider range'
 Assert-Contains 'MainWindow.xaml' 'Name="MaskInnerLowerSlider"[^>]*Minimum="0"[^>]*Maximum="0\.666"' 'main window Inner low slider range'
+Assert-NotContains 'MainWindow.xaml' 'Name="MaskInnerBridge(Slider|RiseSlider|PeakXSlider|SteepnessSlider)"' 'removed notch-detail sliders are absent from the main window'
 Assert-Contains 'ProfileWindow.xaml' 'Name="VisorApexYSlider"[^>]*Minimum="-0\.5"[^>]*Maximum="0\.5"' 'profile Apex Y slider range'
 Assert-Contains 'ProfileWindow.xaml' 'Name="VisorInnerLowerSlider"[^>]*Minimum="0"[^>]*Maximum="0\.666"' 'profile Inner low slider range'
 Assert-Contains 'ProfileWindow.xaml' 'x:Key="ProfileScrollViewer"' 'PowerUp/profile window uses a ViewLab-themed scroll viewer'
@@ -143,7 +143,7 @@ Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'double centerY = \(pins\.y0 \+
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'HitTestCore\(PointHitTestParameters hitTestParameters\)' 'preview is hit-testable across its full rectangle'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'OnPreviewMouseLeftButtonDown' 'preview receives mouse before parent scroll/title handlers'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'SetSliderValue\(MaskApexYSlider, MaskBeanEditor\.OuterApexY\);' 'main window syncs dragged editor apex back to sliders'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'SetSliderValue\(MaskInnerBridgeSlider, MaskBeanEditor\.InnerBridgeWidth\);' 'main window syncs dragged bridge pin back to sliders'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'MaskBeanEditor\.InnerBridgeWidth = FixedInnerBridgeWidth;' 'main preview uses the fixed supported notch shape'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'VisorApexYSlider\.Value = MaskBeanEditor\.OuterApexY;' 'profile window syncs dragged editor apex back to sliders'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'VisorInnerBridgeSlider\.Value = MaskBeanEditor\.InnerBridgeWidth;' 'profile window syncs dragged bridge pin back to sliders'
 
@@ -167,9 +167,9 @@ Assert-NotContains 'dllmain.cpp' 'VoidQuadState|EnsureVoidQuad|drawInVoidTest' '
 Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'DrawInVoidTestKey|DrawInVoidCheck' 'Draw in the Void experiment is removed from the settings UI'
 Assert-Contains 'dllmain.cpp' 'forefront diag: VIEWLAB_LOADED' 'Forefront layer-entry diagnostic is logged when the process loads ViewLab'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", MaskInnerLowerYKey, FormatStorageScale\(MaskInnerLowerSlider\.Value\)' 'UI persists expanded Inner low to the live INI'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", MaskInnerBridgeRiseKey, FormatStorageScale\(MaskInnerBridgeRiseSlider\.Value\)' 'UI persists expanded Rise to the live INI'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", MaskInnerBridgePeakXKey, FormatStorageScale\(MaskInnerBridgePeakXSlider\.Value\)' 'UI persists expanded Peak X to the live INI'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", MaskInnerBridgeSteepnessKey, FormatStorageScale\(MaskInnerBridgeSteepnessSlider\.Value\)' 'UI persists expanded Steep to the live INI'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", MaskInnerBridgeRiseKey, FormatStorageScale\(FixedInnerBridgeRise\)' 'UI resets removed Rise tuning to the supported shape'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", MaskInnerBridgePeakXKey, FormatStorageScale\(FixedInnerBridgePeakX\)' 'UI resets removed Peak X tuning to the supported shape'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", MaskInnerBridgeSteepnessKey, FormatStorageScale\(FixedInnerBridgeSteepness\)' 'UI resets removed Steep tuning to the supported shape'
 Assert-Contains 'dllmain.cpp' 'constexpr bool visorHD = false' 'HD visor is hardcoded off'
 Assert-Contains 'dllmain.cpp' 'constexpr bool visorAntialiasing = false' 'visor anti-aliasing is hardcoded off'
 Assert-Contains 'dllmain.cpp' 'bool cropOuterEdgesOnly = true' 'crop outer edges is hardcoded on'
@@ -219,8 +219,8 @@ Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.DeleteValue\("mask_in
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'MaskRoundnessSlider\.Value = 0\.5;' 'curve right-click reset returns to the safe default'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'private const string HorizVisualMaskBothKey = "horizontal_visual_mask_only";' 'horizontal Edge Masks checkbox writes the DLL key'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'private const string VertVisualMaskBothKey = "visual_mask_only";' 'vertical Edge Masks checkbox writes the DLL key'
-Assert-Contains 'MainWindow.xaml' 'Name="HorizOuterEyeMaskCheck"[^>]*IsEnabled="False"' 'unsupported one-sided horizontal edge mask control is disabled'
-Assert-Contains 'MainWindow.xaml' 'Name="VertTopMaskCheck"[^>]*IsEnabled="False"' 'unsupported one-sided vertical edge mask control is disabled'
+Assert-NotContains 'MainWindow.xaml' 'HorizOuterEyeMaskCheck|HorizInnerEyeMaskCheck' 'unsupported one-sided horizontal edge controls are removed'
+Assert-NotContains 'MainWindow.xaml' 'VertTopMaskCheck|VertBottomMaskCheck' 'unsupported one-sided vertical edge controls are removed'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'UseGlobal = UseGlobalVisorCheck\.IsChecked == true;' 'profile save preserves use-global when selected'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' '_initialized = true;' 'profile window enables event handlers after manual initialization'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'LoadCustomVisorValues\(\);' 'profile use-global toggle can restore original custom values'
@@ -284,13 +284,13 @@ Assert-Contains 'dllmain.cpp' 'const int l=eye\.rect\.offset\.x, t=eye\.rect\.of
 Assert-Contains 'dllmain.cpp' 'one cell is always 64 submitted-texture pixels' 'the 64px grid remains a literal pixel ruler'
 Assert-Contains 'dllmain.cpp' 'ResolveSharedTangent\(0\.f, 0\.f, true\)' 'centre-based calibration patterns share the fused crosshair tangent centre'
 Assert-Contains 'dllmain.cpp' 'cosf\(a\)\*radiusTan,sinf\(a\)\*radiusTan' 'radial calibration geometry is circular in tangent space rather than raw pixels'
-Assert-Contains 'dllmain.cpp' '\(hudEnabled \|\| hudTraceEnabled\) && eye\.viewIndex < 2' 'performance HUD and trace project into both eyes for stereo fusion'
+Assert-Contains 'dllmain.cpp' 'hudEnabled&&OverlayFeatureVisible\(OverlayFeatureId::Hud\)[\s\S]*hudTraceEnabled&&OverlayFeatureVisible\(OverlayFeatureId::Trace\)[\s\S]*eye\.viewIndex < 2' 'performance HUD and trace project into both eyes for stereo fusion'
 Assert-Contains 'dllmain.cpp' 'anchorPxX\(hudAnchorX\)' 'HUD anchor maps through the shared tangent-space frame (X)'
 Assert-Contains 'dllmain.cpp' 'anchorPxY\(hudAnchorY\)' 'HUD anchor maps through the shared tangent-space frame (Y)'
 Assert-Contains 'dllmain.cpp' 'g_hudDrawSnap' 'HUD and trace render from one frame-coherent snapshot'
 Assert-NotContains 'dllmain.cpp' 'segs\[10\]=\{0x3f' 'seven-segment HUD digits replaced by the pixel font'
 Assert-Contains 'dllmain.cpp' 'kHudFont' 'HUD uses the 5x7 pixel font with a decimal-point glyph'
-Assert-Contains 'dllmain.cpp' '"%\.1f", metric\.value' 'VR frame time renders with exactly one decimal and no unit suffix'
+Assert-Contains 'dllmain.cpp' '"%\.1f %s", metric\.value, widget\.unit' 'decimal HUD values carry explicit units'
 Assert-Contains 'dllmain.cpp' 'UpdateHudMetrics\(\)' 'HUD telemetry is update-rate limited outside geometry construction'
 Assert-Contains 'dllmain.cpp' 'GetSystemTimes' 'HUD reads total Windows CPU time'
 Assert-Contains 'dllmain.cpp' 'idleDelta.*totalDelta' 'HUD CPU conversion subtracts idle time from total system time'
@@ -309,10 +309,11 @@ Assert-Contains 'dllmain.cpp' 'std::sort' 'cadence classification uses a rolling
 Assert-Contains 'dllmain.cpp' 'g_hudCadenceStable >= 20' 'cadence multiple switches only after sustained agreement'
 Assert-Contains 'dllmain.cpp' 'std::lround\(medianMs / g_hudDisplayPeriodMs\)' 'effective cadence is an integer multiple of the runtime display period, never hardcoded'
 Assert-Contains 'dllmain.cpp' 'hudAlarmOnly && !snap\.alarm\[id\]' 'alarm-only mode hides each widget independently while not critical'
-Assert-Contains 'dllmain.cpp' 'redHoldUntilTick' 'alarm indicators keep a configurable hold after recovery'
+Assert-Contains 'dllmain.cpp' 'UpdateSustainedAlarm' 'every HUD symbol uses the shared bounded alarm state machine'
+Assert-Contains 'Tests\RenderPolicyFixtures.cpp' 'post-recovery hold expires instead of extending itself forever' 'alarm recovery cannot refresh its own hold indefinitely'
 Assert-NotContains 'dllmain.cpp' 'Network Interface' 'network placeholder telemetry is removed'
 Assert-Contains 'MainWindow.xaml' 'Name="HudEnabledCheck"' 'UI exposes a Performance HUD checkbox'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'HudEnabledKey' 'UI persists the HUD enabled setting'
+Assert-Contains 'XRViewLab.UI\OverlaySettingsModels.cs' '"hud_enabled"' 'shared overlay catalogue persists the HUD enabled setting'
 Assert-Contains 'MainWindow.xaml' 'Name="HudXSlider"' 'HUD X control exists'
 Assert-Contains 'MainWindow.xaml' 'Name="HudYSlider"' 'HUD Y control exists'
 Assert-Contains 'MainWindow.xaml' 'Name="HudScaleSlider"' 'HUD scale control exists'
@@ -327,17 +328,30 @@ foreach ($key in @('hud_trace_x', 'hud_trace_y', 'hud_trace_scale', 'hud_trace_w
 }
 Assert-Contains 'MainWindow.xaml' 'Name="HudSafeMarginSlider"' 'HUD safe-margin control exists'
 Assert-Contains 'dllmain.cpp' 'hudClampToVisible' 'HUD clamps complete bounds to the visible eye rectangle'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 208' 'live state carries overlay placement controls'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 7u\)' 'live state contract is version 7'
-Assert-Contains 'dllmain.cpp' 'snapshot\.version != 7' 'DLL consumes live-state contract version 7'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 260' 'live state carries overlay placement controls'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 8u\)' 'live state contract is version 8'
+Assert-Contains 'dllmain.cpp' 'snapshot\.version != 8' 'DLL consumes live-state contract version 8'
 Assert-NotContains 'MainWindow.xaml' 'TopmostVisorOverlaysCheck' 'ordinary UI does not expose backend implementation choice'
 Assert-Contains 'dllmain.cpp' '!ReadBoolSetting\(L"overlay_force_direct", false\)' 'automatic topmost is the normal session policy'
-Assert-Contains 'dllmain.cpp' 'maskEnabled && \(!topmostVisorOverlays \|\| !g_topmostLayer.ready \|\| g_topmostLayerBlocked\.load\(std::memory_order_acquire\)\)' 'direct visor is suppressed once topmost is ready to avoid duplicates'
+Assert-Contains 'dllmain.cpp' 'maskEnabled && g_featurePresentationPlan\.drawDirectVisor' 'central policy gates the direct visor path'
+Assert-Contains 'dllmain.cpp' 'AnyDirectOverlay\(\) && g_featurePresentationPlan\.drawDirectCommonFeatures' 'central policy gates the direct common-feature path'
 Assert-Contains 'dllmain.cpp' 'XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT' 'topmost layer submits transparent source alpha'
 Assert-NotContains 'dllmain.cpp' 'XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT' 'topmost compositor does not multiply its premultiplied target twice'
-Assert-Contains 'dllmain.cpp' 'tracked->second\.format' 'topmost layer derives colour format from the primary projection swapchain'
-Assert-Contains 'dllmain.cpp' 'rd\.Format=topmostDesc\.Format' 'topmost uses the runtime texture typed format for a legal RTV'
+Assert-Contains 'dllmain.cpp' 'preferredFormat=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB' 'ordered projection starts from the established colour contract'
+Assert-Contains 'dllmain.cpp' 'const int64_t candidate=tracked->second.format' 'ordered projection follows the current game projection format when compatible'
+Assert-Contains 'dllmain.cpp' 'rd\.Format=topmostDesc\.Format' 'ordered projection preserves the runtime resource RTV contract'
 Assert-Contains 'dllmain.cpp' 'submittedLayers\.push_back' 'topmost layer is appended after game layers'
+Assert-Contains 'dllmain.cpp' 'XrCompositionLayerProjection layer\{XR_TYPE_COMPOSITION_LAYER_PROJECTION\}' 'ordered compatibility presentation preserves the proven stereo projection carrier'
+Assert-Contains 'dllmain.cpp' 'ci\.faceCount=1; ci\.arraySize=2' 'ordered compatibility presentation owns one runtime array slice per eye'
+Assert-Contains 'dllmain.cpp' 'out\.layer\.space=source->space' 'ordered compatibility presentation follows the current projection space'
+Assert-Contains 'dllmain.cpp' 'primaryProjection==nullptr' 'frame topology detects composition-only scenes without title checks'
+Assert-Contains 'ViewLabBridge/BridgeCore.cpp' '!capabilities\.hasPrimaryProjection && !capabilities\.hasCompositionLayers' 'central feature policy recognises composition-only frames'
+Assert-Contains 'dllmain.cpp' 'OverlayBackend::SeparateProjection' 'layer selection crosses the ViewLab Bridge boundary'
+Assert-Contains 'ViewLabBridge\BridgeCore.cpp' 'hasDistinctCompositionLayer' 'bridge selects presentation from observed frame capabilities'
+Assert-Contains 'ViewLabBridge\BridgeCore.cpp' 'plan\.drawDirectVisor = capabilities\.hasPrimaryProjection && capabilities\.canWriteEyeTexture' 'submission success never disables the proven direct visor when a writable projection exists'
+Assert-Contains 'ViewLabBridge\BridgeCore.cpp' 'capabilities\.orderedPresentationReady' 'ordered readiness selects exactly one normal-feature presentation path'
+Assert-Contains 'dllmain.cpp' 'const bool wasDemanded=g_topmostLayerDemanded' 'topology demand remains central and survives scene changes'
+Assert-NotContains 'ViewLabBridge\BridgeCore.cpp' '(?i)dirt|pistol|pinball|boneworks' 'bridge contains no title-specific route policy'
 Assert-Contains 'dllmain.cpp' 'DestroyTopmostLayer\(\)' 'topmost path has explicit fallback and teardown'
 Assert-Contains 'dllmain.cpp' 'g_topmostLayerAttempted\s*=\s*true' 'topmost allocation is attempted at most once per session'
 Assert-Contains 'dllmain.cpp' 'projection capacity changed' 'topmost projection-size changes fail closed instead of reallocating'
@@ -351,7 +365,7 @@ Assert-Contains 'MainWindow.xaml' 'Thumb.DragStarted="BoundaryDrag_Start"' 'HUD/
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' '_boundaryDragActive = true' 'UI sets the drag-active flag while dragging layout controls'
 
 # Feature 2: crosshair — flat colour+alpha at the stereo centre; legacy config + CS2 share-code import.
-Assert-Contains 'dllmain.cpp' 'crosshairEnabled && crosshairAlpha' 'crosshair draws only when enabled'
+Assert-Contains 'dllmain.cpp' 'crosshairEnabled&&OverlayFeatureVisible\(OverlayFeatureId::Crosshair\) && crosshairAlpha' 'crosshair draws only when enabled and visible'
 Assert-Contains 'dllmain.cpp' 'crosshairTStyle' 'crosshair supports T-style (top arm hidden)'
 Assert-Contains 'dllmain.cpp' 'crosshairGap' 'crosshair gap (incl. negative) is applied'
 Assert-Contains 'MainWindow.xaml' 'Name="CrosshairEnabledCheck"' 'crosshair enable control exists'
@@ -367,7 +381,7 @@ Assert-Contains 'MainWindow.xaml' 'Name="CrosshairOverlayPreview"' 'Overlays men
 Assert-Contains 'MainWindow.xaml' 'Name="CrosshairOffsetXSlider"[^>]*MouseRightButtonUp="CrosshairOffset_ResetRightClick"' 'horizontal crosshair offset supports direct right-click reset'
 Assert-Contains 'MainWindow.xaml' 'Name="CrosshairOffsetYSlider"[^>]*MouseRightButtonUp="CrosshairOffset_ResetRightClick"' 'vertical crosshair offset supports direct right-click reset'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'CrosshairOffset_ResetRightClick[\s\S]*?CrosshairOffsetXSlider\.Value = 0[\s\S]*?CrosshairOffsetYSlider\.Value = 0' 'crosshair right-click handler resets either offset to zero'
-Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, crop\)' 'visor preview shows one fused crosshair at the complete preview centre'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, area\)' 'visor preview keeps the fused crosshair in crop-independent full-binocular coordinates'
 Assert-NotContains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, rightEye\)' 'visor preview does not expose raw per-eye crosshair duplication'
 Assert-Contains 'XRViewLab.UI\CrosshairPreview.cs' '1\.125\*VrScale' 'Overlays crosshair preview uses the calibrated half-size display scale'
 foreach ($key in @('crosshair_enabled','crosshair_size','crosshair_gap','crosshair_thickness','crosshair_alpha','crosshair_color','crosshair_tstyle')) {
@@ -447,14 +461,17 @@ Assert-Contains 'dllmain.cpp' 'HudMetricState::Reprojection' 'VR HUD identifies 
 Assert-Contains 'dllmain.cpp' 'HudMetricState::Unstable' 'VR HUD identifies unstable cadence'
 Assert-Contains 'dllmain.cpp' 'rollingRatio>1\.03' 'VR HUD warning compares sustained cadence to the active budget'
 Assert-Contains 'dllmain.cpp' 'rollingRatio>1\.08' 'VR HUD critical state compares sustained cadence to the active budget'
-Assert-Contains 'dllmain.cpp' 'ResolveSharedTangent\(crosshairTanX,crosshairTanY,true\)' 'crosshair resolves one shared tangent target and pins it per eye'
+Assert-Contains 'dllmain.cpp' 'ResolveSharedTangent\(crosshairTanX,crosshairTanY,false\)' 'crosshair resolves one full-binocular tangent target without crop clamping'
 Assert-Contains 'dllmain.cpp' 'enum class OverlayPlacement \{ RenderArea, FullLens, LensPinned \}' 'all overlay placement modes share one resolver'
 Assert-Contains 'dllmain.cpp' 'angularDisparity=0' 'crosshair diagnostics report shared angular disparity and projected pixels'
 Assert-Contains 'dllmain.cpp' 'const float inset=floorf\(th\*\.5f\)\+2\.f' 'boundary flash is inset fully inside the eye scissor'
 Assert-Contains 'dllmain.cpp' 'boundaryPxPerTan' 'boundary flash stroke thickness is angular/screen stable under crop changes'
 Assert-Contains 'dllmain.cpp' 'sharedSelectedL' 'render-area overlays use shared binocular tangent bounds'
-Assert-Contains 'dllmain.cpp' 'maskEnabled \|\| \(\(!topmostVisorOverlays \|\| !g_topmostLayer\.ready \|\| g_topmostLayerBlocked\.load\(std::memory_order_acquire\)\)' 'direct visor rendering resumes after a topmost failure'
-Assert-Contains 'dllmain.cpp' 'if\(maskEnabled\) DrawVisorBorderToTexture' 'topmost backend also draws the visor mask'
+Assert-Contains 'dllmain.cpp' 'g_featurePresentationPlan\.drawDirectVisor=false;[\s\S]{0,120}g_featurePresentationPlan\.drawDirectCommonFeatures=false;' 'successful ordered allocation disables both obsolete direct copies together'
+Assert-Contains 'dllmain.cpp' 'if\(maskEnabled\)[\s\S]{0,160}DrawVisorBorderToTexture' 'topmost backend also draws the visor mask'
+Assert-Contains 'dllmain.cpp' 'maskEnabled && g_featurePresentationPlan\.drawDirectVisor' 'central bridge plan controls the direct visor path'
+Assert-Contains 'dllmain.cpp' 'if\(drewVisor\) g_releaseDrewVisorThisFrame' 'direct diagnostics cannot claim a visor draw when the backend gate skipped it'
+Assert-Contains 'dllmain.cpp' 'return float4\(0\.0f, 0\.0f, 0\.0f, 1\.0f\)' 'visor emits compositor-visible opaque black on the shared ordered target'
 
 # Stable display cadence straddles the theoretical interval slightly; these displayed values must
 # remain below the rolling amber entry band at their full-precision ratios.
@@ -467,7 +484,7 @@ foreach ($key in @('iracing_enabled','iracing_lap_popup','iracing_spotter_glow',
     Assert-Contains 'dllmain.cpp' $key "DLL reads iRacing integration key $key"
     Assert-Contains 'xr-viewlab.ini' $key "default ini carries iRacing integration key $key"
 }
-Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' '4\.0 / _viewZoom' 'preview visor stroke remains screen-space stable while zooming'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' '\(_visorVisible\?4\.0:2\.0\) / _viewZoom' 'active and disabled preview visor strokes remain screen-space stable while zooming'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'modelRadius = PinPixelRadius / _viewZoom' 'preview pins remain constant in screen pixels'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'modelHitRadius = PinHitPixelRadius / _viewZoom' 'preview pin hit testing remains constant in screen pixels'
 Assert-NotContains 'dllmain.cpp' 'projectionView\.fov\s*=' 'layer never rewrites submitted projection FOVs'
@@ -547,13 +564,13 @@ Assert-Contains 'MainWindow.xaml' 'Test presentation \(synthetic\)' 'synthetic n
 # Dedicated clock/session widget: independent overlay, monotonic OpenXR-session lifetime, and
 # complete UI -> ini -> native key wiring. It must not regress into the notification queue.
 foreach ($key in @('clock_widget_enabled','clock_widget_x','clock_widget_y','clock_widget_scale','clock_widget_opacity')) {
-    Assert-Contains 'XRViewLab.UI\MainWindow.cs' $key "UI persists $key"
+    Assert-Contains 'XRViewLab.UI\OverlaySettingsModels.cs' $key "shared overlay catalogue persists $key"
     Assert-Contains 'dllmain.cpp' $key "native layer reads $key"
 }
 Assert-IniValue 'clock_widget_enabled' '0'
 Assert-Contains 'dllmain.cpp' 'g_clockSessionStartTick\.store\(GetTickCount64\(\)' 'session timer starts at successful OpenXR session creation'
 Assert-Contains 'dllmain.cpp' 'g_clockSessionStartTick\.store\(0' 'session timer resets at OpenXR session destruction'
-Assert-Contains 'dllmain.cpp' 'clockWidgetEnabled.*crosshairEnabled' 'clock participates in the common direct/topmost overlay gate'
+Assert-Contains 'dllmain.cpp' 'clockWidgetEnabled&&OverlayFeatureVisible\(OverlayFeatureId::Clock\)' 'clock participates in the common direct/topmost overlay gate'
 Assert-Contains 'dllmain.cpp' 'viewlab::clock_widget::Format' 'native renderer uses the tested clock formatter'
 Assert-Contains 'MainWindow.xaml' 'CLOCK \+ SESSION' 'clock widget has dedicated ordinary settings UI'
 if (Test-Path -LiteralPath (Join-Path $Root 'XRViewLab.UI\HistoryService.cs')) { throw 'Contract failed: removed technical-history service returned' }
@@ -568,23 +585,35 @@ Assert-IniValue 'performance_trace_recording' '1'
 Assert-IniValue 'performance_trace_marker_vk' '119'
 Assert-Contains 'dllmain.cpp' 'CapturePerformanceTraceMarker\(stop\.QuadPart\)' 'bind edge is stamped with the actual xrWaitFrame QPC timestamp'
 Assert-Contains 'dllmain.cpp' 'sample\.qpc=qpc; sample\.markerNumber=g_pendingTraceMarker' 'marker is attached to the real visor trace stream'
-Assert-Contains 'dllmain.cpp' 'ViewLabPerformanceTrace,1' 'native recorder writes a versioned real-trace format'
+Assert-Contains 'dllmain.cpp' 'ViewLabPerformanceTrace,2' 'native recorder writes a versioned real-trace format'
+Assert-Contains 'dllmain.cpp' 'start_utc_filetime' 'native recorder anchors QPC samples to wall-clock time'
+Assert-Contains 'dllmain.cpp' 'warning_mask,critical_mask,visible_alarm_mask' 'native recorder persists alarm state without a second collector'
 Assert-Contains 'dllmain.cpp' 'SavePerformanceTraceSession\(\)' 'OpenXR session lifecycle persists the trace'
+Assert-Contains 'dllmain.cpp' 'XRViewLab_xrEndSession' 'successful xrEndSession persists the completed trace before renderer teardown'
+Assert-Contains 'dllmain.cpp' 'g_performanceTraceSession' 'trace lifetime is independent of D3D renderer state'
+Assert-Contains 'HardwareTelemetry.cpp' 'checkpointCallback' 'bounded hardware worker owns periodic trace checkpoint calls'
+Assert-Contains 'dllmain.cpp' 'SetCheckpointCallback\(SavePerformanceTraceSession\)' 'trace checkpointing is armed independently of orderly game shutdown'
+Assert-Contains 'XRViewLab.UI\PerformanceTrace.cs' 'catch \(FormatException\)' 'reader ignores a trailing partial checkpoint record after abrupt process exit'
 Assert-Contains 'XRViewLab.UI\PerformanceTrace.cs' 'PerformanceTraceSample' 'post-session reader consumes trace samples'
-Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml.cs' 'foreach\(var m in _trace\.Markers\)' 'post-session graph draws numbered marker events'
+Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml.cs' 'DrawEvents' 'post-session graph draws session, cadence, alarm and marker events'
 Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml.cs' 'PreviousMarker_Click|NextMarker_Click' 'post-session graph supports marker navigation'
+Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml.cs' 'DrawDownsampledSeries' 'post-session graph uses spike-preserving downsampling'
+Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml' 'Reset view' 'post-session graph exposes zoom and reset controls'
 Assert-NotContains 'dllmain.cpp' 'HistoryService.*PerformanceTrace|PerformanceTrace.*HistoryService' 'trace markers must never use generic history'
 
-# One bounded sticky note is a native visor widget, not a note manager or notification card.
-foreach ($key in @('sticky_note_enabled','sticky_note_text','sticky_note_x','sticky_note_y','sticky_note_scale','sticky_note_opacity','sticky_note_toggle_vk')) {
-    Assert-Contains 'XRViewLab.UI\MainWindow.cs' $key "UI persists $key"
+# Bounded sticky notes are native visor widgets, not notification cards.
+foreach ($key in @('sticky_note_enabled','sticky_note_x','sticky_note_y','sticky_note_scale','sticky_note_opacity','sticky_note_toggle_vk')) {
+    Assert-Contains 'XRViewLab.UI\OverlaySettingsModels.cs' $key "shared overlay catalogue persists $key"
     Assert-Contains 'dllmain.cpp' $key "native layer reads $key"
 }
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'sticky_note_text' 'UI persists sticky note text'
+Assert-Contains 'dllmain.cpp' 'sticky_note_text' 'native layer reads sticky note text'
 Assert-IniValue 'sticky_note_enabled' '0'
 Assert-IniValue 'sticky_note_toggle_vk' '118'
-Assert-Contains 'dllmain.cpp' 'stickyDown&&!g_stickyNoteKeyDown' 'sticky note bind is rising-edge triggered'
+Assert-Contains 'dllmain.cpp' 'if\(down&&!feature\.keyDown\)' 'shared overlay binds are rising-edge triggered'
 Assert-Contains 'dllmain.cpp' 'viewlab::sticky_note::Wrap' 'native note uses bounded tested wrapping'
-Assert-Contains 'MainWindow.xaml' 'Name="StickyNoteTextBox" MaxLength="120"' 'sticky note input is short and bounded'
+Assert-Contains 'MainWindow.xaml' 'MaxLength="120"' 'sticky note inputs are short and bounded'
+Assert-Contains 'XRViewLab.UI\StickyNoteLiveStateService.cs' 'MaxNotes = 8' 'sticky note collection is explicitly bounded'
 Assert-NotContains 'dllmain.cpp' 'NotifyCardBlock.*sticky|sticky.*NotifyCardBlock' 'sticky note must not enter the notification queue'
 
 # OBS indication uses GetRecordStatus, not process presence, and makes no capture-exclusion claim.
@@ -605,5 +634,20 @@ Assert-Contains 'XRViewLab.UI\MediaSessionEventProvider.cs' '_manager\.CurrentSe
 Assert-Contains 'NotificationBroker\Program.cs' 'EnqueueMediaCard' 'track changes enter the brief notification card pipeline'
 Assert-NotContains 'XRViewLab.UI\MediaSessionEventProvider.cs' 'TryPlayAsync|TryPauseAsync|TrySkipNextAsync|TrySkipPreviousAsync' 'music feature has no transport controls'
 Assert-IniValue 'media_notify_enabled' '0'
+
+# DiagMon capture must survive target exit, own its collector output, and keep tests away from live data.
+Assert-Contains 'XRViewLab.UI\DiagMonCaptureService.cs' 'FinalizeWhenCaptureLoopEndsAsync' 'natural target exit and Trace timeout automatically finalise capture'
+Assert-Contains 'XRViewLab.UI\DiagMonCaptureService.cs' '--output_stdout' 'ViewLab owns recoverable PresentMon row persistence'
+Assert-Contains 'XRViewLab.UI\DiagMonCaptureService.cs' '--terminate_existing_session' 'PresentMon is stopped through its named trace session'
+Assert-Contains 'XRViewLab.UI\DiagMonCaptureService.cs' '--terminate_on_proc_exit' 'PresentMon exits when its target exits'
+Assert-Contains 'XRViewLab.UI\DiagMonCaptureService.cs' 'CaptureModules\(preserveExistingOnFailure: true\)' 'Detailed module evidence is captured while the target is alive'
+Assert-Contains 'Tests\DiagMonFixtures\Program.cs' 'new DiagMonStore\(Path.Combine\(fixture, "store"\)\)' 'DiagMon fixtures use an isolated temporary store'
+Assert-Contains 'xr-viewlab.csproj' 'PresentMon-2.4.1-x64.exe' 'published UI includes the pinned PresentMon collector'
+Assert-Contains 'Installer\Product.wxs' 'PresentMon-2.4.1-x64.exe' 'MSI includes the pinned PresentMon collector'
+$presentMonBinary = Join-Path $Root 'ThirdParty\PresentMon\PresentMon-2.4.1-x64.exe'
+if (-not (Test-Path -LiteralPath $presentMonBinary)) { throw 'Contract failed: pinned PresentMon binary is missing' }
+$presentMonHash = (Get-FileHash -LiteralPath $presentMonBinary -Algorithm SHA256).Hash
+if ($presentMonHash -ne 'D74183E7AE630F72CD3690BE0373ECBFDC6CBB86578148AAB8FA2A7166068F34') { throw "Contract failed: pinned PresentMon hash changed: $presentMonHash" }
+Assert-Contains 'ThirdParty\PresentMon\LICENSE.txt' 'Permission is hereby granted' 'PresentMon MIT notice ships with the collector'
 
 Write-Host 'ViewLab contract verification passed.'

@@ -3,16 +3,172 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-07-14
-**Current version:** 4.1.217 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.217.msi`
+**Updated:** 2026-07-17
+**Current version:** 4.1.239 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.239.msi`
+**Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
+AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
+remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
 `VIEWLAB_VALIDATION_HISTORY.md`; 4.1.202 has real packaged-notification desktop validation and
 4.1.209 failed its first precise Pistol Whip headset matrix. 4.1.210 repairs those observed failures
 and has clean contracts/fixtures plus WPF, broker, x64/Win32 native, signed identity package, MSI and
-extracted-payload validation. Its narrow Pistol Whip headset matrix is mandatory before DiRT.
+extracted-payload validation. Build 4.1.224 additionally passes the full deterministic suite and fresh
+WPF, broker, signed identity, x64/Win32 native, MSI extraction, pinned PresentMon hash/notice validation;
+its DiagMon real-game CSV and live Trace-cap checks remain mandatory before release.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Product polish consolidation (implemented and internally verified; headset validation pending, 2026-07-15)
+
+Ordinary overlay configuration now has one catalogue and one load/save/reset path for clock, Performance
+HUD, Performance Trace, sticky note, crosshair and notifications. Each exposes enable, optional None/F6–F12
+show/hide bind, X/Y, scale, opacity and reset where applicable. Existing layout keys are unchanged and the
+old sticky bind migrates without resetting a layout. Native show/hide state is one central controller; the
+working presentation carrier and ordering policy were not changed.
+
+The clock's enable, optional session lane, 12/24-hour format, five themes, layout, opacity and visibility
+bind now publish live through contract v8. Sticky notes use a dedicated generation-safe collection contract:
+up to eight independently themed square notes with independent enable, position, scale and opacity; the old
+single note becomes note one. Notification cards have five compositor themes. HUD label/symbol choice is
+stored and published per widget, with labels remaining the migration default. Deterministic contracts and
+x64 native/WPF/broker builds pass; headset appearance remains pending.
+
+The visor editor also previews every enabled ordinary overlay: HUD, trace, clock/timer, notifications,
+individual sticky notes and crosshair use their configured anchors, while OBS and racing edge cues use
+labelled edge placeholders. Ordinary footprints store unscaled reference geometry and receive exactly one
+uniform scale plus one aspect-preserving bounds fit; the former independent axis clamps are removed. The
+top-centre move and top-right scale pins update the existing shared controls, persistence and live-state
+contract, and their labels remain screen-readable under canvas zoom. Performance Trace now treats Scale as
+whole-widget scale while Width defines its base shape. A dotted Quest 3 H/V 1.00 binocular reference surrounds
+the solid current post-crop rectangle, with an inner oval marking approximate naturally visible binocular area.
+Preview and native common-overlay placement now resolve against full-lens coordinates; crop is a coverage/clipping
+boundary and cannot resize, deform or relocate an overlay. Nodes beyond crop remain editable in the full preview.
+The visor outline is active red only while Visor mask is enabled and becomes a faint grey geometry reference when
+disabled. Placeholder content is not yet a native pixel replica.
+
+All sixteen HUD widgets have their own persisted warning and critical controls with higher/lower semantics.
+The old System-only controls and default-key duplication are removed. HUD rings now carry literal catalogue
+labels and explicit %, ms, FPS, MHz or state units; session events use the same terminology. The clock card
+gives local time stronger typographic hierarchy than elapsed session time. Visor Width/Height again define
+the aspect ratio, Size scales it uniformly, and Nose alone controls notch depth against a fixed curve. The four
+unstable notch-detail sliders are removed from the main editor. Edge Mask exposes
+only the two combinations the renderer actually supports instead of retaining hidden no-op controls.
+
+Calibration contains only its ten tools; Overlays owns ordinary overlay controls; DiagMonster owns Session
+Graph and diagnostics. Every calibration key is audited UI→INI→native and deterministic full/vertical-crop/
+horizontal-crop PNG references are produced for all ten tools under `TestResults\CalibrationReferences`.
+Native VR traces archive as unique `session-*.csv` files while `latest.csv` remains a compatibility alias.
+The Session Graph browser opens prior runs, compares selected FPS/P99 results and explicitly deletes selected
+history. DiagMon session history also supports selected-session comparison and configurable retention guidance;
+evidence is never silently deleted. Overlay, HUD, calibration, Session Graph, performance-trace, RenderPolicy,
+DiagMon and repository contracts pass. Build 4.1.239 completed WPF, broker, signed identity, x64/Win32 native,
+MSI creation and extracted-payload hash/marker validation with zero build warnings or errors. Live headset visual
+acceptance remains deliberately unclaimed.
+
+## Cross-route visor compatibility and ViewLab Bridge (implementation candidate; 2026-07-15)
+
+**Canonical compatibility goal:** any game, feature, graphics stack, runtime, PC and GPU is handled through
+capability negotiation rather than identity rules. All ViewLab rendering shares one frame-derived feature
+presentation plan. Legacy games ultimately load a ViewLab-owned translation bridge and the active OpenXR
+runtime without a separately installed translator. Missing capability combinations are feature-level
+fallbacks with diagnostics, never unsupported-game classifications. Representative game/hardware matrices
+prove specific regressions only; they cannot by themselves prove the universal design claim.
+
+Live reproduction on installed 4.1.222 confirmed VDXR and the Quest 3 available, then launched the
+installed legacy route with D3D11. Four translated OpenXR instance creations and the recreated graphics
+session all loaded the global `mask_enabled=1`; the disabled per-app profile had no visor override. The
+earlier `visor_enabled=0` sessions therefore reflected the global INI at those launch times, not a profile,
+migration or session-reset defect. The failure reproduced with a healthy process: ViewLab tracked the
+`7260x882` translated eye texture, rendered at the submitted `3630x882` per-eye extent, created its own
+swapchain and received success from `xrEndFrame`, yet the user saw no visor. Builds 4.1.225-4.1.230 then
+replaced the previously working ordered stereo projection with a head-locked quad. The translated menu
+compositor accepted that quad but did not display it; moving every common feature onto the same unverified
+carrier made visor, HUD, trace and notifications disappear together. This was the shared regression.
+
+Build 4.1.232 repairs the resulting duplicate-path regression. Direct rendering owns the ordered allocation
+transition; once the transparent stereo projection is ready, visor, HUD, trace, notifications, clock/session,
+sticky notes and every other normal shared overlay move to it together and direct normal-feature drawing
+stops. Ordered failure restores the complete set to direct. The visor now emits guaranteed opaque black on
+the same carrier as the colour-correct HUD. Fixtures, contracts, packaging, installed x64/Win32 hash parity,
+VDXR readiness and a live Dirt session prove one `3526x882` ordered submission after the transition. Headset
+visibility through menu/gameplay/menu, another translated title and native OpenXR remain pending.
+
+## DiagMon(ster) native capture and session history (lifecycle repaired; game/Trace validation pending, 2026-07-15)
+
+View Lab now owns the complete user-facing capture lifecycle through the exact `DiagMon(ster)` cockpit:
+manual/foreground/new-process/previous targeting, Standard/Detailed/Trace modes, collector status,
+elapsed time, clean stop, current-session inspection, a sortable/filterable Session Library, validation,
+classification, notes/tags, explicit deletion and context-bounded AI ZIP export. Sessions live under
+`%LOCALAPPDATA%\XR ViewLab\DiagMon` as portable directories with JSON manifests, raw evidence, summaries,
+graphs, events, logs and annotations; `.partial` sessions are recovered and marked incomplete at launch.
+
+The generic collector owns PresentMon, low-rate target process sampling, typeperf system/DPC/interrupt/
+memory/storage/network/GPU counters, detailed module/API detection, event-window queries, View Lab evidence
+and optional capped WPR. Collector failure is explicit and partial evidence survives. Deterministic frame
+analysis documents long/severe thresholds, never treats `AllowsTearing` as a dropped frame, and separates
+metric calculation, robust median/IQR historical selection and factual wording. Invalid, experimental,
+stress-test and incomplete runs cannot enter calculated baselines. Two real short desktop fixtures (`cmd`
+and PowerShell) proved generic session finalisation, metadata exclusion and export; both are marked invalid
+experiments. Main WPF build, dedicated fixtures, contracts, x64/Win32 native layers, signed notification
+identity, MSI creation and extracted-payload validation pass in 4.1.224. Installed UI interaction, a
+sustained workload, PresentMon output on a real game and Trace-mode WPR remain to validate. The 2026-07-15
+audit found that real Brave and DiRT sessions lost PresentMon output because the collector was force-killed,
+leaving three owned ETW sessions behind; target exit and the Trace deadline also failed to finalise. The
+repair bundles hash-pinned PresentMon 2.4.1 plus its MIT notice, streams stdout into a ViewLab-owned CSV
+with one-second durable flushes, cleanly terminates the unique trace-session name, automatically serialises
+target-exit/deadline finalisation including WPR stop, captures Detailed modules while the target is alive,
+and isolates fixtures from production LocalAppData. Deterministic target-exit, output-pump, collector-stop
+and fixture-store checks pass; a sustained real-game PresentMon CSV and live Trace cap still require testing.
+
+## HUD alarm and crash-tolerant trace repair (implemented; trace fix user-verified, 2026-07-14)
+
+The completed DiRT Rally diagnostic baseline held a flat 90 FPS while GPU load briefly touched 90%,
+yet alarm-only showed GPU red indefinitely after recovery to 74–75%. The shared latch refreshed its
+own recovery deadline from the stale critical state. Every symbol now uses one executable 750 ms
+time-based entry/recovery policy with a hold measured once from the first non-critical input; GPU uses
+90% warning and 98% critical defaults. Build 4.1.219 still failed to expose a completed trace after
+DiRT Rally exited, proving that game supplies neither shutdown callback reliably enough for persistence.
+The bounded telemetry worker now checkpoints new real samples and markers to `latest.csv` once per
+second, outside the render thread, and flushes them through Windows before shutdown. End/destroy hooks
+remain final-flush optimisations rather than correctness requirements. The reader skips a partial final
+record if the process dies during a write. Trace/parser fixtures, contracts, WPF, broker, x64/Win32
+native, signed identity package, MSI and extracted-payload validation pass in 4.1.220. A live installed
+DiRT Rally 2.0 run then created `latest.csv` while the game was still running and grew it from 29,420
+to 33,322 bytes over two seconds with 334 valid sample rows, proving shutdown-independent checkpointing.
+After closing DiRT Rally, the user opened ViewLab and confirmed that **Open Last Session Graph** loaded
+the completed session's latency graph. This is the accepted 4.1.220 regression baseline and must be
+preserved. A second increased-render-resolution DiRT run completed with a continuous sequence 1–87,268
+over 1,306.451 seconds and multiple 90 FPS → 22.5 FPS → 90 FPS pressure/recovery cycles. The 9,058,539-
+byte trace remained unchanged after process exit, was copied intact into the diagnostic evidence, and
+opening it produced a real `ViewLab — Last Performance Trace` window instead of the old no-session
+message. The user supplied a screenshot showing the rendered full-session graph labelled `87,268 real
+OpenXR samples · 0 markers · latest.csv`, including the repeated pressure/recovery plateaus. DiagMon's
+two-second GPU evidence peaked once at 90.42% and never reached 98%; its PresentMon
+child produced no CSV. The user observed alarm-only hiding and recovery behaving correctly during that
+run, completing the live alarm regression pass. Raw-row correlation proved that the shelves are real
+whole-session menu/loading cadence changes, while the approximately four-minute driving interval held
+11.112 ms average / 12.042 ms P99 despite substantially higher resolution. The completed-session viewer
+now supplies labelled axes, selectable legend, zoom/pan/reset, exact hover values, robust scaling and
+spike-preserving downsampling, budget guides, event lines and percentile/GPU-saturation summaries.
+Trace schema 2 adds UTC anchoring, GPU values and alarm masks without breaking schema 1 or the accepted
+checkpoint/opening path. Schema fixtures, alarm-policy fixtures, contracts, WPF, broker, x64/Win32
+native, signed identity package, MSI and extracted-payload validation pass in 4.1.221. Automated Windows
+capture of the running installed 4.1.220 window failed in the desktop capture service, so visual and
+interaction acceptance of the new 4.1.221 graph remains with the user; no false UI-pass is recorded.
+
+## DiagMon capability migration (architecture fixed; 2026-07-14)
+
+ViewLab is the product. DiagMon is a prototype farm and must never become a required runtime, service,
+data authority or parallel UI. Valuable experiments migrate into ViewLab one bounded feature at a time;
+after parity and runtime/headset validation, the ViewLab implementation is the sole product path. The
+first selected capability is PresentMon-backed presentation capture because it adds independent present
+mode, frame-pacing, latency and stutter evidence to ViewLab's existing OpenXR timings. Process telemetry,
+per-process GPU-engine data and deep system diagnosis follow only after that slice is accepted. The
+ViewLab-owned session contract, migration stages and logging caps are documented in architecture and D26.
+The second DiRT baseline reinforced the selection: the prototype reported successful orchestration but
+lost the entire PresentMon CSV, while buffering 7.23 MB of raw GPU rows until exit. ViewLab's migration
+must stream bounded chunks, expose collector failure explicitly and preserve recoverable partial output.
 
 ## Experimental cleanup (complete; 2026-07-14)
 
@@ -23,12 +179,11 @@ helper and its invariant-culture fixtures are retained.
 
 ## Clock and VR session timer (implemented; headset validation pending, 2026-07-14)
 
-A dedicated compact two-line visor card shows 24-hour local time and elapsed time since the current
-successful `xrCreateSession`. Elapsed time uses monotonic uptime, resets at `xrDestroySession`, and
-is independent of notification and performance-alarm state. Position, angular scale and opacity are
-configurable in ordinary settings and read at the next VR session. Formatter fixtures, WPF and x64
-native builds pass; binocular fusion, physical scale, legibility and Direct/Topmost presentation still
-require headset validation.
+A dedicated compact visor card shows 12/24-hour local time and optionally adds elapsed time since the
+current successful `xrCreateSession` as a second lane. Elapsed time uses monotonic uptime, resets at
+`xrDestroySession`, and is independent of notification and performance-alarm state. Five themes, enable,
+timer lane, position, angular scale, opacity and visibility bind publish live. Formatter fixtures, WPF,
+broker and x64/Win32 native builds pass; binocular fusion and headset legibility require validation.
 
 ## Network HUD expansion (implemented; headset validation pending, 2026-07-14)
 
@@ -51,11 +206,11 @@ round-trip and full build pass; headset bind/legibility validation remains pendi
 
 ## Sticky note visor widget (implemented; headset validation pending, 2026-07-14)
 
-One optional 120-character note is normalized and word-wrapped by tested native logic into at most
-four lines, then drawn as a compact yellow card through the shared binocular Direct/Topmost overlay
-path. Position, angular size and opacity are configurable. A rising-edge F6–F12 bind (F7 default)
-toggles visibility without entering the notification queue. Headset scale, fusion and bind validation
-remain pending.
+Up to eight optional 120-character notes are normalized and word-wrapped by tested native logic into at
+most four lines, then drawn as independently themed square paper cards through the shared binocular
+presentation path. Each note owns enable, position, angular size and opacity; the collection retains one
+rising-edge F6–F12 visibility bind (F7 default) and never enters the notification queue. Legacy single-note
+settings migrate into note one. Headset scale, fusion and bind validation remain pending.
 
 ## OBS recording indicator (implemented; real OBS/headset validation pending, 2026-07-14)
 

@@ -260,6 +260,13 @@ $versionLine = Select-String -Path $assemblyInfo -Pattern 'AssemblyInformational
 $version = if ($versionLine -and $versionLine.Matches.Count -gt 0) { $versionLine.Matches[0].Groups[1].Value } else { "unknown" }
 $PublishExe = Join-Path $PublishDir "xr-viewlab.exe"
 if (!(Test-Path $PublishExe)) { throw "Published executable missing: $PublishExe" }
+$PresentMonSource = Join-Path $Root "ThirdParty\PresentMon\PresentMon-2.4.1-x64.exe"
+$PresentMonLicenseSource = Join-Path $Root "ThirdParty\PresentMon\LICENSE.txt"
+$ExpectedPresentMonHash = 'D74183E7AE630F72CD3690BE0373ECBFDC6CBB86578148AAB8FA2A7166068F34'
+if (!(Test-Path $PresentMonSource) -or (Get-FileHash $PresentMonSource -Algorithm SHA256).Hash -ne $ExpectedPresentMonHash) {
+    throw "Pinned PresentMon 2.4.1 source is missing or has an unexpected hash"
+}
+if (!(Test-Path $PresentMonLicenseSource)) { throw "PresentMon MIT notice is missing" }
 $PublishVersion = (Get-Item $PublishExe).VersionInfo.ProductVersion
 if ($PublishVersion -ne $version) {
     throw "Published executable version $PublishVersion does not match build version $version"
@@ -319,6 +326,14 @@ if (!$PayloadIdentityPackage -or (Get-FileHash $PayloadIdentityPackage.FullName 
 if (!$PayloadIdentityCertificate -or (Get-FileHash $PayloadIdentityCertificate.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $BrokerCertificatePath -Algorithm SHA256).Hash) {
     throw "MSI notification identity certificate does not match the package signer certificate"
 }
+$PayloadPresentMon = Get-ChildItem $VerifyDir -Recurse -Filter PresentMon-2.4.1-x64.exe | Select-Object -First 1
+$PayloadPresentMonLicense = Get-ChildItem $VerifyDir -Recurse -Filter PresentMon-LICENSE.txt | Select-Object -First 1
+if (!$PayloadPresentMon -or (Get-FileHash $PayloadPresentMon.FullName -Algorithm SHA256).Hash -ne $ExpectedPresentMonHash) {
+    throw "MSI pinned PresentMon payload is missing or has an unexpected hash"
+}
+if (!$PayloadPresentMonLicense -or (Get-FileHash $PayloadPresentMonLicense.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $PresentMonLicenseSource -Algorithm SHA256).Hash) {
+    throw "MSI PresentMon MIT notice is missing or does not match the repository source"
+}
 $PackageSignature = Get-AuthenticodeSignature $BrokerPackagePath
 $PublicCertificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2($BrokerCertificatePath)
 if (!$PackageSignature.SignerCertificate -or $PackageSignature.SignerCertificate.Thumbprint -ne $PublicCertificate.Thumbprint) {
@@ -342,6 +357,6 @@ foreach ($Marker in $RequiredOverlayMarkers) {
 $MsiDest = Join-Path $DistDir "ViewLab-$version.msi"
 Copy-Item -Path $MsiSource -Destination $MsiDest -Force
 
-Write-Host "Validated MSI payload: app $PayloadVersion; fresh WPF/native/broker hashes, signed identity certificate and Overlays markers match."
+Write-Host "Validated MSI payload: app $PayloadVersion; fresh WPF/native/broker hashes, pinned PresentMon + MIT notice, signed identity certificate and Overlays markers match."
 Write-Host "Built MSI:"
 Write-Host $MsiDest

@@ -51,6 +51,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="xr-viewlab.ini" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="ThirdParty\PresentMon\PresentMon-2.4.1-x64.exe" Link="PresentMon-2.4.1-x64.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="ThirdParty\PresentMon\LICENSE.txt" Link="PresentMon-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="RemoveLegacyReShadeMenuHelper" AfterTargets="Build;Publish">
     <Delete Files="$(TargetDir)reshade-vr-menu.exe" TreatErrorsAsWarnings="true" />

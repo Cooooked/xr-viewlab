@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO.MemoryMappedFiles;
 using System.Threading;
 
@@ -9,7 +10,7 @@ namespace XRViewLab.UI;
 internal sealed class LiveStateService : IDisposable
 {
     private const string Name = "Local\\XRViewLabLiveState";
-    private const int Size = 208;
+    private const int Size = 260;
     private const uint Magic = 0x534C4C56; // VLLS
     private MemoryMappedFile? _map;
     private MemoryMappedViewAccessor? _view;
@@ -19,7 +20,7 @@ internal sealed class LiveStateService : IDisposable
     {
         _map = MemoryMappedFile.CreateOrOpen(Name, Size, MemoryMappedFileAccess.ReadWrite);
         _view = _map.CreateViewAccessor(0, Size, MemoryMappedFileAccess.ReadWrite);
-        _view.Write(0, Magic); _view.Write(4, 7u); _view.Write(8, (uint)Size);
+        _view.Write(0, Magic); _view.Write(4, 8u); _view.Write(8, (uint)Size);
     }
 
     public void Publish(uint calibrationMask,
@@ -35,7 +36,10 @@ internal sealed class LiveStateService : IDisposable
         double chOffsetX, double chOffsetY,
         bool notifyEnabled, bool notifyShowIcon, bool notifyShowImage, double notifyX, double notifyY,
         double notifyScale, double notifyOpacity, double notifyDurationMs, uint notifyMaxVisible, uint notifyPrivacy,
-        bool iracingEnabled, bool iracingLapPopup, bool iracingSpotterGlow, bool iracingFlagBorder)
+        bool iracingEnabled, bool iracingLapPopup, bool iracingSpotterGlow, bool iracingFlagBorder,
+        bool clockEnabled, bool sessionTimerEnabled, bool clock24Hour, double clockX, double clockY,
+        double clockScale, double clockOpacity, uint clockTheme,
+        IReadOnlyList<int> overlayToggleKeys)
     {
         if (_view == null) return;
         _view.Write(16, calibrationMask);
@@ -64,6 +68,10 @@ internal sealed class LiveStateService : IDisposable
         _view.Write(188, topmostOverlays ? 1u : 0u);
         _view.Write(192, hudWidgetMask); _view.Write(196, hudWidgetOrder);
         _view.Write(200, hudGraphChannels); _view.Write(204, hudGraphMode);
+        _view.Write(208, (clockEnabled ? 1u : 0u) | (sessionTimerEnabled ? 2u : 0u) | (clock24Hour ? 4u : 0u));
+        _view.Write(212, (float)clockX); _view.Write(216, (float)clockY); _view.Write(220, (float)clockScale); _view.Write(224, (float)clockOpacity);
+        _view.Write(228, clockTheme); _view.Write(232, 0u);
+        for (int i = 0; i < 6; ++i) _view.Write(236 + i * 4, (uint)(i < overlayToggleKeys.Count ? Math.Clamp(overlayToggleKeys[i], 0, 255) : 0));
         Thread.MemoryBarrier();
         _view.Write(12, unchecked(++_generation));
     }

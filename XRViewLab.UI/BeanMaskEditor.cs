@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -23,12 +24,24 @@ public sealed class BeanMaskEditor : FrameworkElement
 	private bool _openInnerPreview;
 	private double _cropHorizontal = 1.0;
 	private double _cropVertical = 1.0;
+	private bool _visorVisible;
 	private DragTarget _dragTarget = DragTarget.None;
 	private DragTarget _hoverTarget = DragTarget.None;
 	private double _viewZoom = 1.0;
 	private Vector _viewPan;
 	private bool _panning;
 	private CrosshairSettings? _crosshair;
+	private bool _crosshairVisible;
+	private double _crosshairOffsetX,_crosshairOffsetY;
+	private readonly List<OverlayPreviewItem> _overlayPreviews = new();
+	private string? _overlayDragId;
+	private OverlayPreviewHandle _overlayDragHandle;
+	private string? _overlayHoverId;
+	private OverlayPreviewHandle _overlayHoverHandle;
+	private OverlayPreviewItem _overlayDragStartItem;
+	private Point _overlayDragStartMouse;
+	private Point _overlayScaleOrigin;
+	private double _overlayScaleStartDistance;
 	private Point _panStart;
 	private Vector _panOrigin;
 
@@ -55,12 +68,28 @@ public sealed class BeanMaskEditor : FrameworkElement
 		InnerSteepness
 	}
 
-	public event EventHandler? ShapeChanged;
+	private enum OverlayPreviewHandle { None, Move, Scale }
+	private readonly record struct OverlayPreviewGeometry(OverlayPreviewItem Item, Rect Rect, Point MovePin, Point ScalePin);
 
-	internal void SetCrosshair(CrosshairSettings settings)
+	public event EventHandler? ShapeChanged;
+	internal event EventHandler<OverlayPreviewChangedEventArgs>? OverlayPreviewChanged;
+
+	internal void SetCrosshair(CrosshairSettings settings, bool visible = true, double offsetX = 0, double offsetY = 0)
 	{
 		_crosshair = settings;
+		_crosshairVisible = visible;
+		_crosshairOffsetX=Math.Clamp(offsetX,-1,1);_crosshairOffsetY=Math.Clamp(offsetY,-1,1);
 		InvalidateVisual();
+	}
+
+	internal void SetOverlayPreviews(IEnumerable<OverlayPreviewItem> items)
+	{
+		_overlayPreviews.Clear(); _overlayPreviews.AddRange(items); InvalidateVisual();
+	}
+
+	internal void SetVisorVisible(bool visible)
+	{
+		if(_visorVisible==visible)return;_visorVisible=visible;InvalidateVisual();
 	}
 
 	public double Opening
@@ -236,45 +265,128 @@ public sealed class BeanMaskEditor : FrameworkElement
 		// The crop rect is the post-crop render area for BOTH eyes side by side; the visor is
 		// drawn inside it so the preview aspect tracks the actual render as crop sliders move.
 		Rect crop = CropRect(area);
-		if (crop.Width <= 4.0 || crop.Height <= 4.0)
-		{
-			return;
-		}
+		bool cropSupportsMaskGeometry=crop.Width>4.0&&crop.Height>4.0;
 		dc.PushClip(new RectangleGeometry(bounds));
 		Point centre = new(ActualWidth * 0.5, ActualHeight * 0.5);
 		dc.PushTransform(new TranslateTransform(_viewPan.X, _viewPan.Y));
 		dc.PushTransform(new ScaleTransform(_viewZoom, _viewZoom, centre.X, centre.Y));
-		dc.DrawRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)), 1.0), crop);
+		dc.DrawRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(90, 255, 255, 255)), 1.0/_viewZoom), crop);
+		var fullReferencePen=new Pen(new SolidColorBrush(Color.FromArgb(155,190,195,202)),1.25/_viewZoom)
+		{
+			DashStyle=new DashStyle(new[]{2.5/_viewZoom,3.5/_viewZoom},0)
+		};
+		dc.DrawRectangle(null,fullReferencePen,area);
+		DrawPreviewLabel(dc,"QUEST 3 FULL BINOCULAR  H 1.00  V 1.00",new Point(area.Left+5/_viewZoom,area.Top+5/_viewZoom),Color.FromRgb(175,180,188),180);
+		var visibleOvalPen=new Pen(new SolidColorBrush(Color.FromArgb(115,155,160,168)),1.1/_viewZoom)
+		{
+			DashStyle=new DashStyle(new[]{6/_viewZoom,4/_viewZoom},0)
+		};
+		Rect visibleOval=new(area.Left+area.Width*.035,area.Top+area.Height*.035,area.Width*.93,area.Height*.93);
+		dc.DrawEllipse(null,visibleOvalPen,visibleOval.Location+new Vector(visibleOval.Width*.5,visibleOval.Height*.5),visibleOval.Width*.5,visibleOval.Height*.5);
 
 		Rect leftEye = new(crop.Left, crop.Top, crop.Width * 0.5, crop.Height);
-		Rect rightEye = new(crop.Left + crop.Width * 0.5, crop.Top, crop.Width * 0.5, crop.Height);
-		StreamGeometry geometry = OpenInnerPreview
-			? BuildBinocularOpenInnerGeometry(leftEye, rightEye)
-			: BuildBinocularClosedGeometry(leftEye, rightEye);
-		// Geometry remains in model space, but the pen is compensated inside the zoom transform so
-		// its on-screen width stays inspectable instead of becoming hairline/thick with zoom.
-		double screenStroke = 4.0 / _viewZoom;
-		dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromRgb(224, 42, 53)), screenStroke), geometry);
-		dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)), 1.0 / _viewZoom), geometry);
-		DrawCrosshair(dc, crop);
+		if(cropSupportsMaskGeometry)
+		{
+			Rect rightEye = new(crop.Left + crop.Width * 0.5, crop.Top, crop.Width * 0.5, crop.Height);
+			StreamGeometry geometry = OpenInnerPreview
+				? BuildBinocularOpenInnerGeometry(leftEye, rightEye)
+				: BuildBinocularClosedGeometry(leftEye, rightEye);
+			// Geometry remains in model space, but the pen is compensated inside the zoom transform so
+			// its on-screen width stays inspectable instead of becoming hairline/thick with zoom.
+			double screenStroke = (_visorVisible?4.0:2.0) / _viewZoom;
+			Color visorColour=_visorVisible?Color.FromRgb(224,42,53):Color.FromArgb(42,170,174,180);
+			dc.DrawGeometry(null, new Pen(new SolidColorBrush(visorColour), screenStroke), geometry);
+			if(_visorVisible)dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)), 1.0 / _viewZoom), geometry);
+		}
+		DrawOverlayPreviews(dc, area);
+		DrawCrosshair(dc, area);
 
-		DrawPins(dc, leftEye);
+		if(cropSupportsMaskGeometry)DrawPins(dc, leftEye);
 		dc.Pop();
 		dc.Pop();
 	}
 
 	private void DrawCrosshair(DrawingContext dc, Rect eye)
 	{
-		if (_crosshair is null) return;
+		if (_crosshair is null || !_crosshairVisible) return;
 		double unit=Math.Max(0.375,eye.Height/216.0*_crosshair.VrScale), arm=Math.Max(1,Math.Round(_crosshair.Size*unit));
 		double thick=Math.Max(1,Math.Round(_crosshair.Thickness*unit)), gap=Math.Round(_crosshair.Gap*unit), outline=_crosshair.Outline?Math.Max(1,Math.Round(_crosshair.OutlineThickness*unit)):0;
-		double cx=Math.Floor(eye.Left+eye.Width/2)+.5,cy=Math.Floor(eye.Top+eye.Height/2)+.5,half=thick/2,inner=gap+half;
+		double cx=Math.Floor(eye.Left+eye.Width*(.5+_crosshairOffsetX*.5))+.5,cy=Math.Floor(eye.Top+eye.Height*(.5+_crosshairOffsetY*.5))+.5,half=thick/2,inner=gap+half;
 		var arms=new List<Rect>{new(cx-inner-arm,cy-half,arm,thick),new(cx+inner,cy-half,arm,thick),new(cx-half,cy+inner,thick,arm)};
 		if(!_crosshair.TStyle) arms.Add(new(cx-half,cy-inner-arm,thick,arm));
 		byte a=(byte)Math.Round(Math.Clamp(_crosshair.Alpha,0,1)*255); var fg=new SolidColorBrush(Color.FromArgb(a,_crosshair.R,_crosshair.G,_crosshair.B)); var bg=new SolidColorBrush(Color.FromArgb(a,0,0,0));
 		if(outline>0) foreach(var r in arms) dc.DrawRectangle(bg,null,new Rect(r.X-outline,r.Y-outline,r.Width+2*outline,r.Height+2*outline));
 		foreach(var r in arms) dc.DrawRectangle(fg,null,r);
 		if(_crosshair.Dot){if(outline>0)dc.DrawRectangle(bg,null,new Rect(cx-half-outline,cy-half-outline,thick+2*outline,thick+2*outline));dc.DrawRectangle(fg,null,new Rect(cx-half,cy-half,thick,thick));}
+	}
+
+	private void DrawOverlayPreviews(DrawingContext dc, Rect area)
+	{
+		foreach (OverlayPreviewGeometry geometry in OverlayPreviewGeometries(area))
+		{
+			OverlayPreviewItem item = geometry.Item;
+			byte alpha=(byte)Math.Round(Math.Clamp(item.Opacity,.18,1)*210);
+			Color accent=item.Style switch { OverlayPreviewStyle.Hud=>Color.FromRgb(52,220,135),OverlayPreviewStyle.Trace=>Color.FromRgb(52,196,240),OverlayPreviewStyle.Clock=>Color.FromRgb(210,210,205),OverlayPreviewStyle.Notification=>Color.FromRgb(70,196,165),OverlayPreviewStyle.Sticky=>item.Theme switch{1=>Color.FromRgb(240,145,160),2=>Color.FromRgb(145,220,170),3=>Color.FromRgb(135,190,235),4=>Color.FromRgb(225,215,185),_=>Color.FromRgb(238,195,82)},_=>Color.FromRgb(235,82,82)};
+			Rect rect=geometry.Rect;
+			if(item.Anchor==OverlayPreviewAnchor.Edge){var pen=new Pen(new SolidColorBrush(Color.FromArgb(alpha,accent.R,accent.G,accent.B)),Math.Max(1,2/_viewZoom));dc.DrawRectangle(null,pen,rect);DrawPreviewLabel(dc,item.Label,new Point(rect.Left+7/_viewZoom,rect.Top+6/_viewZoom),accent,alpha);continue;}
+			dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb((byte)Math.Min(150,(int)alpha),18,20,23)),new Pen(new SolidColorBrush(Color.FromArgb(alpha,accent.R,accent.G,accent.B)),Math.Max(1,1/_viewZoom)),rect,item.Style==OverlayPreviewStyle.Sticky?1:3,item.Style==OverlayPreviewStyle.Sticky?1:3);
+			DrawPreviewLabel(dc,item.Label,new Point(rect.Left+4/_viewZoom,rect.Top+Math.Max(1/_viewZoom,(rect.Height-10/_viewZoom)/2)),accent,alpha);
+			if(item.Editable)
+			{
+				DrawOverlayPin(dc,geometry.MovePin,Color.FromRgb(96,215,255),item.Id,OverlayPreviewHandle.Move);
+				DrawOverlayPin(dc,geometry.ScalePin,Color.FromRgb(255,190,82),item.Id,OverlayPreviewHandle.Scale);
+			}
+		}
+	}
+
+	private void DrawPreviewLabel(DrawingContext dc,string label,Point origin,Color colour,byte alpha)
+	{
+		var text=new FormattedText(label,CultureInfo.InvariantCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI Semibold"),8/_viewZoom,new SolidColorBrush(Color.FromArgb(alpha,colour.R,colour.G,colour.B)),1.0);
+		dc.DrawText(text,origin);
+	}
+
+	private IEnumerable<OverlayPreviewGeometry> OverlayPreviewGeometries(Rect area)
+	{
+		foreach(OverlayPreviewItem item in _overlayPreviews)
+		{
+			if(item.Anchor==OverlayPreviewAnchor.Edge)
+			{
+				Rect edge=new(area.Left+3,area.Top+3,Math.Max(0,area.Width-6),Math.Max(0,area.Height-6));
+				yield return new OverlayPreviewGeometry(item,edge,default,default);continue;
+			}
+			Size footprint=OverlayPreviewReplicaLayout.ResolveSize(item,area.Size);double w=footprint.Width,h=footprint.Height;
+			double x=area.Left+Math.Clamp(item.X,0,1)*area.Width,y=area.Top+Math.Clamp(item.Y,0,1)*area.Height;
+			if(item.Anchor==OverlayPreviewAnchor.Centre){x-=w/2;y-=h/2;}else if(item.Anchor==OverlayPreviewAnchor.BottomRight){x-=w;y-=h;}
+			x=Math.Clamp(x,area.Left,Math.Max(area.Left,area.Right-w));y=Math.Clamp(y,area.Top,Math.Max(area.Top,area.Bottom-h));
+			Rect rect=new(x,y,w,h);
+			yield return new OverlayPreviewGeometry(item,rect,new Point(rect.Left+rect.Width*.5,rect.Top),rect.TopRight);
+		}
+	}
+
+	private void DrawOverlayPin(DrawingContext dc,Point point,Color colour,string id,OverlayPreviewHandle handle)
+	{
+		double radius=3.75/_viewZoom;
+		bool active=_overlayDragId==id&&_overlayDragHandle==handle;
+		bool hover=_overlayHoverId==id&&_overlayHoverHandle==handle;
+		double outline=(active?2.75:hover?2.0:1.25)/_viewZoom;
+		dc.DrawEllipse(new SolidColorBrush(colour),new Pen(new SolidColorBrush(Color.FromRgb(10,11,13)),outline),point,radius,radius);
+	}
+
+	private (OverlayPreviewGeometry geometry,OverlayPreviewHandle handle)? HitOverlayHandle(Point point,Rect area)
+	{
+		double hit=9/_viewZoom,hitSquared=hit*hit;
+		foreach(OverlayPreviewGeometry geometry in OverlayPreviewGeometries(area))
+		{
+			if(!geometry.Item.Editable)continue;
+			if(DistanceSquared(point,geometry.ScalePin)<=hitSquared)return(geometry,OverlayPreviewHandle.Scale);
+			if(DistanceSquared(point,geometry.MovePin)<=hitSquared)return(geometry,OverlayPreviewHandle.Move);
+		}
+		return null;
+	}
+
+	private Rect PreviewFullArea()
+	{
+		return new Rect(2,2,Math.Max(0,ActualWidth-4),Math.Max(0,ActualHeight-4));
 	}
 
 	// One-to-one reference: the canvas is the full uncropped binocular render, so the crop
@@ -559,8 +671,19 @@ public sealed class BeanMaskEditor : FrameworkElement
 	{
 		base.OnPreviewMouseLeftButtonDown(e);
 		Focus();
+		Point sceneMouse=ScenePoint(e.GetPosition(this));
+		var overlayHit=HitOverlayHandle(sceneMouse,PreviewFullArea());
+		if(overlayHit is { } hit)
+		{
+			_overlayDragId=hit.geometry.Item.Id;_overlayDragHandle=hit.handle;
+			_overlayHoverId=_overlayDragId;_overlayHoverHandle=_overlayDragHandle;
+			_overlayDragStartItem=hit.geometry.Item;_overlayDragStartMouse=sceneMouse;
+			_overlayScaleOrigin=hit.geometry.Rect.TopLeft+new Vector(hit.geometry.Rect.Width*.5,hit.geometry.Rect.Height*.5);
+			_overlayScaleStartDistance=Math.Max(1,(sceneMouse-_overlayScaleOrigin).Length);
+			CaptureMouse();InvalidateVisual();e.Handled=true;return;
+		}
 		var area = LeftEyeArea();
-		_dragTarget = HitTarget(ScenePoint(e.GetPosition(this)), area);
+		_dragTarget = HitTarget(sceneMouse, area);
 		_hoverTarget = _dragTarget;
 		InvalidateVisual();
 		if (_dragTarget != DragTarget.None)
@@ -577,6 +700,23 @@ public sealed class BeanMaskEditor : FrameworkElement
 	protected override void OnPreviewMouseMove(MouseEventArgs e)
 	{
 		base.OnPreviewMouseMove(e);
+		if(_overlayDragId!=null&&_overlayDragHandle!=OverlayPreviewHandle.None&&e.LeftButton==MouseButtonState.Pressed)
+		{
+			Point overlayMouse=ScenePoint(e.GetPosition(this));Rect overlayArea=PreviewFullArea();
+			if(_overlayDragHandle==OverlayPreviewHandle.Move)
+			{
+				double x=Math.Clamp(_overlayDragStartItem.X+(overlayMouse.X-_overlayDragStartMouse.X)/Math.Max(1,overlayArea.Width),0,1);
+				double y=Math.Clamp(_overlayDragStartItem.Y+(overlayMouse.Y-_overlayDragStartMouse.Y)/Math.Max(1,overlayArea.Height),0,1);
+				OverlayPreviewChanged?.Invoke(this,new OverlayPreviewChangedEventArgs(_overlayDragId,OverlayPreviewEditKind.Position,x,y,_overlayDragStartItem.Scale));
+			}
+			else
+			{
+				double distance=Math.Max(1,(overlayMouse-_overlayScaleOrigin).Length);
+				double scale=Math.Clamp(_overlayDragStartItem.Scale*distance/_overlayScaleStartDistance,_overlayDragStartItem.MinScale,_overlayDragStartItem.MaxScale);
+				OverlayPreviewChanged?.Invoke(this,new OverlayPreviewChangedEventArgs(_overlayDragId,OverlayPreviewEditKind.Scale,_overlayDragStartItem.X,_overlayDragStartItem.Y,scale));
+			}
+			e.Handled=true;return;
+		}
 		if (_panning && e.LeftButton == MouseButtonState.Pressed)
 		{
 			_viewPan = _panOrigin + (e.GetPosition(this) - _panStart); InvalidateVisual(); e.Handled = true; return;
@@ -591,7 +731,11 @@ public sealed class BeanMaskEditor : FrameworkElement
 					ReleaseMouseCapture();
 				}
 			}
-			DragTarget hover = HitTarget(ScenePoint(e.GetPosition(this)), LeftEyeArea());
+			Point scene=ScenePoint(e.GetPosition(this));var overlayHover=HitOverlayHandle(scene,PreviewFullArea());
+			string? hoverId=overlayHover?.geometry.Item.Id;OverlayPreviewHandle hoverHandle=overlayHover?.handle??OverlayPreviewHandle.None;
+			if(_overlayHoverId!=hoverId||_overlayHoverHandle!=hoverHandle){_overlayHoverId=hoverId;_overlayHoverHandle=hoverHandle;InvalidateVisual();}
+			Cursor=hoverHandle switch{OverlayPreviewHandle.Move=>Cursors.SizeAll,OverlayPreviewHandle.Scale=>Cursors.SizeNWSE,_=>Cursors.Arrow};
+			DragTarget hover = overlayHover==null?HitTarget(scene, LeftEyeArea()):DragTarget.None;
 			if (_hoverTarget != hover)
 			{
 				_hoverTarget = hover;
@@ -647,8 +791,12 @@ public sealed class BeanMaskEditor : FrameworkElement
 	protected override void OnPreviewMouseLeftButtonUp(MouseButtonEventArgs e)
 	{
 		base.OnPreviewMouseLeftButtonUp(e);
+		_overlayDragId=null;_overlayDragHandle=OverlayPreviewHandle.None;
+		var overlayHover=HitOverlayHandle(ScenePoint(e.GetPosition(this)),PreviewFullArea());
+		_overlayHoverId=overlayHover?.geometry.Item.Id;_overlayHoverHandle=overlayHover?.handle??OverlayPreviewHandle.None;
+		Cursor=_overlayHoverHandle switch{OverlayPreviewHandle.Move=>Cursors.SizeAll,OverlayPreviewHandle.Scale=>Cursors.SizeNWSE,_=>Cursors.Arrow};
 		_dragTarget = DragTarget.None;
-		_hoverTarget = HitTarget(ScenePoint(e.GetPosition(this)), LeftEyeArea());
+		_hoverTarget = overlayHover==null?HitTarget(ScenePoint(e.GetPosition(this)), LeftEyeArea()):DragTarget.None;
 		_panning = false;
 		InvalidateVisual();
 		if (IsMouseCaptured)
@@ -662,6 +810,8 @@ public sealed class BeanMaskEditor : FrameworkElement
 	{
 		base.OnLostMouseCapture(e);
 		_dragTarget = DragTarget.None;
+		_overlayDragId=null;_overlayDragHandle=OverlayPreviewHandle.None;
+		_overlayHoverId=null;_overlayHoverHandle=OverlayPreviewHandle.None;Cursor=Cursors.Arrow;
 		_panning = false;
 		InvalidateVisual();
 	}
@@ -669,9 +819,9 @@ public sealed class BeanMaskEditor : FrameworkElement
 	protected override void OnMouseLeave(MouseEventArgs e)
 	{
 		base.OnMouseLeave(e);
-		if (_dragTarget == DragTarget.None && _hoverTarget != DragTarget.None)
+		if (_dragTarget == DragTarget.None && (_hoverTarget != DragTarget.None||_overlayHoverHandle!=OverlayPreviewHandle.None))
 		{
-			_hoverTarget = DragTarget.None;
+			_hoverTarget = DragTarget.None;_overlayHoverId=null;_overlayHoverHandle=OverlayPreviewHandle.None;Cursor=Cursors.Arrow;
 			InvalidateVisual();
 		}
 	}

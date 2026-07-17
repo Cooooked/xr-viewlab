@@ -2,6 +2,7 @@
 #include "../ClockWidget.h"
 #include "../NetworkProbe.h"
 #include "../StickyNote.h"
+#include "../ViewLabBridge/BridgeCore.h"
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -13,7 +14,8 @@ static void Check(bool value, const char* message) {
 
 int main() {
     using viewlab::clock_widget::Format;
-    Check(Format(7, 5, 0).local == std::array<char, 6>{'0','7',':','0','5','\0'}, "clock uses fixed 24-hour local time");
+    Check(Format(7, 5, 0).local == std::array<char, 9>{'0','7',':','0','5','\0','\0','\0','\0'}, "clock uses fixed 24-hour local time");
+    Check(Format(19, 5, 0, false).local == std::array<char, 9>{'0','7',':','0','5',' ','P','M','\0'}, "clock supports an explicit 12-hour display");
     Check(Format(23, 59, 3723000).session == std::array<char, 9>{'0','1',':','0','2',':','0','3','\0'}, "session timer formats monotonic elapsed time");
     Check(Format(0, 0, 500000000).session == std::array<char, 9>{'9','9',':','5','9',':','5','9','\0'}, "session timer has a stable display cap");
     const auto note=viewlab::sticky_note::Wrap(L"bring fuel and check the very long setup note",12);
@@ -42,6 +44,25 @@ int main() {
     Check(UpdateTraceVisibility(trace, 2, false, 3200, 1500) == 0.f, "trace fades and remains hidden");
     Check(UpdateTraceVisibility(trace, 0, true, 3300, 1500) == 0.f, "off overrides alarm");
 
+    SustainedAlarmState alarm{};
+    UpdateSustainedAlarm(alarm, 2, 2, 0, 750, 750, 1500);
+    Check(!alarm.visible, "initial critical input still requires sustained entry");
+    alarm = SustainedAlarmState{};
+    UpdateSustainedAlarm(alarm, 0, 0, 0, 750, 750, 1500);
+    UpdateSustainedAlarm(alarm, 2, 2, 100, 750, 750, 1500);
+    UpdateSustainedAlarm(alarm, 2, 2, 700, 750, 750, 1500);
+    Check(!alarm.visible, "brief critical input does not raise an alarm");
+    UpdateSustainedAlarm(alarm, 2, 2, 850, 750, 750, 1500);
+    Check(alarm.visible, "sustained critical input raises an alarm");
+    UpdateSustainedAlarm(alarm, 1, 1, 900, 750, 750, 1500);
+    UpdateSustainedAlarm(alarm, 0, 0, 1500, 750, 750, 1500);
+    UpdateSustainedAlarm(alarm, 1, 1, 1650, 750, 750, 1500);
+    Check(alarm.visible && alarm.stableSeverity < 2, "recovery can de-escalate while lower states fluctuate");
+    UpdateSustainedAlarm(alarm, 0, 0, 2399, 750, 750, 1500);
+    Check(alarm.visible, "post-recovery hold remains bounded from the first healthy input");
+    UpdateSustainedAlarm(alarm, 0, 0, 2400, 750, 750, 1500);
+    Check(!alarm.visible, "post-recovery hold expires instead of extending itself forever");
+
     const auto small = SingleRowHudLayout(12, 10.f, 20.f, .018f);
     const auto large = SingleRowHudLayout(12, 20.f, 40.f, .018f);
     Check(small.widgetsPerRow == 12 && small.rowCount == 1, "twelve widgets remain one row");
@@ -59,5 +80,55 @@ int main() {
     Check(!LatchTopmostDemand(false, false), "single projection retains direct backend");
     Check(LatchTopmostDemand(false, true), "distinct application layer demands Topmost");
     Check(LatchTopmostDemand(true, false), "Topmost demand remains latched for the session");
+    using namespace viewlab::bridge;
+    RuntimeCapabilities plain{GraphicsApi::D3D11,true,true,false,true,true,false};
+    Check(SelectOverlayBackend(plain)==OverlayBackend::DirectEyeTexture,
+        "plain projection keeps direct eye-texture presentation");
+    auto featurePlan=SelectFeaturePresentationPlan(plain);
+    Check(featurePlan.drawDirectVisor&&featurePlan.drawDirectCommonFeatures&&
+        featurePlan.orderedBackend==OverlayBackend::FeatureDisabled,
+        "plain frame preserves the proven direct ViewLab path");
+    plain.hasDistinctCompositionLayer=true;
+    plain.supportsAdditionalProjectionLayers=true;
+    Check(SelectOverlayBackend(plain)==OverlayBackend::SeparateProjection,
+        "a distinct compositor layer preserves the proven stereo projection backend");
+    featurePlan=SelectFeaturePresentationPlan(plain);
+    Check(featurePlan.drawDirectVisor&&featurePlan.drawDirectCommonFeatures&&
+        featurePlan.orderedBackend==OverlayBackend::SeparateProjection,
+        "allocation transition keeps the working renderer until ordered presentation is ready");
+    plain.orderedPresentationReady=true;
+    featurePlan=SelectFeaturePresentationPlan(plain);
+    Check(!featurePlan.drawDirectVisor&&!featurePlan.drawDirectCommonFeatures&&
+        featurePlan.orderedBackend==OverlayBackend::SeparateProjection,
+        "ready ordered presentation disables the obsolete duplicate renderer for every feature");
+    RuntimeCapabilities menu{GraphicsApi::D3D11,false,true,true,false,false,false};
+    featurePlan=SelectFeaturePresentationPlan(menu);
+    Check(!featurePlan.drawDirectVisor&&!featurePlan.drawDirectCommonFeatures&&
+        featurePlan.orderedBackend==OverlayBackend::FeatureDisabled,
+        "composition-only frame does not claim an unproven visible carrier");
+    menu.hasPrimaryProjection=true;
+    menu.canWriteEyeTexture=true;
+    menu.supportsAdditionalProjectionLayers=true;
+    featurePlan=SelectFeaturePresentationPlan(menu);
+    Check(featurePlan.drawDirectVisor&&featurePlan.drawDirectCommonFeatures&&
+        featurePlan.orderedBackend==OverlayBackend::SeparateProjection,
+        "the next observed projection restores direct and ordered common-feature presentation");
+    menu.orderedPresentationReady=true;
+    featurePlan=SelectFeaturePresentationPlan(menu);
+    Check(!featurePlan.drawDirectVisor&&!featurePlan.drawDirectCommonFeatures&&
+        featurePlan.orderedBackend==OverlayBackend::SeparateProjection,
+        "a ready ordered carrier is the sole normal-feature presentation path");
+    bool orderedDemand=false;
+    orderedDemand=LatchTopmostDemand(orderedDemand,false); // projection-only gameplay
+    orderedDemand=LatchTopmostDemand(orderedDemand,true);  // composition-only menu
+    orderedDemand=LatchTopmostDemand(orderedDemand,false); // projection returns
+    Check(orderedDemand,"projection-menu-projection topology shift keeps ordered presentation latched");
+    plain.supportsAdditionalProjectionLayers=false;
+    plain.supportsQuadLayers=false;
+    Check(SelectOverlayBackend(plain)==OverlayBackend::DirectEyeTexture,
+        "missing ordered capability falls back without disabling ViewLab");
+    const PixelRect mapped=MapTextureBounds({.25f,.1f,.75f,.9f},2000,1000);
+    Check(mapped.x==500&&mapped.y==100&&mapped.width==1000&&mapped.height==800,
+        "legacy texture bounds map to current submitted texture dimensions");
     return 0;
 }

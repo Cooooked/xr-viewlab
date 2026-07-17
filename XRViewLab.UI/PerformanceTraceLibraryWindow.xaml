@@ -1,0 +1,13 @@
+<Window x:Class="XRViewLab.UI.PerformanceTraceLibraryWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ViewLab — Session Graph history" Width="1050" Height="620" MinWidth="780" MinHeight="460" Background="#101112" Foreground="#E4E4E4" WindowStartupLocation="CenterOwner">
+  <Grid Margin="14"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="8"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <DockPanel><TextBlock Text="VR SESSION GRAPH HISTORY" FontSize="18" FontWeight="SemiBold"/><WrapPanel HorizontalAlignment="Right"><Button Content="Open graph" Click="Open_Click" Padding="9,4" Margin="5,0"/><Button Content="Compare selected" Click="Compare_Click" Padding="9,4" Margin="5,0"/><Button Content="Delete selected…" Click="Delete_Click" Padding="9,4" Margin="5,0"/></WrapPanel></DockPanel>
+    <DataGrid Grid.Row="2" x:Name="TraceGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow" Background="#111215" Foreground="#E4E4E4" BorderBrush="#34363B">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Started" Binding="{Binding Started}" Width="145"/><DataGridTextColumn Header="Duration" Binding="{Binding Duration}" Width="85"/><DataGridTextColumn Header="Samples" Binding="{Binding Samples}" Width="85"/><DataGridTextColumn Header="Average FPS" Binding="{Binding AverageFps}" Width="90"/><DataGridTextColumn Header="P99 frame interval (ms)" Binding="{Binding P99Ms}" Width="135"/><DataGridTextColumn Header="Maximum (ms)" Binding="{Binding MaximumMs}" Width="95"/><DataGridTextColumn Header="Cadence misses" Binding="{Binding CadenceMisses}" Width="100"/><DataGridTextColumn Header="GPU telemetry" Binding="{Binding Gpu}" Width="110"/><DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="*"/>
+      </DataGrid.Columns>
+    </DataGrid>
+    <TextBlock Grid.Row="3" x:Name="ComparisonText" Margin="0,9,0,0" TextWrapping="Wrap" Foreground="#D7DCE3"/>
+    <TextBlock Grid.Row="4" Margin="0,7,0,0" TextWrapping="Wrap" Foreground="#9299A4" Text="Select with Ctrl or Shift. History is retained until you explicitly delete it; latest.csv remains a compatibility alias and is not shown as a duplicate."/>
+  </Grid>
+</Window>

@@ -21,6 +21,7 @@ internal sealed class NotificationSettings
     public double DurationMs = 3000;
     public int MaxVisible = 3;
     public int Privacy;          // 0 full, 1 title only, 2 app only
+    public int Theme;            // 0 graphite, 1 light, 2 OLED, 3 amber, 4 mint
     public bool ShowIcon = true;
     public bool ShowImage = true;
     public bool AllowlistMode;   // false = blocklist, true = allowlist
@@ -347,6 +348,14 @@ internal sealed class NotificationService : IDisposable
     private static (byte[] rgba, int w, int h) ComposeCard(string appName, string title, string body, BitmapSource? icon, NotificationSettings s)
     {
         int w = CardW, h = CardH;
+        var palette = Math.Clamp(s.Theme,0,4) switch
+        {
+            1 => (Color.FromArgb(246,242,239,231),Color.FromRgb(196,128,55),Color.FromRgb(35,31,27),Color.FromRgb(91,82,72),Color.FromArgb(42,35,31,27)),
+            2 => (Color.FromArgb(252,0,0,0),Color.FromRgb(255,255,255),Color.FromRgb(255,255,255),Color.FromRgb(176,176,176),Color.FromArgb(55,255,255,255)),
+            3 => (Color.FromArgb(244,31,24,15),Color.FromRgb(238,170,64),Color.FromRgb(255,239,206),Color.FromRgb(194,166,121),Color.FromArgb(42,238,170,64)),
+            4 => (Color.FromArgb(244,14,27,23),Color.FromRgb(73,201,151),Color.FromRgb(231,250,241),Color.FromRgb(145,187,169),Color.FromArgb(42,73,201,151)),
+            _ => (Color.FromArgb(238,20,21,25),Color.FromRgb(60,190,170),Color.FromRgb(244,246,249),Color.FromRgb(142,150,162),Color.FromArgb(28,255,255,255))
+        };
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
@@ -354,10 +363,10 @@ internal sealed class NotificationService : IDisposable
             // Restrained surface: a dim neutral panel, a slim colour accent on the leading edge
             // instead of a full saturated ring, and a barely-there hairline for definition.
             dc.PushClip(new RectangleGeometry(panel, 10, 10));
-            dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(238, 20, 21, 25)), null, panel);
-            dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(255, 60, 190, 170)), null, new Rect(0, 0, 3, h));
+            dc.DrawRectangle(new SolidColorBrush(palette.Item1), null, panel);
+            dc.DrawRectangle(new SolidColorBrush(palette.Item2), null, new Rect(0, 0, 3, h));
             dc.Pop();
-            dc.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(28, 255, 255, 255)), 1), new Rect(0.5, 0.5, w - 1, h - 1), 10, 10);
+            dc.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(palette.Item5), 1), new Rect(0.5, 0.5, w - 1, h - 1), 10, 10);
 
             const double iconSize = 44;
             double x = 16;
@@ -372,8 +381,8 @@ internal sealed class NotificationService : IDisposable
 
             var typeface = new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
             var bodyType = new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-            var titleBrush = new SolidColorBrush(Color.FromRgb(244, 246, 249));
-            var bodyBrush = new SolidColorBrush(Color.FromRgb(142, 150, 162));
+            var titleBrush = new SolidColorBrush(palette.Item3);
+            var bodyBrush = new SolidColorBrush(palette.Item4);
 
             var t = new FormattedText(Shorten(title, 42), System.Globalization.CultureInfo.CurrentUICulture,
                 FlowDirection.LeftToRight, typeface, 15.5, titleBrush, 1.0) { MaxTextWidth = w - x - 14, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };

@@ -1,5 +1,96 @@
 # Changelog
 
+## Unreleased - 2026-07-15 (Product polish consolidation)
+
+- Made clock enable, timer lane, 12/24-hour format, theme, position, scale, opacity and visibility bind
+  update live. Added Graphite, Paper, OLED, Amber and Mint clock themes and removed the blue-only card.
+- Replaced the single rectangular note with up to eight independently enabled, themed, positioned, scaled
+  and faded square paper notes; existing single-note settings migrate into note one.
+- Added five notification-card themes and per-widget HUD label/symbol selection. Labels remain the safe
+  default while the earlier pictograms can be restored independently for familiar widgets.
+- Turned the visor canvas into an overlay placement map: enabled HUD, trace, clock/timer, notification,
+  sticky-note, crosshair, OBS and racing cues appear as labelled, scaled placeholders at their configured anchors.
+  Ordinary overlay nodes now have live top-centre move and top-right scale handles; their labels and handles
+  retain a readable screen-space size while the canvas is zoomed.
+- Corrected overlay preview scaling so reference width and height receive one uniform scale transform and
+  one aspect-preserving fit. Performance Trace Scale now scales the complete graph while Width defines its
+  base shape. Added a dotted Quest 3 full-binocular H/V 1.00 reference around the solid current-crop rectangle.
+- Made crop a coverage boundary rather than an overlay coordinate system. Preview and native overlays retain
+  their full-binocular position and angular scale as crop changes; content beyond crop remains visible in the
+  editor and is naturally clipped in-headset. Added an approximate binocular-visibility oval for the corners
+  a user cannot naturally see, and made disabled visor geometry a subdued grey reference instead of active red.
+- Removed the four unsupported notch-detail sliders from the main visor editor. The remaining Nose control
+  adjusts notch depth against one fixed, repeatable curve instead of exposing unstable curve internals.
+- Centralised ordinary overlay enable, show/hide hotkey, position, scale, opacity, reset and persistence
+  for clock, HUD, trace, sticky note, crosshair and notifications, preserving existing layout keys and
+  migrating the former sticky-only bind. Removed the private clock/reset paths and hidden no-op mask controls.
+- Added persisted warning/critical controls to every HUD widget, removed the System-only controls, replaced
+  ambiguous pictograms with literal labels and explicit units, and aligned Session Graph event terminology.
+- Gave the clock local time a stronger typographic hierarchy; restored independent visor Width/Height plus
+  a single Nose control while keeping Size as aspect-preserving uniform scale; simplified Edge Mask to supported
+  user-facing choices.
+- Reorganised Calibration, Overlays and DiagMonster ownership. Added deterministic full and cropped PNG
+  references for all ten calibration tools.
+- Archived every native VR performance trace as a unique session while retaining `latest.csv` compatibility.
+  Added Session Graph history browsing, selected-run comparison, confirmed deletion, DiagMon selected-session
+  comparison, and configurable non-destructive retention guidance.
+
+## Unreleased - 2026-07-15 (Shared presentation regression repair and ViewLab Bridge core)
+
+- Restored the previously working transparent stereo projection carrier for common ViewLab features
+  after a head-locked quad was accepted but not displayed by a translated menu compositor. Selection
+  uses current graphics/frame capabilities and contains no executable-name policy.
+- Added one shared readiness hand-off: direct presentation remains active during ordered allocation,
+  then every normal ViewLab feature moves to the front-most carrier together with no duplicate path.
+- Made the visor emit guaranteed opaque black pixels on that same shared carrier instead of relying
+  on an interpolated alpha semantic that could leave a valid draw invisible.
+- Corrected release diagnostics so a backend-suppressed direct draw can no longer be reported as a
+  successful visor draw, and added one-shot backend, dimensions, layer-count and submission-result logs.
+- Added a compilable x64/Win32 `ViewLabBridge` static-library boundary with capability-driven overlay
+  selection and normalized texture-bounds mapping. The current external translation route remains active.
+- Removed title-specific render-height advice from the normal settings UI.
+
+## Unreleased - 2026-07-15 (DiagMon capture lifecycle repair)
+
+- Bundled hash-pinned PresentMon 2.4.1 with its MIT notice instead of depending on an AMD driver path.
+- Streamed PresentMon stdout into ViewLab-owned CSV checkpoints and stopped the unique ETW session
+  cleanly, preventing lost evidence and orphaned `ViewLab-*` sessions after capture.
+- Made target exit and the Trace deadline automatically run the complete serialised finaliser, including
+  WPR shutdown, and captured Detailed module/API evidence while the target is still alive.
+- Isolated DiagMon integration fixtures from the production LocalAppData session index.
+
+## Unreleased - 2026-07-14 (DiagMon(ster) capture and session library)
+
+- Added a View Lab-owned `DiagMon(ster)` cockpit with generic manual, foreground, newly-started and
+  previous-process targeting; Standard, Detailed and explicitly bounded Trace modes; elapsed status;
+  per-collector health; clean stop/finalisation; and interrupted-session recovery.
+- Added portable timestamped session bundles, sortable/filterable history, validation and session-type
+  classification, tags/notes, robust comparable-history baselines, conservative factual summaries,
+  raw evidence retention, explicit deletion, and context-bounded ZIP exports for external AI analysis.
+- Ported the useful legacy PresentMon, process, Windows counter, event, module and configuration capture
+  behaviour without a runtime dependency on the DiagMon prototype. `AllowsTearing` is explicitly not
+  interpreted as dropped-frame evidence; unavailable collectors remain visible as missing or failed.
+
+## Unreleased - 2026-07-14 (Interpretable completed-session graph)
+
+- Replaced the full-session polyline with labelled time/latency axes, a complete selectable legend,
+  robust automatic scaling, display-budget guides and min/max-per-pixel downsampling that retains spikes.
+- Added mouse-wheel zoom, drag pan, reset, exact timestamp/value hover inspection, session/marker/alarm/
+  estimated-cadence event lines and summary statistics (average, median, P95, P99 and maximum).
+- Extended the durable trace format additively to schema 2 with a UTC/QPC anchor, GPU utilisation and
+  the existing HUD alarm masks. Schema 1 sessions remain readable; inferred cadence misses are labelled
+  estimates until the PresentMon migration supplies measured dropped-presentation evidence.
+
+## Unreleased - 2026-07-14 (HUD alarm and last-session trace reliability)
+
+- Replaced every HUD symbol's update-count alarm latch with one tested 750 ms time-based entry and
+  recovery policy whose post-recovery hold cannot extend itself indefinitely.
+- Made GPU headroom use 90% warning and 98% critical defaults, so a brief 90% excursion during flat
+  target-rate delivery does not appear as a critical alarm-only incident.
+- Made trace persistence independent of orderly game shutdown: the bounded telemetry worker checkpoints
+  new samples and markers every second, flushes them to disk, and tolerates a partial final record after
+  abrupt process exit. End/destroy callbacks remain final-flush optimisations.
+
 ## Unreleased - 2026-07-14 (Music track-change card completion)
 
 - Completed the opt-in Windows Now Playing (SMTC) provider for brief title/artist/artwork cards with

@@ -1,8 +1,10 @@
 #include "pch.h"
 #include "HardwareTelemetry.h"
 #include "RenderPolicy.h"
+#include "ViewLabBridge/BridgeCore.h"
 #include "ClockWidget.h"
 #include "StickyNote.h"
+#include <io.h>
 
 namespace {
 constexpr const char* LayerName = "XR_APILAYER_cooooked_xrviewlab";
@@ -95,9 +97,10 @@ void LogVerbose(const char* format, ...);
 // Native performance HUD. It uses the same submitted-texture path as the visor, never an
 // OpenXR quad layer. Values remain unavailable unless measurable or explicitly debug-supplied.
 bool hudEnabled = false;
-double hudAnchorX = 0.04, hudAnchorY = 0.05, hudScale = 1.0, hudSpacing = 0.018, hudOpacity = 0.70, hudSafeMargin = 0.025;
+double hudAnchorX = 0.04, hudAnchorY = 0.05, hudScale = 1.0, hudSpacing = 0.018, hudOpacity = 0.70, hudTraceOpacity = 0.70, hudSafeMargin = 0.025;
 bool hudClampToVisible = true;
 double hudGreenThreshold = 75.0, hudRedThreshold = 90.0, hudTraceSensitivityMs = 2.0;
+constexpr double kHudGpuWarningThreshold = 90.0, kHudGpuCriticalThreshold = 98.0;
 double hudSysWarningThreshold=30.0,hudSysCriticalThreshold=10.0;
 // Frame-pacing trace layout: X/Y anchor and width are fractions of the shared binocular
 // overlap of the cropped views; scale multiplies the trace height; history is in samples.
@@ -120,6 +123,9 @@ enum class HudWidgetId : uint8_t {
     NetworkPing=12, NetworkLoss=13, NetworkJitter=14, NetworkStatus=15, Count=16
 };
 constexpr size_t kHudWidgetCount=static_cast<size_t>(HudWidgetId::Count);
+std::array<double,kHudWidgetCount> hudWidgetWarning{{75,90,75,103,75,0,75,75,75,30,0,103,80,2,15,1}};
+std::array<double,kHudWidgetCount> hudWidgetCritical{{90,98,90,108,90,0,90,90,90,10,0,108,150,5,30,2}};
+constexpr uint64_t kHudLowerIsWorseMask=(1ull<<(size_t)HudWidgetId::CpuFrequency)|(1ull<<(size_t)HudWidgetId::Sys)|(1ull<<(size_t)HudWidgetId::Fps);
 enum class HudMetricState : uint8_t { OnTarget=0, Warning=1, Critical=2, Reprojection=3, Unstable=4, Unavailable=5 };
 enum class HudGraphMode : uint32_t { Deviation=0, Milliseconds=1, Fps=2, BudgetPercent=3 };
 enum HudGraphChannel : uint32_t {
@@ -141,6 +147,7 @@ constexpr std::array<HudWidgetDescriptor,kHudWidgetCount> kHudWidgetRegistry{{
     {HudWidgetId::NetworkJitter,"JIT","ms",0,false}, {HudWidgetId::NetworkStatus,"NET","state",0,false}
 }};
 uint64_t hudWidgetMask = (1ull<<0)|(1ull<<1)|(1ull<<3)|(1ull<<9);
+uint32_t hudWidgetSymbolMask = 0;
 uint32_t hudWidgetOrderPacked = 0x03020100u; // four widget IDs, low byte first
 std::array<uint8_t,kHudWidgetCount> hudWidgetOrder{{0,1,9,3,2,4,5,6,7,8,10,11,12,13,14,15}};
 uint32_t hudMaxPerRow=static_cast<uint32_t>(kHudWidgetCount); // legacy mapping field; renderer is deliberately one row
@@ -160,6 +167,8 @@ struct HudFrameSample {
     double appWorkMs = 0.0, waitDurationMs = 0.0, submitDurationMs = 0.0, displayPeriodMs = 0.0;
     int64_t qpc = 0;
     uint32_t markerNumber = 0;
+    double gpuPercent = -1.0;
+    uint64_t warningMask = 0, criticalMask = 0, visibleAlarmMask = 0;
     bool overBudget = false;
 };
 HudMetric g_hudMetrics[kHudWidgetCount];
@@ -180,11 +189,21 @@ size_t g_sessionTraceStart = 0;
 struct PerformanceTraceMarker { uint32_t number = 0; int64_t qpc = 0; };
 std::vector<PerformanceTraceMarker> g_sessionTraceMarkers;
 int64_t g_sessionTraceStartQpc = 0;
+int64_t g_sessionTraceStartUtcFileTime = 0;
 bool performanceTraceRecording = true, g_traceMarkerKeyDown = false;
 int performanceTraceMarkerKey = VK_F8;
 uint32_t g_pendingTraceMarker = 0, g_nextTraceMarker = 1;
+XrSession g_performanceTraceSession = XR_NULL_HANDLE;
+uint64_t g_sessionTraceTotalSamples = 0, g_traceCheckpointSampleCursor = 0, g_traceCheckpointLastRebuild = 0;
+size_t g_traceCheckpointMarkerCursor = 0;
+bool g_traceCheckpointNeedsRebuild = true;
+std::mutex g_traceFileMutex;
+std::filesystem::path g_sessionTraceFilePath;
+bool g_latestTraceIsHardLink=false;
 std::atomic<uint32_t> g_traceMarkerConfirmation{0};
 std::atomic<uint64_t> g_traceMarkerConfirmationUntil{0};
+std::atomic<double> g_traceGpuPercent{-1.0};
+std::atomic<uint64_t> g_traceWarningMask{0}, g_traceCriticalMask{0}, g_traceVisibleAlarmMask{0};
 // Effective application cadence detection. The app's real frame interval is the QPC time
 // between successive xrWaitFrame returns (the runtime throttles the app there, so under
 // ASW/SSW/reprojection the interval settles at an integer multiple of the display period).
@@ -204,8 +223,7 @@ std::string g_hudVrColorReason = "initializing";
 struct HudAlarmState {
     bool inAlarm = false;
     HudMetricState state = HudMetricState::Unavailable;
-    uint8_t entryCount = 0, recoveryCount = 0;
-    uint64_t redHoldUntilTick = 0;
+    viewlab::policy::SustainedAlarmState policy{};
 };
 HudAlarmState g_hudAlarm[kHudWidgetCount];
 
@@ -238,17 +256,29 @@ double notifyX = 0.98, notifyY = 0.98, notifyScale = 1.0, notifyOpacity = 1.0;
 // ---- Dedicated clock and OpenXR-session timer widget ----
 // The session clock starts at successful xrCreateSession and uses monotonic uptime; local time is
 // read only for display. It is deliberately independent of notifications and performance alarms.
-bool clockWidgetEnabled = false;
+bool clockWidgetEnabled = false, clockSessionTimerEnabled = true, clock24Hour = true;
+uint32_t clockWidgetTheme = 0;
 double clockWidgetX = 0.50, clockWidgetY = 0.10, clockWidgetScale = 1.0, clockWidgetOpacity = 0.82;
 std::atomic<uint64_t> g_clockSessionStartTick{0};
 
-// ---- Single sticky-note visor widget ----
+// ---- Bounded sticky-note visor collection ----
 bool stickyNoteEnabled=false;
-double stickyNoteX=.78,stickyNoteY=.22,stickyNoteScale=1.0,stickyNoteOpacity=.85;
-std::wstring stickyNoteText;
-int stickyNoteToggleKey=VK_F7;
-bool g_stickyNoteKeyDown=false;
-std::atomic<bool> g_stickyNoteVisible{false};
+struct StickyNoteConfig { bool enabled=true; double x=.78,y=.22,scale=1.0,opacity=.85; uint32_t theme=0; std::wstring text; };
+constexpr size_t kStickyNoteMax=8;
+std::array<StickyNoteConfig,kStickyNoteMax> stickyNotes{};
+size_t stickyNoteCount=0;
+
+enum class OverlayFeatureId : uint8_t { Hud=0, Trace=1, Clock=2, StickyNote=3, Crosshair=4, Notifications=5, Count=6 };
+struct OverlayFeatureVisibility { int toggleKey=0; bool keyDown=false; std::atomic<bool> visible{true}; };
+std::array<OverlayFeatureVisibility,(size_t)OverlayFeatureId::Count> g_overlayFeatureVisibility{};
+bool OverlayFeatureVisible(OverlayFeatureId id) { return g_overlayFeatureVisibility[(size_t)id].visible.load(std::memory_order_acquire); }
+void UpdateOverlayFeatureHotkeys() {
+    for(auto& feature:g_overlayFeatureVisibility) {
+        const bool down=feature.toggleKey>0&&(GetAsyncKeyState(feature.toggleKey)&0x8000)!=0;
+        if(down&&!feature.keyDown)feature.visible.store(!feature.visible.load(std::memory_order_acquire),std::memory_order_release);
+        feature.keyDown=down;
+    }
+}
 
 bool obsIndicatorEnabled=false;
 double obsIndicatorOpacity=.72,obsIndicatorThickness=.009;
@@ -276,8 +306,9 @@ inline bool AnyCalibrationPattern() {
 // evaluated per-frame in the draw path, so the coarse gate here simply includes notifyEnabled.
 inline bool BoundaryFlashActive() { return g_boundaryDragActive || g_boundaryReleaseTick != 0; }
 inline bool TraceMarkerConfirmationActive() { return g_traceMarkerConfirmationUntil.load(std::memory_order_acquire)>GetTickCount64(); }
-inline bool AnyViewLabOverlay() { return clockWidgetEnabled || obsIndicatorEnabled || (stickyNoteEnabled&&g_stickyNoteVisible.load(std::memory_order_acquire)&&!stickyNoteText.empty()) || crosshairEnabled || notifyEnabled || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
-inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || hudEnabled || hudTraceEnabled || AnyViewLabOverlay(); }
+inline bool AnyStickyNote(){for(size_t i=0;i<stickyNoteCount;++i)if(stickyNotes[i].enabled&&!stickyNotes[i].text.empty()&&stickyNotes[i].opacity>.001)return true;return false;}
+inline bool AnyViewLabOverlay() { return (clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock)) || obsIndicatorEnabled || (stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote()) || (crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair)) || (notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications)) || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
+inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || (hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace)) || AnyViewLabOverlay(); }
 
 uint64_t FileTimeToUint64(const FILETIME& time) {
     ULARGE_INTEGER value{}; value.LowPart = time.dwLowDateTime; value.HighPart = time.dwHighDateTime; return value.QuadPart;
@@ -343,6 +374,10 @@ void RecordHudFrameSample(double actualMs, double targetMs, int64_t qpc) {
     sample.appWorkMs=g_hudLastAppWorkMs; sample.waitDurationMs=g_hudLastWaitDurationMs;
     sample.submitDurationMs=g_hudLastSubmitDurationMs; sample.displayPeriodMs=g_hudDisplayPeriodMs;
     sample.qpc=qpc; sample.markerNumber=g_pendingTraceMarker; g_pendingTraceMarker=0;
+    sample.gpuPercent=g_traceGpuPercent.load(std::memory_order_acquire);
+    sample.warningMask=g_traceWarningMask.load(std::memory_order_acquire);
+    sample.criticalMask=g_traceCriticalMask.load(std::memory_order_acquire);
+    sample.visibleAlarmMask=g_traceVisibleAlarmMask.load(std::memory_order_acquire);
     sample.overBudget=actualMs > targetMs * 1.03;
     const size_t index = (g_hudFrameHistoryStart + g_hudFrameHistoryCount) % g_hudFrameHistory.size();
     if (g_hudFrameHistoryCount == g_hudFrameHistory.size()) {
@@ -355,6 +390,7 @@ void RecordHudFrameSample(double actualMs, double targetMs, int64_t qpc) {
     if (performanceTraceRecording) {
         if (g_sessionTraceSamples.size() < kSessionTraceCapacity) g_sessionTraceSamples.push_back(sample);
         else { g_sessionTraceSamples[g_sessionTraceStart]=sample; g_sessionTraceStart=(g_sessionTraceStart+1)%kSessionTraceCapacity; }
+        ++g_sessionTraceTotalSamples;
     }
 }
 // APP workload is the application-side wall-clock window after xrBeginFrame returns and before
@@ -402,34 +438,53 @@ void UpdateHudCadence(const LARGE_INTEGER& waitStop, XrDuration displayPeriod) {
     }
     g_hudLastWaitStop = waitStop;
 }
-// Sustained per-widget state with entry/recovery hysteresis. At a 100 ms update interval, three
-// entry samples are roughly 300 ms and six recovery samples are roughly 600 ms.
+// Shared time-based alarm policy for every widget. It is independent of draw/update frequency,
+// and the recovery hold starts from the first non-critical input rather than the latched red state.
 void UpdateHudState(int index, HudMetricState desired, uint64_t nowTick) {
     HudAlarmState& alarm = g_hudAlarm[index];
-    if (desired == HudMetricState::Unavailable) {
-        alarm.state=desired; alarm.entryCount=alarm.recoveryCount=0; alarm.inAlarm=false; return;
-    }
     auto severity=[](HudMetricState state) {
         if(state==HudMetricState::Warning)return 1;
         if(state==HudMetricState::Critical || state==HudMetricState::Unstable)return 2;
         if(state==HudMetricState::Unavailable)return -1;
         return 0;
     };
-    if (desired == alarm.state) { alarm.entryCount=alarm.recoveryCount=0; }
-    else if (severity(desired) > severity(alarm.state) || alarm.state == HudMetricState::Unavailable) {
-        alarm.recoveryCount=0;
-        if (++alarm.entryCount >= 3) { alarm.state=desired; alarm.entryCount=0; }
+    viewlab::policy::UpdateSustainedAlarm(alarm.policy, static_cast<int>(desired), severity(desired),
+        nowTick, 750, 750, static_cast<uint64_t>(std::clamp(hudAlarmHoldMs,0.0,10000.0)));
+    alarm.state=static_cast<HudMetricState>(alarm.policy.stableState);
+    alarm.inAlarm=alarm.policy.visible;
+}
+HudMetricState ClassifyHudMetric(size_t index, const HudMetric& metric) {
+    if(!metric.available) return HudMetricState::Unavailable;
+    double value=metric.value;
+    if((index==(size_t)HudWidgetId::Vr||index==(size_t)HudWidgetId::FrameInterval) && g_hudEffectiveBudgetMs>0.0)
+        value=100.0*metric.value/g_hudEffectiveBudgetMs;
+    const double warning=hudWidgetWarning[index],critical=hudWidgetCritical[index];
+    if(warning<=0.0&&critical<=0.0)return HudMetricState::OnTarget;
+    const bool lower=(kHudLowerIsWorseMask&(1ull<<index))!=0;
+    if(lower) {
+        if(critical>0.0&&value<=critical)return HudMetricState::Critical;
+        if(warning>0.0&&value<=warning)return HudMetricState::Warning;
     } else {
-        alarm.entryCount=0;
-        if (++alarm.recoveryCount >= 6 && nowTick >= alarm.redHoldUntilTick) { alarm.state=desired; alarm.recoveryCount=0; }
+        if(critical>0.0&&value>=critical)return HudMetricState::Critical;
+        if(warning>0.0&&value>=warning)return HudMetricState::Warning;
     }
-    const bool critical = alarm.state==HudMetricState::Critical || alarm.state==HudMetricState::Unstable;
-    if (critical) {
-        alarm.inAlarm=true;
-        alarm.redHoldUntilTick=nowTick+static_cast<uint64_t>(std::clamp(hudAlarmHoldMs,0.0,10000.0));
-    } else if (alarm.inAlarm && nowTick >= alarm.redHoldUntilTick) alarm.inAlarm=false;
+    return HudMetricState::OnTarget;
 }
 void UpdateHudMetrics() {
+    auto publishTraceState=[] {
+        const HudMetric& gpu=g_hudMetrics[(size_t)HudWidgetId::Gpu];
+        g_traceGpuPercent.store(gpu.available?gpu.value:-1.0,std::memory_order_release);
+        uint64_t warning=0,critical=0,visible=0;
+        for(size_t i=0;i<kHudWidgetCount&&i<64;++i) {
+            const uint64_t bit=1ull<<i;
+            if(g_hudAlarm[i].state==HudMetricState::Warning) warning|=bit;
+            else if(g_hudAlarm[i].state==HudMetricState::Critical) critical|=bit;
+            if(g_hudAlarm[i].inAlarm) visible|=bit;
+        }
+        g_traceWarningMask.store(warning,std::memory_order_release);
+        g_traceCriticalMask.store(critical,std::memory_order_release);
+        g_traceVisibleAlarmMask.store(visible,std::memory_order_release);
+    };
     const uint64_t now = GetTickCount64();
     if (now < g_hudNextUpdateTick) return;
     g_hudNextUpdateTick = now + (std::max)(uint32_t{50}, hudUpdateIntervalMs);
@@ -441,15 +496,13 @@ void UpdateHudMetrics() {
         g_hudMetrics[3] = { std::clamp(hudDebugVr, 0.0, 999.9), true };
         if (g_hudEffectiveBudgetMs <= 0.0) g_hudEffectiveBudgetMs = 11.1;
         for (int i = 0; i < 3; ++i) {
-            const double value=g_hudMetrics[i].value;
-            UpdateHudState(i,value>=hudRedThreshold?HudMetricState::Critical:value>=hudGreenThreshold?HudMetricState::Warning:HudMetricState::OnTarget,now);
+            UpdateHudState(i,ClassifyHudMetric((size_t)i,g_hudMetrics[i]),now);
         }
-        const double debugRatio=g_hudEffectiveBudgetMs>0.0?g_hudMetrics[3].value/g_hudEffectiveBudgetMs:0.0;
-        UpdateHudState(3,debugRatio>1.08?HudMetricState::Critical:debugRatio>1.03?HudMetricState::Warning:HudMetricState::OnTarget,now);
+        UpdateHudState(3,ClassifyHudMetric((size_t)HudWidgetId::Vr,g_hudMetrics[3]),now);
         g_hudVrState=g_hudAlarm[3].state;
         LogVerbose("HUD telemetry: DEBUG raw CPU=%.2f%% GPU=%.2f%% APP=%.2f%% VRms=%.2f; displayed=%.2f%%/%.2f%%/%.2f%%/%.1fms\n",
             hudDebugCpu, hudDebugGpu, hudDebugSystem, hudDebugVr, g_hudMetrics[0].value, g_hudMetrics[1].value, g_hudMetrics[2].value, g_hudMetrics[3].value);
-        return;
+        publishTraceState(); return;
     }
     // Hardware collection is deliberately absent from this render-thread function. The worker
     // owns PDH/DXGI/system calls and publishes a completed snapshot; a contended snapshot is
@@ -483,20 +536,10 @@ void UpdateHudMetrics() {
         g_hudMetrics[(size_t)HudWidgetId::Fps]={cadenceAvailable?1000.0/g_hudFrameTimeMs:0.0,cadenceAvailable};
     }
     for(size_t i=0;i<kHudWidgetCount;++i) {
-        const HudMetric& metric=g_hudMetrics[i]; HudMetricState desired=HudMetricState::Unavailable;
-        if(metric.available) {
-            if(i==(size_t)HudWidgetId::Sys) desired=metric.value<=hudSysCriticalThreshold?HudMetricState::Critical:metric.value<=hudSysWarningThreshold?HudMetricState::Warning:HudMetricState::OnTarget;
-            else if(i==(size_t)HudWidgetId::NetworkPing) desired=metric.value>=networkPingCriticalMs?HudMetricState::Critical:metric.value>=networkPingWarningMs?HudMetricState::Warning:HudMetricState::OnTarget;
-            else if(i==(size_t)HudWidgetId::NetworkLoss) desired=metric.value>=networkLossCritical?HudMetricState::Critical:metric.value>=networkLossWarning?HudMetricState::Warning:HudMetricState::OnTarget;
-            else if(i==(size_t)HudWidgetId::NetworkJitter) desired=metric.value>=networkJitterCriticalMs?HudMetricState::Critical:metric.value>=networkJitterWarningMs?HudMetricState::Warning:HudMetricState::OnTarget;
-            else if(i==(size_t)HudWidgetId::NetworkStatus) desired=metric.value>=2?HudMetricState::Critical:metric.value>=1?HudMetricState::Warning:HudMetricState::OnTarget;
-            else if(i==(size_t)HudWidgetId::CpuFrequency||i==(size_t)HudWidgetId::Fps) desired=HudMetricState::OnTarget;
-            else if(i==(size_t)HudWidgetId::Vr||i==(size_t)HudWidgetId::FrameInterval) {const double ratio=g_hudEffectiveBudgetMs>0?metric.value/g_hudEffectiveBudgetMs:0;desired=ratio>1.08?HudMetricState::Critical:ratio>1.03?HudMetricState::Warning:HudMetricState::OnTarget;}
-            else desired=metric.value>=hudRedThreshold?HudMetricState::Critical:metric.value>=hudGreenThreshold?HudMetricState::Warning:HudMetricState::OnTarget;
-        }
-        UpdateHudState((int)i,desired,now);
+        UpdateHudState((int)i,ClassifyHudMetric(i,g_hudMetrics[i]),now);
     }
     g_hudVrState=g_hudAlarm[(size_t)HudWidgetId::Vr].state;
+    publishTraceState();
     return;
 }
 
@@ -606,8 +649,11 @@ struct LiveStateBlock {
     float crosshairOffsetX, crosshairOffsetY; // normalized full-lens tangent coordinates
     uint32_t topmostFlags;    // v6: bit0 experimental topmost composition layer
     uint32_t hudWidgetMask, hudWidgetOrder, hudGraphChannels, hudGraphMode; // v7
+    uint32_t clockFlags; float clockX,clockY,clockScale,clockOpacity; uint32_t clockTheme,reservedV8;
+    uint32_t overlayToggleKeys[6]; // v8
 };
 #pragma pack(pop)
+static_assert(sizeof(LiveStateBlock)==260,"live state v8 contract size");
 constexpr uint32_t kLiveStateMagic = 0x534C4C56; // VLLS
 HANDLE g_liveStateMap = nullptr;
 const LiveStateBlock* g_liveState = nullptr;
@@ -636,7 +682,7 @@ void ConsumeTelemetryConfig() {
     if(!g_telemetryConfig){g_telemetryConfigMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabTelemetryConfigV1");if(g_telemetryConfigMap)g_telemetryConfig=(const TelemetryConfigBlock*)MapViewOfFile(g_telemetryConfigMap,FILE_MAP_READ,0,0,sizeof(TelemetryConfigBlock));}
     if(!g_telemetryConfig||g_telemetryConfig->magic!=0x31435456u||g_telemetryConfig->version!=1||g_telemetryConfig->size!=64||g_telemetryConfig->generation==g_telemetryConfigGeneration)return;
     const TelemetryConfigBlock stable=*g_telemetryConfig;if(stable.generation!=g_telemetryConfig->generation)return;
-    hudWidgetMask=stable.widgetMask&((1ull<<kHudWidgetCount)-1);hudMaxPerRow=std::clamp(stable.maxPerRow,1u,16u);hudSysWarningThreshold=std::clamp((double)stable.sysWarning,10.0,60.0);hudSysCriticalThreshold=std::clamp((double)stable.sysCritical,0.0,hudSysWarningThreshold);
+    hudWidgetMask=stable.widgetMask&((1ull<<kHudWidgetCount)-1);hudWidgetSymbolMask=stable.flags&0xFFFFu;hudMaxPerRow=std::clamp(stable.maxPerRow,1u,16u);hudSysWarningThreshold=std::clamp((double)stable.sysWarning,10.0,60.0);hudSysCriticalThreshold=std::clamp((double)stable.sysCritical,0.0,hudSysWarningThreshold);
     viewlab::telemetry::SetNetworkProbeEnabled((hudWidgetMask & (0xFull<<12)) != 0);
     std::array<bool,kHudWidgetCount> seen{};size_t n=0;for(uint8_t id:stable.order)if(id<kHudWidgetCount&&!seen[id]){hudWidgetOrder[n++]=id;seen[id]=true;}for(uint8_t id=0;id<kHudWidgetCount;++id)if(!seen[id])hudWidgetOrder[n++]=id;
     g_telemetryConfigGeneration=stable.generation;
@@ -711,11 +757,28 @@ void ConsumeRacingState(){
 }
 void DisconnectRacingState(){if(g_racing)UnmapViewOfFile(g_racing);if(g_racingMap)CloseHandle(g_racingMap);g_racing=nullptr;g_racingMap=nullptr;g_racingStable={};g_racingGeneration=0;g_racingNextConnectTick=0;}
 
+#pragma pack(push,4)
+struct StickyNoteLiveRecord { uint32_t enabled; float x,y,scale,opacity; uint32_t theme; wchar_t text[120]; };
+struct StickyNoteLiveBlock { uint32_t magic,version,size,generation,enabled; StickyNoteLiveRecord notes[kStickyNoteMax]; };
+#pragma pack(pop)
+static_assert(sizeof(StickyNoteLiveRecord)==264&&sizeof(StickyNoteLiveBlock)==2132,"sticky note live contract size");
+HANDLE g_stickyNoteMap=nullptr;const StickyNoteLiveBlock* g_stickyNoteState=nullptr;uint32_t g_stickyNoteGeneration=0;uint64_t g_stickyNoteNextConnectTick=0;
+void ConsumeStickyNoteState(){
+    if(!g_stickyNoteState){const uint64_t now=GetTickCount64();if(now<g_stickyNoteNextConnectTick)return;g_stickyNoteNextConnectTick=now+1000;g_stickyNoteMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabStickyNotes");if(g_stickyNoteMap)g_stickyNoteState=(const StickyNoteLiveBlock*)MapViewOfFile(g_stickyNoteMap,FILE_MAP_READ,0,0,sizeof(StickyNoteLiveBlock));}
+    if(!g_stickyNoteState||g_stickyNoteState->magic!=0x314E5356u||g_stickyNoteState->version!=1||g_stickyNoteState->size!=sizeof(StickyNoteLiveBlock)||g_stickyNoteState->generation==g_stickyNoteGeneration)return;
+    const StickyNoteLiveBlock snapshot=*g_stickyNoteState;MemoryBarrier();if(snapshot.generation!=g_stickyNoteState->generation)return;
+    stickyNoteEnabled=snapshot.enabled!=0;stickyNoteCount=0;
+    for(size_t i=0;i<kStickyNoteMax;++i){const auto&r=snapshot.notes[i];size_t length=0;while(length<std::size(r.text)&&r.text[length])++length;if(length==0&&!r.enabled)continue;auto&n=stickyNotes[stickyNoteCount++];n.enabled=r.enabled!=0;n.x=std::clamp((double)r.x,0.0,1.0);n.y=std::clamp((double)r.y,0.0,1.0);n.scale=std::clamp((double)r.scale,.5,2.5);n.opacity=std::clamp((double)r.opacity,.1,1.0);n.theme=std::clamp(r.theme,0u,4u);n.text.assign(r.text,length);}
+    g_stickyNoteGeneration=snapshot.generation;
+}
+void DisconnectStickyNoteState(){if(g_stickyNoteState)UnmapViewOfFile(g_stickyNoteState);if(g_stickyNoteMap)CloseHandle(g_stickyNoteMap);g_stickyNoteState=nullptr;g_stickyNoteMap=nullptr;g_stickyNoteGeneration=0;g_stickyNoteNextConnectTick=0;}
+
 void ConsumeLiveState() {
     ConsumeTelemetryConfig();
+    ConsumeStickyNoteState();
     if (!g_liveState) { ConnectLiveState(); if (!g_liveState) return; }
     const LiveStateBlock snapshot = *g_liveState;
-    if (snapshot.magic != kLiveStateMagic || snapshot.version != 7 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
+    if (snapshot.magic != kLiveStateMagic || snapshot.version != 8 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
     MemoryBarrier();
     const LiveStateBlock stable = *g_liveState;
     if (stable.generation != snapshot.generation) return;
@@ -765,6 +828,9 @@ void ConsumeLiveState() {
     // Generic racing presentation enables; event state arrives through its dedicated mapping.
     iracingEnabled = (stable.iracingFlags & 1u) != 0; iracingLapPopup = (stable.iracingFlags & 2u) != 0;
     iracingSpotterGlow = (stable.iracingFlags & 4u) != 0; iracingFlagBorder = (stable.iracingFlags & 8u) != 0;
+    clockWidgetEnabled=(stable.clockFlags&1u)!=0;clockSessionTimerEnabled=(stable.clockFlags&2u)!=0;clock24Hour=(stable.clockFlags&4u)!=0;
+    clockWidgetX=std::clamp((double)stable.clockX,0.0,1.0);clockWidgetY=std::clamp((double)stable.clockY,0.0,1.0);clockWidgetScale=std::clamp((double)stable.clockScale,.5,2.0);clockWidgetOpacity=std::clamp((double)stable.clockOpacity,.1,1.0);clockWidgetTheme=std::clamp(stable.clockTheme,0u,4u);
+    for(size_t i=0;i<(size_t)OverlayFeatureId::Count;++i)g_overlayFeatureVisibility[i].toggleKey=(int)std::clamp(stable.overlayToggleKeys[i],0u,255u);
     if ((stable.flags & 1u) != 0 && !liveVisorUsesProfileOverride) {
         maskEnabled = (stable.flags & 4u) != 0;
         visorSize = std::clamp((double)stable.visorSize, 0.1, 1.0); visorCurve = std::clamp(1.0 - (double)stable.maskCorner, 0.0, 1.0);
@@ -783,6 +849,7 @@ std::wstring currentAppKey;
 PFN_xrGetInstanceProcAddr nextXrGetInstanceProcAddr = nullptr;
 PFN_xrCreateSession nextXrCreateSession = nullptr;
 PFN_xrDestroySession nextXrDestroySession = nullptr;
+PFN_xrEndSession nextXrEndSession = nullptr;
 PFN_xrLocateViews nextXrLocateViews = nullptr;
 PFN_xrEnumerateViewConfigurationViews nextXrEnumerateViewConfigurationViews = nullptr;
 PFN_xrGetVisibilityMaskKHR nextXrGetVisibilityMaskKHR = nullptr;
@@ -792,6 +859,8 @@ PFN_xrEndFrame nextXrEndFrame = nullptr;
 PFN_xrEnumerateSwapchainFormats nextXrEnumerateSwapchainFormats = nullptr;
 PFN_xrCreateSwapchain nextXrCreateSwapchain = nullptr;
 PFN_xrDestroySwapchain nextXrDestroySwapchain = nullptr;
+PFN_xrCreateReferenceSpace nextXrCreateReferenceSpace = nullptr;
+PFN_xrDestroySpace nextXrDestroySpace = nullptr;
 PFN_xrEnumerateSwapchainImages nextXrEnumerateSwapchainImages = nullptr;
 PFN_xrAcquireSwapchainImage nextXrAcquireSwapchainImage = nullptr;
 PFN_xrWaitSwapchainImage nextXrWaitSwapchainImage = nullptr;
@@ -800,6 +869,8 @@ PFN_xrReleaseSwapchainImage nextXrReleaseSwapchainImage = nullptr;
 std::atomic<uint32_t> locateViewsLogCount{0};
 std::atomic<uint32_t> enumerateViewsLogCount{0};
 std::atomic<uint32_t> enumerateSkipLogCount{0};
+std::atomic<uint32_t> g_runtimeRecommendedViewWidth{0};
+std::atomic<uint32_t> g_runtimeRecommendedViewHeight{0};
 std::atomic<uint32_t> visibilityMaskLogCount{0};
 std::atomic<uint32_t> visorMaskNoHookLogCount{0};
 std::atomic<uint32_t> visorRendererLogCount{0};
@@ -904,11 +975,14 @@ struct TopmostLayerState {
     bool ready = false;
 };
 TopmostLayerState g_topmostLayer;
+viewlab::bridge::OverlayBackend g_topmostBackend = viewlab::bridge::OverlayBackend::DirectEyeTexture;
+viewlab::bridge::FeaturePresentationPlan g_featurePresentationPlan{true,true,viewlab::bridge::OverlayBackend::FeatureDisabled};
 std::atomic<bool> g_topmostLayerBlocked{false};
 bool g_topmostLayerAttempted = false;
 bool g_topmostLayerDemanded = false;
 std::atomic<bool> g_rendererDeviceLost{false};
 std::atomic<bool> g_rendererDeviceLossLogged{false};
+std::atomic<bool> g_topmostSubmissionLogged{false};
 
 std::mutex g_swapchainMutex;
 // Serializes renderer lifetime and immediate-context use across OpenXR hooks. The D3D11
@@ -1020,11 +1094,20 @@ std::filesystem::path LatestPerformanceTracePath() {
 }
 
 void BeginPerformanceTraceSession(int64_t startQpc) {
+    std::lock_guard<std::mutex> fileLock(g_traceFileMutex);
     std::lock_guard<std::mutex> lock(g_hudTimingMutex);
     g_sessionTraceSamples.clear();
     if (g_sessionTraceSamples.capacity() < kSessionTraceCapacity) g_sessionTraceSamples.reserve(kSessionTraceCapacity);
     g_sessionTraceStart=0; g_sessionTraceMarkers.clear(); g_sessionTraceMarkers.reserve(256);
-    g_sessionTraceStartQpc=startQpc; g_nextTraceMarker=1; g_pendingTraceMarker=0; g_traceMarkerKeyDown=false;
+    FILETIME utc{}; GetSystemTimeAsFileTime(&utc); ULARGE_INTEGER utcValue{}; utcValue.LowPart=utc.dwLowDateTime; utcValue.HighPart=utc.dwHighDateTime;
+    g_sessionTraceStartQpc=startQpc; g_sessionTraceStartUtcFileTime=static_cast<int64_t>(utcValue.QuadPart);
+    SYSTEMTIME utcSystem{}; GetSystemTime(&utcSystem); wchar_t fileName[96]{};
+    swprintf_s(fileName,L"session-%04u%02u%02u-%02u%02u%02u-%03u-%lu.csv",utcSystem.wYear,utcSystem.wMonth,utcSystem.wDay,utcSystem.wHour,utcSystem.wMinute,utcSystem.wSecond,utcSystem.wMilliseconds,static_cast<unsigned long>(GetCurrentProcessId()));
+    g_sessionTraceFilePath=LatestPerformanceTracePath().parent_path()/fileName;
+    g_latestTraceIsHardLink=false;
+    g_nextTraceMarker=1; g_pendingTraceMarker=0; g_traceMarkerKeyDown=false;
+    g_sessionTraceTotalSamples=0;g_traceCheckpointSampleCursor=0;g_traceCheckpointMarkerCursor=0;g_traceCheckpointLastRebuild=0;
+    g_traceCheckpointNeedsRebuild=true;
     g_traceMarkerConfirmation.store(0,std::memory_order_release);
     g_traceMarkerConfirmationUntil.store(0,std::memory_order_release);
 }
@@ -1039,22 +1122,70 @@ void CapturePerformanceTraceMarker(int64_t qpc) {
 }
 
 void SavePerformanceTraceSession() {
-    std::lock_guard<std::mutex> lock(g_hudTimingMutex);
-    if (!performanceTraceRecording || g_sessionTraceSamples.empty() || g_sessionTraceStartQpc<=0) return;
-    std::error_code ec; const auto path=LatestPerformanceTracePath();
-    std::filesystem::create_directories(path.parent_path(),ec); if(ec)return;
-    const auto temporary=path.wstring()+L".tmp"; FILE* file=nullptr;
-    if(_wfopen_s(&file,temporary.c_str(),L"wb")!=0||!file)return;
+    struct SequencedSample { uint64_t sequence; HudFrameSample sample; };
+    std::lock_guard<std::mutex> fileLock(g_traceFileMutex);
+    const auto path=g_sessionTraceFilePath.empty()?LatestPerformanceTracePath():g_sessionTraceFilePath;
+    std::error_code ec;
+    const bool pathExists=std::filesystem::exists(path,ec);
+    std::vector<SequencedSample> samples;
+    std::vector<PerformanceTraceMarker> markers;
+    uint64_t targetSampleCursor=0,oldestSequence=0;
+    size_t targetMarkerCursor=0;
+    int64_t startQpc=0,startUtcFileTime=0;
+    bool rebuild=g_traceCheckpointNeedsRebuild||!pathExists;
+    {
+        std::lock_guard<std::mutex> lock(g_hudTimingMutex);
+        if(!performanceTraceRecording||g_sessionTraceSamples.empty()||g_sessionTraceStartQpc<=0)return;
+        const size_t stored=g_sessionTraceSamples.size();
+        targetSampleCursor=g_sessionTraceTotalSamples;
+        targetMarkerCursor=g_sessionTraceMarkers.size();
+        oldestSequence=targetSampleCursor-stored;
+        rebuild=rebuild||g_traceCheckpointSampleCursor<oldestSequence||
+            (targetSampleCursor>=kSessionTraceCapacity&&targetSampleCursor-g_traceCheckpointLastRebuild>=3600);
+        const uint64_t first=rebuild?oldestSequence:g_traceCheckpointSampleCursor;
+        if(first==targetSampleCursor&&g_traceCheckpointMarkerCursor==targetMarkerCursor)return;
+        samples.reserve(static_cast<size_t>(targetSampleCursor-first));
+        for(uint64_t sequence=first;sequence<targetSampleCursor;++sequence) {
+            const size_t offset=static_cast<size_t>(sequence-oldestSequence);
+            samples.push_back({sequence+1,g_sessionTraceSamples[(g_sessionTraceStart+offset)%stored]});
+        }
+        const size_t markerFirst=rebuild?0:g_traceCheckpointMarkerCursor;
+        const int64_t earliestQpc=samples.empty()?g_sessionTraceStartQpc:samples.front().sample.qpc;
+        for(size_t i=markerFirst;i<targetMarkerCursor;++i)if(!rebuild||g_sessionTraceMarkers[i].qpc>=earliestQpc)markers.push_back(g_sessionTraceMarkers[i]);
+        startQpc=g_sessionTraceStartQpc;
+        startUtcFileTime=g_sessionTraceStartUtcFileTime;
+    }
+    std::filesystem::create_directories(path.parent_path(),ec);if(ec)return;
+    const auto output=rebuild?path.wstring()+L".tmp":path.wstring();FILE* file=nullptr;
+    if(_wfopen_s(&file,output.c_str(),rebuild?L"wb":L"ab")!=0||!file)return;
     LARGE_INTEGER frequency{};QueryPerformanceFrequency(&frequency);
-    fprintf(file,"ViewLabPerformanceTrace,1\nfrequency,%lld\nstart_qpc,%lld\n",
-        (long long)frequency.QuadPart,(long long)g_sessionTraceStartQpc);
-    fprintf(file,"type,sequence,qpc,elapsed_ms,actual_ms,target_ms,deviation_ms,app_ms,wait_ms,submit_ms,display_ms,marker\n");
-    const size_t count=g_sessionTraceSamples.size();
-    for(size_t i=0;i<count;++i){const auto&s=g_sessionTraceSamples[(g_sessionTraceStart+i)%count];const double elapsed=frequency.QuadPart>0?1000.0*(double)(s.qpc-g_sessionTraceStartQpc)/(double)frequency.QuadPart:0.0;
-        fprintf(file,"S,%zu,%lld,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%u\n",i+1,(long long)s.qpc,elapsed,s.actualMs,s.targetMs,s.deviationMs,s.appWorkMs,s.waitDurationMs,s.submitDurationMs,s.displayPeriodMs,s.markerNumber);}
-    for(const auto&m:g_sessionTraceMarkers){const double elapsed=frequency.QuadPart>0?1000.0*(double)(m.qpc-g_sessionTraceStartQpc)/(double)frequency.QuadPart:0.0;fprintf(file,"M,%u,%lld,%.6f,,,,,,,,%u\n",m.number,(long long)m.qpc,elapsed,m.number);}
-    fclose(file);std::filesystem::remove(path,ec);ec.clear();std::filesystem::rename(temporary,path,ec);
-    if(ec)std::filesystem::remove(temporary,ec);else Log("Performance trace: saved %zu real samples and %zu markers to %ls\n",count,g_sessionTraceMarkers.size(),path.c_str());
+    if(rebuild) {
+        fprintf(file,"ViewLabPerformanceTrace,2\nfrequency,%lld\nstart_qpc,%lld\nstart_utc_filetime,%lld\n",
+            (long long)frequency.QuadPart,(long long)startQpc,(long long)startUtcFileTime);
+        fprintf(file,"type,sequence,qpc,elapsed_ms,actual_ms,target_ms,deviation_ms,app_ms,wait_ms,submit_ms,display_ms,marker,gpu_pct,warning_mask,critical_mask,visible_alarm_mask\n");
+    }
+    for(const auto&entry:samples){const auto&s=entry.sample;const double elapsed=frequency.QuadPart>0?1000.0*(double)(s.qpc-startQpc)/(double)frequency.QuadPart:0.0;
+        fprintf(file,"S,%llu,%lld,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%u,%.3f,%llu,%llu,%llu\n",(unsigned long long)entry.sequence,(long long)s.qpc,elapsed,s.actualMs,s.targetMs,s.deviationMs,s.appWorkMs,s.waitDurationMs,s.submitDurationMs,s.displayPeriodMs,s.markerNumber,s.gpuPercent,(unsigned long long)s.warningMask,(unsigned long long)s.criticalMask,(unsigned long long)s.visibleAlarmMask);}
+    for(const auto&m:markers){const double elapsed=frequency.QuadPart>0?1000.0*(double)(m.qpc-startQpc)/(double)frequency.QuadPart:0.0;fprintf(file,"M,%u,%lld,%.6f,,,,,,,,%u\n",m.number,(long long)m.qpc,elapsed,m.number);}
+    fflush(file);_commit(_fileno(file));fclose(file);
+    if(rebuild&&!MoveFileExW(output.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)) {
+        const DWORD error=GetLastError();std::filesystem::remove(output,ec);
+        Log("Performance trace: checkpoint replace failed error=%lu path=%ls\n",static_cast<unsigned long>(error),path.c_str());return;
+    }
+    // latest.csv is a compatibility alias to the current archived session. Recreate the hard
+    // link after an atomic rebuild because replacing the archive creates a new file identity.
+    const auto latest=LatestPerformanceTracePath();
+    if(path!=latest) {
+        if(rebuild||!std::filesystem::exists(latest,ec)) {
+            std::filesystem::remove(latest,ec);
+            g_latestTraceIsHardLink=CreateHardLinkW(latest.c_str(),path.c_str(),nullptr)!=FALSE;
+        }
+        if(!g_latestTraceIsHardLink) CopyFileW(path.c_str(),latest.c_str(),FALSE);
+    }
+    g_traceCheckpointSampleCursor=targetSampleCursor;
+    g_traceCheckpointMarkerCursor=targetMarkerCursor;
+    if(rebuild){g_traceCheckpointLastRebuild=targetSampleCursor;g_traceCheckpointNeedsRebuild=false;}
+    LogVerbose("Performance trace: checkpointed %zu samples and %zu markers to %ls\n",samples.size(),markers.size(),path.c_str());
 }
 
 std::filesystem::path LogPath() {
@@ -1584,7 +1715,9 @@ static const char kVisorVS[] =
     " return output; }";
 
 static const char kVisorPS[] =
-    "float4 main(float alpha : ALPHA, float3 color : TEXCOORD0) : SV_TARGET { return float4(color, alpha); }";
+    // AA is intentionally disabled product-wide. Emit a guaranteed opaque black pixel instead of
+    // relying on an interpolated alpha semantic on a transparent compositor-owned target.
+    "float4 main(float alpha : ALPHA, float3 color : TEXCOORD0) : SV_TARGET { return float4(0.0f, 0.0f, 0.0f, 1.0f); }";
 
 // Diagnostics deliberately do not rely on a vertex colour interpolant.  VDXR accepted the
 // geometry but delivered that interpolant as black, so each opaque calibration colour is bound
@@ -2681,7 +2814,7 @@ void DrawCalibrationOverlayToTexture(
     // same angular position (zero angular disparity — it fuses cleanly and never hugs the
     // opposite lens edge), and it stays positioned relative to the final cropped tangent
     // bounds at any eye resolution.
-    if (includeHudTrace && (hudEnabled || hudTraceEnabled) && eye.viewIndex < 2) {
+    if (includeHudTrace && ((hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace))) && eye.viewIndex < 2) {
         if (eye.viewIndex == 0 || !g_hudDrawSnap.valid) {
             UpdateHudMetrics();
             for (size_t i = 0; i < kHudWidgetCount; ++i) { g_hudDrawSnap.metrics[i] = g_hudMetrics[i]; g_hudDrawSnap.alarm[i] = g_hudAlarm[i].inAlarm; g_hudDrawSnap.states[i]=g_hudAlarm[i].state; }
@@ -2719,19 +2852,23 @@ void DrawCalibrationOverlayToTexture(
         auto xFromTan = [&](float tx) { return l + (tx - selfL) / (selfR - selfL) * w; };
         auto yFromTan = [&](float ty) { return t + (selfU - ty) / (selfU - selfD) * h; };
         const OverlayCoordinateResolver coordinates(eye,allViews);
-        auto anchorPxX = [&](double frac) { return coordinates.Resolve(OverlayPlacement::RenderArea,(float)frac,.5f).first; };
-        auto anchorPxY = [&](double frac) { return coordinates.Resolve(OverlayPlacement::RenderArea,.5f,(float)frac).second; };
-        const float obL=(float)l, obR=(float)r, obT=(float)t, obB=(float)b;
+        auto anchorPxX = [&](double frac) { return coordinates.Resolve(OverlayPlacement::FullLens,(float)frac,.5f).first; };
+        auto anchorPxY = [&](double frac) { return coordinates.Resolve(OverlayPlacement::FullLens,.5f,(float)frac).second; };
+        const float obL=coordinates.tangentValid?coordinates.XFromTan(coordinates.sharedFullL):(float)l;
+        const float obR=coordinates.tangentValid?coordinates.XFromTan(coordinates.sharedFullR):(float)r;
+        const float obT=coordinates.tangentValid?coordinates.YFromTan(coordinates.sharedFullU):(float)t;
+        const float obB=coordinates.tangentValid?coordinates.YFromTan(coordinates.sharedFullD):(float)b;
         // Angular-size contract: one reference pixel is a fixed tangent span (2/1080). Project it
         // independently into this eye. Crop/resolution changes therefore affect clipping and
         // available placement, not apparent HUD size.
         const float minDim = (float)(std::min)(w, h);
+        const float fullMinDim=(std::max)(1.f,(std::min)(obR-obL,obB-obT));
         const float pxPerTanX = stereoAnchor ? w / (selfR-selfL) : w*.5f;
         const float pxPerTanY = stereoAnchor ? h / (selfU-selfD) : h*.5f;
         const float angularRefPx = (std::min)(pxPerTanX,pxPerTanY) * (2.f/1080.f);
-        const float unit = std::clamp((float)(angularRefPx * 64.f * std::clamp(hudScale, 0.15, 3.0)), 4.f, minDim * 0.45f);
+        const float unit = std::clamp((float)(angularRefPx * 64.f * std::clamp(hudScale, 0.15, 3.0)), 4.f, fullMinDim * 0.45f);
         const float radius = unit * 0.48f;
-        const float margin = std::clamp((float)hudSafeMargin, 0.f, .25f) * minDim;
+        const float margin = std::clamp((float)hudSafeMargin, 0.f, .25f) * fullMinDim;
         const int pxs = (std::max)(1, (int)std::lround(unit * 0.045));
         const float numberHeight = (float)(pxs * 7), numberGap = unit * .08f;
         std::array<uint8_t,kHudWidgetCount> drawWidgets{}; size_t drawWidgetCount=0;
@@ -2770,18 +2907,10 @@ void DrawCalibrationOverlayToTexture(
             emit(x0+nx,y0+ny,rr,gg,bb); emit(x1+nx,y1+ny,rr,gg,bb); emit(x1-nx,y1-ny,rr,gg,bb);
             emit(x0+nx,y0+ny,rr,gg,bb); emit(x1-nx,y1-ny,rr,gg,bb); emit(x0-nx,y0-ny,rr,gg,bb);
         };
-        auto rectLine = [&](float x0,float y0,float x1,float y1,float thickness,float rr,float gg,float bb) {
-            line(x0,y0,x1,y0,thickness,rr,gg,bb); line(x1,y0,x1,y1,thickness,rr,gg,bb);
-            line(x1,y1,x0,y1,thickness,rr,gg,bb); line(x0,y1,x0,y0,thickness,rr,gg,bb);
-        };
-        auto circleLine = [&](float cx,float cy,float rradius,float thickness,float cr,float cg,float cb) {
-            constexpr int n=16; constexpr float pi=3.14159265f;
-            for(int i=0;i<n;++i){float a=i*2*pi/n, b2=(i+1)*2*pi/n; line(cx+cosf(a)*rradius,cy+sinf(a)*rradius,cx+cosf(b2)*rradius,cy+sinf(b2)*rradius,thickness,cr,cg,cb);}
-        };
         // Compact 5x7 pixel HUD font with a dedicated decimal-point glyph. Row bits are
         // rendered as merged horizontal runs at an integer pixel scale, so digits stay
         // crisp at small sizes and "13.3" can never collapse into "133".
-        static const unsigned char kHudFont[19][7] = {
+        static const unsigned char kHudFont[39][7] = {
             {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, // 0
             {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E}, // 1
             {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}, // 2
@@ -2794,16 +2923,38 @@ void DrawCalibrationOverlayToTexture(
             {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C}, // 9
             {0x00,0x00,0x00,0x00,0x00,0x0C,0x0C}, // .
             {0x00,0x00,0x00,0x0E,0x00,0x00,0x00}, // -
-            {0x11,0x12,0x14,0x18,0x14,0x12,0x11}, // K
-            {0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E}, // B
             {0x0E,0x11,0x11,0x1F,0x11,0x11,0x11}, // A
+            {0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E}, // B
+            {0x0E,0x11,0x10,0x10,0x10,0x11,0x0E}, // C
             {0x1E,0x11,0x11,0x11,0x11,0x11,0x1E}, // D
+            {0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F}, // E
             {0x1F,0x10,0x10,0x1E,0x10,0x10,0x10}, // F
-            {0x04,0x04,0x04,0x04,0x04,0x00,0x04}, // !
+            {0x0E,0x11,0x10,0x17,0x11,0x11,0x0F}, // G
+            {0x11,0x11,0x11,0x1F,0x11,0x11,0x11}, // H
+            {0x0E,0x04,0x04,0x04,0x04,0x04,0x0E}, // I
+            {0x07,0x02,0x02,0x02,0x02,0x12,0x0C}, // J
+            {0x11,0x12,0x14,0x18,0x14,0x12,0x11}, // K
+            {0x10,0x10,0x10,0x10,0x10,0x10,0x1F}, // L
+            {0x11,0x1B,0x15,0x15,0x11,0x11,0x11}, // M
+            {0x11,0x19,0x15,0x13,0x11,0x11,0x11}, // N
+            {0x0E,0x11,0x11,0x11,0x11,0x11,0x0E}, // O
+            {0x1E,0x11,0x11,0x1E,0x10,0x10,0x10}, // P
+            {0x0E,0x11,0x11,0x11,0x15,0x12,0x0D}, // Q
+            {0x1E,0x11,0x11,0x1E,0x14,0x12,0x11}, // R
+            {0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E}, // S
+            {0x1F,0x04,0x04,0x04,0x04,0x04,0x04}, // T
+            {0x11,0x11,0x11,0x11,0x11,0x11,0x0E}, // U
+            {0x11,0x11,0x11,0x11,0x11,0x0A,0x04}, // V
+            {0x11,0x11,0x11,0x15,0x15,0x15,0x0A}, // W
             {0x11,0x11,0x0A,0x04,0x0A,0x11,0x11}, // X
+            {0x11,0x11,0x0A,0x04,0x04,0x04,0x04}, // Y
+            {0x1F,0x01,0x02,0x04,0x08,0x10,0x1F}, // Z
+            {0x19,0x1A,0x04,0x08,0x16,0x06,0x00}, // %
         };
-        auto glyphIdx = [](char c) -> int { if (c >= '0' && c <= '9') return c - '0'; if (c == 'O') return 0; if (c == '.') return 10; if (c == '-') return 11; if(c=='K')return 12;if(c=='B')return 13;if(c=='A')return 14;if(c=='D')return 15;if(c=='F')return 16;if(c=='!')return 17;if(c=='X')return 18;return -1; };
-        auto glyphAdvance = [&](char c) { return c == '.' ? pxs * 4 : pxs * 6; };
+        auto rectLine=[&](float x0,float y0,float x1,float y1,float thickness,float rr,float gg,float bb){line(x0,y0,x1,y0,thickness,rr,gg,bb);line(x1,y0,x1,y1,thickness,rr,gg,bb);line(x1,y1,x0,y1,thickness,rr,gg,bb);line(x0,y1,x0,y0,thickness,rr,gg,bb);};
+        auto circleLine=[&](float cx,float cy,float radius,float thickness,float rr,float gg,float bb){constexpr int segments=20;for(int i=0;i<segments;++i){const float a=6.2831853f*i/segments,b2=6.2831853f*(i+1)/segments;line(cx+cosf(a)*radius,cy+sinf(a)*radius,cx+cosf(b2)*radius,cy+sinf(b2)*radius,thickness,rr,gg,bb);}};
+        auto glyphIdx = [](char c) -> int { if (c >= '0' && c <= '9') return c - '0'; if (c == '.') return 10; if (c == '-') return 11; if (c >= 'A' && c <= 'Z') return 12 + c - 'A'; if(c=='%')return 38; return -1; };
+        auto glyphAdvance = [&](char c) { return c == '.' ? pxs * 4 : c == ' ' ? pxs * 3 : pxs * 6; };
         auto textWidth = [&](const char* s) { int tw = 0; for (const char* p = s; *p; ++p) tw += glyphAdvance(*p); return (float)(tw - pxs); };
         auto drawText = [&](float centreX, float topY, const char* s, float rr, float gg, float bb) {
             float x = centreX - textWidth(s) * 0.5f;
@@ -2836,7 +2987,7 @@ void DrawCalibrationOverlayToTexture(
                 emit(cx+cosf(a)*ri,cy+sinf(a)*ri,fr,fg,fb); emit(cx+cosf(b2)*radius,cy+sinf(b2)*radius,fr,fg,fb); emit(cx+cosf(b2)*ri,cy+sinf(b2)*ri,fr,fg,fb);
             }
         };
-        if (hudEnabled) for (size_t slot=0; slot<drawWidgetCount; ++slot) {
+        if (hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) for (size_t slot=0; slot<drawWidgetCount; ++slot) {
             const int item=drawWidgets[slot];
             const HudWidgetDescriptor& widget=kHudWidgetRegistry[item];
             const size_t row=slot/widgetsPerRow,col=slot%widgetsPerRow;
@@ -2849,51 +3000,34 @@ void DrawCalibrationOverlayToTexture(
                 : item == (int)HudWidgetId::NetworkStatus ? std::clamp((float)(metric.value/2.0),0.f,1.f)
                 : std::clamp((float)(metric.value/100.0), 0.f, 1.f);
             ring(cx,cy,fillFrac,rr,gg,bb);
-            const float q=unit*.095f, stroke=(std::max)(1.25f,unit*.022f);
-            if(item==0) {
-                rectLine(cx-q*2.0f,cy-q*2.0f,cx+q*2.0f,cy+q*2.0f,stroke,rr,gg,bb);
-                rectLine(cx-q*.8f,cy-q*.8f,cx+q*.8f,cy+q*.8f,stroke,rr,gg,bb);
-                for(int k=-1;k<=1;++k){line(cx+q*k,cy-q*2.8f,cx+q*k,cy-q*2.0f,stroke,rr,gg,bb);line(cx+q*k,cy+q*2.0f,cx+q*k,cy+q*2.8f,stroke,rr,gg,bb);line(cx-q*2.8f,cy+q*k,cx-q*2.0f,cy+q*k,stroke,rr,gg,bb);line(cx+q*2.0f,cy+q*k,cx+q*2.8f,cy+q*k,stroke,rr,gg,bb);}
-            } else if(item==1) {
-                rectLine(cx-q*2.8f,cy-q*1.8f,cx+q*2.4f,cy+q*1.8f,stroke,rr,gg,bb);
-                circleLine(cx-q*.6f,cy,q*.85f,stroke,rr,gg,bb); line(cx+q*.6f,cy-q*.8f,cx+q*1.7f,cy-q*.8f,stroke,rr,gg,bb); line(cx+q*.6f,cy,cx+q*1.7f,cy,stroke,rr,gg,bb);
-                line(cx+q*2.4f,cy-q*.9f,cx+q*3.0f,cy-q*.9f,stroke,rr,gg,bb); line(cx+q*2.4f,cy+q*.9f,cx+q*3.0f,cy+q*.9f,stroke,rr,gg,bb);
-            } else if(item==2) {
-                rectLine(cx-q*1.8f,cy-q*2.7f,cx+q*1.8f,cy+q*2.7f,stroke,rr,gg,bb);
-                line(cx-q*.9f,cy-q*1.5f,cx+q*.9f,cy-q*1.5f,stroke,rr,gg,bb); line(cx-q*.9f,cy-q*.7f,cx+q*.9f,cy-q*.7f,stroke,rr,gg,bb); circleLine(cx,cy+q*1.4f,q*.25f,stroke,rr,gg,bb);
-            } else if(item==3) {
-                line(cx-q*2.8f,cy-q*.8f,cx-q*2.2f,cy-q*1.8f,stroke,rr,gg,bb); line(cx-q*2.2f,cy-q*1.8f,cx+q*2.2f,cy-q*1.8f,stroke,rr,gg,bb); line(cx+q*2.2f,cy-q*1.8f,cx+q*2.8f,cy-q*.8f,stroke,rr,gg,bb);
-                line(cx+q*2.8f,cy-q*.8f,cx+q*2.1f,cy+q*1.8f,stroke,rr,gg,bb); line(cx+q*2.1f,cy+q*1.8f,cx+q*.7f,cy+q*1.8f,stroke,rr,gg,bb); line(cx+q*.7f,cy+q*1.8f,cx,cy+q*.8f,stroke,rr,gg,bb); line(cx,cy+q*.8f,cx-q*.7f,cy+q*1.8f,stroke,rr,gg,bb); line(cx-q*.7f,cy+q*1.8f,cx-q*2.1f,cy+q*1.8f,stroke,rr,gg,bb); line(cx-q*2.1f,cy+q*1.8f,cx-q*2.8f,cy-q*.8f,stroke,rr,gg,bb);
-                rectLine(cx-q*1.7f,cy-q*.7f,cx-q*.5f,cy+q*.4f,stroke,rr,gg,bb); rectLine(cx+q*.5f,cy-q*.7f,cx+q*1.7f,cy+q*.4f,stroke,rr,gg,bb);
-            } else if(item>=(int)HudWidgetId::NetworkPing) {
-                // Shared network-path mark: three rising signal bars. Colour and the value/status
-                // text distinguish latency, loss, jitter and reachability without a separate panel.
-                for(int k=0;k<3;++k){const float bh=q*(1.2f+k*.9f);rectLine(cx-q*2.4f+k*q*1.7f,cy+q*2.2f-bh,cx-q*1.5f+k*q*1.7f,cy+q*2.2f,stroke,rr,gg,bb);}
-            } else {
-                // Secondary mark differs by catalogue slot; the ring and number remain the
-                // primary glanceable language at very small scales.
-                const int variant=item%4;
-                if(variant==0){line(cx-q*2.2f,cy+q*1.7f,cx-q*.7f,cy-q*.4f,stroke,rr,gg,bb);line(cx-q*.7f,cy-q*.4f,cx+q*.4f,cy+q*.5f,stroke,rr,gg,bb);line(cx+q*.4f,cy+q*.5f,cx+q*2.2f,cy-q*1.7f,stroke,rr,gg,bb);}
-                else if(variant==1){rectLine(cx-q*2.2f,cy-q*2.2f,cx+q*2.2f,cy+q*2.2f,stroke,rr,gg,bb);line(cx-q*1.4f,cy,cx+q*1.4f,cy,stroke,rr,gg,bb);}
-                else if(variant==2){for(int k=-2;k<=2;++k)line(cx+q*k,cy+q*2.f,cx+q*k,cy-q*(.5f+abs(k)*.6f),stroke,rr,gg,bb);}
-                else {circleLine(cx,cy,q*2.2f,stroke,rr,gg,bb);line(cx,cy,cx+q*1.5f,cy-q*1.2f,stroke,rr,gg,bb);}
+            if((hudWidgetSymbolMask&(1u<<item))==0) drawText(cx,cy-pxs*3.5f,widget.label,rr,gg,bb);
+            else {
+                const float q=unit*.095f,stroke=(std::max)(1.25f,unit*.022f);
+                if(item==0){rectLine(cx-q*2,cy-q*2,cx+q*2,cy+q*2,stroke,rr,gg,bb);rectLine(cx-q*.8f,cy-q*.8f,cx+q*.8f,cy+q*.8f,stroke,rr,gg,bb);for(int k=-1;k<=1;++k){line(cx+q*k,cy-q*2.8f,cx+q*k,cy-q*2,stroke,rr,gg,bb);line(cx+q*k,cy+q*2,cx+q*k,cy+q*2.8f,stroke,rr,gg,bb);line(cx-q*2.8f,cy+q*k,cx-q*2,cy+q*k,stroke,rr,gg,bb);line(cx+q*2,cy+q*k,cx+q*2.8f,cy+q*k,stroke,rr,gg,bb);}}
+                else if(item==1){rectLine(cx-q*2.8f,cy-q*1.8f,cx+q*2.4f,cy+q*1.8f,stroke,rr,gg,bb);circleLine(cx-q*.6f,cy,q*.85f,stroke,rr,gg,bb);line(cx+q*.6f,cy-q*.8f,cx+q*1.7f,cy-q*.8f,stroke,rr,gg,bb);line(cx+q*.6f,cy,cx+q*1.7f,cy,stroke,rr,gg,bb);}
+                else if(item==2){rectLine(cx-q*1.8f,cy-q*2.7f,cx+q*1.8f,cy+q*2.7f,stroke,rr,gg,bb);line(cx-q*.9f,cy-q*1.5f,cx+q*.9f,cy-q*1.5f,stroke,rr,gg,bb);line(cx-q*.9f,cy-q*.7f,cx+q*.9f,cy-q*.7f,stroke,rr,gg,bb);circleLine(cx,cy+q*1.4f,q*.25f,stroke,rr,gg,bb);}
+                else if(item==3){line(cx-q*2.8f,cy-q*.8f,cx-q*2.2f,cy-q*1.8f,stroke,rr,gg,bb);line(cx-q*2.2f,cy-q*1.8f,cx+q*2.2f,cy-q*1.8f,stroke,rr,gg,bb);line(cx+q*2.2f,cy-q*1.8f,cx+q*2.8f,cy-q*.8f,stroke,rr,gg,bb);line(cx+q*2.8f,cy-q*.8f,cx+q*2.1f,cy+q*1.8f,stroke,rr,gg,bb);line(cx+q*2.1f,cy+q*1.8f,cx+q*.7f,cy+q*1.8f,stroke,rr,gg,bb);line(cx+q*.7f,cy+q*1.8f,cx,cy+q*.8f,stroke,rr,gg,bb);line(cx,cy+q*.8f,cx-q*.7f,cy+q*1.8f,stroke,rr,gg,bb);line(cx-q*.7f,cy+q*1.8f,cx-q*2.1f,cy+q*1.8f,stroke,rr,gg,bb);line(cx-q*2.1f,cy+q*1.8f,cx-q*2.8f,cy-q*.8f,stroke,rr,gg,bb);}
+                else if(item>=(int)HudWidgetId::NetworkPing){for(int k=0;k<3;++k){const float bh=q*(1.2f+k*.9f);rectLine(cx-q*2.4f+k*q*1.7f,cy+q*2.2f-bh,cx-q*1.5f+k*q*1.7f,cy+q*2.2f,stroke,rr,gg,bb);}}
+                else {const int variant=item%4;if(variant==0){line(cx-q*2.2f,cy+q*1.7f,cx-q*.7f,cy-q*.4f,stroke,rr,gg,bb);line(cx-q*.7f,cy-q*.4f,cx+q*.4f,cy+q*.5f,stroke,rr,gg,bb);line(cx+q*.4f,cy+q*.5f,cx+q*2.2f,cy-q*1.7f,stroke,rr,gg,bb);}else if(variant==1){rectLine(cx-q*2.2f,cy-q*2.2f,cx+q*2.2f,cy+q*2.2f,stroke,rr,gg,bb);line(cx-q*1.4f,cy,cx+q*1.4f,cy,stroke,rr,gg,bb);}else if(variant==2){for(int k=-2;k<=2;++k)line(cx+q*k,cy+q*2,cx+q*k,cy-q*(.5f+abs(k)*.6f),stroke,rr,gg,bb);}else{circleLine(cx,cy,q*2.2f,stroke,rr,gg,bb);line(cx,cy,cx+q*1.5f,cy-q*1.2f,stroke,rr,gg,bb);}}
             }
-            // Values carry no unit suffix. Items 0-2 stay integers; item 3 is the app frame
-            // time in milliseconds with exactly one decimal place (e.g. 8.3, 11.1, 13.9).
-            char text[16];
+            char text[24];
             if (!metric.available) { text[0]='-'; text[1]='-'; text[2]='\0'; }
             else if(item==(int)HudWidgetId::NetworkStatus) {const char* status=metric.value>=2?"OFF":metric.value>=1?"BAD":"OK";strcpy_s(text,status);}
-            else if (widget.decimals == 1) snprintf(text, sizeof(text), "%.1f", metric.value);
-            else snprintf(text, sizeof(text), "%d", std::clamp(static_cast<int>(std::round(metric.value)),0,9999));
+            else if (widget.decimals == 1) snprintf(text, sizeof(text), "%.1f %s", metric.value, widget.unit);
+            else snprintf(text, sizeof(text), "%d %s", std::clamp(static_cast<int>(std::round(metric.value)),0,9999), widget.unit);
+            for(char* p=text;*p;++p) if(*p>='a'&&*p<='z') *p=(char)(*p-'a'+'A');
             drawText(cx, cy + radius + numberGap, text, rr, gg, bb);
         }
         // Modular performance graph. Each mode admits only compatible units; selected channels
         // remain persisted when switching modes but incompatible lines are not drawn.
-        if (hudTraceEnabled && g_hudTraceVisibilityAlpha > .001f) {
-        const float traceIntensity=intensity*g_hudTraceVisibilityAlpha;
+        if (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace) && g_hudTraceVisibilityAlpha > .001f) {
+        const float traceIntensity=std::clamp((float)hudTraceOpacity,.10f,1.f)*g_hudTraceVisibilityAlpha;
         const size_t historyN = (size_t)std::clamp(hudTraceHistory, 10.0, (double)snap.samples.size());
-        const float traceW = std::clamp((float)hudTraceWidth, 0.10f, 1.0f) * (std::max)(32.f, obR - obL - 2.f * margin);
-        const float traceH = unit * .55f * std::clamp((float)hudTraceScale, 0.25f, 3.0f);
+		const float traceScale = std::clamp((float)hudTraceScale, 0.25f, 3.0f);
+		const float traceAvailableW = (std::max)(32.f, obR - obL - 2.f * margin);
+		const float traceW = (std::min)(traceAvailableW, std::clamp((float)hudTraceWidth, 0.10f, 1.0f) * traceAvailableW * traceScale);
+		const float traceUnit = std::clamp(angularRefPx * 64.f, 4.f, fullMinDim * .45f);
+		const float traceH = traceUnit * .55f * traceScale;
         float traceLeft = anchorPxX(hudTraceX);
         float traceTop = anchorPxY(hudTraceY);
         if (hudClampToVisible) {
@@ -3007,18 +3141,18 @@ void DrawViewLabOverlaysToTexture(
         else boundaryAlpha = 1.f - (float)elapsed / (float)kBoundaryFadeMs;
     }
     const bool wantBoundary = boundaryAlpha > 0.001f;
-    const bool wantClock = clockWidgetEnabled && clockWidgetOpacity > 0.001;
-    const bool wantSticky=stickyNoteEnabled&&g_stickyNoteVisible.load(std::memory_order_acquire)&&!stickyNoteText.empty()&&stickyNoteOpacity>.001;
+    const bool wantClock = clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock) && clockWidgetOpacity > 0.001;
+    const bool wantSticky=stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote();
     const bool wantObs=ObsRecordingActive();
     const uint64_t markerUntil=g_traceMarkerConfirmationUntil.load(std::memory_order_acquire);
     const uint32_t markerNumber=g_traceMarkerConfirmation.load(std::memory_order_acquire);
     const bool wantTraceMarker=markerNumber!=0 && markerUntil>GetTickCount64();
-    const bool wantCrosshair = crosshairEnabled && crosshairAlpha > 0.001f;
+    const bool wantCrosshair = crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair) && crosshairAlpha > 0.001f;
     ConsumeRacingState();
     const bool wantSpotter = ((iracingEnabled && iracingSpotterGlow) || (g_racingStable.presentationFlags & 1u)) && g_racingStable.spotterState != 0;
     const bool wantFlag = ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
     bool wantNotify = false;
-    if ((notifyEnabled || (iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u)) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 2) wantNotify = true; }
+    if (((notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications)) || (iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u)) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 2) wantNotify = true; }
     if (!wantBoundary && !wantClock && !wantSticky && !wantObs && !wantTraceMarker && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
 
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
@@ -3065,14 +3199,18 @@ void DrawViewLabOverlaysToTexture(
     auto xFromTan=[&](float tx){ return l + (tx - sL)/(sR - sL) * w; };
     auto yFromTan=[&](float ty){ return t + (sU - ty)/(sU - sD) * h; };
     const OverlayCoordinateResolver coordinates(eye,allViews);
-    auto anchorX=[&](double f){ return coordinates.Resolve(OverlayPlacement::RenderArea,(float)f,.5f).first; };
-    auto anchorY=[&](double f){ return coordinates.Resolve(OverlayPlacement::RenderArea,.5f,(float)f).second; };
+    auto anchorX=[&](double f){ return coordinates.Resolve(OverlayPlacement::FullLens,(float)f,.5f).first; };
+    auto anchorY=[&](double f){ return coordinates.Resolve(OverlayPlacement::FullLens,.5f,(float)f).second; };
+    const float fullLeft=coordinates.tangentValid?coordinates.XFromTan(coordinates.sharedFullL):(float)l;
+    const float fullRight=coordinates.tangentValid?coordinates.XFromTan(coordinates.sharedFullR):(float)rr_;
+    const float fullTop=coordinates.tangentValid?coordinates.YFromTan(coordinates.sharedFullU):(float)t;
+    const float fullBottom=coordinates.tangentValid?coordinates.YFromTan(coordinates.sharedFullD):(float)bb_;
     // Fused-overlay contract: tangent (0,0) is the shared straight-ahead angular point. It must be
     // projected separately through each asymmetric eye FOV; equal normalized eye pixels create
     // unintended disparity and the two-crosshair failure.
     const float crosshairTanX=(float)crosshairOffsetX*(coordinates.sharedFullR-coordinates.sharedFullL)*.5f;
     const float crosshairTanY=-(float)crosshairOffsetY*(coordinates.sharedFullU-coordinates.sharedFullD)*.5f;
-    const auto crosshairPosition = coordinates.ResolveSharedTangent(crosshairTanX,crosshairTanY,true);
+    const auto crosshairPosition = coordinates.ResolveSharedTangent(crosshairTanX,crosshairTanY,false);
     const float centreX = crosshairPosition.first;
     const float centreY = crosshairPosition.second;
     const float minDim = (float)(std::min)(w,h);
@@ -3162,20 +3300,24 @@ void DrawViewLabOverlaysToTexture(
         for(const char*p=value;*p;++p){const int d=*p-'0';for(int row=0;row<5;++row)for(int col=0;col<3;++col)if(d>=0&&d<=9&&(digits[d][row]&(4>>col)))rectFill(x+col*scale,top+4.f*scale+row*scale,x+(col+1)*scale,top+4.f*scale+(row+1)*scale,.15f,1.f,.92f,1.f);x+=4.f*scale;}flushFlat(.15f,1.f,.92f,1.f);
     }
 
-    if(wantSticky){
+    if(wantSticky) for(size_t noteIndex=0;noteIndex<stickyNoteCount;++noteIndex){
+        const auto& note=stickyNotes[noteIndex];if(!note.enabled||note.text.empty()||note.opacity<=.001)continue;
+        const auto& stickyNoteText=note.text;const double stickyNoteX=note.x,stickyNoteY=note.y,stickyNoteScale=note.scale,stickyNoteOpacity=note.opacity;
         const auto wrapped=viewlab::sticky_note::Wrap(stickyNoteText);if(wrapped.count){
         const float pxPerTanX=stereo?w/(sR-sL):w*.5f,pxPerTanY=stereo?h/(sU-sD):h*.5f;
         const float ref=(float)stickyNoteScale*(2.f/1080.f),gx=(std::max)(1.f,floorf(ref*pxPerTanX*1.65f+.5f)),gy=(std::max)(1.f,floorf(ref*pxPerTanY*1.65f+.5f));
         size_t longest=1;for(size_t i=0;i<wrapped.count;++i)longest=(std::max)(longest,wrapped.lines[i].size());
-        const float pad=3.f*gx,cardW=pad*2+(float)(longest*6-1)*gx,cardH=pad*2+(float)wrapped.count*8.f*gy-gy;
-        float cx=anchorX(stickyNoteX),cy=anchorY(stickyNoteY);const float sharedL=stereo?xFromTan(oL):(float)l,sharedR=stereo?xFromTan(oR):(float)rr_,sharedT=stereo?yFromTan(oU):(float)t,sharedB=stereo?yFromTan(oD):(float)bb_;
-        cx=sharedR-sharedL>cardW?std::clamp(cx,sharedL+cardW*.5f,sharedR-cardW*.5f):(sharedL+sharedR)*.5f;cy=sharedB-sharedT>cardH?std::clamp(cy,sharedT+cardH*.5f,sharedB-cardH*.5f):(sharedT+sharedB)*.5f;
+        const float pad=3.f*gx,cardW=pad*2+(float)(longest*6-1)*gx,cardH=pad*2+(float)wrapped.count*8.f*gy-gy,cardSide=(std::max)(cardW,cardH);
+        float cx=anchorX(stickyNoteX),cy=anchorY(stickyNoteY);const float sharedL=fullLeft,sharedR=fullRight,sharedT=fullTop,sharedB=fullBottom;
+        cx=sharedR-sharedL>cardSide?std::clamp(cx,sharedL+cardSide*.5f,sharedR-cardSide*.5f):(sharedL+sharedR)*.5f;cy=sharedB-sharedT>cardSide?std::clamp(cy,sharedT+cardSide*.5f,sharedB-cardSide*.5f):(sharedT+sharedB)*.5f;
         const float x0=cx-cardW*.5f,y0=cy-cardH*.5f,a=(float)stickyNoteOpacity;
-        rectFill(x0,y0,x0+cardW,y0+cardH,.94f,.76f,.28f,.92f*a);flushFlat(.94f,.76f,.28f,.92f*a);rectFill(x0,y0,x0+cardW,y0+gy,.35f,.24f,.06f,.32f*a);flushFlat(.35f,.24f,.06f,.32f*a);
+        struct PaperPalette{float r,g,b,tr,tg,tb,fr,fg,fb;};constexpr PaperPalette papers[]={{.96f,.82f,.38f,.58f,.42f,.10f,.10f,.075f,.035f},{.96f,.61f,.67f,.62f,.25f,.31f,.16f,.055f,.07f},{.60f,.88f,.69f,.25f,.52f,.35f,.05f,.12f,.075f},{.58f,.79f,.94f,.22f,.43f,.60f,.045f,.09f,.14f},{.92f,.89f,.78f,.56f,.50f,.38f,.12f,.10f,.07f}};const auto&p=papers[std::clamp(note.theme,0u,4u)];
+        const float square=cardSide,sx0=cx-square*.5f,sy0=cy-square*.5f;
+        rectFill(sx0,sy0,sx0+square,sy0+square,p.r,p.g,p.b,.96f*a);flushFlat(p.r,p.g,p.b,.96f*a);rectFill(sx0,sy0,sx0+square,sy0+gy,p.tr,p.tg,p.tb,.38f*a);flushFlat(p.tr,p.tg,p.tb,.38f*a);rectFill(sx0+square-6*gx,sy0,sx0+square,sy0+6*gy,1.f,1.f,1.f,.18f*a);flushFlat(1.f,1.f,1.f,.18f*a);
         static const uint8_t font[36][7]={
           {14,17,19,21,25,17,14},{4,12,4,4,4,4,14},{14,17,1,2,4,8,31},{30,1,1,14,1,1,30},{2,6,10,18,31,2,2},{31,16,30,1,1,17,14},{6,8,16,30,17,17,14},{31,1,2,4,8,8,8},{14,17,17,14,17,17,14},{14,17,17,15,1,2,12},
           {14,17,17,31,17,17,17},{30,17,17,30,17,17,30},{14,17,16,16,16,17,14},{30,17,17,17,17,17,30},{31,16,16,30,16,16,31},{31,16,16,30,16,16,16},{14,17,16,23,17,17,15},{17,17,17,31,17,17,17},{14,4,4,4,4,4,14},{7,2,2,2,2,18,12},{17,18,20,24,20,18,17},{16,16,16,16,16,16,31},{17,27,21,21,17,17,17},{17,25,21,19,17,17,17},{14,17,17,17,17,17,14},{30,17,17,30,16,16,16},{14,17,17,17,21,18,13},{30,17,17,30,20,18,17},{15,16,16,14,1,1,30},{31,4,4,4,4,4,4},{17,17,17,17,17,17,14},{17,17,17,17,17,10,4},{17,17,17,21,21,21,10},{17,17,10,4,10,17,17},{17,17,10,4,4,4,4},{31,1,2,4,8,16,31}};
-        float ty=y0+pad;for(size_t rowIndex=0;rowIndex<wrapped.count;++rowIndex){float tx=x0+pad;for(char c:wrapped.lines[rowIndex]){int gi=c>='0'&&c<='9'?c-'0':c>='A'&&c<='Z'?10+c-'A':-1;if(gi>=0)for(int row=0;row<7;++row)for(int col=0;col<5;++col)if(font[gi][row]&(16>>col))rectFill(tx+col*gx,ty+row*gy,tx+(col+1)*gx,ty+(row+1)*gy,.08f,.065f,.035f,.95f*a);else{}else if(c=='.')rectFill(tx+2*gx,ty+6*gy,tx+3*gx,ty+7*gy,.08f,.065f,.035f,.95f*a);else if(c=='!'){rectFill(tx+2*gx,ty,tx+3*gx,ty+5*gy,.08f,.065f,.035f,.95f*a);rectFill(tx+2*gx,ty+6*gy,tx+3*gx,ty+7*gy,.08f,.065f,.035f,.95f*a);}tx+=6*gx;}ty+=8*gy;}flushFlat(.08f,.065f,.035f,.95f*a);
+        float ty=sy0+pad;for(size_t rowIndex=0;rowIndex<wrapped.count;++rowIndex){float tx=sx0+pad;for(char c:wrapped.lines[rowIndex]){int gi=c>='0'&&c<='9'?c-'0':c>='A'&&c<='Z'?10+c-'A':-1;if(gi>=0)for(int row=0;row<7;++row)for(int col=0;col<5;++col)if(font[gi][row]&(16>>col))rectFill(tx+col*gx,ty+row*gy,tx+(col+1)*gx,ty+(row+1)*gy,p.fr,p.fg,p.fb,.95f*a);else{}else if(c=='.')rectFill(tx+2*gx,ty+6*gy,tx+3*gx,ty+7*gy,p.fr,p.fg,p.fb,.95f*a);else if(c=='!'){rectFill(tx+2*gx,ty,tx+3*gx,ty+5*gy,p.fr,p.fg,p.fb,.95f*a);rectFill(tx+2*gx,ty+6*gy,tx+3*gx,ty+7*gy,p.fr,p.fg,p.fb,.95f*a);}tx+=6*gx;}ty+=8*gy;}flushFlat(p.fr,p.fg,p.fb,.95f*a);
         }}
 
     // Dedicated two-line clock card. The upper clock is local wall time; the lower hourglass is
@@ -3185,50 +3327,54 @@ void DrawViewLabOverlaysToTexture(
         const uint64_t nowTick = GetTickCount64();
         const uint64_t startTick = g_clockSessionStartTick.load(std::memory_order_acquire);
         const auto text = viewlab::clock_widget::Format(local.wHour, local.wMinute,
-            startTick != 0 && nowTick >= startTick ? nowTick - startTick : 0);
+            startTick != 0 && nowTick >= startTick ? nowTick - startTick : 0,clock24Hour);
         const float pxPerTanX = stereo ? w/(sR-sL) : w*.5f;
         const float pxPerTanY = stereo ? h/(sU-sD) : h*.5f;
         const float referenceUnit = (float)clockWidgetScale * (2.f/1080.f);
         const float glyphX = (std::max)(1.f, floorf(referenceUnit*pxPerTanX*2.1f+.5f));
         const float glyphY = (std::max)(1.f, floorf(referenceUnit*pxPerTanY*2.1f+.5f));
-        const float padX=4.f*glyphX,padY=2.5f*glyphY,iconW=8.f*glyphX,rowH=7.f*glyphY;
-        const float cardW=padX*2+iconW+2.f*glyphX+47.f*glyphX;
-        const float cardH=padY*2+rowH*2+3.f*glyphY;
-        const float sharedLeft=stereo?xFromTan(oL):(float)l,sharedRight=stereo?xFromTan(oR):(float)rr_;
-        const float sharedTop=stereo?yFromTan(oU):(float)t,sharedBottom=stereo?yFromTan(oD):(float)bb_;
+        const float padX=4.f*glyphX,padY=2.5f*glyphY,iconW=8.f*glyphX;
+        const float primaryScale=1.25f,secondaryScale=.90f;
+        const float primaryH=7.f*glyphY*primaryScale,secondaryH=7.f*glyphY*secondaryScale;
+        const float cardW=padX*2+iconW+2.f*glyphX+47.f*glyphX*primaryScale;
+        const float cardH=padY*2+primaryH+(clockSessionTimerEnabled?secondaryH+3.f*glyphY:0.f);
+        const float sharedLeft=fullLeft,sharedRight=fullRight;
+        const float sharedTop=fullTop,sharedBottom=fullBottom;
         float cx=anchorX(clockWidgetX),cy=anchorY(clockWidgetY);
         cx=sharedRight-sharedLeft>cardW?std::clamp(cx,sharedLeft+cardW*.5f,sharedRight-cardW*.5f):(sharedLeft+sharedRight)*.5f;
         cy=sharedBottom-sharedTop>cardH?std::clamp(cy,sharedTop+cardH*.5f,sharedBottom-cardH*.5f):(sharedTop+sharedBottom)*.5f;
         const float x0=cx-cardW*.5f,y0=cy-cardH*.5f,x1=cx+cardW*.5f,y1=cy+cardH*.5f;
         const float opacity=(float)clockWidgetOpacity;
-        rectFill(x0,y0,x1,y1,.035f,.050f,.070f,.88f*opacity); flushFlat(.035f,.050f,.070f,.88f*opacity);
-        rectFill(x0,y0,x0+glyphX,y1,.18f,.82f,1.f,.90f*opacity); flushFlat(.18f,.82f,1.f,.90f*opacity);
-        const float dividerY=y0+padY+rowH+1.5f*glyphY;
-        rectFill(x0+padX,dividerY,x1-padX,dividerY+(std::max)(1.f,glyphY*.35f),.18f,.28f,.36f,.70f*opacity); flushFlat(.18f,.28f,.36f,.70f*opacity);
+        struct ClockPalette{float br,bg,bb,ar,ag,ab,pr,pg,pb,sr,sg,sb;};constexpr ClockPalette themes[]={{.055f,.058f,.064f,.72f,.73f,.76f,.96f,.96f,.95f,.68f,.69f,.72f},{.90f,.86f,.76f,.58f,.42f,.22f,.16f,.14f,.11f,.38f,.32f,.25f},{0,0,0,1,1,1,1,1,1,.68f,.68f,.68f},{.09f,.06f,.025f,.95f,.60f,.16f,1.f,.88f,.62f,.83f,.60f,.27f},{.025f,.075f,.06f,.24f,.82f,.60f,.90f,1.f,.95f,.48f,.78f,.67f}};const auto&theme=themes[std::clamp(clockWidgetTheme,0u,4u)];
+        rectFill(x0,y0,x1,y1,theme.br,theme.bg,theme.bb,.92f*opacity); flushFlat(theme.br,theme.bg,theme.bb,.92f*opacity);
+        rectFill(x0,y0,x0+glyphX,y1,theme.ar,theme.ag,theme.ab,.90f*opacity); flushFlat(theme.ar,theme.ag,theme.ab,.90f*opacity);
+        const float dividerY=y0+padY+primaryH+1.5f*glyphY;
+        if(clockSessionTimerEnabled){rectFill(x0+padX,dividerY,x1-padX,dividerY+(std::max)(1.f,glyphY*.35f),theme.ar,theme.ag,theme.ab,.35f*opacity); flushFlat(theme.ar,theme.ag,theme.ab,.35f*opacity);}
 
-        static const unsigned char font[11][7]={
+        static const unsigned char font[14][7]={
             {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E},{0x04,0x0C,0x04,0x04,0x04,0x04,0x0E},
             {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F},{0x1F,0x02,0x04,0x02,0x01,0x11,0x0E},
             {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02},{0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E},
             {0x06,0x08,0x10,0x1E,0x11,0x11,0x0E},{0x1F,0x01,0x02,0x04,0x04,0x04,0x04},
             {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E},{0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C},
-            {0x00,0x04,0x04,0x00,0x04,0x04,0x00}
+            {0x00,0x04,0x04,0x00,0x04,0x04,0x00},
+            {0x0E,0x11,0x11,0x1F,0x11,0x11,0x11},{0x11,0x1B,0x15,0x15,0x11,0x11,0x11},{0x1E,0x11,0x11,0x1E,0x10,0x10,0x10}
         };
-        auto drawClockText=[&](float tx,float ty,const char* value,float cr,float cg,float cb,float alpha){
-            for(const char* p=value;*p;++p){const int gi=*p==':'?10:(*p>='0'&&*p<='9'?*p-'0':-1);if(gi>=0)for(int row=0;row<7;++row){const unsigned char bits=font[gi][row];for(int col=0;col<5;){if(bits&(0x10>>col)){const int first=col;while(col<5&&(bits&(0x10>>col)))++col;rectFill(tx+first*glyphX,ty+row*glyphY,tx+col*glyphX,ty+(row+1)*glyphY,cr,cg,cb,alpha);}else ++col;}}tx+=6.f*glyphX;}flushFlat(cr,cg,cb,alpha);
+        auto drawClockText=[&](float tx,float ty,const char* value,float cr,float cg,float cb,float alpha,float textScale){
+            for(const char* p=value;*p;++p){const int gi=*p==':'?10:*p=='A'?11:*p=='M'?12:*p=='P'?13:(*p>='0'&&*p<='9'?*p-'0':-1);if(gi>=0)for(int row=0;row<7;++row){const unsigned char bits=font[gi][row];for(int col=0;col<5;){if(bits&(0x10>>col)){const int first=col;while(col<5&&(bits&(0x10>>col)))++col;rectFill(tx+first*glyphX*textScale,ty+row*glyphY*textScale,tx+col*glyphX*textScale,ty+(row+1)*glyphY*textScale,cr,cg,cb,alpha);}else ++col;}}tx+=*p==' '?3.f*glyphX*textScale:6.f*glyphX*textScale;}flushFlat(cr,cg,cb,alpha);
         };
         const float iconX=x0+padX, textX=iconX+iconW+2.f*glyphX;
         const float firstY=y0+padY,secondY=dividerY+2.f*glyphY;
         // Square clock face with two hands.
         const float ith=(std::max)(1.f,glyphX*.7f),ic=iconX+3.f*glyphX,iy=firstY+3.5f*glyphY;
-        rectFill(iconX,firstY,iconX+6*glyphX,firstY+ith,.18f,.82f,1.f,opacity);rectFill(iconX,firstY+7*glyphY-ith,iconX+6*glyphX,firstY+7*glyphY,.18f,.82f,1.f,opacity);
-        rectFill(iconX,firstY,iconX+ith,firstY+7*glyphY,.18f,.82f,1.f,opacity);rectFill(iconX+6*glyphX-ith,firstY,iconX+6*glyphX,firstY+7*glyphY,.18f,.82f,1.f,opacity);
-        rectFill(ic-ith*.5f,firstY+glyphY,ic+ith*.5f,iy+.5f*glyphY,.18f,.82f,1.f,opacity);rectFill(ic,iy-ith*.5f,iconX+5*glyphX,iy+ith*.5f,.18f,.82f,1.f,opacity);flushFlat(.18f,.82f,1.f,opacity);
+        rectFill(iconX,firstY,iconX+6*glyphX,firstY+ith,theme.ar,theme.ag,theme.ab,opacity);rectFill(iconX,firstY+7*glyphY-ith,iconX+6*glyphX,firstY+7*glyphY,theme.ar,theme.ag,theme.ab,opacity);
+        rectFill(iconX,firstY,iconX+ith,firstY+7*glyphY,theme.ar,theme.ag,theme.ab,opacity);rectFill(iconX+6*glyphX-ith,firstY,iconX+6*glyphX,firstY+7*glyphY,theme.ar,theme.ag,theme.ab,opacity);
+        rectFill(ic-ith*.5f,firstY+glyphY,ic+ith*.5f,iy+.5f*glyphY,theme.ar,theme.ag,theme.ab,opacity);rectFill(ic,iy-ith*.5f,iconX+5*glyphX,iy+ith*.5f,theme.ar,theme.ag,theme.ab,opacity);flushFlat(theme.ar,theme.ag,theme.ab,opacity);
         // Hourglass for elapsed session time.
-        rectFill(iconX,secondY,iconX+6*glyphX,secondY+ith,.42f,.72f,.86f,opacity);rectFill(iconX,secondY+7*glyphY-ith,iconX+6*glyphX,secondY+7*glyphY,.42f,.72f,.86f,opacity);
-        for(int step=0;step<3;++step){rectFill(iconX+(step+1)*glyphX,secondY+(step+1)*glyphY,iconX+(step+2)*glyphX,secondY+(step+2)*glyphY,.42f,.72f,.86f,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(step+1)*glyphY,iconX+(5-step)*glyphX,secondY+(step+2)*glyphY,.42f,.72f,.86f,opacity);rectFill(iconX+(step+1)*glyphX,secondY+(5-step)*glyphY,iconX+(step+2)*glyphX,secondY+(6-step)*glyphY,.42f,.72f,.86f,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(5-step)*glyphY,iconX+(5-step)*glyphX,secondY+(6-step)*glyphY,.42f,.72f,.86f,opacity);}flushFlat(.42f,.72f,.86f,opacity);
-        drawClockText(textX,firstY,text.local.data(),.92f,.96f,1.f,opacity);
-        drawClockText(textX,secondY,text.session.data(),.55f,.82f,.94f,opacity);
+        if(clockSessionTimerEnabled){rectFill(iconX,secondY,iconX+6*glyphX,secondY+ith,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX,secondY+7*glyphY-ith,iconX+6*glyphX,secondY+7*glyphY,theme.sr,theme.sg,theme.sb,opacity);
+        for(int step=0;step<3;++step){rectFill(iconX+(step+1)*glyphX,secondY+(step+1)*glyphY,iconX+(step+2)*glyphX,secondY+(step+2)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(step+1)*glyphY,iconX+(5-step)*glyphX,secondY+(step+2)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(step+1)*glyphX,secondY+(5-step)*glyphY,iconX+(step+2)*glyphX,secondY+(6-step)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(5-step)*glyphY,iconX+(5-step)*glyphX,secondY+(6-step)*glyphY,theme.sr,theme.sg,theme.sb,opacity);}flushFlat(theme.sr,theme.sg,theme.sb,opacity);}
+        drawClockText(textX,firstY,text.local.data(),theme.pr,theme.pg,theme.pb,opacity,primaryScale);
+        if(clockSessionTimerEnabled)drawClockText(textX,secondY,text.session.data(),theme.sr,theme.sg,theme.sb,opacity,secondaryScale);
     }
 
     // Feature 2: CS-style static crosshair at the calibrated stereo centre. CS reference pixels
@@ -3282,10 +3428,10 @@ void DrawViewLabOverlaysToTexture(
         const float margin = 0.02f*minDim;
         const float pxPerTanX=stereo?w/(sR-sL):w*.5f,pxPerTanY=stereo?h/(sU-sD):h*.5f;
         const float cardTan=(float)notifyScale*(2.f/1080.f)*460.f;
-        const float cardW=std::clamp(cardTan*pxPerTanX,48.f,w*.6f);
+        const float cardW=std::clamp(cardTan*pxPerTanX,48.f,(fullRight-fullLeft)*.6f);
         const float gap=cardTan*pxPerTanY*.05f;
-        const float baseRight = stereo ? std::clamp(anchorX(notifyX), (float)l+margin+cardW, (float)rr_-margin) : (float)rr_-margin;
-        const float baseBottom = stereo ? std::clamp(anchorY(notifyY), (float)t+margin, (float)bb_-margin) : (float)bb_-margin;
+        const float baseRight = stereo ? std::clamp(anchorX(notifyX), fullLeft+margin+cardW, fullRight-margin) : fullRight-margin;
+        const float baseBottom = stereo ? std::clamp(anchorY(notifyY), fullTop+margin, fullBottom-margin) : fullBottom-margin;
         for (uint32_t i=0;i<kNotifyMaxCards;++i) {
             const NotifyCardBlock& card = nb->cards[i];
             if (!card.active || card.width==0 || card.height==0) continue;
@@ -3332,7 +3478,7 @@ void DrawCalibrationPatternsToTexture(ID3D11Texture2D* tex, uint32_t arrSize, in
     const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv,
     bool includeCalibration, bool includeHudAndOverlays) {
     if (includeCalibration && calibrationGrid) DrawCalibrationGridToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv);
-    if ((includeCalibration && AnyCalibrationPattern()) || (includeHudAndOverlays && (hudEnabled || hudTraceEnabled)))
+    if ((includeCalibration && AnyCalibrationPattern()) || (includeHudAndOverlays && ((hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace)))))
         DrawCalibrationOverlayToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv,includeCalibration,includeHudAndOverlays);
     if (includeHudAndOverlays && AnyViewLabOverlay())
         DrawViewLabOverlaysToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv);
@@ -3351,6 +3497,10 @@ void DestroyTopmostLayer() {
 
 void BlockTopmostLayer(const char* stage, int64_t result) {
     const bool firstFailure = !g_topmostLayerBlocked.exchange(true, std::memory_order_acq_rel);
+    // The ordered carrier is no longer eligible. Restore the single proven writable path for all
+    // normal features together; no feature owns an independent fallback decision.
+    g_featurePresentationPlan.drawDirectVisor = true;
+    g_featurePresentationPlan.drawDirectCommonFeatures = true;
     const HRESULT deviceReason = g_d3d11Mask.device
         ? g_d3d11Mask.device->GetDeviceRemovedReason() : E_POINTER;
     if (FAILED(deviceReason) && g_d3d11Mask.device)
@@ -3409,7 +3559,7 @@ bool EnsureTopmostLayer(XrSession session, uint32_t width, uint32_t height, int6
     D3D11_TEXTURE2D_DESC desc{};
     if(!g_topmostLayer.images.empty() && g_topmostLayer.images[0].texture)
         g_topmostLayer.images[0].texture->GetDesc(&desc);
-    Log("topmost overlays: swapchain ready %ux%u array=2 requestedFormat=%lld resourceFormat=%u "
+    Log("topmost overlays: transparent projection swapchain ready %ux%u array=2 requestedFormat=%lld resourceFormat=%u "
         "bind=0x%X misc=0x%X images=%u pid=%lu thread=%lu\n",
         width,height,(long long)ci.format,(unsigned)desc.Format,desc.BindFlags,desc.MiscFlags,count,
         static_cast<unsigned long>(GetCurrentProcessId()),
@@ -3424,10 +3574,10 @@ bool RenderTopmostLayer(XrSession session, const XrCompositionLayerProjection* s
     }
     if (!RendererDeviceHealthy("RenderTopmostLayer(begin)")) { BlockTopmostLayer("device removed before render", DXGI_ERROR_DEVICE_REMOVED); return false; }
     uint32_t width=0,height=0,viewCount=(std::min)(source->viewCount,2u);
-    for(uint32_t i=0;i<viewCount;++i) { width=(std::max)(width,(uint32_t)source->views[i].subImage.imageRect.extent.width); height=(std::max)(height,(uint32_t)source->views[i].subImage.imageRect.extent.height); }
-    // Match the primary projection's transfer-function declaration. The direct renderer writes
-    // through a non-sRGB RTV into that same swapchain format; hard-coding Topmost to linear UNORM
-    // made identical shader RGB values visibly paler than the usual sRGB game projection.
+    for(uint32_t i=0;i<viewCount;++i) {
+        width=(std::max)(width,(uint32_t)source->views[i].subImage.imageRect.extent.width);
+        height=(std::max)(height,(uint32_t)source->views[i].subImage.imageRect.extent.height);
+    }
     int64_t preferredFormat=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     {
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
@@ -3437,9 +3587,6 @@ bool RenderTopmostLayer(XrSession session, const XrCompositionLayerProjection* s
             if(candidate==DXGI_FORMAT_R8G8B8A8_UNORM || candidate==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ||
                candidate==DXGI_FORMAT_B8G8R8A8_UNORM || candidate==DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
                 preferredFormat=candidate;
-            // Allocate from the underlying game texture capacity, not its submitted imageRect.
-            // The latter legitimately moves by a pixel or changes between menus and gameplay;
-            // tying allocation size to it caused destructive swapchain churn.
             if(!tracked->second.textures.empty() && tracked->second.textures[0]) {
                 D3D11_TEXTURE2D_DESC sourceDesc{};
                 tracked->second.textures[0]->GetDesc(&sourceDesc);
@@ -3461,31 +3608,44 @@ bool RenderTopmostLayer(XrSession session, const XrCompositionLayerProjection* s
     if(!tex) { XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO}; nextXrReleaseSwapchainImage(g_topmostLayer.swapchain,&ri); BlockTopmostLayer("null swapchain texture", E_POINTER); return false; }
     D3D11_TEXTURE2D_DESC topmostDesc{}; tex->GetDesc(&topmostDesc);
     std::vector<EyeView> eyes; eyes.reserve(viewCount);
-    for(uint32_t i=0;i<viewCount;++i) { XrFovf full=source->views[i].fov; if(i<g_d3d11Mask.latestViewCount) full=g_d3d11Mask.latestOriginalViews[i].fov; eyes.push_back(EyeView{{{0,0},{source->views[i].subImage.imageRect.extent.width,source->views[i].subImage.imageRect.extent.height}},i,i,source->views[i].fov,full}); }
+    for(uint32_t i=0;i<viewCount;++i) {
+        XrFovf full=source->views[i].fov;
+        if(i<g_d3d11Mask.latestViewCount) full=g_d3d11Mask.latestOriginalViews[i].fov;
+        eyes.push_back(EyeView{{{0,0},{source->views[i].subImage.imageRect.extent.width,
+            source->views[i].subImage.imageRect.extent.height}},i,i,source->views[i].fov,full});
+    }
     bool rendered=true; HRESULT renderResult=S_OK;
     for(uint32_t i=0;i<viewCount;++i) {
         D3D11_RENDER_TARGET_VIEW_DESC rd{};
-        // Runtime swapchain images may be strongly typed. Reinterpreting an SRGB resource as
-        // UNORM is only legal when the allocation is typeless, and was the failing RTV operation
-        // at the start of the incident. Use the resource's actual typed format.
         rd.Format=topmostDesc.Format;
         if(rd.Format==DXGI_FORMAT_R8G8B8A8_TYPELESS || rd.Format==DXGI_FORMAT_B8G8R8A8_TYPELESS)
             rd.Format=(DXGI_FORMAT)g_topmostLayer.format;
-        rd.ViewDimension=D3D11_RTV_DIMENSION_TEXTURE2DARRAY; rd.Texture2DArray.FirstArraySlice=i; rd.Texture2DArray.ArraySize=1;
+        rd.ViewDimension=D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+        rd.Texture2DArray.FirstArraySlice=i; rd.Texture2DArray.ArraySize=1;
         ID3D11RenderTargetView* rtv=nullptr;
         renderResult=g_d3d11Mask.device->CreateRenderTargetView(tex,&rd,&rtv);
         if(FAILED(renderResult)||!rtv) { rendered=false; break; }
-        const float clear[4]={0,0,0,0}; g_d3d11Mask.context->ClearRenderTargetView(rtv,clear); if(maskEnabled) DrawVisorBorderToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv); DrawCalibrationPatternsToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv,false,true); rtv->Release();
+        const float clear[4]={0,0,0,0};
+        g_d3d11Mask.context->ClearRenderTargetView(rtv,clear);
+        if(maskEnabled) DrawVisorBorderToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv);
+        DrawCalibrationPatternsToTexture(tex,2,g_topmostLayer.format,eyes[i],eyes,rtv,false,true);
+        rtv->Release();
     }
     if(rendered) g_d3d11Mask.context->Flush();
     XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO}; const XrResult releaseResult=nextXrReleaseSwapchainImage(g_topmostLayer.swapchain,&ri);
     if(!rendered) { BlockTopmostLayer("CreateRenderTargetView", renderResult); return false; }
     if(XR_FAILED(releaseResult)) { BlockTopmostLayer("xrReleaseSwapchainImage", releaseResult); return false; }
     if (!RendererDeviceHealthy("RenderTopmostLayer(end)")) { BlockTopmostLayer("device removed after render", DXGI_ERROR_DEVICE_REMOVED); return false; }
-    // ViewLab's alpha-blended draw pass writes premultiplied RGB into the transparent target, so do
-    // not ask the compositor to multiply it a second time.
-    out.layer.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT; out.layer.space=source->space; out.layer.viewCount=viewCount; out.layer.views=out.views.data();
-    for(uint32_t i=0;i<viewCount;++i) { out.views[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}; out.views[i].pose=source->views[i].pose; out.views[i].fov=source->views[i].fov; out.views[i].subImage.swapchain=g_topmostLayer.swapchain; out.views[i].subImage.imageRect=XrRect2Di{{0,0},{source->views[i].subImage.imageRect.extent.width,source->views[i].subImage.imageRect.extent.height}}; out.views[i].subImage.imageArrayIndex=i; }
+    out.layer.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+    out.layer.space=source->space; out.layer.viewCount=viewCount; out.layer.views=out.views.data();
+    for(uint32_t i=0;i<viewCount;++i) {
+        out.views[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
+        out.views[i].pose=source->views[i].pose; out.views[i].fov=source->views[i].fov;
+        out.views[i].subImage.swapchain=g_topmostLayer.swapchain;
+        out.views[i].subImage.imageRect=XrRect2Di{{0,0},{source->views[i].subImage.imageRect.extent.width,
+            source->views[i].subImage.imageRect.extent.height}};
+        out.views[i].subImage.imageArrayIndex=i;
+    }
     return true;
 }
 
@@ -3659,7 +3819,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
     // overwritten by the app and is guaranteed present when the runtime composites.
     // Independent of the visibility-mask path; that path must never suppress this.
 
-    if (enabled && (maskEnabled || ((!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked.load(std::memory_order_acquire)) && AnyDirectOverlay())) &&
+    if (enabled && ((maskEnabled && g_featurePresentationPlan.drawDirectVisor) ||
+        (AnyDirectOverlay() && g_featurePresentationPlan.drawDirectCommonFeatures) || AnyCalibrationPattern()) &&
         g_d3d11Mask.initialized && g_d3d11Mask.context && RendererDeviceHealthy("xrReleaseSwapchainImage")) {
         ID3D11Texture2D* tex = nullptr;
         uint32_t arrSize = 1;
@@ -3696,15 +3857,18 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                 if (!g_diagReleaseNoLayout.exchange(true))
                     Log("d3d11 mask DIAG: no eye layout yet for this swapchain (captured on first xrEndFrame; mask starts next frame)\n");
             } else {
-                const bool directCommon=!topmostVisorOverlays||!g_topmostLayer.ready||g_topmostLayerBlocked.load(std::memory_order_acquire);
+                const bool directCommon=g_featurePresentationPlan.drawDirectCommonFeatures||
+                    g_topmostLayerBlocked.load(std::memory_order_acquire);
+                bool drewVisor=false;
                 for (size_t i = 0; i < views.size(); ++i) {
-                    if (maskEnabled && directCommon) {
+                    if (maskEnabled && g_featurePresentationPlan.drawDirectVisor) {
                         DrawVisorBorderToTexture(tex, arrSize, scFormat, views[i], views,
                             i < rtvs.size() ? rtvs[i] : nullptr);
+                        drewVisor=true;
                     }
                     // Literal-pixel calibration always measures the submitted game texture. It is
                     // never silently redefined as pixels of ViewLab's separate Topmost target.
-                    if (AnyCalibrationPattern() || (directCommon && (hudEnabled || hudTraceEnabled || AnyViewLabOverlay()))) {
+                    if (AnyCalibrationPattern() || (directCommon && ((hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace)) || AnyViewLabOverlay()))) {
                         DrawCalibrationPatternsToTexture(tex, arrSize, scFormat, views[i], views,
                             i < rtvs.size() ? rtvs[i] : nullptr,true,directCommon);
                     }
@@ -3712,10 +3876,10 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                 for (ID3D11RenderTargetView* rtv : rtvs) {
                     if (rtv) rtv->Release();
                 }
-                const uint32_t n = g_releaseDrawLogCount.fetch_add(1);
-                if (n == 0)
+                const uint32_t n = drewVisor ? g_releaseDrawLogCount.fetch_add(1) : 1;
+                if (drewVisor && n == 0)
                     Log("visor: draw executed (%zu eye view(s))\n", views.size());
-                g_releaseDrewVisorThisFrame.store(true);
+                if(drewVisor) g_releaseDrewVisorThisFrame.store(true);
             }
         } else {
             for (ID3D11RenderTargetView* rtv : rtvs) {
@@ -3776,7 +3940,8 @@ void LoadConfig() {
     hudAnchorY = std::clamp(ReadDoubleSetting(L"hud_anchor_y", 0.05), 0.0, 1.0);
     hudScale = std::clamp(ReadDoubleSetting(L"hud_scale", 1.0), 0.15, 3.0);
     hudSpacing = std::clamp(ReadDoubleSetting(L"hud_spacing", 0.018), 0.0, 0.10);
-    hudOpacity = std::clamp(ReadDoubleSetting(L"hud_opacity", 0.70), 0.10, 1.0);
+	hudOpacity = std::clamp(ReadDoubleSetting(L"hud_opacity", 0.70), 0.10, 1.0);
+	hudTraceOpacity = std::clamp(ReadDoubleSetting(L"hud_trace_opacity", hudOpacity), 0.10, 1.0);
     hudSafeMargin = std::clamp(ReadDoubleSetting(L"hud_safe_margin", 0.025), 0.0, 0.25);
     hudClampToVisible = ReadBoolSetting(L"hud_clamp_to_visible", true);
     hudUpdateIntervalMs = static_cast<uint32_t>(std::clamp(ReadDoubleSetting(L"hud_update_ms", 100.0), 50.0, 1000.0));
@@ -3796,6 +3961,7 @@ void LoadConfig() {
     constexpr const wchar_t* widgetKeys[kHudWidgetCount]={L"cpu",L"gpu",L"app",L"vr",L"cpu_peak",L"cpu_frequency",L"ram",L"commit",L"vram",L"sys",L"fps",L"frame_interval",L"network_ping",L"network_loss",L"network_jitter",L"network_status"};
     hudWidgetMask=0;
     for(size_t i=0;i<kHudWidgetCount;++i){wchar_t key[80]{};swprintf_s(key,L"hud_widget_%s_enabled",widgetKeys[i]);const bool defaultOn=i==0||i==1||i==3||i==9;if(ReadBoolSetting(key,defaultOn))hudWidgetMask|=1ull<<i;}
+    hudWidgetSymbolMask=0;for(size_t i=0;i<kHudWidgetCount;++i){wchar_t key[80]{};swprintf_s(key,L"hud_widget_%s_symbol",widgetKeys[i]);if(ReadBoolSetting(key,false))hudWidgetSymbolMask|=1u<<i;}
     std::array<std::pair<int,uint8_t>,kHudWidgetCount> ordered{};
     for(size_t i=0;i<kHudWidgetCount;++i){wchar_t key[80]{};swprintf_s(key,L"hud_widget_%s_order",widgetKeys[i]);ordered[i]={(int)ReadDoubleSetting(key,(double)i),(uint8_t)i};}
     std::stable_sort(ordered.begin(),ordered.end(),[](const auto&a,const auto&b){return a.first<b.first;});
@@ -3809,6 +3975,19 @@ void LoadConfig() {
     networkLossCritical=std::clamp(ReadDoubleSetting(L"network_loss_critical",5.0),networkLossWarning,100.0);
     networkJitterWarningMs=std::clamp(ReadDoubleSetting(L"network_jitter_warning_ms",15.0),0.1,1000.0);
     networkJitterCriticalMs=std::clamp(ReadDoubleSetting(L"network_jitter_critical_ms",30.0),networkJitterWarningMs,5000.0);
+    hudWidgetWarning={{hudGreenThreshold,kHudGpuWarningThreshold,hudGreenThreshold,103.0,hudGreenThreshold,0.0,hudGreenThreshold,hudGreenThreshold,hudGreenThreshold,hudSysWarningThreshold,0.0,103.0,networkPingWarningMs,networkLossWarning,networkJitterWarningMs,1.0}};
+    hudWidgetCritical={{hudRedThreshold,kHudGpuCriticalThreshold,hudRedThreshold,108.0,hudRedThreshold,0.0,hudRedThreshold,hudRedThreshold,hudRedThreshold,hudSysCriticalThreshold,0.0,108.0,networkPingCriticalMs,networkLossCritical,networkJitterCriticalMs,2.0}};
+    for(size_t i=0;i<kHudWidgetCount;++i){
+        wchar_t warningKey[96]{},criticalKey[96]{};
+        swprintf_s(warningKey,L"hud_widget_%s_warning",widgetKeys[i]);
+        swprintf_s(criticalKey,L"hud_widget_%s_critical",widgetKeys[i]);
+        double warning=std::clamp(ReadDoubleSetting(warningKey,hudWidgetWarning[i]),0.0,1000000.0);
+        double critical=std::clamp(ReadDoubleSetting(criticalKey,hudWidgetCritical[i]),0.0,1000000.0);
+        const bool lower=(kHudLowerIsWorseMask&(1ull<<i))!=0;
+        if(lower&&critical>warning)std::swap(critical,warning);
+        if(!lower&&critical<warning)std::swap(critical,warning);
+        hudWidgetWarning[i]=warning;hudWidgetCritical[i]=critical;
+    }
     IN_ADDR probeAddress{};const std::wstring probeTarget=ReadStringSetting(L"network_probe_target",L"1.1.1.1");
     const bool validProbeTarget=InetPtonW(AF_INET,probeTarget.c_str(),&probeAddress)==1;
     viewlab::telemetry::SetNetworkProbeTarget(validProbeTarget?probeAddress.S_un.S_addr:0);
@@ -3856,18 +4035,25 @@ void LoadConfig() {
     notifyScale = std::clamp(ReadDoubleSetting(L"notify_scale", 1.0), 0.25, 3.0);
     notifyOpacity = std::clamp(ReadDoubleSetting(L"notify_opacity", 1.0), 0.1, 1.0);
     clockWidgetEnabled = ReadBoolSetting(L"clock_widget_enabled", false);
+    clockSessionTimerEnabled=ReadBoolSetting(L"clock_session_timer_enabled",true);clock24Hour=ReadBoolSetting(L"clock_24_hour",true);clockWidgetTheme=(uint32_t)std::clamp(ReadDoubleSetting(L"clock_widget_theme",0),0.0,4.0);
     clockWidgetX = std::clamp(ReadDoubleSetting(L"clock_widget_x", 0.50), 0.0, 1.0);
     clockWidgetY = std::clamp(ReadDoubleSetting(L"clock_widget_y", 0.10), 0.0, 1.0);
     clockWidgetScale = std::clamp(ReadDoubleSetting(L"clock_widget_scale", 1.0), 0.50, 2.0);
     clockWidgetOpacity = std::clamp(ReadDoubleSetting(L"clock_widget_opacity", 0.82), 0.10, 1.0);
-    stickyNoteEnabled=ReadBoolSetting(L"sticky_note_enabled",false);
-    stickyNoteText=ReadStringSetting(L"sticky_note_text",L"");
-    stickyNoteX=std::clamp(ReadDoubleSetting(L"sticky_note_x",.78),0.0,1.0);
-    stickyNoteY=std::clamp(ReadDoubleSetting(L"sticky_note_y",.22),0.0,1.0);
-    stickyNoteScale=std::clamp(ReadDoubleSetting(L"sticky_note_scale",1.0),.5,2.5);
-    stickyNoteOpacity=std::clamp(ReadDoubleSetting(L"sticky_note_opacity",.85),.1,1.0);
-    stickyNoteToggleKey=(int)std::clamp(ReadDoubleSetting(L"sticky_note_toggle_vk",VK_F7),1.0,255.0);
-    g_stickyNoteVisible.store(stickyNoteEnabled,std::memory_order_release);g_stickyNoteKeyDown=false;
+    stickyNoteEnabled=ReadBoolSetting(L"sticky_note_enabled",false);stickyNoteCount=0;
+    const std::wstring noteCountText=ReadStringSetting(L"sticky_note_count",L"");
+    if(noteCountText.empty()){auto&n=stickyNotes[0];n.enabled=true;n.text=ReadStringSetting(L"sticky_note_text",L"");n.x=std::clamp(ReadDoubleSetting(L"sticky_note_x",.78),0.0,1.0);n.y=std::clamp(ReadDoubleSetting(L"sticky_note_y",.22),0.0,1.0);n.scale=std::clamp(ReadDoubleSetting(L"sticky_note_scale",1.0),.5,2.5);n.opacity=std::clamp(ReadDoubleSetting(L"sticky_note_opacity",.85),.1,1.0);n.theme=0;stickyNoteCount=1;}
+    else {const int count=std::clamp(_wtoi(noteCountText.c_str()),0,(int)kStickyNoteMax);for(int i=0;i<count;++i){wchar_t key[80]{};auto&n=stickyNotes[stickyNoteCount++];swprintf_s(key,L"sticky_note_%d_enabled",i);n.enabled=ReadBoolSetting(key,true);swprintf_s(key,L"sticky_note_%d_text",i);n.text=ReadStringSetting(key,L"");swprintf_s(key,L"sticky_note_%d_x",i);n.x=std::clamp(ReadDoubleSetting(key,.78),0.0,1.0);swprintf_s(key,L"sticky_note_%d_y",i);n.y=std::clamp(ReadDoubleSetting(key,.22),0.0,1.0);swprintf_s(key,L"sticky_note_%d_scale",i);n.scale=std::clamp(ReadDoubleSetting(key,1),.5,2.5);swprintf_s(key,L"sticky_note_%d_opacity",i);n.opacity=std::clamp(ReadDoubleSetting(key,.85),.1,1.0);swprintf_s(key,L"sticky_note_%d_theme",i);n.theme=(uint32_t)std::clamp(ReadDoubleSetting(key,0),0.0,4.0);}}
+    const int legacyStickyNoteToggleKey=(int)std::clamp(ReadDoubleSetting(L"sticky_note_toggle_vk",VK_F7),1.0,255.0);
+    constexpr const wchar_t* overlayToggleKeys[] = {
+        L"overlay_hud_toggle_vk",L"overlay_trace_toggle_vk",L"overlay_clock_toggle_vk",
+        L"overlay_sticky_note_toggle_vk",L"overlay_crosshair_toggle_vk",L"overlay_notifications_toggle_vk"};
+    const int overlayToggleDefaults[] = {0,0,0,legacyStickyNoteToggleKey,0,0};
+    for(size_t i=0;i<(size_t)OverlayFeatureId::Count;++i){
+        auto& feature=g_overlayFeatureVisibility[i];
+        feature.toggleKey=(int)std::clamp(ReadDoubleSetting(overlayToggleKeys[i],overlayToggleDefaults[i]),0.0,255.0);
+        feature.keyDown=false;feature.visible.store(true,std::memory_order_release);
+    }
     obsIndicatorEnabled=ReadBoolSetting(L"obs_indicator_enabled",false);
     obsIndicatorOpacity=std::clamp(ReadDoubleSetting(L"obs_indicator_opacity",.72),.1,1.0);
     obsIndicatorThickness=std::clamp(ReadDoubleSetting(L"obs_indicator_thickness",.009),.002,.04);
@@ -4117,6 +4303,8 @@ void RefreshLiveVisorConfig() {
     maskEnabled = ReadBoolSetting(L"mask_enabled", maskEnabled);
     maskCorner = std::clamp(ReadDoubleSetting(L"mask_corner", maskCorner), 0.0, 1.0);
     visorSize = std::clamp(ReadDoubleSetting(L"mask_size", visorSize), 0.1, 1.0);
+    visorWidth = std::clamp(ReadDoubleSetting(L"mask_width_scale", visorWidth), 0.25, 2.0);
+    visorHeight = std::clamp(ReadDoubleSetting(L"mask_height_scale", visorHeight), 0.25, 2.0);
     visorOuterApexY = std::clamp(ReadDoubleSetting(L"mask_outer_apex_y", visorOuterApexY), -0.5, 0.5);
     visorInnerLowerY = std::clamp(ReadDoubleSetting(L"mask_inner_lower_y", visorInnerLowerY), 0.0, 0.666);
     visorInnerBridgeWidth = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_width", visorInnerBridgeWidth), 0.0, 1.0);
@@ -4323,6 +4511,18 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
         return result;
     }
 
+    // The ordered feature backend owns a VIEW reference space even when the application never
+    // asks for one. Resolve these core entry points from the next layer explicitly; relying on the
+    // application's xrGetInstanceProcAddr traffic made capability discovery application-shaped.
+    PFN_xrVoidFunction createReferenceSpaceFn=nullptr;
+    PFN_xrVoidFunction destroySpaceFn=nullptr;
+    if (nextXrGetInstanceProcAddr) {
+        if (XR_SUCCEEDED(nextXrGetInstanceProcAddr(instance,"xrCreateReferenceSpace",&createReferenceSpaceFn)))
+            nextXrCreateReferenceSpace=reinterpret_cast<PFN_xrCreateReferenceSpace>(createReferenceSpaceFn);
+        if (XR_SUCCEEDED(nextXrGetInstanceProcAddr(instance,"xrDestroySpace",&destroySpaceFn)))
+            nextXrDestroySpace=reinterpret_cast<PFN_xrDestroySpace>(destroySpaceFn);
+    }
+
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
 
     ReleaseD3D11MaskRenderer();
@@ -4332,11 +4532,16 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
     g_topmostLayerBlocked.store(false, std::memory_order_release);
     g_topmostLayerAttempted=false;
     g_topmostLayerDemanded=false;
+    g_topmostBackend=viewlab::bridge::OverlayBackend::DirectEyeTexture;
+    g_featurePresentationPlan={true,true,viewlab::bridge::OverlayBackend::FeatureDisabled};
+    g_topmostSubmissionLogged.store(false,std::memory_order_release);
     g_d3d11Mask.session = *session;
+    g_performanceTraceSession = *session;
     g_clockSessionStartTick.store(GetTickCount64(), std::memory_order_release);
     LARGE_INTEGER traceStart{};QueryPerformanceCounter(&traceStart);BeginPerformanceTraceSession(traceStart.QuadPart);
     const auto* d3d11Binding = reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(
         FindStructInChain(createInfo->next, XR_TYPE_GRAPHICS_BINDING_D3D11_KHR));
+    viewlab::telemetry::SetCheckpointCallback(SavePerformanceTraceSession);
     viewlab::telemetry::Start();
     if (d3d11Binding != nullptr && d3d11Binding->device != nullptr) {
         g_d3d11Mask.device = d3d11Binding->device;
@@ -4361,25 +4566,38 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
+    if (session == g_performanceTraceSession) viewlab::telemetry::RequestCheckpoint();
     if (session == g_topmostLayer.session) DestroyTopmostLayer();
     g_topmostLayerBlocked.store(false, std::memory_order_release);
     g_topmostLayerAttempted=false;
     g_topmostLayerDemanded=false;
+    g_topmostBackend=viewlab::bridge::OverlayBackend::DirectEyeTexture;
+    g_featurePresentationPlan={true,true,viewlab::bridge::OverlayBackend::FeatureDisabled};
+    g_topmostSubmissionLogged.store(false,std::memory_order_release);
     if (session == g_d3d11Mask.session) {
-        SavePerformanceTraceSession();
         g_clockSessionStartTick.store(0, std::memory_order_release);
         viewlab::telemetry::Stop();
         viewlab::telemetry::SetPreferredAdapterLuid(0);
         ReleaseD3D11MaskRenderer();
         DisconnectLiveState();
         DisconnectTelemetryConfig();
+        DisconnectStickyNoteState();
         DisconnectNotify();
         DisconnectObsState();
         DisconnectRacingState();
     }
     g_rendererDeviceLost.store(false, std::memory_order_release);
     g_rendererDeviceLossLogged.store(false, std::memory_order_release);
-    return nextXrDestroySession(session);
+    const XrResult result=nextXrDestroySession(session);
+    if (session == g_performanceTraceSession) g_performanceTraceSession=XR_NULL_HANDLE;
+    return result;
+}
+
+XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndSession(XrSession session) {
+    if (!nextXrEndSession) return XR_ERROR_FUNCTION_UNSUPPORTED;
+    const XrResult result=nextXrEndSession(session);
+    if (XR_SUCCEEDED(result) && session == g_performanceTraceSession) viewlab::telemetry::RequestCheckpoint();
+    return result;
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrWaitFrame(
@@ -4407,9 +4625,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrWaitFrame(
         const bool markerDown=(GetAsyncKeyState(performanceTraceMarkerKey)&0x8000)!=0;
         if(markerDown&&!g_traceMarkerKeyDown)CapturePerformanceTraceMarker(stop.QuadPart);
         g_traceMarkerKeyDown=markerDown;
-        const bool stickyDown=(GetAsyncKeyState(stickyNoteToggleKey)&0x8000)!=0;
-        if(stickyDown&&!g_stickyNoteKeyDown&&stickyNoteEnabled)g_stickyNoteVisible.store(!g_stickyNoteVisible.load(std::memory_order_acquire),std::memory_order_release);
-        g_stickyNoteKeyDown=stickyDown;
+        UpdateOverlayFeatureHotkeys();
     }
     return result;
 }
@@ -4528,30 +4744,48 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         }
     }
 
-    // Automatic Topmost is a compatibility backend, not a tax paid by every projection-only
-    // application. A plain stereo projection retains the proven direct renderer. Once the app
-    // submits a distinct compositor layer that could cover ViewLab, demand is latched for the
-    // session and the bounded Topmost path takes over. Exact repeated projection submissions from
-    // OpenComposite are not mistaken for an occluding layer.
-    if (topmostVisorOverlays && primaryProjection && !g_topmostLayerDemanded) {
-        bool distinctApplicationLayer=false;
-        for(uint32_t l=0;l<frameEndInfo->layerCount&&!distinctApplicationLayer;++l) {
-            const XrCompositionLayerBaseHeader* hdr=frameEndInfo->layers[l];
-            if(!hdr||hdr==reinterpret_cast<const XrCompositionLayerBaseHeader*>(primaryProjection))continue;
-            if(hdr->type!=XR_TYPE_COMPOSITION_LAYER_PROJECTION){distinctApplicationLayer=true;break;}
-            const auto* other=reinterpret_cast<const XrCompositionLayerProjection*>(hdr);
-            if(other->viewCount!=primaryProjection->viewCount||!other->views){distinctApplicationLayer=true;break;}
-            for(uint32_t v=0;v<other->viewCount;++v) {
-                const auto& a=other->views[v].subImage; const auto& b=primaryProjection->views[v].subImage;
-                if(a.swapchain!=b.swapchain||a.imageArrayIndex!=b.imageArrayIndex||
-                   a.imageRect.offset.x!=b.imageRect.offset.x||a.imageRect.offset.y!=b.imageRect.offset.y||
-                   a.imageRect.extent.width!=b.imageRect.extent.width||a.imageRect.extent.height!=b.imageRect.extent.height) {
-                    distinctApplicationLayer=true;break;
+    // Re-evaluate actual frame topology rather than assuming every scene contains a projection.
+    // Projection-only frames retain direct rendering. Any distinct or composition-only topology
+    // latches ordered presentation for the session so projection -> menu -> projection transitions
+    // cannot silently drop ViewLab while resources churn underneath them.
+    if (topmostVisorOverlays && frameEndInfo->layerCount>0) {
+        bool distinctApplicationLayer=primaryProjection==nullptr;
+        if(primaryProjection) {
+            for(uint32_t l=0;l<frameEndInfo->layerCount&&!distinctApplicationLayer;++l) {
+                const XrCompositionLayerBaseHeader* hdr=frameEndInfo->layers[l];
+                if(!hdr||hdr==reinterpret_cast<const XrCompositionLayerBaseHeader*>(primaryProjection))continue;
+                if(hdr->type!=XR_TYPE_COMPOSITION_LAYER_PROJECTION){distinctApplicationLayer=true;break;}
+                const auto* other=reinterpret_cast<const XrCompositionLayerProjection*>(hdr);
+                if(other->viewCount!=primaryProjection->viewCount||!other->views){distinctApplicationLayer=true;break;}
+                for(uint32_t v=0;v<other->viewCount;++v) {
+                    const auto& a=other->views[v].subImage; const auto& b=primaryProjection->views[v].subImage;
+                    if(a.swapchain!=b.swapchain||a.imageArrayIndex!=b.imageArrayIndex||
+                       a.imageRect.offset.x!=b.imageRect.offset.x||a.imageRect.offset.y!=b.imageRect.offset.y||
+                       a.imageRect.extent.width!=b.imageRect.extent.width||a.imageRect.extent.height!=b.imageRect.extent.height) {
+                        distinctApplicationLayer=true;break;
+                    }
                 }
             }
         }
+        const bool wasDemanded=g_topmostLayerDemanded;
         g_topmostLayerDemanded=viewlab::policy::LatchTopmostDemand(g_topmostLayerDemanded,distinctApplicationLayer);
-        if(g_topmostLayerDemanded)Log("topmost overlays: distinct application compositor layer detected; compatibility backend demanded for session\n");
+        if(g_topmostLayerDemanded) {
+            const viewlab::bridge::RuntimeCapabilities capabilities{
+                viewlab::bridge::GraphicsApi::D3D11,primaryProjection!=nullptr,
+                frameEndInfo->layerCount>0,g_topmostLayerDemanded,primaryProjection!=nullptr,false,
+                primaryProjection!=nullptr,g_topmostLayer.ready};
+            const auto previousBackend=g_topmostBackend;
+            g_featurePresentationPlan=viewlab::bridge::SelectFeaturePresentationPlan(capabilities);
+            g_topmostBackend=g_featurePresentationPlan.orderedBackend;
+            if(!wasDemanded || previousBackend!=g_topmostBackend) {
+                Log("topmost overlays: topology=%s layers=%u backend=%s\n",
+                    primaryProjection?"layered-projection":"composition-only",frameEndInfo->layerCount,
+                    viewlab::bridge::OverlayBackendName(g_topmostBackend));
+                for(uint32_t l=0;l<frameEndInfo->layerCount;++l)
+                    Log("topmost overlays: source layer[%u] type=%d\n",l,
+                        frameEndInfo->layers[l]?static_cast<int>(frameEndInfo->layers[l]->type):-1);
+            }
+        }
     }
 
     if (enabled && g_d3d11Mask.initialized && !g_rendererDeviceLost.load(std::memory_order_acquire) &&
@@ -4567,16 +4801,29 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     TopmostSubmission topmostSubmission;
     bool submittedTopmost=false;
     if (topmostVisorOverlays && g_topmostLayerDemanded && primaryProjection &&
+        g_topmostBackend==viewlab::bridge::OverlayBackend::SeparateProjection &&
         !g_topmostLayerBlocked.load(std::memory_order_acquire) &&
         !g_rendererDeviceLost.load(std::memory_order_acquire)) {
         const bool wasReady=g_topmostLayer.ready;
         if (RenderTopmostLayer(session,primaryProjection,topmostSubmission)) {
-            // On the initialization frame the established release path has already drawn. Arm the
-            // layer now and begin submitting next frame, avoiding a one-frame duplicate.
-            if (wasReady) { submittedLayers.assign(frameEndInfo->layers,frameEndInfo->layers+frameEndInfo->layerCount); submittedLayers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader*>(&topmostSubmission.layer)); submittedInfo.layerCount=(uint32_t)submittedLayers.size(); submittedInfo.layers=submittedLayers.data(); submittedTopmost=true; }
+            // The release-time draw for this frame has already happened. Arm exclusive ordered
+            // presentation now so the next frame cannot produce the obsolete behind-menu copy.
+            g_featurePresentationPlan.drawDirectVisor=false;
+            g_featurePresentationPlan.drawDirectCommonFeatures=false;
+            // The allocation frame retains direct presentation; the proven transparent stereo
+            // projection is appended from the next frame without duplicating the transition frame.
+            if (wasReady) {
+                submittedLayers.assign(frameEndInfo->layers,frameEndInfo->layers+frameEndInfo->layerCount);
+                submittedLayers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader*>(&topmostSubmission.layer));
+                submittedInfo.layerCount=(uint32_t)submittedLayers.size(); submittedInfo.layers=submittedLayers.data(); submittedTopmost=true;
+            }
         }
     }
     const XrResult result = nextXrEndFrame(session, submittedTopmost ? &submittedInfo : frameEndInfo);
+    if(submittedTopmost && !g_topmostSubmissionLogged.exchange(true))
+        Log("topmost overlays: submitted backend=%s sourceLayers=%u submittedLayers=%u projection=%ux%u result=%d\n",
+            viewlab::bridge::OverlayBackendName(g_topmostBackend),frameEndInfo->layerCount,
+            submittedInfo.layerCount,g_topmostLayer.width,g_topmostLayer.height,result);
     if (submittedTopmost && XR_FAILED(result)) BlockTopmostLayer("xrEndFrame", result);
     LARGE_INTEGER endStop{};
     QueryPerformanceCounter(&endStop);
@@ -4641,6 +4888,12 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEnumerateViewConfigurationViews(
         const double renderWidthScale = perViewWidthScale * renderScale;
         const uint32_t beforeWidth = views[i].recommendedImageRectWidth;
         const uint32_t beforeHeight = views[i].recommendedImageRectHeight;
+        g_runtimeRecommendedViewWidth.store(
+            (std::max)(g_runtimeRecommendedViewWidth.load(std::memory_order_relaxed),beforeWidth),
+            std::memory_order_release);
+        g_runtimeRecommendedViewHeight.store(
+            (std::max)(g_runtimeRecommendedViewHeight.load(std::memory_order_relaxed),beforeHeight),
+            std::memory_order_release);
         views[i].recommendedImageRectWidth = std::max<uint32_t>(
             1,
             static_cast<uint32_t>(std::lround(static_cast<double>(views[i].recommendedImageRectWidth) * renderWidthScale)));
@@ -4824,6 +5077,10 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrGetInstanceProcAddr(
         nextXrDestroySession = reinterpret_cast<PFN_xrDestroySession>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrDestroySession);
         Log("hook installed: xrDestroySession\n");
+    } else if (std::strcmp(name, "xrEndSession") == 0) {
+        nextXrEndSession = reinterpret_cast<PFN_xrEndSession>(*function);
+        *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrEndSession);
+        Log("hook installed: xrEndSession\n");
     } else if (std::strcmp(name, "xrWaitFrame") == 0) {
         nextXrWaitFrame = reinterpret_cast<PFN_xrWaitFrame>(*function);
         *function = reinterpret_cast<PFN_xrVoidFunction>(XRViewLab_xrWaitFrame);

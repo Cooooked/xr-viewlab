@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|Win32"><Configuration>Release</Configuration><Platform>Win32</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion><Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{6D0C52F8-588E-4F18-A112-BC7A90655C41}</ProjectGuid>
+    <RootNamespace>ViewLabLegacyRuntime</RootNamespace><WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <OpenXRHeadersDir>$(UserProfile)\.nuget\packages\openxr.headers\1.0.10.2\include</OpenXRHeadersDir>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset><WholeProgramOptimization>true</WholeProgramOptimization><CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup Condition="'$(Platform)'=='x64'"><TargetName>vrclient_x64</TargetName><OutDir>$(ProjectDir)bin\x64\$(Configuration)\</OutDir></PropertyGroup>
+  <PropertyGroup Condition="'$(Platform)'=='Win32'"><TargetName>vrclient</TargetName><OutDir>$(ProjectDir)bin\Win32\$(Configuration)\</OutDir></PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile><WarningLevel>Level4</WarningLevel><SDLCheck>true</SDLCheck><LanguageStandard>stdcpp17</LanguageStandard><RuntimeLibrary>MultiThreaded</RuntimeLibrary><AdditionalIncludeDirectories>$(OpenXRHeadersDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><PreprocessorDefinitions>NDEBUG;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+    <Link><SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation><ModuleDefinitionFile>ViewLabLegacyRuntime.def</ModuleDefinitionFile></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup><ClInclude Include="ClientCoreAbi.h" /><ClInclude Include="OpenXrBackend.h" /></ItemGroup>
+  <ItemGroup><ClCompile Include="ClientCoreAbi.cpp" /><ClCompile Include="OpenXrBackend.cpp" /></ItemGroup>
+  <ItemGroup><None Include="ViewLabLegacyRuntime.def" /></ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="EnsureOpenXRHeaders" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(OpenXRHeadersDir)\openxr\openxr.h')" Text="OpenXR.Headers 1.0.10.2 was not found at $(OpenXRHeadersDir)." />
+  </Target>
+</Project>

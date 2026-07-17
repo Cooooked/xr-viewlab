@@ -8,6 +8,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xr-viewlab", "xr-viewlab.vc
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ViewLabVR", "ViewLabVR\ViewLabVR.vcxproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ViewLabBridge", "ViewLabBridge\ViewLabBridge.vcxproj", "{7E6A46F0-37DD-4D34-96BC-CA77F55E52C3}"
+EndProject
 Project("{930C7802-8A8C-48F9-8165-68863BCCD9DD}") = "Installer", "Installer\Installer.wixproj", "{5D29D473-9726-4E49-AC46-B6DBB7A77C81}"
 	ProjectSection(ProjectDependencies) = postProject
 		{32A6B61B-1523-49CE-9C69-5C973F6B6CC1} = {32A6B61B-1523-49CE-9C69-5C973F6B6CC1}
@@ -37,6 +39,10 @@ Global
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|x64.Build.0 = Debug|x64
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|x64.ActiveCfg = Release|x64
 		{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|x64.Build.0 = Release|x64
+		{7E6A46F0-37DD-4D34-96BC-CA77F55E52C3}.Debug|x64.ActiveCfg = Debug|x64
+		{7E6A46F0-37DD-4D34-96BC-CA77F55E52C3}.Debug|x64.Build.0 = Debug|x64
+		{7E6A46F0-37DD-4D34-96BC-CA77F55E52C3}.Release|x64.ActiveCfg = Release|x64
+		{7E6A46F0-37DD-4D34-96BC-CA77F55E52C3}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

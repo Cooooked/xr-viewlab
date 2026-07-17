@@ -8,6 +8,24 @@ Live ini: `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini` (section `[Settings]`; UI w
 Per-app registry: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>` — DWORD encodings:
 **millis** = round(v·1000); **signed millis** = round((v+1)·1000); render_scale = v·1,000,000.
 
+## DiagMon(ster) capture settings
+
+DiagMon capture policy is deliberately separate from the native layer ini. It lives at
+`%LOCALAPPDATA%\XR ViewLab\DiagMon\settings.json`; the implicit OpenXR layer never reads it.
+
+| JSON property | default | Behaviour |
+|---|---:|---|
+| `standardSampleSeconds` | 2 | Target and Windows-counter cadence in Standard mode. |
+| `detailedSampleSeconds` | 1 | Cadence in Detailed and Trace modes. |
+| `traceMaximumMinutes` | 10 | Hard time cap for an explicitly requested WPR Trace capture. |
+| `retentionDays` | 30 | Storage guidance shown in the cockpit; no automatic evidence deletion. |
+| `retentionSessionCount` | 20 | Session-count guidance shown in the cockpit. |
+| `retentionMaximumMb` | 250 | Total-session-size guidance shown in the cockpit. |
+| `presentMonPath` | empty | Optional fallback executable path. The pinned `PresentMon-2.4.1-x64.exe` installed beside ViewLab takes precedence; absence of both is reported as a missing collector. |
+
+Retention limits are warnings rather than silent deletion. The user deletes a session explicitly in
+the Session Library, with confirmation; valid raw evidence is never removed by a background policy.
+
 ## Render crop (core perf feature)
 
 | ini key | range/default | DLL global | per-app | Notes |
@@ -30,10 +48,10 @@ Per-app registry: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>` — DWORD encod
 | `mask_corner` | 0..1 | `visorCurve = 1 − maskCorner` | `mask_corner` millis | Curve slider (stored inverted). Near zero stays visually square through one continuous curve; Inner low remains active. |
 | `mask_outer_apex_y` | −0.5..0.5 / 0 | `visorOuterApexY` | signed millis | Apex Y slider + red pin |
 | `mask_inner_lower_y` | 0..0.666 / 0 | `visorInnerLowerY` | millis | Inner low slider + orange pin |
-| `mask_inner_bridge_width` | 0..1 / 0.5 | `visorInnerBridgeWidth` | millis | Bridge slider + blue pin |
-| `mask_inner_bridge_rise` | −0.5..1 / 0 | `visorInnerBridgeRise` | legacy millis plus extended marker encoding for per-app profiles | Rise slider |
-| `mask_inner_bridge_peak_x` | −1..2 / 0.5 | `visorInnerBridgePeakX` | legacy millis 0..1000; extended marker encoding for per-app profiles | Peak X slider; moving left carries the peak farther from the binocular centre, mirrored by eye. |
-| `mask_inner_bridge_steepness` | −1..2 / 0.5 | `visorInnerBridgeSteepness` | legacy millis plus extended marker encoding for per-app profiles | Steepness slider |
+| `mask_inner_bridge_width` | 0..1 / 0.5 | `visorInnerBridgeWidth` | millis | Legacy compatibility key; the main editor fixes the supported curve at 0.5. |
+| `mask_inner_bridge_rise` | −0.5..1 / 0 | `visorInnerBridgeRise` | legacy millis plus extended marker encoding for per-app profiles | Legacy compatibility key; the main editor fixes the supported curve at 0. |
+| `mask_inner_bridge_peak_x` | −1..2 / 0.5 | `visorInnerBridgePeakX` | legacy millis 0..1000; extended marker encoding for per-app profiles | Legacy compatibility key; the main editor fixes the supported curve at 0.5. |
+| `mask_inner_bridge_steepness` | −1..2 / 0.5 | `visorInnerBridgeSteepness` | legacy millis plus extended marker encoding for per-app profiles | Legacy compatibility key; the main editor fixes the supported curve at 0.5. |
 | `visor_live_revision` | monotonic timestamp | `liveVisorRevision` | — | Internal commit marker. The UI writes it last after global visor controls, allowing a safe live visor-only refresh at `xrEndFrame`. |
 
 Global visor controls are always published through the generation-stamped live-state mapping while
@@ -72,38 +90,37 @@ remain startup-owned and are never overwritten by the global live snapshot.
 | `overlay_force_direct` | 0 | backend diagnostics | Automatic selection keeps projection-only applications on direct eye-texture rendering and demands Topmost only after a distinct application compositor layer appears. Set to 1 only for diagnostics. Topmost gets one stable allocation attempt per session; any failure latches direct fallback. |
 | `topmost_visor_overlays` | — | — | Legacy experimental switch; ignored. Backend choice is automatic. |
 | `hud_anchor_x`, `hud_anchor_y` | 0.04, 0.05 | `hudAnchorX`, `hudAnchorY` | Normalized position within the shared binocular overlap of the cropped views; live HUD X/Y sliders (full 0–1 range). |
-| `hud_scale`, `hud_spacing`, `hud_opacity` | 1.0, 0.018, 0.70 | HUD layout | Whole-widget scale (0.15–3.0), normalized gap, and colour intensity. Rings, icons, text, spacing, and padding scale together; legacy 0.5–3.0 values retain their meaning. |
+| `hud_scale`, `hud_spacing`, `hud_opacity` | 1.0, 0.018, 0.70 | shared overlay/HUD layout | Whole-widget scale (0.15–3.0), normalized gap, and opacity. Rings, literal labels, unit-bearing values, spacing, and padding scale together. |
 | `hud_safe_margin`, `hud_clamp_to_visible` | 0.025, 1 | HUD layout | Normalized safe margin and complete-bounds clamp against the binocular overlap region. The HUD uses the smaller current eye-region dimension then applies `hud_scale`, so crop/resolution changes retain its proportion. |
 | `hud_update_ms` | 100 | HUD telemetry | Bounded CPU/GPU/widget-state refresh period (50–1000 ms). Fixed-ring OpenXR timing samples feed APP, VR, and graph channels per frame. |
-| `hud_green_threshold`, `hud_red_threshold` | 75, 90 | HUD percentage state | CPU/GPU/APP warning and critical thresholds. Entry requires three updates; recovery requires six updates plus critical hold. VR instead compares sustained cadence with the active runtime period/budget. |
+| `hud_green_threshold`, `hud_red_threshold` | 75, 90 | migration only | Legacy general percentage values used only as fallback defaults before per-widget keys exist. |
 | `telemetry_settings_version` | 1 | telemetry migration | Explicit catalogue/settings schema. Kept separate from the 208-byte v7 overlay live-state contract. |
 | `hud_widget_{cpu,gpu,app,vr,cpu_peak,cpu_frequency,ram,commit,vram,sys,fps,frame_interval,network_ping,network_loss,network_jitter,network_status}_enabled` | CPU/GPU/SYS/VR on | widget registry | Independent widget enables. All network widgets default off. Disabled widgets are omitted; unavailable configured widgets remain dormant. |
 | `hud_widget_{...}_order` | CPU,GPU,SYS,VR then catalogue | widget registry | Persisted order. Invalid/duplicate positions normalize to one occurrence of every widget. |
+| `hud_widget_{...}_warning`, `hud_widget_{...}_critical` | widget-specific | widget registry | Independent warning and critical thresholds for every active widget. VR/frame interval use percent of the current frame budget; SYS is inverse remaining headroom; network widgets use their displayed units. Legacy SYS/network keys are read only as migration fallbacks. `0/0` disables an alarm where there is no honest universal default. |
 | `hud_max_per_row` | 16 | migration only | Legacy field retained in the mapping/ini. Current HUD layout deliberately packs every enabled widget into one row; there is no row-limit control. |
-| `hud_sys_warning`, `hud_sys_critical` | 30, 10 | SYS inverse state | Remaining-headroom thresholds: lower is worse. Sustained state and normal alarm hold still apply. |
 | `hud_graph_mode` | 0 | `HudGraphMode` | 0 deviation ms, 1 absolute milliseconds, 2 FPS, 3 percentage of cadence-aware budget. Incompatible channels are not mixed. |
 | `hud_graph_frame_interval`, `hud_graph_fps`, `hud_graph_budget_deviation`, `hud_graph_app_work`, `hud_graph_wait_duration`, `hud_graph_submit_duration`, `hud_graph_display_period` | 0,0,1,0,0,0,0 | graph channels | Independent bounded-history lines. Sources/units are defined in `PERFORMANCE_HUD_REDESIGN.md`; default remains one understandable deviation line. |
 | `hud_trace_sensitivity_ms` | 2 | `hudTraceSensitivityMs` | Deviation mode vertical range (±ms); in absolute-ms mode it supplies a minimum scale before automatic budget scaling. |
 | `hud_trace_x`, `hud_trace_y` | 0.05, 0.75 | graph layout | Live graph position within the shared binocular overlap. Legacy key names are retained for migration. |
-| `hud_trace_scale`, `hud_trace_width` | 1.0, 0.42 | graph layout | Live graph height multiplier (0.25–3) and width fraction (0.1–1). |
+| `hud_trace_scale`, `hud_trace_width`, `hud_trace_opacity` | 1.0, 0.42, 0.70 | shared overlay/graph layout | Live whole-graph scale (0.25–3), base width/shape fraction (0.1–1), and independent opacity. Width is bounded to the available render area after uniform scale. |
 | `hud_trace_history` | 120 | graph history | Live sample count shown (30–600); storage is always a fixed 600-sample ring. |
-| `performance_trace_recording` | 1 | native trace recorder | Retains a bounded one-hour ring of the same QPC samples used by the visor graph and atomically writes `%LOCALAPPDATA%\XR ViewLab\PerformanceTraces\latest.csv` when the OpenXR session ends. This is independent of generic logs/history. |
+| `performance_trace_recording` | 1 | native trace recorder | Retains a bounded one-hour ring of the same QPC samples used by the visor graph. Each session checkpoints to a unique `%LOCALAPPDATA%\XR ViewLab\PerformanceTraces\session-*.csv`; `latest.csv` remains a hard-link/copy compatibility alias. The DiagMonster Session Graph browser opens, compares and explicitly deletes retained sessions. Abrupt exit does not require a shutdown callback. |
 | `performance_trace_marker_vk` | 119 (F8) | native trace marker | Windows virtual-key code for a rising-edge marker bind (UI offers F6–F12). Each press receives an exact QPC timestamp, numbered visor confirmation and post-session graph marker. Read at session startup. |
 | `crosshair_offset_x`, `crosshair_offset_y` | 0, 0 | `crosshairOffsetX`, `crosshairOffsetY` | User calibration in normalized full-lens tangent coordinates. Applied to the lens-centre target before Lens Pinned clamping. |
 | `hud_alarm_only` | 0 | `hudAlarmOnly` | Hides widgets unless their sustained state is critical/unstable or within the post-recovery hold. Enabled alarming widgets pack together; the graph remains independent. |
-| `hud_alarm_hold_ms` | 1500 | `hudAlarmHoldMs` | How long a red indicator stays visible after its metric recovers (0–10000 ms). |
+| `hud_alarm_hold_ms` | 1500 | `hudAlarmHoldMs` | How long a red indicator stays visible from the first non-critical input (0–10000 ms). The deadline is not refreshed by the latched red display state. |
 | `hud_debug_values` | 0 | HUD telemetry | Development values: `hud_debug_cpu`, `hud_debug_gpu`, `hud_debug_app` percentages and `hud_debug_vr` milliseconds. Old `hud_debug_system` is accepted as APP fallback. Normal APP is begin-return→end-entry wall time / cadence-aware budget; VR is wait-return cadence relative to `predictedDisplayPeriod × detected multiple` (1–4). |
 | `network_probe_target` | 1.1.1.1 | network worker | Numeric IPv4 target for optional network HUD probes. It describes that path only; it is not automatically a game server. Changes apply next OpenXR session. |
-| `network_ping_warning_ms`, `network_ping_critical_ms` | 80, 150 | PING state | Amber/red successful-probe RTT thresholds. |
-| `network_loss_warning`, `network_loss_critical` | 2, 5 | LOSS state | Amber/red percentage thresholds over the newest 20 probes. |
-| `network_jitter_warning_ms`, `network_jitter_critical_ms` | 15, 30 | JIT state | Amber/red mean absolute RTT-change thresholds over successful probes. NET reports `OFF` after three consecutive misses. |
-| `clock_widget_enabled` | 0 | `clockWidgetEnabled` | Enables the dedicated two-line local-clock and OpenXR-session timer visor widget. It is not a notification or performance alarm. |
+| `clock_widget_enabled`, `clock_session_timer_enabled` | 0, 1 | clock card | Clock visibility and the independent elapsed-session lane. With the timer disabled the card collapses to one lane. Both apply live. |
+| `clock_24_hour`, `clock_widget_theme` | 1, 0 | clock presentation | Selects 24-hour versus 12-hour AM/PM text and Graphite/Paper/OLED/Amber/Mint theme (0-4). Applies live. |
 | `clock_widget_x`, `clock_widget_y` | 0.50, 0.10 | clock layout | Widget centre in the shared binocular render-area frame (0–1). Bounds are clamped to the current shared overlap. |
-| `clock_widget_scale`, `clock_widget_opacity` | 1.0, 0.82 | clock layout | Whole-widget angular scale (0.5–2.0) and card/text opacity (0.1–1.0). Values are read at OpenXR session startup. |
-| `sticky_note_enabled`, `sticky_note_text` | 0, empty | sticky note widget | Enables one native visor note. Text is capped at 120 printable characters, uppercased and word-wrapped into at most four lines; this is deliberately not a note manager or notification. |
-| `sticky_note_x`, `sticky_note_y` | 0.78, 0.22 | sticky note layout | Note centre in the shared binocular render-area frame, clamped so the card stays visible. |
-| `sticky_note_scale`, `sticky_note_opacity` | 1.0, 0.85 | sticky note layout | Angular glyph/card scale (0.5–2.5) and composited alpha (0.1–1.0). |
-| `sticky_note_toggle_vk` | 118 (F7) | sticky note bind | Windows virtual-key code for the rising-edge show/hide bind; UI offers F6–F12. The note starts visible when enabled at session creation. |
+| `clock_widget_scale`, `clock_widget_opacity` | 1.0, 0.82 | clock layout | Whole-widget angular scale (0.5-2.0) and card/text opacity (0.1-1.0). Applies live. |
+| `sticky_note_count`, `sticky_note_{0..7}_{enabled,text,x,y,scale,opacity,theme}` | 1; note 0 defaults | sticky note collection | Up to eight independent square paper notes. Text is capped at 120 characters and four native lines; theme is Classic/Rose/Mint/Sky/Paper (0-4). The unindexed legacy note migrates to note 0 and remains mirrored for downgrade safety. |
+| `hud_widget_<id>_symbol` | 0 | HUD widget presentation | Per-widget compact pictogram selection. `0` retains the literal catalogue label; changes publish live through the telemetry catalogue. |
+| `notify_theme` | 0 | notification composition | Graphite/Light/OLED/Amber/Mint pre-composited card theme (0-4). Newly composed cards use the selected theme. |
+| `overlay_{hud,trace,clock,sticky_note,crosshair,notifications}_toggle_vk` | 0 except sticky note 118 (F7) | shared overlay visibility | Optional rising-edge show/hide bind. `0` means None; the UI offers None and F6-F12. Bind changes publish live. |
+| `sticky_note_toggle_vk` | 118 (F7) | migration only | Legacy sticky-note bind read only when `overlay_sticky_note_toggle_vk` is absent; the shared settings path mirrors it while existing settings migrate. |
 | `obs_indicator_enabled` | 0 | OBS provider/native cue | Enables authenticated local obs-websocket `GetRecordStatus` polling in the broker and subtle red native visor corners only while recording is active. OBS process presence is never treated as recording. |
 | `obs_websocket_url`, `obs_websocket_password` | `ws://127.0.0.1:4455`, empty | OBS provider | OBS WebSocket v5 endpoint and optional authentication password. The password is stored in the local user ini; restrict the endpoint to localhost. |
 | `obs_indicator_opacity`, `obs_indicator_thickness` | 0.72, 0.009 | native cue | Red-corner alpha and thickness fraction of the eye minimum dimension. Capture exclusion is unverified; because the cue is drawn into submitted eye textures it must be assumed capturable. |

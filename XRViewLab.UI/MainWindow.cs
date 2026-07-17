@@ -39,6 +39,8 @@ public partial class MainWindow : Window
 	private const string MaskEnabledKey = "mask_enabled";
 	private const string OverlayForceDirectKey = "overlay_force_direct";
 	private const string MaskSizeKey = "mask_size";
+	private const string MaskWidthKey = "mask_width_scale";
+	private const string MaskHeightKey = "mask_height_scale";
 	private const string MaskRoundedKey = "mask_rounded";
 	private const string MaskCornerKey = "mask_corner";
 	private const string MaskOffsetYKey = "mask_offset_y";
@@ -54,12 +56,12 @@ public partial class MainWindow : Window
 	private const string MaskInnerBridgeRiseKey = "mask_inner_bridge_rise";
 	private const string MaskInnerBridgePeakXKey = "mask_inner_bridge_peak_x";
 	private const string MaskInnerBridgeSteepnessKey = "mask_inner_bridge_steepness";
+	private const double FixedInnerBridgeWidth = 0.5;
+	private const double FixedInnerBridgeRise = 0.0;
+	private const double FixedInnerBridgePeakX = 0.5;
+	private const double FixedInnerBridgeSteepness = 0.5;
 	private const string HorizVisualMaskBothKey = "horizontal_visual_mask_only";
-	private const string HorizOuterEyeMaskKey = "horizontal_outer_eye_mask";
-	private const string HorizInnerEyeMaskKey = "horizontal_inner_eye_mask";
 	private const string VertVisualMaskBothKey = "visual_mask_only";
-	private const string VertTopMaskKey = "vertical_top_mask_only";
-	private const string VertBottomMaskKey = "vertical_bottom_mask_only";
 	private const string CalibrationGridKey = "calibration_grid";
 	private const string CalibrationRulerKey = "calibration_ruler";
 	private const string CalibrationGratingsKey = "calibration_gratings";
@@ -70,15 +72,8 @@ public partial class MainWindow : Window
 	private const string CalibrationZonePlateKey = "calibration_zone_plate";
 	private const string CalibrationClippingStepsKey = "calibration_clipping_steps";
 	private const string CalibrationMotionStripKey = "calibration_motion_strip";
-	private const string HudEnabledKey = "hud_enabled";
 	private const string HudTraceEnabledKey = "hud_trace_enabled";
-	private const string HudAnchorXKey = "hud_anchor_x";
-	private const string HudAnchorYKey = "hud_anchor_y";
-	private const string HudScaleKey = "hud_scale";
 	private const string HudTraceSensitivityKey = "hud_trace_sensitivity_ms";
-	private const string HudTraceXKey = "hud_trace_x";
-	private const string HudTraceYKey = "hud_trace_y";
-	private const string HudTraceScaleKey = "hud_trace_scale";
 	private const string HudTraceWidthKey = "hud_trace_width";
 	private const string HudTraceHistoryKey = "hud_trace_history";
 	private const string HudTraceVisibilityKey = "hud_trace_visibility_mode";
@@ -89,19 +84,15 @@ public partial class MainWindow : Window
 	private const string HudSafeMarginKey = "hud_safe_margin";
 	private const string HudClampKey = "hud_clamp_to_visible";
 	private const string HudGraphModeKey = "hud_graph_mode";
-	private const string ClockWidgetEnabledKey = "clock_widget_enabled";
-	private const string ClockWidgetXKey = "clock_widget_x";
-	private const string ClockWidgetYKey = "clock_widget_y";
-	private const string ClockWidgetScaleKey = "clock_widget_scale";
-	private const string ClockWidgetOpacityKey = "clock_widget_opacity";
-	private const string StickyNoteEnabledKey="sticky_note_enabled",StickyNoteTextKey="sticky_note_text",StickyNoteXKey="sticky_note_x",StickyNoteYKey="sticky_note_y",StickyNoteScaleKey="sticky_note_scale",StickyNoteOpacityKey="sticky_note_opacity",StickyNoteToggleVkKey="sticky_note_toggle_vk";
+	private const string StickyNoteTextKey="sticky_note_text";
+	private const string ClockSessionTimerKey="clock_session_timer_enabled",Clock24HourKey="clock_24_hour",ClockThemeKey="clock_widget_theme";
+	private const string NotifyThemeKey="notify_theme";
 	private const string TelemetrySettingsVersionKey = "telemetry_settings_version";
 	private static readonly string[] HudWidgetIds = { "cpu", "gpu", "app", "vr", "cpu_peak", "cpu_frequency", "ram", "commit", "vram", "sys", "fps", "frame_interval", "network_ping", "network_loss", "network_jitter", "network_status" };
 	private const string NetworkProbeTargetKey = "network_probe_target";
 	private static readonly string[] HudGraphChannelIds = { "frame_interval", "fps", "budget_deviation", "app_work", "wait_duration", "submit_duration", "display_period" };
 
 	// Feature 2: crosshair
-	private const string CrosshairEnabledKey = "crosshair_enabled";
 	private const string CrosshairDotKey = "crosshair_dot";
 	private const string CrosshairOutlineKey = "crosshair_outline";
 	private const string CrosshairTStyleKey = "crosshair_tstyle";
@@ -112,15 +103,8 @@ public partial class MainWindow : Window
 	private const string CrosshairAlphaKey = "crosshair_alpha";
 	private const string CrosshairScaleKey = "crosshair_scale";
 	private const string CrosshairColorKey = "crosshair_color";
-	private const string CrosshairOffsetXKey = "crosshair_offset_x";
-	private const string CrosshairOffsetYKey = "crosshair_offset_y";
 
 	// Feature 3: notifications
-	private const string NotifyEnabledKey = "notify_enabled";
-	private const string NotifyXKey = "notify_x";
-	private const string NotifyYKey = "notify_y";
-	private const string NotifyScaleKey = "notify_scale";
-	private const string NotifyOpacityKey = "notify_opacity";
 	private const string NotifyDurationKey = "notify_duration_ms";
 	private const string NotifyMaxKey = "notify_max_visible";
 	private const string NotifyPrivacyKey = "notify_privacy";
@@ -162,6 +146,8 @@ public partial class MainWindow : Window
 	private const string VrHeadLockedKey = "reshade_vr_head_locked";
 
 	private readonly ObservableCollection<AppProfile> _apps = new ObservableCollection<AppProfile>();
+	private readonly ObservableCollection<StickyNoteOption> _stickyNotes = new();
+	public string[] StickyNoteThemes { get; } = { "Classic yellow", "Rose", "Mint", "Sky", "Paper" };
 	private readonly ObservableCollection<HudWidgetOption> _hudWidgets = new()
 	{
 		new() { MetricId=0, Id="cpu", Label="CPU — total utilisation", Provider="Windows / GetSystemTimes", Unit="%", ToolTip="Total machine CPU utilisation; sampled every 250 ms." },
@@ -187,6 +173,7 @@ public partial class MainWindow : Window
 	private bool _xrLaunchModeApplied;
 
 	private bool _syncingControls;
+	private bool _applyingOverlayPreviewEdit;
 
 	private bool _optionsInRightPanel;
 
@@ -194,6 +181,7 @@ public partial class MainWindow : Window
 
 	private readonly ReShadeControlService _xrControl = new();
 	private readonly LiveStateService _liveState = new();
+	private readonly StickyNoteLiveStateService _stickyNoteLiveState = new();
 	private readonly TelemetryConfigService _telemetryConfig = new();
 	private readonly CrosshairSettings _crosshair = new();
 	private readonly NotificationBrokerClient _notificationBroker = new();
@@ -241,7 +229,11 @@ public partial class MainWindow : Window
 	public MainWindow()
 	{
 		InitializeComponent();
+		MaskBeanEditor.OverlayPreviewChanged += MaskBeanEditor_OverlayPreviewChanged;
+		ConfigureOverlayHotkeyControls();
+		ConfigureHudWidgetThresholds();
 		HudWidgetList.ItemsSource = _hudWidgets;
+		StickyNotesList.ItemsSource = _stickyNotes;
 		EnsureConfigMigrated();
 		LoadWindowSize();
 		LoadColumnWidths();
@@ -1048,15 +1040,18 @@ public partial class MainWindow : Window
 			return;
 		}
 		MaskBeanEditor.Size = MaskSizeSlider?.Value ?? 1.0;
+		MaskBeanEditor.WidthScale = MaskWidthSlider?.Value ?? 1.0;
+		MaskBeanEditor.HeightScale = MaskHeightSlider?.Value ?? 1.0;
 		MaskBeanEditor.Curve = MaskRoundnessSlider?.Value ?? 0.5;
 		MaskBeanEditor.OffsetX = MaskOffsetXSlider?.Value ?? 0.0;
 		MaskBeanEditor.OffsetY = MaskOffsetYSlider?.Value ?? 0.0;
 		MaskBeanEditor.OuterApexY = MaskApexYSlider?.Value ?? 0.0;
 		MaskBeanEditor.InnerLowerY = MaskInnerLowerSlider?.Value ?? 0.0;
-		MaskBeanEditor.InnerBridgeWidth = MaskInnerBridgeSlider?.Value ?? 0.5;
-		MaskBeanEditor.InnerBridgeRise = MaskInnerBridgeRiseSlider?.Value ?? 0.0;
-		MaskBeanEditor.InnerBridgePeakX = MaskInnerBridgePeakXSlider?.Value ?? 0.5;
-		MaskBeanEditor.InnerBridgeSteepness = MaskInnerBridgeSteepnessSlider?.Value ?? 0.5;
+		MaskBeanEditor.InnerBridgeWidth = FixedInnerBridgeWidth;
+		MaskBeanEditor.InnerBridgeRise = FixedInnerBridgeRise;
+		MaskBeanEditor.InnerBridgePeakX = FixedInnerBridgePeakX;
+		MaskBeanEditor.InnerBridgeSteepness = FixedInnerBridgeSteepness;
+		MaskBeanEditor.SetVisorVisible(MaskEnabledCheck?.IsChecked==true);
 		MaskBeanEditor.OpenInnerPreview = true; // Stencil outer edges only is permanently enabled
 		// Preview rect tracks the post-crop render area so the mask aspect is WYSIWYG.
 		MaskBeanEditor.CropVertical = CurrentVerticalCrop();
@@ -1078,6 +1073,8 @@ public partial class MainWindow : Window
 		// Mask (visor): absolute bounds, default 1.0 = no mask on that axis.
 		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
 		MaskSizeSlider.Value = ReadRangeSetting(MaskSizeKey, 1.0, 0.1, 1.0);
+		MaskWidthSlider.Value = ReadRangeSetting(MaskWidthKey, 1.0, 0.25, 2.0);
+		MaskHeightSlider.Value = ReadRangeSetting(MaskHeightKey, 1.0, 0.25, 2.0);
 		MaskRoundedCheck.IsChecked = ReadBoolSetting(MaskRoundedKey, fallback: true);
 		MaskVerticalBox.Text = FormatScale(ReadScaleSetting("mask_vertical", 1.0));
 		MaskHorizontalBox.Text = FormatScale(ReadScaleSetting("mask_horizontal", 1.0));
@@ -1085,21 +1082,13 @@ public partial class MainWindow : Window
 
 		MaskApexYSlider.Value = ReadRangeSetting(MaskOuterApexYKey, 0.0, -0.5, 0.5);
 		MaskInnerLowerSlider.Value = ReadRangeSetting(MaskInnerLowerYKey, 0.0, 0.0, 0.666);
-		MaskInnerBridgeSlider.Value = ReadRangeSetting(MaskInnerBridgeWidthKey, 0.5, 0.0, 1.0);
-		MaskInnerBridgeRiseSlider.Value = ReadRangeSetting(MaskInnerBridgeRiseKey, 0.0, -0.5, 1.0);
-		MaskInnerBridgePeakXSlider.Value = ReadRangeSetting(MaskInnerBridgePeakXKey, 0.5, -1.0, 2.0);
-		MaskInnerBridgeSteepnessSlider.Value = ReadRangeSetting(MaskInnerBridgeSteepnessKey, 0.5, -1.0, 2.0);
 		MaskOffsetXSlider.Value = 0.0;
 		MaskOffsetYSlider.Value = 0.0;
 		SyncMaskEditorFromSliders();
 		// Render options: foveated center, stencil outer edges, and crop outer edges are permanently enabled.
 		MaskBeanEditor.OpenInnerPreview = true;
 		HorizVisualMaskBothCheck.IsChecked = ReadBoolSetting(HorizVisualMaskBothKey, fallback: false);
-		HorizOuterEyeMaskCheck.IsChecked = ReadBoolSetting(HorizOuterEyeMaskKey, fallback: false);
-		HorizInnerEyeMaskCheck.IsChecked = ReadBoolSetting(HorizInnerEyeMaskKey, fallback: false);
 		VertVisualMaskBothCheck.IsChecked = ReadBoolSetting(VertVisualMaskBothKey, fallback: false);
-		VertTopMaskCheck.IsChecked = ReadBoolSetting(VertTopMaskKey, fallback: false);
-		VertBottomMaskCheck.IsChecked = ReadBoolSetting(VertBottomMaskKey, fallback: false);
 		CalGridCheck.IsChecked = ReadBoolSetting(CalibrationGridKey, fallback: false);
 		CalRulerCheck.IsChecked = ReadBoolSetting(CalibrationRulerKey, fallback: false);
 		CalGratingsCheck.IsChecked = ReadBoolSetting(CalibrationGratingsKey, fallback: false);
@@ -1110,39 +1099,43 @@ public partial class MainWindow : Window
 		CalZonePlateCheck.IsChecked = ReadBoolSetting(CalibrationZonePlateKey, fallback: false);
 		CalClippingCheck.IsChecked = ReadBoolSetting(CalibrationClippingStepsKey, fallback: false);
 		CalMotionCheck.IsChecked = ReadBoolSetting(CalibrationMotionStripKey, fallback: false);
-		ClockWidgetEnabledCheck.IsChecked = ReadBoolSetting(ClockWidgetEnabledKey, fallback: false);
-		ClockWidgetXSlider.Value = ReadRangeSetting(ClockWidgetXKey, 0.50, 0.0, 1.0);
-		ClockWidgetYSlider.Value = ReadRangeSetting(ClockWidgetYKey, 0.10, 0.0, 1.0);
-		ClockWidgetScaleSlider.Value = ReadRangeSetting(ClockWidgetScaleKey, 1.0, 0.50, 2.0);
-		ClockWidgetOpacitySlider.Value = ReadRangeSetting(ClockWidgetOpacityKey, 0.82, 0.10, 1.0);
-		StickyNoteEnabledCheck.IsChecked=ReadBoolSetting(StickyNoteEnabledKey,false);StickyNoteTextBox.Text=ReadSetting(StickyNoteTextKey,string.Empty);
-		StickyNoteXSlider.Value=ReadRangeSetting(StickyNoteXKey,.78,0,1);StickyNoteYSlider.Value=ReadRangeSetting(StickyNoteYKey,.22,0,1);
-		StickyNoteScaleSlider.Value=ReadRangeSetting(StickyNoteScaleKey,1,.5,2.5);StickyNoteOpacitySlider.Value=ReadRangeSetting(StickyNoteOpacityKey,.85,.1,1);
-		StickyNoteToggleKeyCombo.SelectedIndex=Math.Clamp((int)ReadRangeSetting(StickyNoteToggleVkKey,118,117,123)-117,0,6);
-		HudEnabledCheck.IsChecked = ReadBoolSetting(HudEnabledKey, fallback: false);
+		LoadStickyNotes();
 		string traceModeText = ReadSetting(HudTraceVisibilityKey, string.Empty);
 		HudTraceVisibilityCombo.SelectedIndex = int.TryParse(traceModeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int traceMode)
 			? Math.Clamp(traceMode, 0, 2) : (ReadBoolSetting(HudTraceEnabledKey, fallback: false) ? 1 : 0);
 		PerformanceTraceRecordingCheck.IsChecked = ReadBoolSetting(PerformanceTraceRecordingKey, fallback: true);
 		PerformanceTraceMarkerKeyCombo.SelectedIndex = Math.Clamp((int)ReadRangeSetting(PerformanceTraceMarkerVkKey, 119, 117, 123)-117,0,6);
-		HudXSlider.Value = ReadRangeSetting(HudAnchorXKey, 0.04, 0.0, 1.0);
-		HudYSlider.Value = ReadRangeSetting(HudAnchorYKey, 0.05, 0.0, 1.0);
-		HudScaleSlider.Value = ReadRangeSetting(HudScaleKey, 1.0, 0.15, 3.0);
 		HudTraceSensitivitySlider.Value = ReadRangeSetting(HudTraceSensitivityKey, 2.0, 0.5, 8.0);
-		HudTraceXSlider.Value = ReadRangeSetting(HudTraceXKey, 0.05, 0.0, 1.0);
-		HudTraceYSlider.Value = ReadRangeSetting(HudTraceYKey, 0.75, 0.0, 1.0);
-		HudTraceScaleSlider.Value = ReadRangeSetting(HudTraceScaleKey, 1.0, 0.25, 3.0);
 		HudTraceWidthSlider.Value = ReadRangeSetting(HudTraceWidthKey, 0.42, 0.1, 1.0);
 		HudTraceHistorySlider.Value = ReadRangeSetting(HudTraceHistoryKey, 120.0, 30.0, 600.0);
 		HudAlarmOnlyCheck.IsChecked = ReadBoolSetting(HudAlarmOnlyKey, fallback: false);
 		HudSafeMarginSlider.Value = ReadRangeSetting(HudSafeMarginKey, 0.025, 0.0, 0.25);
 		HudClampCheck.IsChecked = ReadBoolSetting(HudClampKey, fallback: true);
 		foreach (HudWidgetOption widget in _hudWidgets)
+		{
 			widget.Enabled = ReadBoolSetting($"hud_widget_{widget.Id}_enabled", widget.Id is "cpu" or "gpu" or "sys" or "vr");
+			widget.UseSymbol = ReadBoolSetting($"hud_widget_{widget.Id}_symbol", false);
+			double warningFallback = widget.Id switch
+			{
+				"sys" => ReadRangeSetting("hud_sys_warning", widget.DefaultWarning, 0, 1000000),
+				"network_ping" => ReadRangeSetting("network_ping_warning_ms", widget.DefaultWarning, 0, 1000000),
+				"network_loss" => ReadRangeSetting("network_loss_warning", widget.DefaultWarning, 0, 1000000),
+				"network_jitter" => ReadRangeSetting("network_jitter_warning_ms", widget.DefaultWarning, 0, 1000000),
+				_ => widget.DefaultWarning,
+			};
+			double criticalFallback = widget.Id switch
+			{
+				"sys" => ReadRangeSetting("hud_sys_critical", widget.DefaultCritical, 0, 1000000),
+				"network_ping" => ReadRangeSetting("network_ping_critical_ms", widget.DefaultCritical, 0, 1000000),
+				"network_loss" => ReadRangeSetting("network_loss_critical", widget.DefaultCritical, 0, 1000000),
+				"network_jitter" => ReadRangeSetting("network_jitter_critical_ms", widget.DefaultCritical, 0, 1000000),
+				_ => widget.DefaultCritical,
+			};
+			widget.Warning = ReadRangeSetting($"hud_widget_{widget.Id}_warning", warningFallback, 0, 1000000);
+			widget.Critical = ReadRangeSetting($"hud_widget_{widget.Id}_critical", criticalFallback, 0, 1000000);
+		}
 		var orderedWidgets = _hudWidgets.OrderBy(w => ReadRangeSetting($"hud_widget_{w.Id}_order", Array.IndexOf(HudWidgetIds, w.Id), 0, HudWidgetIds.Length - 1)).ToList();
 		_hudWidgets.Clear(); foreach (HudWidgetOption widget in orderedWidgets) _hudWidgets.Add(widget);
-		HudSysWarningSlider.Value = ReadRangeSetting("hud_sys_warning", 30, 10, 60);
-		HudSysCriticalSlider.Value = ReadRangeSetting("hud_sys_critical", 10, 0, 30);
 		NetworkProbeTargetBox.Text = ReadSetting(NetworkProbeTargetKey, "1.1.1.1");
 		HudGraphModeCombo.SelectedIndex = (int)ReadRangeSetting(HudGraphModeKey, 0, 0, 3);
 		HudGraphFrameIntervalCheck.IsChecked = ReadBoolSetting("hud_graph_frame_interval", false);
@@ -1168,20 +1161,13 @@ public partial class MainWindow : Window
 			uint col = (uint)ReadRangeSetting(CrosshairColorKey, 0x00FF00, 0, 0xFFFFFF);
 			_crosshair.R = (byte)((col >> 16) & 0xFF); _crosshair.G = (byte)((col >> 8) & 0xFF); _crosshair.B = (byte)(col & 0xFF);
 		}
-		CrosshairEnabledCheck.IsChecked = ReadBoolSetting(CrosshairEnabledKey, false);
-		CrosshairOffsetXSlider.Value = ReadRangeSetting(CrosshairOffsetXKey, 0.0, -1.0, 1.0);
-		CrosshairOffsetYSlider.Value = ReadRangeSetting(CrosshairOffsetYKey, 0.0, -1.0, 1.0);
 		SyncCrosshairControlsFromModel();
 
 		// Feature 3: notifications
-		NotifyEnabledCheck.IsChecked = ReadBoolSetting(NotifyEnabledKey, false);
-		NotifyXSlider.Value = ReadRangeSetting(NotifyXKey, 0.98, 0.0, 1.0);
-		NotifyYSlider.Value = ReadRangeSetting(NotifyYKey, 0.98, 0.0, 1.0);
-		NotifyScaleSlider.Value = ReadRangeSetting(NotifyScaleKey, 1.0, 0.25, 3.0);
-		NotifyOpacitySlider.Value = ReadRangeSetting(NotifyOpacityKey, 1.0, 0.1, 1.0);
 		NotifyDurationSlider.Value = ReadRangeSetting(NotifyDurationKey, 3000.0, 500.0, 15000.0);
 		NotifyMaxSlider.Value = ReadRangeSetting(NotifyMaxKey, 3.0, 1.0, 6.0);
 		NotifyPrivacyCombo.SelectedIndex = (int)ReadRangeSetting(NotifyPrivacyKey, 0, 0, 2);
+		NotifyThemeCombo.SelectedIndex = (int)ReadRangeSetting(NotifyThemeKey, 0, 0, 4);
 		NotifyShowIconCheck.IsChecked = ReadBoolSetting(NotifyShowIconKey, true);
 		NotifyShowImageCheck.IsChecked = ReadBoolSetting(NotifyShowImageKey, true);
 		NotifyAllowlistModeCheck.IsChecked = ReadBoolSetting(NotifyAllowlistModeKey, false);
@@ -1189,6 +1175,10 @@ public partial class MainWindow : Window
 		MediaNotifyEnabledCheck.IsChecked = ReadBoolSetting(MediaNotifyEnabledKey, false);
 		ObsIndicatorEnabledCheck.IsChecked=ReadBoolSetting(ObsIndicatorEnabledKey,false);ObsWebSocketUrlBox.Text=ReadSetting(ObsWebSocketUrlKey,"ws://127.0.0.1:4455");ObsWebSocketPasswordBox.Password=ReadSetting(ObsWebSocketPasswordKey,string.Empty);
 		ObsIndicatorOpacitySlider.Value=ReadRangeSetting(ObsIndicatorOpacityKey,.72,.1,1);ObsIndicatorThicknessSlider.Value=ReadRangeSetting(ObsIndicatorThicknessKey,.009,.002,.04);
+		LoadCommonOverlaySettings();
+		ClockSessionTimerCheck.IsChecked=ReadBoolSetting(ClockSessionTimerKey,true);
+		Clock24HourCheck.IsChecked=ReadBoolSetting(Clock24HourKey,true);
+		ClockThemeCombo.SelectedIndex=(int)ReadRangeSetting(ClockThemeKey,0,0,4);
 
 		// iRacing provider and generic racing presentation
 		IRacingEnabledCheck.IsChecked = ReadBoolSetting(IRacingEnabledKey, false);
@@ -1393,6 +1383,41 @@ public partial class MainWindow : Window
 		}
 	}
 
+	private void ConfigureOverlayHotkeyControls()
+	{
+		string[] choices = { "None", "F6", "F7", "F8", "F9", "F10", "F11", "F12" };
+		foreach (ComboBox combo in new[] { ClockWidgetToggleKeyCombo, HudToggleKeyCombo, HudTraceToggleKeyCombo, StickyNoteToggleKeyCombo, CrosshairToggleKeyCombo, NotifyToggleKeyCombo })
+			combo.ItemsSource = choices;
+	}
+
+	private void ConfigureHudWidgetThresholds()
+	{
+		foreach (HudWidgetOption widget in _hudWidgets)
+		{
+			(double warning, double critical, string unit, bool lowerIsWorse) = widget.Id switch
+			{
+				"gpu" => (90, 98, "%", false),
+				"vr" or "frame_interval" => (103, 108, "% of frame budget", false),
+				"cpu_frequency" => (0, 0, "MHz (0 disables)", true),
+				"sys" => (30, 10, "% remaining", true),
+				"fps" => (0, 0, "fps (0 disables)", true),
+				"network_ping" => (80, 150, "ms", false),
+				"network_loss" => (2, 5, "%", false),
+				"network_jitter" => (15, 30, "ms", false),
+				"network_status" => (1, 2, "state (1/2)", false),
+				_ => (75, 90, "%", false),
+			};
+			widget.DefaultWarning = warning;
+			widget.DefaultCritical = critical;
+			widget.ThresholdUnit = unit;
+			widget.LowerIsWorse = lowerIsWorse;
+			widget.ResetThresholds();
+		}
+	}
+
+	private void MaskWidthSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => MaskShapeSlider_Changed(sender, e);
+	private void MaskHeightSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => MaskShapeSlider_Changed(sender, e);
+
 	private void MaskShapeSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
 		if (!_loading && !_syncingControls && MaskBeanEditor != null)
@@ -1411,12 +1436,10 @@ public partial class MainWindow : Window
 			_syncingControls = true;
 			SetSliderValue(MaskApexYSlider, MaskBeanEditor.OuterApexY);
 			SetSliderValue(MaskSizeSlider, MaskBeanEditor.Size);
+			SetSliderValue(MaskWidthSlider, MaskBeanEditor.WidthScale);
+			SetSliderValue(MaskHeightSlider, MaskBeanEditor.HeightScale);
 			SetSliderValue(MaskRoundnessSlider, MaskBeanEditor.Curve);
 			SetSliderValue(MaskInnerLowerSlider, MaskBeanEditor.InnerLowerY);
-			SetSliderValue(MaskInnerBridgeSlider, MaskBeanEditor.InnerBridgeWidth);
-			SetSliderValue(MaskInnerBridgeRiseSlider, MaskBeanEditor.InnerBridgeRise);
-			SetSliderValue(MaskInnerBridgePeakXSlider, MaskBeanEditor.InnerBridgePeakX);
-			SetSliderValue(MaskInnerBridgeSteepnessSlider, MaskBeanEditor.InnerBridgeSteepness);
 			_syncingControls = false;
 			SaveGlobalSettings();
 		}
@@ -1440,55 +1463,17 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private void MaskInnerBridgeSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-	{
-		if (!_loading && !_syncingControls && MaskBeanEditor != null)
-		{
-			SyncMaskEditorFromSliders();
-			SaveGlobalSettings();
-		}
-	}
-
-	private void MaskInnerBridgeRiseSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-	{
-		if (!_loading && !_syncingControls && MaskBeanEditor != null)
-		{
-			SyncMaskEditorFromSliders();
-			SaveGlobalSettings();
-		}
-	}
-
-	private void MaskInnerBridgePeakXSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-	{
-		if (!_loading && !_syncingControls && MaskBeanEditor != null)
-		{
-			SyncMaskEditorFromSliders();
-			SaveGlobalSettings();
-		}
-	}
-
-	private void MaskInnerBridgeSteepnessSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-	{
-		if (!_loading && !_syncingControls && MaskBeanEditor != null)
-		{
-			SyncMaskEditorFromSliders();
-			SaveGlobalSettings();
-		}
-	}
-
 	private void MaskSliderReset_RightClick(object sender, MouseButtonEventArgs e)
 	{
 		if (_loading) return;
 		e.Handled = true;
 		_syncingControls = true;
 		if (sender == MaskSizeSlider) MaskSizeSlider.Value = 1.0;
+		else if (sender == MaskWidthSlider) MaskWidthSlider.Value = 1.0;
+		else if (sender == MaskHeightSlider) MaskHeightSlider.Value = 1.0;
 		else if (sender == MaskRoundnessSlider) MaskRoundnessSlider.Value = 0.5;
 		else if (sender == MaskApexYSlider)     MaskApexYSlider.Value     = 0.0;
 		else if (sender == MaskInnerLowerSlider) MaskInnerLowerSlider.Value = 0.0;
-		else if (sender == MaskInnerBridgeSlider) MaskInnerBridgeSlider.Value = 0.5;
-		else if (sender == MaskInnerBridgeRiseSlider) MaskInnerBridgeRiseSlider.Value = 0.0;
-		else if (sender == MaskInnerBridgePeakXSlider) MaskInnerBridgePeakXSlider.Value = 0.5;
-		else if (sender == MaskInnerBridgeSteepnessSlider) MaskInnerBridgeSteepnessSlider.Value = 0.5;
 		SyncMaskEditorFromSliders();
 		_syncingControls = false;
 		SaveGlobalSettings();
@@ -1602,6 +1587,7 @@ public partial class MainWindow : Window
 private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading) return;
+		SyncMaskEditorFromSliders();
 		SaveExperimentalSettings();
 		PublishLiveState();
 		StatusText.Text = "Visor setting applied live.";
@@ -1609,7 +1595,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private void HudLayout_Changed(object sender, RoutedEventArgs e)
 	{
-		if (_loading) return;
+		if (_loading || _applyingOverlayPreviewEdit) return;
 		SaveCalibrationSettings();
 		PublishLiveState();
 		StatusText.Text = "HUD position applied live.";
@@ -1629,6 +1615,20 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	}
 
 	private void HudWidgetToggle_Changed(object sender, RoutedEventArgs e) => HudLayout_Changed(sender, e);
+	private void HudThreshold_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		foreach (HudWidgetOption widget in _hudWidgets)
+		{
+			if (widget.LowerIsWorse && widget.Critical > widget.Warning)
+				(widget.Warning, widget.Critical) = (widget.Critical, widget.Warning);
+			else if (!widget.LowerIsWorse && widget.Critical < widget.Warning)
+				(widget.Warning, widget.Critical) = (widget.Critical, widget.Warning);
+		}
+		SaveCalibrationSettings();
+		PublishLiveState();
+		StatusText.Text = "Widget thresholds saved. All metrics use their own warning and critical values next session.";
+	}
 
 	private void HudWidgetUp_Click(object sender, RoutedEventArgs e) => MoveHudWidget(sender, -1);
 	private void HudWidgetDown_Click(object sender, RoutedEventArgs e) => MoveHudWidget(sender, 1);
@@ -1645,9 +1645,9 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		string[] defaults={"cpu","gpu","sys","vr"};
 		foreach(var widget in _hudWidgets)widget.Enabled=defaults.Contains(widget.Id);
+		foreach(var widget in _hudWidgets)widget.ResetThresholds();
 		var ordered=defaults.Select(id=>_hudWidgets.First(w=>w.Id==id)).Concat(_hudWidgets.Where(w=>!defaults.Contains(w.Id))).ToList();
 		_hudWidgets.Clear();foreach(var widget in ordered)_hudWidgets.Add(widget);
-		HudSysWarningSlider.Value=30;HudSysCriticalSlider.Value=10;
 		HudLayout_Changed(sender,new RoutedEventArgs());
 	}
 
@@ -1691,11 +1691,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", MaskEnabledKey, MaskEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskRoundedKey, MaskRoundedCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HorizVisualMaskBothKey, HorizVisualMaskBothCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", HorizOuterEyeMaskKey, HorizOuterEyeMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", HorizInnerEyeMaskKey, HorizInnerEyeMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", VertVisualMaskBothKey, VertVisualMaskBothCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", VertTopMaskKey, VertTopMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", VertBottomMaskKey, VertBottomMaskCheck.IsChecked == true ? "1" : "0", ConfigPath);
 	}
 
 	private void CalibrationCheck_Changed(object sender, RoutedEventArgs e)
@@ -1706,18 +1702,96 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		StatusText.Text = "Calibration setting applied live.";
 	}
 
-	private void ClockWidgetControl_Changed(object sender, RoutedEventArgs e) => SaveClockWidgetSettings();
-	private void ClockWidgetSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => SaveClockWidgetSettings();
-	private void SaveClockWidgetSettings()
+	private void LoadOverlayHotkeys()
 	{
-		if (_loading || ClockWidgetEnabledCheck == null || ClockWidgetXSlider == null) return;
+		foreach ((string id, ComboBox combo) in new[] { ("clock", ClockWidgetToggleKeyCombo), ("hud", HudToggleKeyCombo), ("trace", HudTraceToggleKeyCombo), ("sticky", StickyNoteToggleKeyCombo), ("crosshair", CrosshairToggleKeyCombo), ("notifications", NotifyToggleKeyCombo) })
+		{
+			OverlaySettingsDefinition definition = OverlaySettingsCatalog.All[id];
+			string raw = ReadSetting(definition.ToggleKey, string.Empty);
+			if (string.IsNullOrWhiteSpace(raw) && definition.LegacyToggleKey != null) raw = ReadSetting(definition.LegacyToggleKey, string.Empty);
+			int virtualKey = int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) ? parsed : definition.DefaultToggleVirtualKey;
+			combo.SelectedIndex = OverlaySettingsCatalog.ComboIndexFromVirtualKey(virtualKey);
+		}
+	}
+
+	private (CheckBox enabled, Slider x, Slider y, Slider scale, Slider opacity) OverlayControls(string id) => id switch
+	{
+		"clock" => (ClockWidgetEnabledCheck, ClockWidgetXSlider, ClockWidgetYSlider, ClockWidgetScaleSlider, ClockWidgetOpacitySlider),
+		"hud" => (HudEnabledCheck, HudXSlider, HudYSlider, HudScaleSlider, HudOpacitySlider),
+		"trace" => (HudEnabledCheck, HudTraceXSlider, HudTraceYSlider, HudTraceScaleSlider, HudTraceOpacitySlider),
+		"crosshair" => (CrosshairEnabledCheck, CrosshairOffsetXSlider, CrosshairOffsetYSlider, CrosshairScaleSlider, CrosshairAlphaSlider),
+		"notifications" => (NotifyEnabledCheck, NotifyXSlider, NotifyYSlider, NotifyScaleSlider, NotifyOpacitySlider),
+		_ => throw new ArgumentOutOfRangeException(nameof(id)),
+	};
+
+	private void LoadCommonOverlaySettings()
+	{
+		foreach (OverlaySettingsDefinition definition in OverlaySettingsCatalog.All.Values)
+		{
+			if (definition.Id == "sticky") { StickyNoteEnabledCheck.IsChecked = ReadBoolSetting(definition.EnabledKey, false); continue; }
+			(CheckBox enabled, Slider x, Slider y, Slider scale, Slider opacity) = OverlayControls(definition.Id);
+			if (definition.Id != "trace") enabled.IsChecked = ReadBoolSetting(definition.EnabledKey, false);
+			x.Value = ReadRangeSetting(definition.XKey, definition.DefaultX, x.Minimum, x.Maximum);
+			y.Value = ReadRangeSetting(definition.YKey, definition.DefaultY, y.Minimum, y.Maximum);
+			scale.Value = ReadRangeSetting(definition.ScaleKey, definition.DefaultScale, scale.Minimum, scale.Maximum);
+			opacity.Value = ReadRangeSetting(definition.OpacityKey, definition.Id == "trace" ? ReadRangeSetting(OverlaySettingsCatalog.All["hud"].OpacityKey, definition.DefaultOpacity, .1, 1) : definition.DefaultOpacity, opacity.Minimum, opacity.Maximum);
+		}
+		LoadOverlayHotkeys();
+	}
+
+	private void SaveAllOverlayHotkeys()
+	{
 		Directory.CreateDirectory(ConfigDirectory);
-		WritePrivateProfileString("Settings", ClockWidgetEnabledKey, ClockWidgetEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", ClockWidgetXKey, ClockWidgetXSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", ClockWidgetYKey, ClockWidgetYSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", ClockWidgetScaleKey, ClockWidgetScaleSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", ClockWidgetOpacityKey, ClockWidgetOpacitySlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
-		StatusText.Text = "Clock widget saved. Start the next VR session to apply it.";
+		foreach ((string id, ComboBox combo) in new[] { ("clock", ClockWidgetToggleKeyCombo), ("hud", HudToggleKeyCombo), ("trace", HudTraceToggleKeyCombo), ("sticky", StickyNoteToggleKeyCombo), ("crosshair", CrosshairToggleKeyCombo), ("notifications", NotifyToggleKeyCombo) })
+		{
+			OverlaySettingsDefinition definition = OverlaySettingsCatalog.All[id];
+			string value = OverlaySettingsCatalog.VirtualKeyFromComboIndex(combo.SelectedIndex).ToString(CultureInfo.InvariantCulture);
+			WritePrivateProfileString("Settings", definition.ToggleKey, value, ConfigPath);
+			if (definition.LegacyToggleKey != null) WritePrivateProfileString("Settings", definition.LegacyToggleKey, value, ConfigPath);
+		}
+	}
+
+	private void OverlayHotkey_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		SaveAllOverlayHotkeys();
+		PublishLiveState();
+		StatusText.Text = "Overlay show / hide hotkeys applied live.";
+	}
+
+	private void SaveCommonOverlaySettings(string id)
+	{
+		if (_loading) return;
+		OverlaySettingsDefinition definition = OverlaySettingsCatalog.All[id];
+		(CheckBox enabled, Slider x, Slider y, Slider scale, Slider opacity) = OverlayControls(id);
+		var c = CultureInfo.InvariantCulture;
+		Directory.CreateDirectory(ConfigDirectory);
+		if (id != "trace") WritePrivateProfileString("Settings", definition.EnabledKey, enabled.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", definition.XKey, x.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", definition.YKey, y.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", definition.ScaleKey, scale.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", definition.OpacityKey, opacity.Value.ToString("0.###", c), ConfigPath);
+		SaveAllOverlayHotkeys();
+	}
+
+	private void ClockWidgetControl_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading || _applyingOverlayPreviewEdit) return;
+		SaveCommonOverlaySettings("clock");
+		WritePrivateProfileString("Settings", ClockSessionTimerKey, ClockSessionTimerCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", Clock24HourKey, Clock24HourCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", ClockThemeKey, Math.Max(0, ClockThemeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		PublishLiveState(); StatusText.Text = "Clock and session timer applied live.";
+	}
+	private void ClockWidgetSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => ClockWidgetControl_Changed(sender, e);
+
+	private void OverlayResetPosition_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is not FrameworkElement { Tag: string id } || !OverlaySettingsCatalog.All.TryGetValue(id, out OverlaySettingsDefinition? definition)) return;
+		if (id == "sticky") return;
+		(_, Slider x, Slider y, _, _) = OverlayControls(id);
+		x.Value = definition.DefaultX; y.Value = definition.DefaultY;
+		SaveCommonOverlaySettings(id); PublishLiveState(); StatusText.Text = $"{id} position reset.";
 	}
 
 	private void PublishLiveState()
@@ -1732,11 +1806,12 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		for(int slot=0;slot<_hudWidgets.Count;++slot) { int id=Array.IndexOf(HudWidgetIds,_hudWidgets[slot].Id); if(id<0)continue; if(_hudWidgets[slot].Enabled)widgetMask|=1u<<id; widgetOrder|=(uint)id<<(slot*8); }
 		var graphChecks=new[]{HudGraphFrameIntervalCheck,HudGraphFpsCheck,HudGraphBudgetDeviationCheck,HudGraphAppWorkCheck,HudGraphWaitDurationCheck,HudGraphSubmitDurationCheck,HudGraphDisplayPeriodCheck};
 		uint graphChannels=0; for(int i=0;i<graphChecks.Length;++i)if(graphChecks[i].IsChecked==true)graphChannels|=1u<<i;
-		_telemetryConfig.Publish(_hudWidgets, _hudWidgets.Count, HudSysWarningSlider?.Value ?? 30, HudSysCriticalSlider?.Value ?? 10);
+		HudWidgetOption sysWidget = _hudWidgets.First(widget => widget.Id == "sys");
+		_telemetryConfig.Publish(_hudWidgets, _hudWidgets.Count, sysWidget.Warning, sysWidget.Critical);
 		_liveState.Publish(mask,
 			MaskEnabledCheck.IsChecked == true, !ReadBoolSetting(OverlayForceDirectKey, false), MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
-			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, MaskInnerBridgeSlider.Value,
-			MaskInnerBridgeRiseSlider.Value, MaskInnerBridgePeakXSlider.Value, MaskInnerBridgeSteepnessSlider.Value,
+			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, FixedInnerBridgeWidth,
+			FixedInnerBridgeRise, FixedInnerBridgePeakX, FixedInnerBridgeSteepness,
 			HudEnabledCheck.IsChecked == true, Math.Max(0, HudTraceVisibilityCombo.SelectedIndex), HudXSlider.Value, HudYSlider.Value, HudScaleSlider.Value,
 			HudSafeMarginSlider.Value, HudClampCheck.IsChecked == true, HudAlarmOnlyCheck.IsChecked == true,
 			HudTraceSensitivitySlider.Value, HudTraceXSlider.Value, HudTraceYSlider.Value, HudTraceScaleSlider.Value,
@@ -1750,7 +1825,45 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			NotifyXSlider.Value, NotifyYSlider.Value, NotifyScaleSlider.Value, NotifyOpacitySlider.Value, NotifyDurationSlider.Value,
 			(uint)Math.Round(NotifyMaxSlider.Value), (uint)Math.Max(0, NotifyPrivacyCombo.SelectedIndex),
 			IRacingEnabledCheck.IsChecked == true, IRacingLapPopupCheck.IsChecked == true,
-			IRacingSpotterGlowCheck.IsChecked == true, IRacingFlagBorderCheck.IsChecked == true);
+			IRacingSpotterGlowCheck.IsChecked == true, IRacingFlagBorderCheck.IsChecked == true,
+			ClockWidgetEnabledCheck.IsChecked==true,ClockSessionTimerCheck.IsChecked==true,Clock24HourCheck.IsChecked==true,
+			ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,ClockWidgetScaleSlider.Value,ClockWidgetOpacitySlider.Value,(uint)Math.Max(0,ClockThemeCombo.SelectedIndex),
+			new[]{OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudTraceToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(ClockWidgetToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(StickyNoteToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(CrosshairToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(NotifyToggleKeyCombo.SelectedIndex)});
+		_stickyNoteLiveState.Publish(StickyNoteEnabledCheck.IsChecked==true,_stickyNotes);
+		RefreshMaskOverlayPreview();
+	}
+
+	private void RefreshMaskOverlayPreview()
+	{
+		if(MaskBeanEditor==null)return;var items=new List<OverlayPreviewItem>();
+		if(HudEnabledCheck.IsChecked==true){int count=_hudWidgets.Count(w=>w.Enabled);items.Add(new("hud","HUD",HudXSlider.Value,HudYSlider.Value,Math.Max(.055*count,.07),.12,HudScaleSlider.Value,HudScaleSlider.Minimum,HudScaleSlider.Maximum,HudOpacitySlider.Value,OverlayPreviewAnchor.TopLeft,OverlayPreviewStyle.Hud));}
+		if(HudTraceVisibilityCombo.SelectedIndex>0)items.Add(new("trace","PERFORMANCE TRACE",HudTraceXSlider.Value,HudTraceYSlider.Value,HudTraceWidthSlider.Value,.16,HudTraceScaleSlider.Value,HudTraceScaleSlider.Minimum,HudTraceScaleSlider.Maximum,HudTraceOpacitySlider.Value,OverlayPreviewAnchor.TopLeft,OverlayPreviewStyle.Trace));
+		if(ClockWidgetEnabledCheck.IsChecked==true)items.Add(new("clock",ClockSessionTimerCheck.IsChecked==true?"CLOCK + TIMER":"CLOCK",ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,.22,ClockSessionTimerCheck.IsChecked==true?.16:.09,ClockWidgetScaleSlider.Value,ClockWidgetScaleSlider.Minimum,ClockWidgetScaleSlider.Maximum,ClockWidgetOpacitySlider.Value,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Clock,Math.Max(0,ClockThemeCombo.SelectedIndex)));
+		if(StickyNoteEnabledCheck.IsChecked==true)for(int i=0;i<_stickyNotes.Count;++i){var n=_stickyNotes[i];if(n.Enabled&&!string.IsNullOrWhiteSpace(n.Text))items.Add(new($"sticky:{i}",$"NOTE {i+1}",n.X,n.Y,.12,.12,n.Scale,.5,2.5,n.Opacity,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Sticky,n.Theme));}
+		if(NotifyEnabledCheck.IsChecked==true)items.Add(new("notifications","NOTIFICATION",NotifyXSlider.Value,NotifyYSlider.Value,.28,.12,NotifyScaleSlider.Value,NotifyScaleSlider.Minimum,NotifyScaleSlider.Maximum,NotifyOpacitySlider.Value,OverlayPreviewAnchor.BottomRight,OverlayPreviewStyle.Notification,Math.Max(0,NotifyThemeCombo.SelectedIndex)));
+		if(ObsIndicatorEnabledCheck.IsChecked==true)items.Add(new(string.Empty,"OBS RECORDING CUE",.5,.5,1,1,1,1,1,ObsIndicatorOpacitySlider.Value,OverlayPreviewAnchor.Edge,OverlayPreviewStyle.System));
+		if(IRacingLapPopupCheck.IsChecked==true||IRacingSpotterGlowCheck.IsChecked==true||IRacingFlagBorderCheck.IsChecked==true)items.Add(new(string.Empty,"RACING CUES",.5,.5,1,1,1,1,1,.7,OverlayPreviewAnchor.Edge,OverlayPreviewStyle.System));
+		MaskBeanEditor.SetOverlayPreviews(items);MaskBeanEditor.SetCrosshair(_crosshair,CrosshairEnabledCheck.IsChecked==true,CrosshairOffsetXSlider.Value,CrosshairOffsetYSlider.Value);
+	}
+
+	private void MaskBeanEditor_OverlayPreviewChanged(object? sender,OverlayPreviewChangedEventArgs e)
+	{
+		if(_loading)return;
+		_applyingOverlayPreviewEdit=true;
+		try
+		{
+			if(e.Id.StartsWith("sticky:",StringComparison.Ordinal)&&int.TryParse(e.Id.AsSpan(7),NumberStyles.None,CultureInfo.InvariantCulture,out int index)&&index>=0&&index<_stickyNotes.Count)
+			{
+				StickyNoteOption note=_stickyNotes[index];
+				if(e.Kind==OverlayPreviewEditKind.Position){note.X=e.X;note.Y=e.Y;}else note.Scale=e.Scale;
+				SaveStickyNotes();StatusText.Text=$"Note {index+1} placement applied live.";return;
+			}
+			if(!OverlaySettingsCatalog.All.ContainsKey(e.Id))return;
+			(_,Slider x,Slider y,Slider scale,_)=OverlayControls(e.Id);
+			if(e.Kind==OverlayPreviewEditKind.Position){x.Value=e.X;y.Value=e.Y;}else scale.Value=e.Scale;
+			SaveCommonOverlaySettings(e.Id);PublishLiveState();StatusText.Text=$"{e.Id} placement applied live.";
+		}
+		finally{_applyingOverlayPreviewEdit=false;}
 	}
 
 	// ---- Feature 1: render-boundary flash drag signalling --------------------------------------
@@ -1788,7 +1901,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		CrosshairColorPreview.Background = new SolidColorBrush(Color.FromRgb(_crosshair.R, _crosshair.G, _crosshair.B));
 		CrosshairColorBox.Text = $"{_crosshair.R:X2}{_crosshair.G:X2}{_crosshair.B:X2}";
 		CrosshairOverlayPreview?.Apply(_crosshair);
-		MaskBeanEditor?.SetCrosshair(_crosshair);
+		MaskBeanEditor?.SetCrosshair(_crosshair,CrosshairEnabledCheck?.IsChecked==true,CrosshairOffsetXSlider?.Value??0,CrosshairOffsetYSlider?.Value??0);
 		_loading = prev;
 	}
 
@@ -1805,7 +1918,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		_crosshair.Outline = CrosshairOutlineCheck.IsChecked == true;
 		_crosshair.TStyle = CrosshairTStyleCheck.IsChecked == true;
 		CrosshairOverlayPreview?.Apply(_crosshair);
-		MaskBeanEditor?.SetCrosshair(_crosshair);
+		MaskBeanEditor?.SetCrosshair(_crosshair,CrosshairEnabledCheck?.IsChecked==true,CrosshairOffsetXSlider?.Value??0,CrosshairOffsetYSlider?.Value??0);
 		SaveCrosshairSettings();
 		PublishLiveState();
 		StatusText.Text = "Crosshair applied live.";
@@ -1823,7 +1936,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			_crosshair.R = (byte)((rgb >> 16) & 0xFF); _crosshair.G = (byte)((rgb >> 8) & 0xFF); _crosshair.B = (byte)(rgb & 0xFF);
 			CrosshairColorPreview.Background = new SolidColorBrush(Color.FromRgb(_crosshair.R, _crosshair.G, _crosshair.B));
 			CrosshairOverlayPreview?.Apply(_crosshair);
-			MaskBeanEditor?.SetCrosshair(_crosshair);
+			MaskBeanEditor?.SetCrosshair(_crosshair,CrosshairEnabledCheck?.IsChecked==true,CrosshairOffsetXSlider?.Value??0,CrosshairOffsetYSlider?.Value??0);
 			SaveCrosshairSettings();
 			PublishLiveState();
 			StatusText.Text = "Crosshair colour applied.";
@@ -1851,8 +1964,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void SaveCrosshairSettings()
 	{
 		Directory.CreateDirectory(ConfigDirectory);
+		SaveCommonOverlaySettings("crosshair");
 		var c = CultureInfo.InvariantCulture;
-		WritePrivateProfileString("Settings", CrosshairEnabledKey, CrosshairEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CrosshairDotKey, _crosshair.Dot ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CrosshairOutlineKey, _crosshair.Outline ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CrosshairTStyleKey, _crosshair.TStyle ? "1" : "0", ConfigPath);
@@ -1860,11 +1973,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", CrosshairGapKey, _crosshair.Gap.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", CrosshairThicknessKey, _crosshair.Thickness.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", CrosshairOutlineThicknessKey, _crosshair.OutlineThickness.ToString("0.###", c), ConfigPath);
-		WritePrivateProfileString("Settings", CrosshairAlphaKey, _crosshair.Alpha.ToString("0.###", c), ConfigPath);
-		WritePrivateProfileString("Settings", CrosshairScaleKey, _crosshair.VrScale.ToString("0.###", c), ConfigPath);
+		// Alpha and VR scale are the shared opacity and scale controls.
 		WritePrivateProfileString("Settings", CrosshairColorKey, ((int)_crosshair.ColorRgb).ToString(c), ConfigPath);
-		WritePrivateProfileString("Settings", CrosshairOffsetXKey, CrosshairOffsetXSlider.Value.ToString("0.###", c), ConfigPath);
-		WritePrivateProfileString("Settings", CrosshairOffsetYKey, CrosshairOffsetYSlider.Value.ToString("0.###", c), ConfigPath);
 	}
 
 	private void CrosshairPosition_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1873,11 +1983,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		StatusText.Text = "Crosshair calibration applied live.";
 	}
 
-	private void CrosshairPosition_Reset(object sender, RoutedEventArgs e)
-	{
-		CrosshairOffsetXSlider.Value = 0; CrosshairOffsetYSlider.Value = 0;
-		SaveCrosshairSettings(); PublishLiveState(); StatusText.Text = "Crosshair position reset.";
-	}
 
 	private void CrosshairOffset_ResetRightClick(object sender, MouseButtonEventArgs e)
 	{
@@ -1926,7 +2031,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private void NotifyControl_Changed(object sender, RoutedEventArgs e)
 	{
-		if (_loading) return;
+		if (_loading || _applyingOverlayPreviewEdit) return;
 		SaveNotificationSettings();
 		PublishLiveState();
 		ApplyNotificationSettings(requestAccess: sender == NotifyEnabledCheck && NotifyEnabledCheck.IsChecked == true);
@@ -1938,15 +2043,12 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void SaveNotificationSettings()
 	{
 		Directory.CreateDirectory(ConfigDirectory);
+		SaveCommonOverlaySettings("notifications");
 		var c = CultureInfo.InvariantCulture;
-		WritePrivateProfileString("Settings", NotifyEnabledKey, NotifyEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", NotifyXKey, NotifyXSlider.Value.ToString("0.###", c), ConfigPath);
-		WritePrivateProfileString("Settings", NotifyYKey, NotifyYSlider.Value.ToString("0.###", c), ConfigPath);
-		WritePrivateProfileString("Settings", NotifyScaleKey, NotifyScaleSlider.Value.ToString("0.###", c), ConfigPath);
-		WritePrivateProfileString("Settings", NotifyOpacityKey, NotifyOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", NotifyDurationKey, NotifyDurationSlider.Value.ToString("0", c), ConfigPath);
 		WritePrivateProfileString("Settings", NotifyMaxKey, Math.Round(NotifyMaxSlider.Value).ToString("0", c), ConfigPath);
 		WritePrivateProfileString("Settings", NotifyPrivacyKey, Math.Max(0, NotifyPrivacyCombo.SelectedIndex).ToString("0", c), ConfigPath);
+		WritePrivateProfileString("Settings", NotifyThemeKey, Math.Max(0, NotifyThemeCombo.SelectedIndex).ToString("0", c), ConfigPath);
 		WritePrivateProfileString("Settings", NotifyShowIconKey, NotifyShowIconCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", NotifyShowImageKey, NotifyShowImageCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", NotifyAllowlistModeKey, NotifyAllowlistModeCheck.IsChecked == true ? "1" : "0", ConfigPath);
@@ -2018,6 +2120,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void SaveCalibrationSettings()
 	{
 		Directory.CreateDirectory(ConfigDirectory);
+		SaveCommonOverlaySettings("hud");
+		SaveCommonOverlaySettings("trace");
 		WritePrivateProfileString("Settings", CalibrationGridKey, CalGridCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CalibrationRulerKey, CalRulerCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CalibrationGratingsKey, CalGratingsCheck.IsChecked == true ? "1" : "0", ConfigPath);
@@ -2028,19 +2132,12 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", CalibrationZonePlateKey, CalZonePlateCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CalibrationClippingStepsKey, CalClippingCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CalibrationMotionStripKey, CalMotionCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", HudEnabledKey, HudEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		int traceVisibility = Math.Max(0, HudTraceVisibilityCombo.SelectedIndex);
 		WritePrivateProfileString("Settings", HudTraceVisibilityKey, traceVisibility.ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudTraceEnabledKey, traceVisibility != 0 ? "1" : "0", ConfigPath); // legacy migration key
 		WritePrivateProfileString("Settings",PerformanceTraceRecordingKey,PerformanceTraceRecordingCheck.IsChecked==true?"1":"0",ConfigPath);
 		WritePrivateProfileString("Settings",PerformanceTraceMarkerVkKey,(117+Math.Max(0,PerformanceTraceMarkerKeyCombo.SelectedIndex)).ToString(CultureInfo.InvariantCulture),ConfigPath);
-		WritePrivateProfileString("Settings", HudAnchorXKey, HudXSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", HudAnchorYKey, HudYSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", HudScaleKey, HudScaleSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudTraceSensitivityKey, HudTraceSensitivitySlider.Value.ToString("0.##", CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", HudTraceXKey, HudTraceXSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", HudTraceYKey, HudTraceYSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", HudTraceScaleKey, HudTraceScaleSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudTraceWidthKey, HudTraceWidthSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudTraceHistoryKey, HudTraceHistorySlider.Value.ToString("0", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudAlarmOnlyKey, HudAlarmOnlyCheck.IsChecked == true ? "1" : "0", ConfigPath);
@@ -2050,12 +2147,13 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		{
 			HudWidgetOption widget = _hudWidgets[order];
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_enabled", widget.Enabled ? "1" : "0", ConfigPath);
+			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_symbol", widget.UseSymbol ? "1" : "0", ConfigPath);
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_order", order.ToString(CultureInfo.InvariantCulture), ConfigPath);
+			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_warning", widget.Warning.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_critical", widget.Critical.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		}
 		WritePrivateProfileString("Settings", TelemetrySettingsVersionKey, "1", ConfigPath);
 		WritePrivateProfileString("Settings", "hud_max_per_row", HudWidgetIds.Length.ToString(CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", "hud_sys_warning", (HudSysWarningSlider?.Value ?? 30).ToString("0",CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", "hud_sys_critical", (HudSysCriticalSlider?.Value ?? 10).ToString("0",CultureInfo.InvariantCulture), ConfigPath);
 		if (NetworkProbeTargetBox != null) WritePrivateProfileString("Settings",NetworkProbeTargetKey,(NetworkProbeTargetBox.Text??"1.1.1.1").Trim(),ConfigPath);
 		WritePrivateProfileString("Settings", HudGraphModeKey, Math.Max(0, HudGraphModeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		var graphChecks = new[] { HudGraphFrameIntervalCheck, HudGraphFpsCheck, HudGraphBudgetDeviationCheck, HudGraphAppWorkCheck, HudGraphWaitDurationCheck, HudGraphSubmitDurationCheck, HudGraphDisplayPeriodCheck };
@@ -2063,35 +2161,68 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			WritePrivateProfileString("Settings", $"hud_graph_{HudGraphChannelIds[i]}", graphChecks[i].IsChecked == true ? "1" : "0", ConfigPath);
 	}
 
-	private void StickyNote_Changed(object sender,RoutedEventArgs e)
+	private void LoadStickyNotes()
 	{
-		if(_loading||StickyNoteEnabledCheck==null)return;Directory.CreateDirectory(ConfigDirectory);
-		WritePrivateProfileString("Settings",StickyNoteEnabledKey,StickyNoteEnabledCheck.IsChecked==true?"1":"0",ConfigPath);
-		WritePrivateProfileString("Settings",StickyNoteTextKey,(StickyNoteTextBox.Text??string.Empty).Replace("\r"," ").Replace("\n"," ").Trim(),ConfigPath);
-		WritePrivateProfileString("Settings",StickyNoteXKey,StickyNoteXSlider.Value.ToString("0.###",CultureInfo.InvariantCulture),ConfigPath);WritePrivateProfileString("Settings",StickyNoteYKey,StickyNoteYSlider.Value.ToString("0.###",CultureInfo.InvariantCulture),ConfigPath);
-		WritePrivateProfileString("Settings",StickyNoteScaleKey,StickyNoteScaleSlider.Value.ToString("0.###",CultureInfo.InvariantCulture),ConfigPath);WritePrivateProfileString("Settings",StickyNoteOpacityKey,StickyNoteOpacitySlider.Value.ToString("0.###",CultureInfo.InvariantCulture),ConfigPath);
-		WritePrivateProfileString("Settings",StickyNoteToggleVkKey,(117+Math.Max(0,StickyNoteToggleKeyCombo.SelectedIndex)).ToString(CultureInfo.InvariantCulture),ConfigPath);StatusText.Text="Sticky note saved. Start the next VR session to apply it.";
+		_stickyNotes.Clear();
+		int count=(int)ReadRangeSetting("sticky_note_count",-1,-1,StickyNoteLiveStateService.MaxNotes);
+		if(count<0)
+		{
+			_stickyNotes.Add(new StickyNoteOption { Number=1, Enabled=true, Text=ReadSetting(StickyNoteTextKey,string.Empty),
+				X=ReadRangeSetting("sticky_note_x",.78,0,1),Y=ReadRangeSetting("sticky_note_y",.22,0,1),
+				Scale=ReadRangeSetting("sticky_note_scale",1,.5,2.5),Opacity=ReadRangeSetting("sticky_note_opacity",.85,.1,1) });
+			return;
+		}
+		for(int i=0;i<count;++i)_stickyNotes.Add(new StickyNoteOption { Number=i+1,
+			Enabled=ReadBoolSetting($"sticky_note_{i}_enabled",true),Text=ReadSetting($"sticky_note_{i}_text",string.Empty),
+			X=ReadRangeSetting($"sticky_note_{i}_x",.78,0,1),Y=ReadRangeSetting($"sticky_note_{i}_y",.22,0,1),
+			Scale=ReadRangeSetting($"sticky_note_{i}_scale",1,.5,2.5),Opacity=ReadRangeSetting($"sticky_note_{i}_opacity",.85,.1,1),
+			Theme=(int)ReadRangeSetting($"sticky_note_{i}_theme",0,0,4) });
 	}
-	private void StickyNoteSlider_Changed(object sender,RoutedPropertyChangedEventArgs<double> e)=>StickyNote_Changed(sender,e);
+
+	private void SaveStickyNotes()
+	{
+		Directory.CreateDirectory(ConfigDirectory);var c=CultureInfo.InvariantCulture;
+		WritePrivateProfileString("Settings","sticky_note_enabled",StickyNoteEnabledCheck.IsChecked==true?"1":"0",ConfigPath);
+		WritePrivateProfileString("Settings","sticky_note_count",_stickyNotes.Count.ToString(c),ConfigPath);
+		for(int i=0;i<_stickyNotes.Count;++i){var n=_stickyNotes[i];string p=$"sticky_note_{i}_";
+			WritePrivateProfileString("Settings",p+"enabled",n.Enabled?"1":"0",ConfigPath);WritePrivateProfileString("Settings",p+"text",StickyNoteLiveStateService.Normalize(n.Text),ConfigPath);
+			WritePrivateProfileString("Settings",p+"x",n.X.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings",p+"y",n.Y.ToString("0.###",c),ConfigPath);
+			WritePrivateProfileString("Settings",p+"scale",n.Scale.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings",p+"opacity",n.Opacity.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings",p+"theme",n.Theme.ToString(c),ConfigPath);}
+		if(_stickyNotes.Count>0){var n=_stickyNotes[0];WritePrivateProfileString("Settings",StickyNoteTextKey,StickyNoteLiveStateService.Normalize(n.Text),ConfigPath);WritePrivateProfileString("Settings","sticky_note_x",n.X.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings","sticky_note_y",n.Y.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings","sticky_note_scale",n.Scale.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings","sticky_note_opacity",n.Opacity.ToString("0.###",c),ConfigPath);}
+		SaveAllOverlayHotkeys();_stickyNoteLiveState.Publish(StickyNoteEnabledCheck.IsChecked==true,_stickyNotes);RefreshMaskOverlayPreview();
+	}
+	private void StickyNote_Changed(object sender,RoutedEventArgs e){if(_loading||_applyingOverlayPreviewEdit)return;SaveStickyNotes();StatusText.Text="Sticky notes applied live.";}
+	private void StickyNoteItem_Changed(object sender,RoutedEventArgs e)=>StickyNote_Changed(sender,e);
+	private void StickyNoteItemSlider_Changed(object sender,RoutedPropertyChangedEventArgs<double> e)=>StickyNote_Changed(sender,e);
+	private void StickyNoteAdd_Click(object sender,RoutedEventArgs e){if(_stickyNotes.Count>=StickyNoteLiveStateService.MaxNotes){StatusText.Text="Sticky notes are limited to eight.";return;}_stickyNotes.Add(new StickyNoteOption{Number=_stickyNotes.Count+1,X=.78,Y=.22+.08*_stickyNotes.Count});SaveStickyNotes();}
+	private void StickyNoteRemove_Click(object sender,RoutedEventArgs e){if(sender is FrameworkElement{DataContext:StickyNoteOption n}){_stickyNotes.Remove(n);for(int i=0;i<_stickyNotes.Count;++i)_stickyNotes[i].Number=i+1;SaveStickyNotes();}}
+	private void StickyNoteReset_Click(object sender,RoutedEventArgs e){if(sender is FrameworkElement{DataContext:StickyNoteOption n}){n.X=.78;n.Y=.22;SaveStickyNotes();}}
 
 	private void PerformanceTraceSetting_Changed(object sender, RoutedEventArgs e)
 	{
 		if (!_loading) { SaveCalibrationSettings(); StatusText.Text="Trace marker bind applies when the next VR session starts."; }
 	}
 
-	private void OpenPerformanceTrace_Click(object sender, RoutedEventArgs e)
-	{
-		string path=Path.Combine(ConfigDirectory,"PerformanceTraces","latest.csv");
-		if(!File.Exists(path)){MessageBox.Show(this,"No completed VR-session trace exists yet. End a recorded OpenXR session first.","ViewLab performance trace",MessageBoxButton.OK,MessageBoxImage.Information);return;}
-		try { new PerformanceTraceWindow(path){Owner=this}.Show(); }
-		catch(Exception ex){MessageBox.Show(this,$"The last performance trace could not be opened:\n{ex.Message}","ViewLab performance trace",MessageBoxButton.OK,MessageBoxImage.Warning);}
-	}
 
 	private void ReShadeMenuSetting_Changed(object sender, RoutedEventArgs e) { }
 
 	private void SaveReShadeMenuSettings() { }
 
 	private ReShadeRemoteWindow? _reshadeRemote;
+	private DiagMonWindow? _diagMonWindow;
+	private void OpenDiagMon_Click(object sender, RoutedEventArgs e)
+	{
+		if (_diagMonWindow == null)
+		{
+			_diagMonWindow = new DiagMonWindow { Owner = this };
+			_diagMonWindow.Closed += (_, _) => _diagMonWindow = null;
+			_diagMonWindow.Show();
+		}
+		else
+		{
+			_diagMonWindow.Activate();
+		}
+	}
 	private void OpenReShadeRemote_Click(object sender, RoutedEventArgs e)
 	{
 		if (_reshadeRemote == null)
@@ -2321,15 +2452,17 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", "mask_vertical", FormatStorageScale(maskV), ConfigPath);
 		WritePrivateProfileString("Settings", "mask_horizontal", FormatStorageScale(maskH), ConfigPath);
 		WritePrivateProfileString("Settings", MaskSizeKey, FormatStorageScale(MaskSizeSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskWidthKey, FormatStorageScale(MaskWidthSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskHeightKey, FormatStorageScale(MaskHeightSlider.Value), ConfigPath);
 		
 
 		WritePrivateProfileString("Settings", MaskCornerKey, FormatStorageScale(1.0 - MaskRoundnessSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", MaskOuterApexYKey, FormatStorageScale(MaskApexYSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", MaskInnerLowerYKey, FormatStorageScale(MaskInnerLowerSlider.Value), ConfigPath);
-		WritePrivateProfileString("Settings", MaskInnerBridgeWidthKey, FormatStorageScale(MaskInnerBridgeSlider.Value), ConfigPath);
-		WritePrivateProfileString("Settings", MaskInnerBridgeRiseKey, FormatStorageScale(MaskInnerBridgeRiseSlider.Value), ConfigPath);
-		WritePrivateProfileString("Settings", MaskInnerBridgePeakXKey, FormatStorageScale(MaskInnerBridgePeakXSlider.Value), ConfigPath);
-		WritePrivateProfileString("Settings", MaskInnerBridgeSteepnessKey, FormatStorageScale(MaskInnerBridgeSteepnessSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskInnerBridgeWidthKey, FormatStorageScale(FixedInnerBridgeWidth), ConfigPath);
+		WritePrivateProfileString("Settings", MaskInnerBridgeRiseKey, FormatStorageScale(FixedInnerBridgeRise), ConfigPath);
+		WritePrivateProfileString("Settings", MaskInnerBridgePeakXKey, FormatStorageScale(FixedInnerBridgePeakX), ConfigPath);
+		WritePrivateProfileString("Settings", MaskInnerBridgeSteepnessKey, FormatStorageScale(FixedInnerBridgeSteepness), ConfigPath);
 		WritePrivateProfileString("Settings", MaskOffsetYKey, "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskTopBiasKey, "0", ConfigPath);
 		WritePrivateProfileString("Settings", MaskBottomBiasKey, "0", ConfigPath);
@@ -2853,10 +2986,10 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			MaskSizeSlider?.Value ?? 1.0,
 			MaskApexYSlider?.Value ?? 0.0,
 			MaskInnerLowerSlider?.Value ?? 0.0,
-			MaskInnerBridgeSlider?.Value ?? 0.5,
-			MaskInnerBridgeRiseSlider?.Value ?? 0.0,
-			MaskInnerBridgePeakXSlider?.Value ?? 0.5,
-			MaskInnerBridgeSteepnessSlider?.Value ?? 0.5);
+			FixedInnerBridgeWidth,
+			FixedInnerBridgeRise,
+			FixedInnerBridgePeakX,
+			FixedInnerBridgeSteepness);
 	}
 
 	private void ApplyGlobalMaskValuesToProfile(AppProfile appProfile)

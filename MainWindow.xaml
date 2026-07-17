@@ -389,7 +389,7 @@
                   <RowDefinition Height="0" />
                   <RowDefinition Height="0" />
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Vertical" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="How much vertical view the game renders. Keep this generous (around 0.40 for DiRT) to avoid LOD pop-in; use Visor Mask below for the visible border." />
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Vertical" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="How much vertical view the game renders. Keep this generous to avoid LOD pop-in; use Visor Mask below for the visible border." />
                 <TextBox Name="TotalBox" Grid.Row="0" Grid.Column="2" TextChanged="RenderValue_Changed" />
                 <TextBlock Name="TotalHint" Grid.Row="0" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                 <Slider Name="TotalSlider" Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0.01" Maximum="1" ValueChanged="RenderSlider_Changed" />
@@ -418,11 +418,12 @@
                   <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
                   <Button Name="ReShadeButton" Content="ReShade ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
                   <Button Name="CalibrationButton" Content="Calibration ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Texture-pixel diagnostics for stream, colour, and frame quality." Click="CalibrationButton_Click" />
-                  <Button Name="OverlaysButton" Content="Overlays ▾" Style="{StaticResource RedButton}" Padding="10,4" ToolTip="Crosshair, desktop notifications, and future integrations." Click="OverlaysButton_Click" />
+                  <Button Name="OverlaysButton" Content="Overlays ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Crosshair, desktop notifications, and future integrations." Click="OverlaysButton_Click" />
+                  <Button Name="DiagMonButton" Content="DiagMon(ster)" Style="{StaticResource RedButton}" Padding="10,4" ToolTip="Start and stop application-agnostic performance captures, review session history, and export analysis evidence." Click="OpenDiagMon_Click" />
                 </WrapPanel>
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
                 <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Binocular preview at fixed scale: the canvas is the full uncropped render; the inner rect is the current post-crop render area." />
+                <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Binocular preview: the dotted outer reference is Quest 3 at Horizontal 1.00 / Vertical 1.00; the solid inner rectangle is the current post-crop area. Overlay replicas use their configured placement and uniform scale." />
                 <Grid Margin="0,0,0,0">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="52" />
@@ -435,30 +436,23 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="0" />
                     <RowDefinition Height="0" />
                   </Grid.RowDefinitions>
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="Size" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskSizeSlider" Grid.Row="0" Grid.Column="1" Minimum="0.1" Maximum="1" ValueChanged="MaskSizeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Shrinks the visible opening without changing FOV, render resolution, or GPU savings." />
-                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskRoundnessSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Apex Y" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskApexYSlider" Grid.Row="2" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="MaskApexYSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <!-- Inner-eye notch controls hidden: correct with one eye closed, but translucent
-                       under binocular fusion. Values and plumbing are retained. -->
-                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
-                  <Slider Name="MaskInnerLowerSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="0.666" ValueChanged="MaskInnerLowerSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" Visibility="Collapsed" />
-                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
-                  <Slider Name="MaskInnerBridgeSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskInnerBridgeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" Visibility="Collapsed" />
-                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
-                  <Slider Name="MaskInnerBridgeRiseSlider" Grid.Row="5" Grid.Column="1" Minimum="-0.5" Maximum="1" ValueChanged="MaskInnerBridgeRiseSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" Visibility="Collapsed" />
-                  <TextBlock Grid.Row="6" Grid.Column="0" Text="Peak X" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
-                  <Slider Name="MaskInnerBridgePeakXSlider" Grid.Row="6" Grid.Column="1" Minimum="-1" Maximum="2" ValueChanged="MaskInnerBridgePeakXSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" Visibility="Collapsed" />
-                  <TextBlock Grid.Row="7" Grid.Column="0" Text="Steep" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
-                  <Slider Name="MaskInnerBridgeSteepnessSlider" Grid.Row="7" Grid.Column="1" Minimum="-1" Maximum="2" ValueChanged="MaskInnerBridgeSteepnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" Visibility="Collapsed" />
-                  <Slider Name="MaskOffsetXSlider" Grid.Row="8" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
-                  <Slider Name="MaskOffsetYSlider" Grid.Row="9" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
+                  <Slider Name="MaskSizeSlider" Grid.Row="0" Grid.Column="1" Minimum="0.1" Maximum="1" ValueChanged="MaskSizeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Scales the chosen Width and Height uniformly without changing their ratio." />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Width" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskWidthSlider" Grid.Row="1" Grid.Column="1" Minimum="0.25" Maximum="2" Value="1" ValueChanged="MaskWidthSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Defines the visor shape width. Size scales it without changing its ratio to Height." />
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Height" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskHeightSlider" Grid.Row="2" Grid.Column="1" Minimum="0.25" Maximum="2" Value="1" ValueChanged="MaskHeightSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Defines the visor shape height. Size scales it without changing its ratio to Width." />
+                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskRoundnessSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Outer dip" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskApexYSlider" Grid.Row="4" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="MaskApexYSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Moves the outer visor curve apex vertically." />
+                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Nose" VerticalAlignment="Center" FontSize="12" />
+                  <Slider Name="MaskInnerLowerSlider" Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="0.666" ValueChanged="MaskInnerLowerSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Raises the inner lower edge to form a nose notch; zero disables it." />
+                  <Slider Name="MaskOffsetXSlider" Grid.Row="6" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
+                  <Slider Name="MaskOffsetYSlider" Grid.Row="7" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
                 </Grid>
                 <TextBox Name="MaskVerticalBox" Visibility="Collapsed" />
                 <TextBox Name="MaskHorizontalBox" Visibility="Collapsed" />
@@ -484,14 +478,11 @@
               <Popup Name="VisualMasksPopup" StaysOpen="False" AllowsTransparency="True">
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10">
                   <StackPanel>
-                    <TextBlock Text="Horizontal edge mask" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
-                    <CheckBox Name="HorizVisualMaskBothCheck" Content="Both sides" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Applies a horizontal visual mask to both the inner and outer edges of each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                    <CheckBox Name="HorizOuterEyeMaskCheck" Content="Outer-eye mask only (no pixel savings)" IsEnabled="False" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="One-sided edge masks are not wired in this build." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                    <CheckBox Name="HorizInnerEyeMaskCheck" Content="Inner-eye mask only (no pixel savings)" IsEnabled="False" Foreground="#A8A8A8" Margin="0,0,0,10" ToolTip="One-sided edge masks are not wired in this build." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                    <TextBlock Text="Vertical edge mask" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
-                    <CheckBox Name="VertVisualMaskBothCheck" Content="Both sides" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Applies a vertical visual mask to both the top and bottom edges of each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                    <CheckBox Name="VertTopMaskCheck" Content="Top mask only" IsEnabled="False" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="One-sided edge masks are not wired in this build." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                    <CheckBox Name="VertBottomMaskCheck" Content="Bottom mask only" IsEnabled="False" Foreground="#A8A8A8" ToolTip="One-sided edge masks are not wired in this build." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                    <TextBlock Text="EDGE MASK" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
+                    <TextBlock Text="Cover cropped borders with black without changing crop or render resolution." TextWrapping="Wrap" Width="260" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,7"/>
+                    <CheckBox Name="HorizVisualMaskBothCheck" Content="Mask left and right crop" Foreground="#A8A8A8" Margin="0,0,0,5" ToolTip="Covers both horizontal crop borders in each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                    <CheckBox Name="VertVisualMaskBothCheck" Content="Mask top and bottom crop" Foreground="#A8A8A8" ToolTip="Covers both vertical crop borders in each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                    <TextBlock Text="One-sided and per-eye masking are omitted because this renderer does not support them reliably." TextWrapping="Wrap" Foreground="#777" FontSize="9" Margin="0,7,0,0" />
                   </StackPanel>
                 </Border>
               </Popup>
@@ -511,10 +502,27 @@
                       <CheckBox Name="CalZonePlateCheck" Content="Radial spokes / zone plate" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Reveals uneven sharpness and aliasing." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
                       <CheckBox Name="CalClippingCheck" Content="Black / white clipping steps" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Reveals crushed blacks and clipped whites." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
                       <CheckBox Name="CalMotionCheck" Content="Motion strip" Foreground="#A8A8A8" ToolTip="Reveals temporal smearing and reprojection artefacts." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
+                    </StackPanel>
+                  </ScrollViewer>
+                </Border>
+              </Popup>
+              <Popup Name="OverlaysPopup" StaysOpen="False" AllowsTransparency="True">
+                <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" MaxHeight="560">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Name="OverlaysSettingsPanel" Width="300">
+                      <StackPanel Name="CommonOverlaySettingsPanel">
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="CLOCK + SESSION" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
-                      <CheckBox Name="ClockWidgetEnabledCheck" Content="Show local time and VR session timer" Foreground="#A8A8A8" Margin="0,4,0,0" Checked="ClockWidgetControl_Changed" Unchecked="ClockWidgetControl_Changed" />
-                      <TextBlock Text="A compact two-line visor card. Session time starts when the game creates its OpenXR session." TextWrapping="Wrap" Width="280" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,2,0,4" />
+                      <CheckBox Name="ClockWidgetEnabledCheck" Content="Show clock" Foreground="#A8A8A8" Margin="0,4,0,0" Checked="ClockWidgetControl_Changed" Unchecked="ClockWidgetControl_Changed" />
+                      <CheckBox Name="ClockSessionTimerCheck" Content="Show VR session timer underneath" Foreground="#A8A8A8" Margin="0,3,0,0" IsChecked="True" Checked="ClockWidgetControl_Changed" Unchecked="ClockWidgetControl_Changed" />
+                      <CheckBox Name="Clock24HourCheck" Content="Use 24-hour time" Foreground="#A8A8A8" Margin="0,3,0,0" IsChecked="True" Checked="ClockWidgetControl_Changed" Unchecked="ClockWidgetControl_Changed" />
+                      <TextBlock Text="Theme" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
+                      <ComboBox Name="ClockThemeCombo" SelectionChanged="ClockWidgetControl_Changed">
+                        <ComboBoxItem Content="Graphite"/><ComboBoxItem Content="Paper"/><ComboBoxItem Content="OLED"/><ComboBoxItem Content="Amber"/><ComboBoxItem Content="Mint"/>
+                      </ComboBox>
+                      <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
+                      <ComboBox Name="ClockWidgetToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
+                      <TextBlock Text="A compact clock card. Enabling the session timer adds a separate elapsed-time lane beneath it." TextWrapping="Wrap" Width="280" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,2,0,4" />
                       <TextBlock Text="Position X" Foreground="{StaticResource MutedBrush}" FontSize="10" />
                       <Slider Name="ClockWidgetXSlider" Minimum="0" Maximum="1" Value="0.5" Tag="0.5" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Horizontal position in the shared binocular view. Right-click to reset." />
                       <TextBlock Text="Position Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
@@ -523,38 +531,53 @@
                       <Slider Name="ClockWidgetScaleSlider" Minimum="0.5" Maximum="2" Value="1" Tag="1" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Whole-widget scale. Right-click to reset." />
                       <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="ClockWidgetOpacitySlider" Minimum="0.1" Maximum="1" Value="0.82" Tag="0.82" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Card and text opacity. Right-click to reset." />
-                      <TextBlock Text="Applies when the next VR session starts." Foreground="#C08A2A" FontSize="9" Margin="0,3,0,0" />
+                      <Button Content="Reset position" Tag="clock" Click="OverlayResetPosition_Click" Padding="7,2" Margin="0,5,0,0" HorizontalAlignment="Left" />
+                      <TextBlock Text="Clock controls and show/hide bind apply live." Foreground="#72B88A" FontSize="9" Margin="0,3,0,0" />
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="PERFORMANCE HUD" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
-                      <CheckBox Name="HudEnabledCheck" Content="HUD symbols" Foreground="#A8A8A8" Margin="0,4,0,0" ToolTip="Modular CPU, GPU, APP-workload, and VR-cadence widgets rendered identically in both eyes." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                      <CheckBox Name="HudEnabledCheck" Content="Enable Performance HUD" Foreground="#A8A8A8" Margin="0,4,0,0" ToolTip="Modular CPU, GPU, APP-workload, and VR-cadence widgets rendered identically in both eyes." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
+                      <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
+                      <ComboBox Name="HudToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
                       <TextBlock Text="HUD X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,0" />
                       <Slider Name="HudXSlider" Minimum="0" Maximum="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Horizontal position within the shared binocular view." />
                       <TextBlock Text="HUD Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudYSlider" Minimum="0" Maximum="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Vertical position within the shared binocular view." />
                       <TextBlock Text="HUD scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudScaleSlider" Minimum="0.15" Maximum="3" Value="1" Tag="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Scales rings, icons, numbers, spacing, and padding together. Existing 0.5–3.0 sizes are preserved. Right-click to reset." />
+                      <TextBlock Text="HUD opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudOpacitySlider" Minimum="0.1" Maximum="1" Value="0.7" Tag="0.7" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
+                      <Button Content="Reset position" Tag="hud" Click="OverlayResetPosition_Click" Padding="7,2" Margin="0,5,0,0" HorizontalAlignment="Left" />
                       <CheckBox Name="HudAlarmOnlyCheck" Content="Alarm-only symbols (critical/unstable)" Foreground="#A8A8A8" Margin="0,6,0,0" ToolTip="Shows only widgets with a sustained critical or unstable state; recovery uses hysteresis and a hold." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                       <TextBlock Text="Widgets (enabled and order)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,2" />
                       <ListBox Name="HudWidgetList" Background="Transparent" BorderThickness="0" Padding="0">
                         <ListBox.ItemTemplate>
                           <DataTemplate>
                             <Grid Margin="0,1">
-                              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                              <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" ToolTip="{Binding ToolTip}" Checked="HudWidgetToggle_Changed" Unchecked="HudWidgetToggle_Changed" />
-                                <StackPanel Grid.Column="1" Margin="5,0" ToolTip="{Binding ToolTip}">
+                              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                              <CheckBox Grid.Row="0" IsChecked="{Binding Enabled, Mode=TwoWay}" ToolTip="{Binding ToolTip}" Checked="HudWidgetToggle_Changed" Unchecked="HudWidgetToggle_Changed" />
+                                <StackPanel Grid.Row="0" Grid.Column="1" Margin="5,0" ToolTip="{Binding ToolTip}">
                                   <TextBlock Text="{Binding Label}" FontSize="10" Foreground="#B8B8B8" />
                                   <TextBlock FontSize="8" Foreground="#777"><Run Text="{Binding Provider}"/><Run Text=" · "/><Run Text="{Binding Unit}"/><Run Text=" · "/><Run Text="{Binding Availability}"/></TextBlock>
                                 </StackPanel>
-                              <Button Grid.Column="2" Content="↑" CommandParameter="{Binding Id}" Click="HudWidgetUp_Click" Padding="5,1" Margin="1,0" ToolTip="Move earlier" />
-                              <Button Grid.Column="3" Content="↓" CommandParameter="{Binding Id}" Click="HudWidgetDown_Click" Padding="5,1" Margin="1,0" ToolTip="Move later" />
+                              <CheckBox Grid.Row="0" Grid.Column="2" Content="Symbol" IsChecked="{Binding UseSymbol, Mode=TwoWay}" Checked="HudWidgetToggle_Changed" Unchecked="HudWidgetToggle_Changed" FontSize="9" ToolTip="Use this widget's compact symbol; unchecked shows its literal label."/>
+                              <Button Grid.Row="0" Grid.Column="3" Content="↑" CommandParameter="{Binding Id}" Click="HudWidgetUp_Click" Padding="5,1" Margin="1,0" ToolTip="Move earlier" />
+                              <Button Grid.Row="0" Grid.Column="4" Content="↓" CommandParameter="{Binding Id}" Click="HudWidgetDown_Click" Padding="5,1" Margin="1,0" ToolTip="Move later" />
+                              <Expander Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" Header="⚙ Warning thresholds" Foreground="#999" FontSize="9" Margin="5,2,0,3">
+                                <Grid Margin="0,3,0,2">
+                                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="62"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="62"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                  <TextBlock Text="Warn" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                  <TextBox Grid.Column="1" Text="{Binding Warning, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=0.###}" LostFocus="HudThreshold_Changed" ToolTip="Warning threshold for this widget."/>
+                                  <TextBlock Grid.Column="2" Text="Critical" VerticalAlignment="Center" Margin="8,0,4,0"/>
+                                  <TextBox Grid.Column="3" Text="{Binding Critical, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=0.###}" LostFocus="HudThreshold_Changed" ToolTip="Critical threshold for this widget."/>
+                                  <TextBlock Grid.Column="4" Text="{Binding ThresholdUnit}" VerticalAlignment="Center" Foreground="#777" Margin="6,0,0,0"/>
+                                </Grid>
+                              </Expander>
                             </Grid>
                           </DataTemplate>
                         </ListBox.ItemTemplate>
                         </ListBox>
-                        <Button Margin="0,6,0,0" HorizontalAlignment="Right" Content="Restore CPU/GPU/SYS/VR" Click="HudDefaults_Click" Padding="6,2" FontSize="9"/>
-                        <TextBlock Text="SYS warning / critical remaining headroom" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,1"/>
-                        <Slider Name="HudSysWarningSlider" Minimum="10" Maximum="60" Value="30" Tag="30" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Amber at or below this remaining-headroom percentage. Right-click to reset."/>
-                        <Slider Name="HudSysCriticalSlider" Minimum="0" Maximum="30" Value="10" Tag="10" TickFrequency="5" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Red at or below this remaining-headroom percentage. Right-click to reset."/>
+                        <Button Margin="0,6,0,0" HorizontalAlignment="Right" Content="Restore default widgets and thresholds" Click="HudDefaults_Click" Padding="6,2" FontSize="9"/>
                         <TextBlock Text="Network probe target (IPv4)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,1"/>
                         <TextBox Name="NetworkProbeTargetBox" Text="1.1.1.1" LostFocus="NetworkProbeTarget_Changed" ToolTip="PING/LOSS/JIT/NET measure this ICMP path. It is not automatically the game server."/>
                         <TextBlock Text="Network widgets are off by default. Probe target changes apply next VR session." TextWrapping="Wrap" Foreground="#C08A2A" FontSize="9" Margin="0,2,0,0"/>
@@ -565,11 +588,12 @@
                       <ComboBox Name="PerformanceTraceMarkerKeyCombo" SelectionChanged="PerformanceTraceSetting_Changed" ToolTip="Press once in VR for a numbered visor confirmation and an exact timestamp in the session trace.">
                         <ComboBoxItem Content="F6"/><ComboBoxItem Content="F7"/><ComboBoxItem Content="F8"/><ComboBoxItem Content="F9"/><ComboBoxItem Content="F10"/><ComboBoxItem Content="F11"/><ComboBoxItem Content="F12"/>
                       </ComboBox>
-                      <Button Content="Open last session graph" Margin="0,5,0,2" Padding="7,3" Click="OpenPerformanceTrace_Click"/>
                       <TextBlock Text="Visibility" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1" />
                       <ComboBox Name="HudTraceVisibilityCombo" SelectionChanged="HudLayout_Changed" ToolTip="Off, continuously visible, or shown only for sustained performance trouble with recovery hold and fade.">
                         <ComboBoxItem Content="Off"/><ComboBoxItem Content="Always visible"/><ComboBoxItem Content="Alarm only"/>
                       </ComboBox>
+                      <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
+                      <ComboBox Name="HudTraceToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
                       <TextBlock Text="Graph mode" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,1" />
                       <ComboBox Name="HudGraphModeCombo" SelectionChanged="HudGraphMode_Changed" ToolTip="Only channels with compatible units are drawn together.">
                         <ComboBoxItem Content="Budget deviation (ms)"/><ComboBoxItem Content="Absolute milliseconds"/><ComboBoxItem Content="FPS"/><ComboBoxItem Content="Percent of frame budget"/>
@@ -591,6 +615,9 @@
                       <Slider Name="HudTraceYSlider" Minimum="0" Maximum="1" Value="0.75" Tag="0.75" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical position of the frame-pacing trace. Right-click to reset." />
                       <TextBlock Text="Graph height" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceScaleSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical size of the frame-pacing trace. Right-click to reset." />
+                      <TextBlock Text="Graph opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudTraceOpacitySlider" Minimum="0.1" Maximum="1" Value="0.7" Tag="0.7" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
+                      <Button Content="Reset position" Tag="trace" Click="OverlayResetPosition_Click" Padding="7,2" Margin="0,5,0,0" HorizontalAlignment="Left" />
                       <TextBlock Text="Graph width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceWidthSlider" Minimum="0.1" Maximum="1" Value="0.42" Tag="0.42" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Width of the frame-pacing trace as a fraction of the visible view. Right-click to reset." />
                       <TextBlock Text="Graph history (samples)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
@@ -600,38 +627,41 @@
                       <TextBlock Text="Safe margin" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudSafeMarginSlider" Minimum="0" Maximum="0.25" Value="0.025" Tag="0.025" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <CheckBox Name="HudClampCheck" Content="Keep HUD inside visible region" Foreground="#A8A8A8" Margin="0,4,0,0" Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
-                    </StackPanel>
-                  </ScrollViewer>
-                </Border>
-              </Popup>
-              <Popup Name="OverlaysPopup" StaysOpen="False" AllowsTransparency="True">
-                <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" MaxHeight="560">
-                  <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Width="300">
-                      <TextBlock Text="STICKY NOTE" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
-                      <CheckBox Name="StickyNoteEnabledCheck" Content="Show one visor note" Checked="StickyNote_Changed" Unchecked="StickyNote_Changed"/>
-                      <TextBox Name="StickyNoteTextBox" MaxLength="120" Margin="0,5,0,0" LostFocus="StickyNote_Changed" ToolTip="Up to 120 characters; native rendering wraps to four short lines."/>
+                      </StackPanel>
+                      <TextBlock Text="STICKY NOTES" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <CheckBox Name="StickyNoteEnabledCheck" Content="Show sticky notes" Checked="StickyNote_Changed" Unchecked="StickyNote_Changed"/>
                       <TextBlock Text="Show/hide bind" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1"/>
-                      <ComboBox Name="StickyNoteToggleKeyCombo" SelectionChanged="StickyNote_Changed"><ComboBoxItem Content="F6"/><ComboBoxItem Content="F7"/><ComboBoxItem Content="F8"/><ComboBoxItem Content="F9"/><ComboBoxItem Content="F10"/><ComboBoxItem Content="F11"/><ComboBoxItem Content="F12"/></ComboBox>
-                      <TextBlock Text="Position X / Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1"/>
-                      <Slider Name="StickyNoteXSlider" Minimum="0" Maximum="1" Value="0.78" Tag="0.78" ValueChanged="StickyNoteSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick"/>
-                      <Slider Name="StickyNoteYSlider" Minimum="0" Maximum="1" Value="0.22" Tag="0.22" ValueChanged="StickyNoteSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick"/>
-                      <TextBlock Text="Size / opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1"/>
-                      <Slider Name="StickyNoteScaleSlider" Minimum="0.5" Maximum="2.5" Value="1" Tag="1" ValueChanged="StickyNoteSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick"/>
-                      <Slider Name="StickyNoteOpacitySlider" Minimum="0.1" Maximum="1" Value="0.85" Tag="0.85" ValueChanged="StickyNoteSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick"/>
-                      <TextBlock Text="Settings apply at the next VR session." Foreground="#C08A2A" FontSize="9" Margin="0,3,0,0"/>
+                      <ComboBox Name="StickyNoteToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed"/>
+                      <ItemsControl Name="StickyNotesList" Margin="0,5,0,0">
+                        <ItemsControl.ItemTemplate><DataTemplate><Border Background="#1C1D20" BorderBrush="#3B3D42" BorderThickness="1" CornerRadius="3" Padding="7" Margin="0,0,0,6"><StackPanel>
+                          <DockPanel><TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="#C8C8C8"/><Button DockPanel.Dock="Right" Content="Remove" Click="StickyNoteRemove_Click" Padding="5,1"/></DockPanel>
+                          <CheckBox Content="Enabled" IsChecked="{Binding Enabled, Mode=TwoWay}" Checked="StickyNoteItem_Changed" Unchecked="StickyNoteItem_Changed"/>
+                          <TextBox Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" MaxLength="120" Margin="0,4,0,0" LostFocus="StickyNoteItem_Changed" AcceptsReturn="True" Height="42" TextWrapping="Wrap"/>
+                          <TextBlock Text="Paper theme" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,1"/>
+                          <ComboBox ItemsSource="{Binding StickyNoteThemes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedIndex="{Binding Theme, Mode=TwoWay}" SelectionChanged="StickyNoteItem_Changed"/>
+                          <TextBlock Text="Position X / Y" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0"/>
+                          <Slider Minimum="0" Maximum="1" Value="{Binding X, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/><Slider Minimum="0" Maximum="1" Value="{Binding Y, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/>
+                          <TextBlock Text="Scale / opacity" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0"/>
+                          <Slider Minimum="0.5" Maximum="2.5" Value="{Binding Scale, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/><Slider Minimum="0.1" Maximum="1" Value="{Binding Opacity, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/>
+                          <Button Content="Reset position" Click="StickyNoteReset_Click" Padding="5,1" Margin="0,4,0,0" HorizontalAlignment="Left"/>
+                        </StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <Button Content="Add sticky note" Click="StickyNoteAdd_Click" Padding="7,2" HorizontalAlignment="Left"/>
+                      <TextBlock Text="Each note has independent theme, position, scale and opacity; changes apply live." Foreground="#72B88A" FontSize="9" TextWrapping="Wrap" Margin="0,3,0,0"/>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1"/>
                       <!-- Crosshair -->
                       <TextBlock Text="STATIC CROSSHAIR" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
                       <TextBlock Text="A static, game-agnostic Counter-Strike crosshair at ViewLab's calibrated stereo centre. Dynamic spread/recoil are ignored." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,6" />
                       <CheckBox Name="CrosshairEnabledCheck" Content="Enable crosshair" Foreground="#A8A8A8" Checked="CrosshairEnabled_Changed" Unchecked="CrosshairEnabled_Changed" />
+                      <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
+                      <ComboBox Name="CrosshairToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
                       <ui:CrosshairPreview x:Name="CrosshairOverlayPreview" Height="120" Margin="0,6,0,2" />
                       <TextBlock Text="Reposition Crosshair" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
                       <TextBlock Text="Horizontal offset" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                       <Slider Name="CrosshairOffsetXSlider" Minimum="-1" Maximum="1" Value="0" ValueChanged="CrosshairPosition_Changed" MouseRightButtonUp="CrosshairOffset_ResetRightClick" />
                       <TextBlock Text="Vertical offset" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                       <Slider Name="CrosshairOffsetYSlider" Minimum="-1" Maximum="1" Value="0" ValueChanged="CrosshairPosition_Changed" MouseRightButtonUp="CrosshairOffset_ResetRightClick" />
-                      <Button Content="Reset Crosshair Position" Style="{StaticResource RedButton}" Padding="8,2" Margin="0,4,0,2" HorizontalAlignment="Left" Click="CrosshairPosition_Reset" />
+                      <Button Content="Reset position" Tag="crosshair" Style="{StaticResource RedButton}" Padding="8,2" Margin="0,4,0,2" HorizontalAlignment="Left" Click="OverlayResetPosition_Click" />
                       <TextBlock Text="Size" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
                       <Slider Name="CrosshairSizeSlider" Minimum="0" Maximum="30" Value="5" Tag="5" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Gap (may be negative)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
@@ -667,7 +697,11 @@
                       <TextBlock Text="DESKTOP NOTIFICATIONS" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
                       <TextBlock Text="Mirrors supported Windows notifications into the visor. Collection/decoding run outside the render thread." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,6" />
                       <CheckBox Name="NotifyEnabledCheck" Content="Enable notifications" Foreground="#A8A8A8" Checked="NotifyControl_Changed" Unchecked="NotifyControl_Changed" />
+                      <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
+                      <ComboBox Name="NotifyToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
                       <TextBlock Name="NotifyStatusText" Text="" Foreground="{StaticResource MutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,2,0,0" />
+                      <TextBlock Text="Card theme" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1"/>
+                      <ComboBox Name="NotifyThemeCombo" SelectionChanged="NotifyControl_Changed"><ComboBoxItem Content="Graphite"/><ComboBoxItem Content="Light"/><ComboBoxItem Content="OLED"/><ComboBoxItem Content="Amber"/><ComboBoxItem Content="Mint"/></ComboBox>
                       <TextBlock Text="Position X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
                       <Slider Name="NotifyXSlider" Minimum="0" Maximum="1" Value="0.98" Tag="0.98" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Position Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
@@ -676,6 +710,7 @@
                       <Slider Name="NotifyScaleSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="NotifyOpacitySlider" Minimum="0.1" Maximum="1" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                      <Button Content="Reset position" Tag="notifications" Click="OverlayResetPosition_Click" Padding="7,2" Margin="0,5,0,0" HorizontalAlignment="Left" />
                       <TextBlock Text="Display duration (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="NotifyDurationSlider" Minimum="500" Maximum="15000" Value="3000" Tag="3000" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Max visible" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />

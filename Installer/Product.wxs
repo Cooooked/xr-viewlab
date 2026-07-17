@@ -3,7 +3,7 @@
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
      xmlns:iis="http://schemas.microsoft.com/wix/IIsExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.218"
+           Language="1033" Version="4.1.239"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -123,8 +123,12 @@
             <File Id="SettingsApp" Source="..\bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\xr-viewlab.exe" Name="xr-viewlab.exe" KeyPath="yes"/>
             <File Id="AppIconFile" Source="..\app.ico" Name="xr-viewlab.ico"/>
             <File Id="DefaultConfigFile" Source="..\xr-viewlab.ini" Name="xr-viewlab.ini"/>
+            <File Id="PresentMonConsole" Source="..\ThirdParty\PresentMon\PresentMon-2.4.1-x64.exe" Name="PresentMon-2.4.1-x64.exe"/>
+            <File Id="PresentMonLicense" Source="..\ThirdParty\PresentMon\LICENSE.txt" Name="PresentMon-LICENSE.txt"/>
             <RemoveFile Id="RemoveSettingsApp" Name="xr-viewlab.exe" On="uninstall"/>
             <RemoveFile Id="RemoveDefaultConfigFile" Name="xr-viewlab.ini" On="uninstall"/>
+            <RemoveFile Id="RemovePresentMonConsole" Name="PresentMon-2.4.1-x64.exe" On="uninstall"/>
+            <RemoveFile Id="RemovePresentMonLicense" Name="PresentMon-LICENSE.txt" On="uninstall"/>
             <RemoveFile Id="RemoveReShadeMenuMirrorApp" Name="reshade-vr-menu.exe" On="both"/>
             <RemoveFile Id="RemoveReShadePackageZip" Name="reshade-package.zip" On="both"/>
             <RemoveFile Id="RemoveAppIconFile" Name="xr-viewlab.ico" On="uninstall"/>

@@ -8,6 +8,10 @@
 closed by the worker. The render thread never enumerates sensors, collects PDH data, queries DXGI
 budgets, calls a vendor API, or waits for the worker.
 
+The same worker invokes the trace checkpoint callback once per second and once at worker shutdown.
+The callback copies only unwritten in-memory records while holding the timing lock, then performs CSV
+formatting, append/replace and durable flush after releasing it. No file I/O occurs on an OpenXR hook.
+
 The worker publishes a fixed-size `Snapshot`. `TryGetSnapshot` uses `try_lock`; contention retains
 the previous stereo draw snapshot rather than delaying OpenXR. The left-eye draw copies values once
 and the right eye reuses precisely the same values. Provider buffers and aggregation arrays are

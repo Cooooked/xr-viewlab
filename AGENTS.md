@@ -15,6 +15,25 @@ recommended render resolution reported to VR games (GPU savings), and draws a bl
 directly into the game's eye textures via D3D11 (Technique C Direct). Config flows UI → ini +
 per-app registry → DLL. Ships as an MSI. Primary test game: Pistol Whip via Virtual Desktop (VDXR).
 
+## Compatibility design goal
+
+ViewLab targets universal compatibility by design. One central capability plan selects how every
+ViewLab feature is presented from the current graphics binding, swapchains and submitted frame/layer
+structure. Application names, executable names and title allowlists are forbidden as compatibility policy.
+Native OpenXR remains the direct product path. Legacy API translation moves behind the compiled
+`ViewLabBridge` boundary until games need only ViewLab plus their chosen OpenXR runtime. Missing capabilities
+degrade individual features with explicit diagnostics; they never classify an entire game as unsupported.
+Finite game/hardware matrices are regression evidence, not proof of universal coverage.
+
+## Git workflow
+
+`master` is the stable, validated integration branch. `dev` is the single active branch for ordinary
+AI-assisted work. Start and finish routine changes on `dev`, then integrate them into `master` only after
+the required contracts, build and user-directed validation are complete. Create experiment or feature
+branches only when the user explicitly requests one. Never use `main`; the remote branch with that name is
+an obsolete disconnected history. Never force-push, rewrite history or delete branches without explicit
+user approval.
+
 ## Operating rules (non-negotiable)
 
 1. **Build + delivery:** after any implementation change run `.\build.ps1` (auto-bumps version,

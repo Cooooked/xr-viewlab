@@ -3,6 +3,67 @@
 > Institutional scar tissue. Read before touching the areas named here. Append an entry whenever
 > a significant regression occurs: what / why / how detected / fix / how to never repeat it.
 
+## R30 — Successful compositor submission did not mean visible presentation
+
+**What:** a translated D3D11 session loaded `mask_enabled=1`, rendered all enabled features and returned
+success from `xrEndFrame`, yet visor, HUD, trace and notifications disappeared together in menus. **Why:**
+the first bridge policy replaced the previously working transparent stereo projection with a head-locked
+quad. The translated compositor accepted that quad but did not display it, and the policy briefly used
+ordered readiness to suppress direct common rendering. **Never again:** one bridge-owned plan selects all
+feature presentation from current frame/layer/graphics capabilities. Direct owns the allocation transition;
+once ordered presentation is ready, every normal feature moves to the established two-slice transparent
+projection appended after application layers and direct normal-feature drawing stops. Ordered failure moves
+the complete set back together. Composition-only frames report no proven carrier rather than claiming visibility.
+Fixtures pin this selection and the direct-path invariant. Creation/submission is transport evidence, never
+visibility proof. No title/runtime allowlists.
+
+## R29 — Force-killed PresentMon lost every row and leaked ETW sessions
+
+**What:** real Brave and DiRT captures reported a running PresentMon child but produced no CSV; three
+`ViewLab-*` ETW sessions remained active afterward. Target exit and the advertised Trace deadline also
+left the cockpit in an active limbo and could leave WPR running. Detailed module detection then ran only
+after the dead target had vanished. **Why:** finalisation existed only behind the Stop button, PresentMon
+was killed as a process rather than stopped by its unique trace-session name, and ViewLab delegated the
+only CSV buffer to that abruptly killed process. Fixtures used the live LocalAppData store and therefore
+missed the lifecycle while risking production-index writes. **Never again:** ViewLab pumps PresentMon
+stdout to a durably flushed partial CSV, stops the named collector session cleanly, automatically
+serialises natural exit/deadline finalisation, samples modules while the target is alive, ships a pinned
+collector and notice, and roots integration fixtures in a temporary store. Contracts pin the binary hash,
+packaging, flags and lifecycle symbols; the integration fixture asserts no partial directory remains.
+
+## R26 — A truthful full-session trace was visually uninterpretable
+
+**What:** the increased-resolution DiRT session opened reliably, but its 87,268-point graph looked like
+unexplained shelves and exposed no units, scale, series identity or point inspection. **Why:** a single
+full-duration polyline used maximum-driven scaling and no session context. Raw-row correlation proved
+the shelves were genuine menu/loading cadence transitions, not aggregation or unit corruption; the
+driving interval itself remained near 11.111 ms. **Never again:** axes and legend are mandatory, the
+view zooms/pans/resets, hover reports exact values, min/max pixel buckets retain spikes, robust scaling
+calls out clipped outliers, and inferred cadence misses remain visibly labelled estimates. Schema 1
+recording/opening is fixture-pinned while schema 2 only adds UTC, GPU and alarm evidence.
+
+## R25 — Completed trace depended on callbacks DiRT Rally never supplied
+
+**What:** builds through 4.1.219 reported no completed session after a normal user-visible DiRT Rally
+exit. **Why:** the recorder kept the entire trace in process memory until `xrEndSession` or
+`xrDestroySession`; neither callback is a reliable persistence boundary when a game terminates without
+orderly OpenXR teardown. **Never again:** the bounded telemetry worker checkpoints and durably flushes
+new records every second, the reader ignores a partial trailing record, and lifecycle callbacks are
+final-flush optimisations only. File I/O remains outside OpenXR hooks and D3D rendering.
+
+## R24 — Alarm latches extended their own recovery forever
+
+**What:** a brief critical reading could leave any alarm-only symbol visible and red after its metric
+recovered. GPU made this obvious in a flat 90 FPS DiRT Rally run: an ordinary excursion to 90% armed
+the symbol, which remained red around 74–75%. **Why:** recovery waited for a hold deadline while the
+still-latched critical display state rewrote that deadline on every update. Entry/recovery also counted
+display updates rather than elapsed time, and GPU shared an over-eager generic 90% critical threshold.
+
+**Never again:** every symbol uses the executable `UpdateSustainedAlarm` time policy; lower-state
+fluctuation cannot reset critical recovery, the hold starts once from the first non-critical input,
+and GPU defaults to 90% warning / 98% critical. The policy fixtures pin brief entry, sustained entry,
+fluctuating recovery and finite hold expiry.
+
 ## R22 — Automatic Topmost replaced a proven renderer without compositor-layer demand (4.1.208–209)
 
 **What:** Pistol Whip lost the visor and calibration while HUD/Trace presentation regressed.
@@ -251,3 +312,30 @@ shared binocular-overlap rectangle, while the radial plate used equal raw-pixel 
 horizontal/vertical pixels per tangent. **Never again:** texture-measurement tools use the complete
 submitted eye rectangle and literal pixel pitches; centre-based perceptual shapes use the shared
 crosshair tangent target and per-eye projection. Do not repair either class with identical eye pixels.
+
+## R20 - A standard overlay must not be startup-only (fixed 2026-07-15)
+
+**What:** clock and sticky-note enable, placement, scale and opacity appeared beside ordinary live overlay
+controls but only changed after the game recreated its OpenXR session. **Why:** their first implementations
+read INI values only in `LoadConfig`, outside the shared live-state plumbing. **Never again:** standard
+overlay controls publish through a versioned generation-last contract; bounded text collections receive a
+dedicated contract. Tests pin both sides of the binary layout and preserve INI fallback when the UI is absent.
+
+## R21 - Preview scale must not be independently clamped per axis (4.1.237; fixed 2026-07-15)
+
+**What:** moving the yellow Scale handle, or changing the matching slider, could appear to resize only one
+axis of a preview node. **Why:** callers baked scale into guessed width/height values and the canvas then
+clamped width and height independently to unrelated pixel minima and maxima. Trace additionally treated its
+standard Scale control as height-only, and Trace height silently inherited HUD scale. **Never again:** preview items carry unscaled reference footprints;
+one resolver applies scale once to both axes and uses a single aspect-preserving fit factor. Trace Width owns
+shape while its independent Scale affects the complete graph. Fixtures prove half/double scale on both axes and constant ratio.
+
+## R22 - Crop must not deform or relocate overlays (reported 4.1.238; fixed 2026-07-15)
+
+**What:** reducing horizontal crop widened/fattened preview footprints, could move their anchors, and a roughly
+0.4 horizontal Pinball FX session visibly deformed the HUD. **Why:** preview layout used the crop rectangle as
+its coordinate and sizing area. Native anchors used selected-FOV `RenderArea`; HUD caps and notification width
+also used cropped dimensions, so extreme crops could alter otherwise independent features. **Never again:**
+preview layout/hit-testing uses the full reference area, native ordinary overlays use `FullLens`, and full-widget
+clamps/caps use projected full-lens bounds. Crop remains a coverage boundary. Contracts pin FullLens anchors,
+crop-independent preview sizing, full-bounds caps and an unclamped full-space crosshair target.

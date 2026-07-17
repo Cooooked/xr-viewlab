@@ -26,6 +26,8 @@ std::atomic<bool> running{false};
 std::atomic<uint64_t> preferredLuid{0};
 std::atomic<uint32_t> networkProbeTarget{0};
 std::atomic<bool> networkProbeEnabled{false};
+std::atomic<void(*)()> checkpointCallback{nullptr};
+std::atomic<bool> checkpointRequested{false};
 std::mutex wakeMutex, snapshotMutex, lifecycleMutex;
 std::condition_variable wakeCondition;
 Snapshot published{};
@@ -158,8 +160,10 @@ void Run() {
         for(auto&m:next.metrics)if(m.availability==Availability::Available&&now-m.sampledAtMs>kStaleAfterMs)m.availability=Availability::Stale;
         FILETIME k1{},u1{};GetThreadTimes(GetCurrentThread(),&created,&exited,&k1,&u1);next.workerCpuMs=double((FileTimeValue(k1)-FileTimeValue(kernel0))+(FileTimeValue(u1)-FileTimeValue(user0)))/10000.0;next.sampleCount=tick;next.generation++;next.publishedAtMs=now;
         {std::lock_guard<std::mutex> lock(snapshotMutex);published=next;}
-        std::unique_lock<std::mutex> waitLock(wakeMutex);wakeCondition.wait_for(waitLock,std::chrono::milliseconds(kSamplePeriodMs),[]{return stopping.load();});
+        if((tick&3u)==0||checkpointRequested.exchange(false,std::memory_order_acq_rel))if(auto callback=checkpointCallback.load(std::memory_order_acquire))callback();
+        std::unique_lock<std::mutex> waitLock(wakeMutex);wakeCondition.wait_for(waitLock,std::chrono::milliseconds(kSamplePeriodMs),[]{return stopping.load()||checkpointRequested.load();});
     }
+    if(auto callback=checkpointCallback.load(std::memory_order_acquire))callback();
     p.Shutdown(); running.store(false,std::memory_order_release);
 }
 }
@@ -169,5 +173,7 @@ void Stop(){std::lock_guard<std::mutex> lock(lifecycleMutex);if(!running.load()&
 void SetPreferredAdapterLuid(uint64_t luid){preferredLuid.store(luid,std::memory_order_release);}
 void SetNetworkProbeTarget(uint32_t ipv4NetworkOrder){networkProbeTarget.store(ipv4NetworkOrder,std::memory_order_release);}
 void SetNetworkProbeEnabled(bool enabled){networkProbeEnabled.store(enabled,std::memory_order_release);}
+void SetCheckpointCallback(void (*callback)()){checkpointCallback.store(callback,std::memory_order_release);}
+void RequestCheckpoint(){checkpointRequested.store(true,std::memory_order_release);wakeCondition.notify_all();}
 bool TryGetSnapshot(Snapshot& snapshot){if(!snapshotMutex.try_lock())return false;snapshot=published;snapshotMutex.unlock();return snapshot.generation!=0;}
 }

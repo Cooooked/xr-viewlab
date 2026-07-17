@@ -6,5 +6,6 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ItemDefinitionGroup><ClCompile><LanguageStandard>stdcpp17</LanguageStandard><PrecompiledHeader>NotUsing</PrecompiledHeader><RuntimeLibrary>MultiThreaded</RuntimeLibrary></ClCompile><Link><SubSystem>Console</SubSystem></Link></ItemDefinitionGroup>
   <ItemGroup><ClCompile Include="RenderPolicyFixtures.cpp"/></ItemGroup>
+  <ItemGroup><ProjectReference Include="..\ViewLabBridge\ViewLabBridge.vcxproj"><Project>{7E6A46F0-37DD-4D34-96BC-CA77F55E52C3}</Project></ProjectReference></ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

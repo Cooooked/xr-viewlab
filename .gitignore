@@ -24,6 +24,9 @@ ReshadeAI/
 ReShadeSource/
 Installer/*.wixobj
 Installer/*.wixpdb
+Installer/verify-build/
+TestResults/
+_untracked-archive/
 reference/
 UpgradeLog.htm
 *.bak*
@@ -31,6 +34,10 @@ UpgradeLog.htm
 *.msi
 *.exe
 *.dll
+# Required, pinned third-party build input (hash-checked by repository contracts).
+!ThirdParty/PresentMon/PresentMon-2.4.1-x64.exe
+# Unused external runtime snapshot retained locally for compatibility research.
+ThirdParty/OpenComposite/Runtime/
 !ReShadePayload/
 !ReShadePayload/**
 *.lib
