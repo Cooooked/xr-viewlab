@@ -27,7 +27,7 @@ Need $native 'clockSessionTimerEnabled=\(stable.clockFlags' 'clock timer lane is
 Need $native 'snapshot\.version != 8' 'live-state v8 is not consumed'
 Need $ui 'StickyNoteLiveStateService' 'sticky collection live publisher is absent'
 Need $native 'Local\\\\XRViewLabStickyNotes' 'native sticky collection consumer is absent'
-Need $ini '(?m)^notify_theme=0$' 'notification theme default is absent'
+Need $ini '(?m)^notify_theme=0\r?$' 'notification theme default is absent'
 Need $ui 'RefreshMaskOverlayPreview' 'visor preview does not receive the shared overlay catalogue state'
 $preview=Get-Content (Join-Path $Root 'XRViewLab.UI\BeanMaskEditor.cs') -Raw
 $previewModel=Get-Content (Join-Path $Root 'XRViewLab.UI\OverlayPreviewModels.cs') -Raw

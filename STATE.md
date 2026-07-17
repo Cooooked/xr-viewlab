@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-17
-**Current version:** 4.1.239 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.239.msi`
+**Current version:** 4.1.240 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.240.msi`
 **Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
 AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
 remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
@@ -935,6 +935,13 @@ Remaining broader static-audit items not closed in this pass:
   `WOW6432Node` (Win32). A stray 32-bit entry in the 64-bit hive was removed 2026-07-10.
 
 ## Latest verification
+
+- Integrated `codex/experiments` into local `master` by fast-forward on 2026-07-17. Every deterministic
+  repository fixture and verification script passed on `master`; the overlay-settings verifier now accepts
+  the repository's CRLF line endings when checking `notify_theme=0`. `build.ps1` then completed WPF, broker,
+  signed identity, x64/Win32 native layers, MSI creation and extracted-payload hash/marker validation with
+  zero build warnings or errors: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.240.msi`. The packaged live-notification
+  fixture remains a separate installed-broker integration check and was not part of this deterministic pass.
 
 - Music dedup/lifecycle contracts and fixtures passed on 2026-07-14. `build.ps1` then built WPF,
   broker, signed identity, x64/Win32 native layers and validated MSI:
