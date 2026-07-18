@@ -426,7 +426,15 @@
                   <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                   <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <TextBlock Text="IPD" Foreground="#A8A8A8" VerticalAlignment="Center" Margin="0,0,4,0" />
-                    <TextBox Name="PreviewIpdBox" Text="67.0" Width="48" Margin="0,0,12,0" VerticalContentAlignment="Center" ToolTip="Preview-only IPD in millimetres. Type a value or use Up/Down for 0.1 mm steps." TextChanged="PreviewIpd_Changed" LostKeyboardFocus="PreviewIpd_Commit" PreviewKeyDown="PreviewIpd_KeyDown" />
+                    <Grid Margin="0,0,12,0">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
+                      <TextBox Name="PreviewIpdBox" Text="67.0" VerticalContentAlignment="Center" ToolTip="Preview-only IPD in millimetres. Type a value, use the arrow buttons, or press Up/Down for 0.1 mm steps." TextChanged="PreviewIpd_Changed" LostKeyboardFocus="PreviewIpd_Commit" PreviewKeyDown="PreviewIpd_KeyDown" />
+                      <Grid Grid.Column="1">
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <Button Grid.Row="0" Content="▲" Padding="0" FontSize="7" Click="PreviewIpdUp_Click" ToolTip="Increase preview IPD by 0.1 mm" />
+                        <Button Grid.Row="1" Content="▼" Padding="0" FontSize="7" Click="PreviewIpdDown_Click" ToolTip="Decrease preview IPD by 0.1 mm" />
+                      </Grid>
+                    </Grid>
                     <CheckBox Name="PreviewPerEyeFramesCheck" Content="Per-eye frames" Foreground="#A8A8A8" Margin="0,0,12,0" ToolTip="Switch the dotted frame guide between one combined frame and two overlapping per-eye rectangles." Checked="PreviewFrameMode_Changed" Unchecked="PreviewFrameMode_Changed" />
                     <CheckBox Name="PreviewCircleGuidesCheck" Content="Dual eye circles" Foreground="#A8A8A8" IsChecked="True" ToolTip="Switch the dotted periphery guide between one binocular oval and two true eye circles." Checked="PreviewGuideMode_Changed" Unchecked="PreviewGuideMode_Changed" />
                   </StackPanel>
@@ -538,7 +546,7 @@
                       <TextBlock Text="Position Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="ClockWidgetYSlider" Minimum="0" Maximum="1" Value="0.1" Tag="0.1" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical position in the shared binocular view. Right-click to reset." />
                       <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="ClockWidgetScaleSlider" Minimum="0.5" Maximum="2" Value="1" Tag="1" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Whole-widget scale. Right-click to reset." />
+                      <Slider Name="ClockWidgetScaleSlider" Minimum="0.1" Maximum="2" Value="1" Tag="1" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Whole-widget scale. Right-click to reset." />
                       <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="ClockWidgetOpacitySlider" Minimum="0.1" Maximum="1" Value="0.82" Tag="0.82" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Card and text opacity. Right-click to reset." />
                       <Button Content="Reset position" Tag="clock" Click="OverlayResetPosition_Click" Padding="7,2" Margin="0,5,0,0" HorizontalAlignment="Left" />
@@ -717,7 +725,7 @@
                       <TextBlock Text="Position Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="NotifyYSlider" Minimum="0" Maximum="1" Value="0.98" Tag="0.98" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="NotifyScaleSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                      <Slider Name="NotifyScaleSlider" Minimum="0.1" Maximum="3" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="NotifyOpacitySlider" Minimum="0.1" Maximum="1" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <Button Content="Reset position" Tag="notifications" Click="OverlayResetPosition_Click" Padding="7,2" Margin="0,5,0,0" HorizontalAlignment="Left" />

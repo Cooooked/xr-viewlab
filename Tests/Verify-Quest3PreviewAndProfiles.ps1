@@ -32,6 +32,10 @@ $top = 0.075; $bottom = 0.075
 $cropTop = $height * (0.5 - $top); $cropHeight = $height * ($top + $bottom)
 Assert-Close $cropTop 204.0 0.0000001 'centred vertical 0.15 top'
 Assert-Close $cropHeight 72.0 0.0000001 'vertical 0.15 retained height'
+$fullVerticalHeight = $height * 1.0
+$fullVerticalTop = 0.0
+Assert-Close $fullVerticalHeight $height 0.0000001 'vertical 1.0 reaches full frame height'
+Assert-Close $fullVerticalTop 0.0 0.0000001 'vertical 1.0 reaches frame top'
 $weightedTop = 0.03; $weightedBottom = 0.12
 $weightedCentre = $height * (0.5 - $weightedTop) + $height * ($weightedTop + $weightedBottom) / 2.0
 if ($weightedCentre -le $height / 2.0) { throw 'bottom-weighted crop did not move down' }
@@ -71,7 +75,9 @@ foreach ($contract in @(
     @{ Text=$preview; Pattern='Quest3PreviewGeometry\.FullEyeGuides'; Name='overlapping circular eye guides' },
     @{ Text=$preview; Pattern='double radius = eye\.Width \* 0\.5'; Name='unstretched circle radius' },
     @{ Text=$geometry; Pattern='double width = area\.Width \* horizontal'; Name='single direct horizontal percentage mapping' },
-    @{ Text=$geometry; Pattern='area\.Height \* \(0\.5 - top\)'; Name='centred split vertical mapping' },
+    @{ Text=$geometry; Pattern='vertical >= 1\.0 - 0\.000001 \? area\.Height'; Name='full vertical preview uses exact frame height' },
+    @{ Text=$geometry; Pattern='vertical >= 1\.0 - 0\.000001 \? area\.Top'; Name='full vertical preview uses exact frame top' },
+    @{ Text=$geometry; Pattern='centre - height \* 0\.5'; Name='centred split vertical mapping' },
     @{ Text=$geometry; Pattern='internal static Rect SharedFullArea\(Rect area\) => area'; Name='single normalized overlay coordinate space' },
     @{ Text=$preview; Pattern='SetCropVertical\(double top, double bottom\)'; Name='split crop preview state' },
     @{ Text=$native; Pattern='originalRightTan - \(originalRightTan - originalLeftTan\) \* horizontalScale'; Name='exact left outer crop' },
@@ -92,14 +98,22 @@ foreach ($contract in @(
     @{ Text=$main; Pattern='PreviewCircleGuidesKey = "preview_circle_guides"'; Name='persisted preview guide preference' },
     @{ Text=$main; Pattern='PreviewPerEyeFramesKey = "preview_per_eye_frames"'; Name='persisted frame guide preference' },
     @{ Text=$main; Pattern='PreviewIpdKey = "preview_ipd_mm"'; Name='persisted preview IPD preference' },
-    @{ Text=$main; Pattern='e\.Key == Key\.Up \? 0\.1 : -0\.1'; Name='preview IPD 0.1 keyboard steps' },
+    @{ Text=$main; Pattern='StepPreviewIpd\(e\.Key == Key\.Up \? 0\.1 : -0\.1\)'; Name='preview IPD 0.1 keyboard steps' },
+    @{ Text=$main; Pattern='PreviewIpdUp_Click[^\r\n]+StepPreviewIpd\(0\.1\)'; Name='main visible IPD increment action' },
+    @{ Text=$main; Pattern='PreviewIpdDown_Click[^\r\n]+StepPreviewIpd\(-0\.1\)'; Name='main visible IPD decrement action' },
+    @{ Text=$profile; Pattern='PreviewIpdUp_Click[^\r\n]+StepPreviewIpd\(0\.1\)'; Name='profile visible IPD increment action' },
+    @{ Text=$profile; Pattern='PreviewIpdDown_Click[^\r\n]+StepPreviewIpd\(-0\.1\)'; Name='profile visible IPD decrement action' },
     @{ Text=$geometry; Pattern='calibratedSeparation \* ipd / DefaultIpdMillimetres'; Name='IPD changes guide separation only' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewCircleGuidesCheck"'; Name='main preview guide toggle' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewPerEyeFramesCheck"'; Name='main frame guide toggle' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewIpdBox"[^>]+Text="67\.0"'; Name='main preview IPD input' },
+    @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='<Button[^>]+Click="PreviewIpdUp_Click"'; Name='main visible IPD up arrow' },
+    @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='<Button[^>]+Click="PreviewIpdDown_Click"'; Name='main visible IPD down arrow' },
     @{ Text=(Get-Content (Join-Path $root 'ProfileWindow.xaml') -Raw); Pattern='Name="PreviewCircleGuidesCheck"'; Name='profile preview guide toggle' },
     @{ Text=(Get-Content (Join-Path $root 'ProfileWindow.xaml') -Raw); Pattern='Name="PreviewPerEyeFramesCheck"'; Name='profile frame guide toggle' },
-    @{ Text=(Get-Content (Join-Path $root 'ProfileWindow.xaml') -Raw); Pattern='Name="PreviewIpdBox"[^>]+Text="67\.0"'; Name='profile preview IPD input' }
+    @{ Text=(Get-Content (Join-Path $root 'ProfileWindow.xaml') -Raw); Pattern='Name="PreviewIpdBox"[^>]+Text="67\.0"'; Name='profile preview IPD input' },
+    @{ Text=(Get-Content (Join-Path $root 'ProfileWindow.xaml') -Raw); Pattern='<Button[^>]+Click="PreviewIpdUp_Click"'; Name='profile visible IPD up arrow' },
+    @{ Text=(Get-Content (Join-Path $root 'ProfileWindow.xaml') -Raw); Pattern='<Button[^>]+Click="PreviewIpdDown_Click"'; Name='profile visible IPD down arrow' }
 )) {
     if ($contract.Text -notmatch $contract.Pattern) { throw "Missing contract: $($contract.Name)" }
 }

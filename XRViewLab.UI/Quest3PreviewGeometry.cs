@@ -39,14 +39,16 @@ internal static class Quest3PreviewGeometry
             inset + (height - fittedHeight) * 0.5, fittedWidth, fittedHeight);
     }
 
-    internal static Rect CropRect(Rect area, double horizontal, double top, double bottom)
+    internal static Rect CropRect(Rect area, double horizontal, double vertical, double verticalCentre)
     {
         horizontal = Math.Clamp(horizontal, 0.01, 1.0);
-        top = Math.Clamp(top, 0.0, 0.5);
-        bottom = Math.Clamp(bottom, 0.0, 0.5);
+        vertical = Math.Clamp(vertical, 0.01, 1.0);
         double width = area.Width * horizontal;
-        double topY = area.Top + area.Height * (0.5 - top);
-        double height = area.Height * Math.Max(0.01, top + bottom);
+        double height = vertical >= 1.0 - 0.000001 ? area.Height : area.Height * vertical;
+        double centre = vertical >= 1.0 - 0.000001
+            ? area.Top + area.Height * 0.5
+            : area.Top + area.Height * Math.Clamp(verticalCentre, vertical * 0.5, 1.0 - vertical * 0.5);
+        double topY = vertical >= 1.0 - 0.000001 ? area.Top : centre - height * 0.5;
         return new Rect(area.Left + (area.Width - width) * 0.5, topY, width, height);
     }
 

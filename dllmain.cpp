@@ -827,12 +827,12 @@ void ConsumeLiveState() {
     // Feature 3: notification render settings (content arrives via the separate mapping).
     notifyEnabled = (stable.notifyFlags & 1u) != 0;
     notifyX = std::clamp((double)stable.notifyX, 0.0, 1.0); notifyY = std::clamp((double)stable.notifyY, 0.0, 1.0);
-    notifyScale = std::clamp((double)stable.notifyScale, 0.25, 3.0); notifyOpacity = std::clamp((double)stable.notifyOpacity, 0.1, 1.0);
+    notifyScale = std::clamp((double)stable.notifyScale, 0.1, 3.0); notifyOpacity = std::clamp((double)stable.notifyOpacity, 0.1, 1.0);
     // Generic racing presentation enables; event state arrives through its dedicated mapping.
     iracingEnabled = (stable.iracingFlags & 1u) != 0; iracingLapPopup = (stable.iracingFlags & 2u) != 0;
     iracingSpotterGlow = (stable.iracingFlags & 4u) != 0; iracingFlagBorder = (stable.iracingFlags & 8u) != 0;
     clockWidgetEnabled=(stable.clockFlags&1u)!=0;clockSessionTimerEnabled=(stable.clockFlags&2u)!=0;clock24Hour=(stable.clockFlags&4u)!=0;
-    clockWidgetX=std::clamp((double)stable.clockX,0.0,1.0);clockWidgetY=std::clamp((double)stable.clockY,0.0,1.0);clockWidgetScale=std::clamp((double)stable.clockScale,.5,2.0);clockWidgetOpacity=std::clamp((double)stable.clockOpacity,.1,1.0);clockWidgetTheme=std::clamp(stable.clockTheme,0u,4u);
+    clockWidgetX=std::clamp((double)stable.clockX,0.0,1.0);clockWidgetY=std::clamp((double)stable.clockY,0.0,1.0);clockWidgetScale=std::clamp((double)stable.clockScale,.1,2.0);clockWidgetOpacity=std::clamp((double)stable.clockOpacity,.1,1.0);clockWidgetTheme=std::clamp(stable.clockTheme,0u,4u);
     for(size_t i=0;i<(size_t)OverlayFeatureId::Count;++i)g_overlayFeatureVisibility[i].toggleKey=(int)std::clamp(stable.overlayToggleKeys[i],0u,255u);
     if ((stable.flags & 1u) != 0 && !liveVisorUsesProfileOverride) {
         maskEnabled = (stable.flags & 4u) != 0;
@@ -4215,13 +4215,13 @@ void LoadConfig() {
     notifyEnabled = ReadBoolSetting(L"notify_enabled", false);
     notifyX = std::clamp(ReadDoubleSetting(L"notify_x", 0.98), 0.0, 1.0);
     notifyY = std::clamp(ReadDoubleSetting(L"notify_y", 0.98), 0.0, 1.0);
-    notifyScale = std::clamp(ReadDoubleSetting(L"notify_scale", 1.0), 0.25, 3.0);
+    notifyScale = std::clamp(ReadDoubleSetting(L"notify_scale", 1.0), 0.1, 3.0);
     notifyOpacity = std::clamp(ReadDoubleSetting(L"notify_opacity", 1.0), 0.1, 1.0);
     clockWidgetEnabled = ReadBoolSetting(L"clock_widget_enabled", false);
     clockSessionTimerEnabled=ReadBoolSetting(L"clock_session_timer_enabled",true);clock24Hour=ReadBoolSetting(L"clock_24_hour",true);clockWidgetTheme=(uint32_t)std::clamp(ReadDoubleSetting(L"clock_widget_theme",0),0.0,4.0);
     clockWidgetX = std::clamp(ReadDoubleSetting(L"clock_widget_x", 0.50), 0.0, 1.0);
     clockWidgetY = std::clamp(ReadDoubleSetting(L"clock_widget_y", 0.10), 0.0, 1.0);
-    clockWidgetScale = std::clamp(ReadDoubleSetting(L"clock_widget_scale", 1.0), 0.50, 2.0);
+    clockWidgetScale = std::clamp(ReadDoubleSetting(L"clock_widget_scale", 1.0), 0.10, 2.0);
     clockWidgetOpacity = std::clamp(ReadDoubleSetting(L"clock_widget_opacity", 0.82), 0.10, 1.0);
     stickyNoteEnabled=ReadBoolSetting(L"sticky_note_enabled",false);stickyNoteCount=0;
     const std::wstring noteCountText=ReadStringSetting(L"sticky_note_count",L"");

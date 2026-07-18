@@ -1529,12 +1529,19 @@ public partial class MainWindow : Window
 	private void PreviewIpd_KeyDown(object sender, KeyEventArgs e)
 	{
 		if (e.Key != Key.Up && e.Key != Key.Down) return;
-		double delta = e.Key == Key.Up ? 0.1 : -0.1;
+		StepPreviewIpd(e.Key == Key.Up ? 0.1 : -0.1);
+		e.Handled = true;
+	}
+
+	private void PreviewIpdUp_Click(object sender, RoutedEventArgs e) => StepPreviewIpd(0.1);
+	private void PreviewIpdDown_Click(object sender, RoutedEventArgs e) => StepPreviewIpd(-0.1);
+
+	private void StepPreviewIpd(double delta)
+	{
 		PreviewIpdBox.Text = Math.Clamp(CurrentPreviewIpd() + delta,
 			Quest3PreviewGeometry.MinimumIpdMillimetres, Quest3PreviewGeometry.MaximumIpdMillimetres)
 			.ToString("0.0", CultureInfo.InvariantCulture);
 		PreviewIpdBox.SelectAll();
-		e.Handled = true;
 	}
 
 	private void MaskSliderReset_RightClick(object sender, MouseButtonEventArgs e)

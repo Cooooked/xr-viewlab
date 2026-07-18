@@ -329,7 +329,9 @@ actual shares. The periphery layer can show one binocular oval or two square-bou
 same boundary: 90% of box height and 85% of box width; circle mode never inherits container stretching.
 Independently, the full-frame guide can be one combined rectangle or two overlapping per-eye rectangles
 whose `2064:2208` aspect is preserved. A persisted `67.0` mm IPD calibration input scales only the centre
-separation of dual guide geometry, in 0.1 mm steps. These are display preferences only and never publish to runtime.
+separation of dual guide geometry, in 0.1 mm steps exposed through direct typing, keyboard input and visible buttons.
+Vertical preview state is one retained scale plus centre; `1.0` is exactly the full outer-frame height. These are
+display preferences only and never publish to runtime.
 The current crop, visor shape, overlay anchors, hit-testing and drag deltas
 all use the same full-box normalised coordinates. Zoom and pan are display-only. Rejected: deriving preview
 placement from asymmetric projection degrees, normalising ordinary elements into the crop, applying crop a

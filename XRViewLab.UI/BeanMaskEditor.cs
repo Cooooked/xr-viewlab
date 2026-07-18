@@ -24,8 +24,8 @@ public sealed class BeanMaskEditor : FrameworkElement
 	private double _noseSpreadX;
 	private bool _openInnerPreview;
 	private double _cropHorizontal = 1.0;
-	private double _cropTop = 0.5;
-	private double _cropBottom = 0.5;
+	private double _cropVertical = 1.0;
+	private double _cropVerticalCentre = 0.5;
 	private bool _useCircularEyeGuides = true;
 	private bool _usePerEyeFrameGuides;
 	private double _previewIpdMillimetres = Quest3PreviewGeometry.DefaultIpdMillimetres;
@@ -234,11 +234,11 @@ public sealed class BeanMaskEditor : FrameworkElement
 
 	public double CropVertical
 	{
-		get => _cropTop + _cropBottom;
+		get => _cropVertical;
 		set
 		{
-			double half = Math.Clamp(value, 0.01, 1.0) * 0.5;
-			SetCropVertical(half, half);
+			double vertical = Math.Clamp(value, 0.01, 1.0);
+			SetCropVerticalState(vertical, 0.5);
 		}
 	}
 
@@ -246,9 +246,19 @@ public sealed class BeanMaskEditor : FrameworkElement
 	{
 		top = Math.Clamp(top, 0.0, 0.5);
 		bottom = Math.Clamp(bottom, 0.0, 0.5);
-		if (Math.Abs(_cropTop - top) < 0.0001 && Math.Abs(_cropBottom - bottom) < 0.0001) return;
-		_cropTop = top;
-		_cropBottom = bottom;
+		double vertical = Math.Clamp(top + bottom, 0.01, 1.0);
+		double centre = vertical >= 1.0 - 0.000001 ? 0.5 : 0.5 + (bottom - top) * 0.5;
+		SetCropVerticalState(vertical, centre);
+	}
+
+	private void SetCropVerticalState(double vertical, double centre)
+	{
+		vertical = Math.Clamp(vertical, 0.01, 1.0);
+		double half = vertical * 0.5;
+		centre = Math.Clamp(centre, half, 1.0 - half);
+		if (Math.Abs(_cropVertical - vertical) < 0.0001 && Math.Abs(_cropVerticalCentre - centre) < 0.0001) return;
+		_cropVertical = vertical;
+		_cropVerticalCentre = centre;
 		InvalidateVisual();
 	}
 
@@ -470,7 +480,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 	// One-to-one reference: the canvas is the full uncropped binocular render, so the crop
 	// values map directly — Vertical 0.2 occupies 20% of the reference height. No zoom/fit.
 	private Rect PreviewCropRect(Rect area) =>
-		Quest3PreviewGeometry.CropRect(area, CropHorizontal, _cropTop, _cropBottom);
+		Quest3PreviewGeometry.CropRect(area, CropHorizontal, _cropVertical, _cropVerticalCentre);
 
 	// Left-eye half of the crop rect — the coordinate space for pins and drags.
 	private Rect LeftEyeArea()

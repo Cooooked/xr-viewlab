@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-18
-**Current version:** 4.1.246 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.246.msi`
+**Current version:** 4.1.247 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.247.msi`
 **Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
 AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
 remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
@@ -43,6 +43,12 @@ in 0.1 mm steps, and changes only the centre separation/overlap of dual guide ge
 The preview's product purpose is trustworthy desktop tuning: the user can read full frame, useful periphery,
 post-crop coverage, final visor and overlay placement/scale without repeatedly putting the headset on. Runtime
 remains the source of truth; the preview is its calibration mirror, not an independent approximation.
+
+Focused 2026-07-18 follow-up: both preview editors now show visible IPD up/down buttons using the existing
+0.1 mm live/persisted step. Preview vertical state is stored as one direct scale plus centre, and full `1.0`
+is canonicalised to the outer frame's exact top and height. Clock + Timer and Notifications alone now accept
+scale `0.1`; their sliders provide the preview pin bounds, and native startup/live clamps use the same minimum.
+No runtime crop, horizontal mapping, guide mode, profile or other overlay bounds changed.
 
 `mask_nose_spread_x` adds a mirrored nose-boundary translation to the global editor, per-app profiles, live-state
 contract and native visor geometry. Its zero default preserves prior output. Deterministic WPF, geometry, plumbing

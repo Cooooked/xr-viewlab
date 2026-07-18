@@ -2,6 +2,12 @@
 
 ## Unreleased - 2026-07-18 (profile persistence and centred preview)
 
+- Added visible IPD spinner buttons in both preview editors. The buttons and keyboard arrows share
+  the existing 0.1 mm stepping path; direct typing, persistence and live guide updates are unchanged.
+- Made the preview's vertical scale canonical and direct. Vertical `1.0` now uses the exact outer-frame
+  top and height, while split top/bottom values retain their existing preview translation.
+- Lowered only Clock + Timer and Notifications scale minima to `0.1`. Their sliders, preview resize
+  pins, saved-setting load and native startup/live clamps now agree; defaults and maxima are unchanged.
 - Separated the per-app `Use global visor settings` choice from the explicit `Use Global Values`
   reset. Saving crop or resolution edits now preserves and enables the app profile, stores only the
   visor as global when requested, and refreshes the main table from the registry immediately.

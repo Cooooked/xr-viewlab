@@ -125,7 +125,7 @@ visor-only checkbox as permission to discard the profile.
 | `clock_widget_enabled`, `clock_session_timer_enabled` | 0, 1 | clock card | Clock visibility and the independent elapsed-session lane. With the timer disabled the card collapses to one lane. Both apply live. |
 | `clock_24_hour`, `clock_widget_theme` | 1, 0 | clock presentation | Selects 24-hour versus 12-hour AM/PM text and Graphite/Paper/OLED/Amber/Mint theme (0-4). Applies live. |
 | `clock_widget_x`, `clock_widget_y` | 0.50, 0.10 | clock layout | Widget centre in the shared binocular render-area frame (0–1). Bounds are clamped to the current shared overlap. |
-| `clock_widget_scale`, `clock_widget_opacity` | 1.0, 0.82 | clock layout | Whole-widget angular scale (0.5-2.0) and card/text opacity (0.1-1.0). Applies live. |
+| `clock_widget_scale`, `clock_widget_opacity` | 1.0, 0.82 | clock layout | Whole-widget angular scale (0.1-2.0) and card/text opacity (0.1-1.0). The slider and preview resize pin share this scale range. Applies live. |
 | `sticky_note_count`, `sticky_note_{0..7}_{enabled,text,x,y,scale,opacity,theme}` | 1; note 0 defaults | sticky note collection | Up to eight independent square paper notes. Text is capped at 120 characters and four native lines; theme is Classic/Rose/Mint/Sky/Paper (0-4). The unindexed legacy note migrates to note 0 and remains mirrored for downgrade safety. |
 | `hud_widget_<id>_symbol` | 0 | HUD widget presentation | Per-widget compact pictogram selection. `0` retains the literal catalogue label; changes publish live through the telemetry catalogue. |
 | `notify_theme` | 0 | notification composition | Graphite/Light/OLED/Amber/Mint pre-composited card theme (0-4). Newly composed cards use the selected theme. |
@@ -140,7 +140,7 @@ visor-only checkbox as permission to discard the profile.
 | `crosshair_alpha`, `crosshair_scale` | 1.0, 1.0 | crosshair | Crosshair alpha (0–1) and overall ViewLab VR scale (0.1–10). |
 | `crosshair_color` | 65280 | crosshair | Colour as a decimal `0xRRGGBB` integer (65280 = `00FF00`). The UI parses `cl_crosshair*` configs and CS2 `CSGO-` share codes into all of the above. |
 | `notify_enabled` | 0 | `notifyEnabled` | Mirror supported Windows notifications into the visor (both eyes, bottom-right of the cropped region). |
-| `notify_x`, `notify_y`, `notify_scale`, `notify_opacity` | 0.98, 0.98, 1.0, 1.0 | notify render | Card anchor within the binocular overlap, card scale, and opacity — the render-side settings the DLL reads. |
+| `notify_x`, `notify_y`, `notify_scale`, `notify_opacity` | 0.98, 0.98, 1.0, 1.0 | notify render | Card anchor within the binocular overlap, card scale (0.1-3.0), and opacity. The scale slider and preview resize pin share the same bounds. |
 | `notify_duration_ms`, `notify_max_visible`, `notify_privacy` | 3000, 3, 0 | notification broker | Hold time, max concurrent cards, and privacy mode (0 full / 1 title-only / 2 app-only). Consumed by the independent medium-integrity broker, not the DLL/settings lifetime. |
 | `notify_show_icon`, `notify_show_image` | 1, 1 | notification broker | Whether cards composite the source app icon and the image/thumbnail where Windows exposes one. |
 | `notify_allowlist_mode`, `notify_app_filters` | 0, (empty) | notification broker | Comma-separated source-app filter; `allowlist_mode=1` shows only matches, otherwise it is a blocklist. Permission remains global. |

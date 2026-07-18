@@ -3,6 +3,17 @@
 > Institutional scar tissue. Read before touching the areas named here. Append an entry whenever
 > a significant regression occurs: what / why / how detected / fix / how to never repeat it.
 
+## R36 — Desktop calibration controls must expose and share their real bounds
+
+**What:** IPD advertised 0.1 mm adjustment but rendered no spinner arrows; the vertical preview's full-scale edge
+contract was implicit in two half-extents; Clock + Timer and Notifications stopped at large, different scales.
+**Why:** IPD stepping existed only in key handling, vertical geometry reconstructed total height late, and each card
+repeated its minimum across XAML and native clamps. **Fix:** visible arrow buttons call the same IPD step helper;
+preview vertical state is canonical scale-plus-centre with an exact full-frame branch; the two requested cards use
+`0.1` in their slider and native startup/live clamps, while preview pins consume the slider bounds. **Never again:**
+focused contracts pin both arrow buttons, exact full-height mapping, the two matching scale paths, and unchanged
+neighbouring widget minima. Preview calibration changes must never mutate runtime crop.
+
 ## R35 — Startup state must hydrate the preview immediately
 
 **What:** saved overlay widgets were absent from the preview until the user toggled or changed a control.
