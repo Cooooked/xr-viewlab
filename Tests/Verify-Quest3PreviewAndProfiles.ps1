@@ -101,19 +101,16 @@ foreach ($contract in @(
     @{ Text=$main; Pattern='StepPreviewIpd\(e\.Key == Key\.Up \? 0\.1 : -0\.1\)'; Name='preview IPD 0.1 keyboard steps' },
     @{ Text=$main; Pattern='PreviewIpdUp_Click[^\r\n]+StepPreviewIpd\(0\.1\)'; Name='main visible IPD increment action' },
     @{ Text=$main; Pattern='PreviewIpdDown_Click[^\r\n]+StepPreviewIpd\(-0\.1\)'; Name='main visible IPD decrement action' },
-    @{ Text=$profile; Pattern='PreviewIpdUp_Click[^\r\n]+StepPreviewIpd\(0\.1\)'; Name='profile visible IPD increment action' },
-    @{ Text=$profile; Pattern='PreviewIpdDown_Click[^\r\n]+StepPreviewIpd\(-0\.1\)'; Name='profile visible IPD decrement action' },
+    @{ Text=$profile; Pattern='MaskBeanEditor\.PreviewIpdMillimetres = _previewIpdMillimetres'; Name='profile preview consumes the shared IPD calibration' },
+    @{ Text=$profile; Pattern='MaskBeanEditor\.UseCircularEyeGuides = _useCircularEyeGuides'; Name='profile preview consumes the shared eye-guide mode' },
+    @{ Text=$profile; Pattern='MaskBeanEditor\.UsePerEyeFrameGuides = _usePerEyeFrameGuides'; Name='profile preview consumes the shared frame-guide mode' },
     @{ Text=$geometry; Pattern='calibratedSeparation \* ipd / DefaultIpdMillimetres'; Name='IPD changes guide separation only' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewCircleGuidesCheck"'; Name='main preview guide toggle' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewPerEyeFramesCheck"'; Name='main frame guide toggle' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewIpdBox"[^>]+Text="67\.0"'; Name='main preview IPD input' },
-    @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='<Button[^>]+Click="PreviewIpdUp_Click"'; Name='main visible IPD up arrow' },
-    @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='<Button[^>]+Click="PreviewIpdDown_Click"'; Name='main visible IPD down arrow' },
-    @{ Text=(Get-Content (Join-Path $root 'ProfileWindow.xaml') -Raw); Pattern='Name="PreviewCircleGuidesCheck"'; Name='profile preview guide toggle' },
-    @{ Text=(Get-Content (Join-Path $root 'ProfileWindow.xaml') -Raw); Pattern='Name="PreviewPerEyeFramesCheck"'; Name='profile frame guide toggle' },
-    @{ Text=(Get-Content (Join-Path $root 'ProfileWindow.xaml') -Raw); Pattern='Name="PreviewIpdBox"[^>]+Text="67\.0"'; Name='profile preview IPD input' },
-    @{ Text=(Get-Content (Join-Path $root 'ProfileWindow.xaml') -Raw); Pattern='<Button[^>]+Click="PreviewIpdUp_Click"'; Name='profile visible IPD up arrow' },
-    @{ Text=(Get-Content (Join-Path $root 'ProfileWindow.xaml') -Raw); Pattern='<Button[^>]+Click="PreviewIpdDown_Click"'; Name='profile visible IPD down arrow' }
+    @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='<RepeatButton[^>]+Click="PreviewIpdUp_Click"'; Name='main visible IPD up arrow' },
+    @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='<RepeatButton[^>]+Click="PreviewIpdDown_Click"'; Name='main visible IPD down arrow' },
+    @{ Text=$profile; Pattern='_previewIpdMillimetres = Math\.Round\(Math\.Clamp\(previewIpdMillimetres'; Name='profile preview clamps the shared IPD calibration' }
 )) {
     if ($contract.Text -notmatch $contract.Pattern) { throw "Missing contract: $($contract.Name)" }
 }

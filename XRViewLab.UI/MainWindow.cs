@@ -56,6 +56,16 @@ public partial class MainWindow : Window
 	private const string PreviewCircleGuidesKey = "preview_circle_guides";
 	private const string PreviewPerEyeFramesKey = "preview_per_eye_frames";
 	private const string PreviewIpdKey = "preview_ipd_mm";
+	private const string ObsMirrorVisorKey = "obs_mirror_show_visor";
+	private const string ObsMirrorClockKey = "obs_mirror_show_clock";
+	private const string ObsMirrorNotificationsKey = "obs_mirror_show_notifications";
+	private const string ObsMirrorHudKey = "obs_mirror_show_hud";
+	private const string ObsMirrorTraceKey = "obs_mirror_show_trace";
+	private const string ObsMirrorCrosshairKey = "obs_mirror_show_crosshair";
+	private const string ObsMirrorStickyKey = "obs_mirror_show_sticky_notes";
+	private const string ObsMirrorRecordingCueKey = "obs_mirror_show_recording_cue";
+	private const string ObsMirrorRacingKey = "obs_mirror_show_racing_cues";
+	private const string ObsMirrorBoundaryKey = "obs_mirror_show_boundary_flash";
 	private const string MaskInnerBridgeWidthKey = "mask_inner_bridge_width";
 	private const string MaskInnerBridgeRiseKey = "mask_inner_bridge_rise";
 	private const string MaskInnerBridgePeakXKey = "mask_inner_bridge_peak_x";
@@ -251,6 +261,7 @@ public partial class MainWindow : Window
 		UpdateFooterLayout();
 		VisualMasksPopup.Closed += (_, _) => _visualMasksPopupClosedAt = DateTime.UtcNow;
 		CalibrationPopup.Closed += (_, _) => _calibrationPopupClosedAt = DateTime.UtcNow;
+		PreviewPopup.Closed += (_, _) => _previewPopupClosedAt = DateTime.UtcNow;
 		OverlaysPopup.Closed += (_, _) => _overlaysPopupClosedAt = DateTime.UtcNow;
 		_xrPollTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
 		_xrPollTimer.Tick += XrPollTimer_Tick;
@@ -264,6 +275,7 @@ public partial class MainWindow : Window
 
 	private DateTime _visualMasksPopupClosedAt = DateTime.MinValue;
 	private DateTime _calibrationPopupClosedAt = DateTime.MinValue;
+	private DateTime _previewPopupClosedAt = DateTime.MinValue;
 	private DateTime _overlaysPopupClosedAt = DateTime.MinValue;
 
 	private void OverlaysButton_Click(object sender, RoutedEventArgs e)
@@ -293,6 +305,15 @@ public partial class MainWindow : Window
 		CalibrationPopup.PlacementTarget = (UIElement)sender;
 		CalibrationPopup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
 		CalibrationPopup.IsOpen = true;
+	}
+
+	private void PreviewButton_Click(object sender, RoutedEventArgs e)
+	{
+		if ((DateTime.UtcNow - _previewPopupClosedAt).TotalMilliseconds < 200)
+			return;
+		PreviewPopup.PlacementTarget = (UIElement)sender;
+		PreviewPopup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+		PreviewPopup.IsOpen = true;
 	}
 
 	private static void EnsureConfigMigrated()
@@ -1097,6 +1118,16 @@ public partial class MainWindow : Window
 		PreviewCircleGuidesCheck.IsChecked = ReadBoolSetting(PreviewCircleGuidesKey, true);
 		PreviewPerEyeFramesCheck.IsChecked = ReadBoolSetting(PreviewPerEyeFramesKey, false);
 		PreviewIpdBox.Text = ReadRangeSetting(PreviewIpdKey, 67.0, 50.0, 80.0).ToString("0.0", CultureInfo.InvariantCulture);
+		ObsMirrorVisorCheck.IsChecked = ReadBoolSetting(ObsMirrorVisorKey, true);
+		ObsMirrorClockCheck.IsChecked = ReadBoolSetting(ObsMirrorClockKey, true);
+		ObsMirrorNotificationsCheck.IsChecked = ReadBoolSetting(ObsMirrorNotificationsKey, true);
+		ObsMirrorHudCheck.IsChecked = ReadBoolSetting(ObsMirrorHudKey, true);
+		ObsMirrorTraceCheck.IsChecked = ReadBoolSetting(ObsMirrorTraceKey, true);
+		ObsMirrorCrosshairCheck.IsChecked = ReadBoolSetting(ObsMirrorCrosshairKey, true);
+		ObsMirrorStickyCheck.IsChecked = ReadBoolSetting(ObsMirrorStickyKey, true);
+		ObsMirrorRecordingCueCheck.IsChecked = ReadBoolSetting(ObsMirrorRecordingCueKey, true);
+		ObsMirrorRacingCheck.IsChecked = ReadBoolSetting(ObsMirrorRacingKey, true);
+		ObsMirrorBoundaryCheck.IsChecked = ReadBoolSetting(ObsMirrorBoundaryKey, true);
 		MaskOffsetXSlider.Value = 0.0;
 		MaskOffsetYSlider.Value = 0.0;
 		SyncMaskEditorFromSliders();
@@ -1544,6 +1575,39 @@ public partial class MainWindow : Window
 		PreviewIpdBox.SelectAll();
 	}
 
+	private uint CurrentObsMirrorVisibilityMask()
+	{
+		uint mask = 0;
+		if (ObsMirrorVisorCheck.IsChecked == true) mask |= 1u << 0;
+		if (ObsMirrorHudCheck.IsChecked == true) mask |= 1u << 1;
+		if (ObsMirrorTraceCheck.IsChecked == true) mask |= 1u << 2;
+		if (ObsMirrorClockCheck.IsChecked == true) mask |= 1u << 3;
+		if (ObsMirrorNotificationsCheck.IsChecked == true) mask |= 1u << 4;
+		if (ObsMirrorStickyCheck.IsChecked == true) mask |= 1u << 5;
+		if (ObsMirrorCrosshairCheck.IsChecked == true) mask |= 1u << 6;
+		if (ObsMirrorBoundaryCheck.IsChecked == true) mask |= 1u << 7;
+		if (ObsMirrorRecordingCueCheck.IsChecked == true) mask |= 1u << 8;
+		if (ObsMirrorRacingCheck.IsChecked == true) mask |= 1u << 9;
+		return mask;
+	}
+
+	private void ObsMirrorVisibility_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		WritePrivateProfileString("Settings", ObsMirrorVisorKey, ObsMirrorVisorCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", ObsMirrorClockKey, ObsMirrorClockCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", ObsMirrorNotificationsKey, ObsMirrorNotificationsCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", ObsMirrorHudKey, ObsMirrorHudCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", ObsMirrorTraceKey, ObsMirrorTraceCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", ObsMirrorCrosshairKey, ObsMirrorCrosshairCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", ObsMirrorStickyKey, ObsMirrorStickyCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", ObsMirrorRecordingCueKey, ObsMirrorRecordingCueCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", ObsMirrorRacingKey, ObsMirrorRacingCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", ObsMirrorBoundaryKey, ObsMirrorBoundaryCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		PublishLiveState();
+		StatusText.Text = "OBS mirror visibility applied live; headset visibility is unchanged.";
+	}
+
 	private void MaskSliderReset_RightClick(object sender, MouseButtonEventArgs e)
 	{
 		if (_loading) return;
@@ -1910,7 +1974,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			IRacingSpotterGlowCheck.IsChecked == true, IRacingFlagBorderCheck.IsChecked == true,
 			ClockWidgetEnabledCheck.IsChecked==true,ClockSessionTimerCheck.IsChecked==true,Clock24HourCheck.IsChecked==true,
 			ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,ClockWidgetScaleSlider.Value,ClockWidgetOpacitySlider.Value,(uint)Math.Max(0,ClockThemeCombo.SelectedIndex),
-			new[]{OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudTraceToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(ClockWidgetToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(StickyNoteToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(CrosshairToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(NotifyToggleKeyCombo.SelectedIndex)});
+			new[]{OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudTraceToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(ClockWidgetToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(StickyNoteToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(CrosshairToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(NotifyToggleKeyCombo.SelectedIndex)},
+			CurrentObsMirrorVisibilityMask());
 		_stickyNoteLiveState.Publish(StickyNoteEnabledCheck.IsChecked==true,_stickyNotes);
 		RefreshMaskOverlayPreview();
 	}
@@ -3126,9 +3191,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		};
 		if (profileWindow.ShowDialog() == true)
 		{
-			PreviewCircleGuidesCheck.IsChecked = profileWindow.UseCircularEyeGuidesValue;
-			PreviewPerEyeFramesCheck.IsChecked = profileWindow.UsePerEyeFrameGuidesValue;
-			PreviewIpdBox.Text = profileWindow.PreviewIpdMillimetresValue.ToString("0.0", CultureInfo.InvariantCulture);
 			if (profileWindow.HiddenChanged)
 			{
 				SetAppHidden(appProfile, profileWindow.HiddenValue);

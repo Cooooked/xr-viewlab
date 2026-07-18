@@ -5,10 +5,10 @@ using System.Runtime.Versioning;
 
 [assembly: AssemblyCompany("cooooked")]
 [assembly: AssemblyConfiguration("Release")]
-[assembly: AssemblyFileVersion("4.1.247.0")]
-[assembly: AssemblyInformationalVersion("4.1.247")]
+[assembly: AssemblyFileVersion("4.1.252.0")]
+[assembly: AssemblyInformationalVersion("4.1.252")]
 [assembly: AssemblyProduct("ViewLab")]
 [assembly: AssemblyTitle("xr-viewlab")]
 [assembly: TargetPlatform("Windows10.0.17763.0")]
 [assembly: SupportedOSPlatform("Windows10.0.17763.0")]
-[assembly: AssemblyVersion("4.1.247.0")]
+[assembly: AssemblyVersion("4.1.252.0")]

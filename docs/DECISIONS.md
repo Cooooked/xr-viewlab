@@ -1,5 +1,19 @@
 # Decision log
 
+## D30 — ReShade files, registration and connection evidence are independent
+
+Install/Uninstall touch only ViewLab's two payload files. Enable/Disable touch only ViewLab's 64-bit implicit-layer
+manifest value and never enumerate or reorder other layers. Connected requires a heartbeat transition observed
+after attachment; mapping existence and first-read contents are not a live handshake.
+
+The desktop preview starts as a normal focusable window; headless/borderless is an explicit user choice. Remote
+polling may observe heartbeat freshness, but it updates displayed control state only after a revision change.
+`ReShadePayloadSource/` is the sole canonical modified payload source. It was recovered by an exact pre-change
+DLL hash match and retains its original repository path, remote, base commit and dirty-file inventory in
+`README.ViewLab.md`. Payload-internal behaviour is changed and verified there, then the focused x64 Release output
+must hash-match `ReShadePayload/ReShade64.dll` before packaging. ViewLab UI code must not imitate or conceal
+payload lifecycle faults.
+
 ## D29 — Ordinary overlays share one configuration contract; history is append-only by default
 
 Clock, Performance HUD, Performance Trace, sticky note, crosshair and notifications use one catalogue

@@ -4,7 +4,7 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-18
-**Current version:** 4.1.247 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.247.msi`
+**Current version:** 4.1.252 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.252.msi`
 **Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
 AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
 remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
@@ -18,6 +18,37 @@ extracted-payload validation. Build 4.1.224 additionally passes the full determi
 WPF, broker, signed identity, x64/Win32 native, MSI extraction, pinned PresentMon hash/notice validation;
 its DiagMon real-game CSV and live Trace-cap checks remain mandatory before release.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## ReShade/DiagMon help and OBS mirror routing (implemented; runtime validation pending, 2026-07-18)
+
+ReShade Remote now has concise built-in help, independent Install/Uninstall and Enable/Disable actions, four
+truthful states, and a post-attachment heartbeat requirement for Connected. File actions touch only the two
+ViewLab payload paths; registration actions touch only ViewLab's 64-bit manifest value. DiagMon(ster) now has a
+matching white circular help icon and scrollable capture, graph, interpretation and export guide. The inherited
+OBS work routes selected ViewLab overlays to `OpenXROBSMirrorSurface` via live-state v9 without changing headset
+visibility. WPF and native x64/Win32 direct builds plus contracts pass; runtime validation remains pending.
+
+Focused ReShade Remote follow-up removes the duplicated payload explanation from the main panel, gives the
+complete `In-HMD Menu Quad` section readable vertical space with scrolling fallback, and names the Desktop Menu
+controls explicitly. Fresh control mappings now start the desktop preview focusable (`win_headless=0`) instead of
+silently forcing headless/borderless mode, and the Remote reapplies displayed state only when the shared revision
+changes. Static payload contracts confirm Home (`KeyOverlay=36`), `Local\ReShadeXRControl`, the persisted quad
+transform and OpenXR overlay route remain present. The Remote height now follows its visible content at the
+existing width, capped to the current work area with its existing scroll viewer handling unusual DPI overflow.
+
+The exact modified payload source was recovered from `F:\AI-Projects\ReshadeAI\reshade` into the canonical
+`ReShadePayloadSource/` directory. Its pre-recovery Release DLL was byte-for-byte identical to the bundled DLL
+(SHA-256 `2307754A416C9F73CA9DD84BBC8C418FB67B325B5CFBC2F8F08D8AADF1590EC1`). Provenance is upstream
+commit `4a50d1eddace85734871d91792ff214f13f66c01` plus the recorded dirty-file inventory in
+`ReShadePayloadSource/README.ViewLab.md`. The desktop mirror now forwards Win32 text/key input to ImGui, retains
+and joins one reference-counted window thread, paints an explicit black frame without class-brush erasure,
+invalidates only for new content/control changes, and uses two staging textures so `xrEndFrame` maps the prior
+completed capture instead of the texture copied that frame. The focused x64 ReShade build, all 18 deterministic
+test scripts and the full 4.1.252 WPF/broker/signed-identity/x64/Win32/MSI build pass. Administrative extraction
+proved the MSI contains the exact canonical ReShade DLL (SHA-256
+`211C217BC4A9ED342C2D8B0C46530F118973F728800ED061BFFE7B4598D1412B`); the MSI SHA-256 is
+`89BCCEA4AE47CDEDC1627AD48F2585AFF5557481407CB2D164CAD7B5936611CD`. Live desktop/HMD validation remains
+required before publication.
 
 ## Profile persistence and centred Quest 3 preview (implemented; headset validation pending, 2026-07-18)
 

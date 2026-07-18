@@ -1,9 +1,28 @@
 # Changelog
 
+## Unreleased - 2026-07-18 (Advanced help and truthful ReShade state)
+
+- Split ReShade payload file deployment from ViewLab layer registration and added truthful Not installed,
+  Installed but disabled, Installed and enabled, and live-handshake-only Connected states.
+- Added scrollable built-in help with white circular help icons to ReShade Remote and DiagMon(ster).
+- Completed the inherited OBS mirror-surface route with independent mirror-only overlay visibility controls.
+- Removed the duplicated ReShade explanation from the Remote panel, made the complete In-HMD quad section
+  accessible without shrinking controls, and clarified the Desktop Menu wording.
+- Fresh desktop previews now start focusable instead of forced headless, and Remote state widgets update only
+  when the shared control revision changes. Static contracts pin the Home/shared-memory/OpenXR quad route.
+- The Remote window now sizes its height from visible content, retains its existing width and caps itself to the
+  current work area; its existing scroll viewer remains the DPI/display-scaling overflow path.
+- Recovered the exact modified ReShade fork into `ReShadePayloadSource/`, with original path, upstream commit,
+  dirty-file inventory, exact build commands and packaging route documented in-repository.
+- Fixed desktop-menu text entry by forwarding Win32 character and control-key input to the VR ImGui context.
+  The preview now keeps a joined, reference-counted window thread, repaints only for new frames or real control
+  changes, paints black during empty frames, and double-buffers GPU readback to avoid same-frame map stalls.
+
 ## Unreleased - 2026-07-18 (profile persistence and centred preview)
 
-- Added visible IPD spinner buttons in both preview editors. The buttons and keyboard arrows share
-  the existing 0.1 mm stepping path; direct typing, persistence and live guide updates are unchanged.
+- Added visible IPD spinner buttons to the main preview editor. The buttons and keyboard arrows share
+  the existing 0.1 mm stepping path; profile previews consume the same global calibration and guide modes
+  without exposing a second set of global display-preference controls.
 - Made the preview's vertical scale canonical and direct. Vertical `1.0` now uses the exact outer-frame
   top and height, while split top/bottom values retain their existing preview translation.
 - Lowered only Clock + Timer and Notifications scale minima to `0.1`. Their sliders, preview resize

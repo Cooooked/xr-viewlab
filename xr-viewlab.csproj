@@ -25,6 +25,7 @@
   <ItemGroup>
     <Compile Remove="temp_repo\**" />
     <Compile Remove="ReShadeSource\**" />
+    <Compile Remove="ReShadePayloadSource\**" />
     <Compile Remove="backups\**" />
     <Compile Remove="ReshadeAI\**" />
     <Compile Remove="OpenVRBridge\**" />
@@ -36,6 +37,7 @@
     <Compile Remove="XRViewLab.UI\ObsWebSocketProtocol.cs" />
     <Page Remove="temp_repo\**" />
     <Page Remove="ReShadeSource\**" />
+    <Page Remove="ReShadePayloadSource\**" />
     <Page Remove="backups\**" />
     <Page Remove="ReshadeAI\**" />
     <Page Remove="OpenVRBridge\**" />
@@ -43,6 +45,7 @@
     <Page Remove="Tests\**" />
     <None Remove="temp_repo\**" />
     <None Remove="ReShadeSource\**" />
+    <None Remove="ReShadePayloadSource\**" />
     <None Remove="backups\**" />
     <None Remove="ReshadeAI\**" />
     <None Remove="OpenVRBridge\**" />

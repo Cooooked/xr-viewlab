@@ -72,7 +72,9 @@ public sealed class ReShadeControlService : IDisposable
                 size = ExpectedSize,
                 xr_mode = 0,
                 revision = 0,
-                win_headless = 1,
+                // Start the desktop preview as an ordinary focusable window. Headless/borderless
+                // remains an explicit user choice, rather than silently disabling text entry.
+                win_headless = 0,
                 win_always_on_top = 1,
                 win_snap_cursor = 0,
                 menu_visible = 1,

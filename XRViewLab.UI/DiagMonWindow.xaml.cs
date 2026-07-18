@@ -39,6 +39,9 @@ public partial class DiagMonWindow : Window
         };
     }
 
+    private void Help_Click(object sender, RoutedEventArgs e) =>
+        BuiltInHelpWindow.Show(this, "DiagMon(ster) Guide", BuiltInHelpWindow.DiagMonSections);
+
     protected override async void OnClosing(CancelEventArgs e)
     {
         if (_capture.IsCapturing)

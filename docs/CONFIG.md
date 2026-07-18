@@ -1,5 +1,12 @@
 # Config contract — every key, both sides
 
+## OBS mirror-only visibility
+
+`obs_mirror_show_visor`, `obs_mirror_show_hud`, `obs_mirror_show_trace`, `obs_mirror_show_clock`,
+`obs_mirror_show_notifications`, `obs_mirror_show_sticky_notes`, `obs_mirror_show_crosshair`,
+`obs_mirror_show_boundary_flash`, `obs_mirror_show_recording_cue`, and `obs_mirror_show_racing_cues` default to `1`.
+They select features drawn into `OpenXROBSMirrorSurface`; headset visibility is unchanged.
+
 > Canonical reference for the UI ↔ DLL configuration contract. Update in the same commit as any
 > key change. A key that exists on only one side is a bug (see REGRESSIONS R3).
 

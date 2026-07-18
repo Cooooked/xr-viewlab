@@ -90,8 +90,34 @@ Assert-Contains 'dllmain.cpp' 'if \(draw\.tex\) draw\.tex->AddRef\(\);' 'late fa
 Assert-Contains 'dllmain.cpp' 'p\.tex->Release\(\);' 'late fallback releases its swapchain texture reference'
 Assert-Contains 'dllmain.cpp' 'cropOuterEdgesOnly && viewIndex == 0' 'outer-edge crop is applied (permanently enabled)'
 Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'EncodedCommand' 'ReShade payload installation uses robust PowerShell command encoding'
-Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'IsBundledPayloadDeployed' 'ReShade Remote reports whether its custom payload actually deployed'
+Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'IsPayloadInstalled' 'ReShade Remote reports payload installation independently'
+Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'IsPayloadEnabled' 'ReShade Remote reports layer registration independently'
+Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' '_handshakeBaselineSet' 'Connected requires a post-attachment heartbeat transition'
 Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'Environment\.ProcessPath' 'payload lookup uses the real exe dir, not the single-file TEMP extraction dir'
+Assert-NotContains 'XRViewLab.UI\ReShadeRemoteWindow.cs' "ViewLab's modified ReShade/OpenXR payload provides" 'long ReShade explanation lives only in help'
+Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'VerticalScrollBarVisibility = ScrollBarVisibility\.Auto' 'Remote body has a readable overflow path'
+Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'SizeToContent = SizeToContent\.Height' 'Remote height follows visible content'
+Assert-NotContains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'Height = 540' 'Remote does not retain the obsolete fixed height'
+Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'MaxHeight = Math\.Max\(320, SystemParameters\.WorkArea\.Height - 32\)' 'Remote retains a work-area height cap'
+Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'Header\("DESKTOP MENU"\)' 'Remote names the desktop menu explicitly'
+Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'Check\("Show desktop menu / overlay"' 'desktop menu toggle names its target explicitly'
+Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'Header\("IN-HMD MENU QUAD"\)[\s\S]*RedButton\("Reposition"[\s\S]*RedButton\("Transform"' 'complete in-HMD quad section remains present'
+Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'b\.revision != _lastAppliedRevision' 'Remote applies control state only after a real revision'
+Assert-Contains 'XRViewLab.UI\ReShadeControlService.cs' 'win_headless = 0' 'fresh desktop menu starts focusable'
+Assert-Contains 'ReShadePayload\Docs\Add-Game.reference.ps1' 'KeyOverlay=36,0,0,0' 'Home remains the intended ReShade overlay key'
+$reShadePayload = Join-Path $Root 'ReShadePayload\ReShade64.dll'
+if (-not (Test-Path -LiteralPath $reShadePayload)) { throw 'Contract failed: ReShade payload is missing' }
+$reShadeBytes = [IO.File]::ReadAllBytes($reShadePayload)
+$reShadeAscii = [Text.Encoding]::ASCII.GetString($reShadeBytes)
+$reShadeUnicode = [Text.Encoding]::Unicode.GetString($reShadeBytes)
+foreach ($marker in @('Creating OpenXR overlay', 'ReShadeVRPreview')) {
+    if ($reShadeAscii -notlike "*$marker*" -and $reShadeUnicode -notlike "*$marker*") {
+        throw "Contract failed: ReShade payload is missing pathway marker '$marker'"
+    }
+}
+if ($reShadeUnicode -notlike '*Local\ReShadeXRControl*' -or $reShadeUnicode -notlike '*openxr_quad_transform.ini*') {
+    throw 'Contract failed: ReShade payload is missing its shared-control or quad-transform route'
+}
 Assert-NotContains 'dllmain.cpp' 'config: file changed, hot-reloading' 'native config remains stable for the running game'
 Assert-Contains 'dllmain.cpp' 'visorAntialiasing [?] g_d3d11Mask\.bs : g_d3d11Mask\.bsOpaque' 'AA-off visor draws with the proven opaque (blend-disabled) pipeline'
 Assert-Contains 'dllmain.cpp' 'std::recursive_mutex g_rendererMutex;' 'D3D11 renderer lifetime and immediate context have a dedicated lock'
@@ -126,7 +152,9 @@ Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawPin\(dc, pins\.innerRise' 
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawPin\(dc, pins\.innerPeakX' 'preview draws Peak X pin'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawPin\(dc, pins\.innerSteepness' 'preview draws Steep pin'
 Assert-Contains 'MainWindow.xaml' 'Name="ReShadeButton"' 'ReShade Remote is available next to Edge Masks'
-Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'Text = "WARNING — DO NOT USE"' 'ReShade Remote warns entry-level users'
+Assert-NotContains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'WARNING.*DO NOT USE' 'obsolete ReShade warning is removed'
+Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'BuiltInHelpWindow\.ReShadeSections' 'ReShade has built-in help'
+Assert-Contains 'XRViewLab.UI\DiagMonWindow.xaml' 'CornerRadius="14"' 'DiagMon(ster) has a circular help icon'
 Assert-Contains 'MainWindow.xaml' 'Name="AppsHeader" Visibility="Collapsed"' 'Applications sub-header is removed for aligned responsive columns'
 Assert-Contains 'MainWindow.xaml' 'Name="OptionsHeader" Visibility="Collapsed"' 'Render Options sub-header is removed for aligned responsive columns'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ThanksTextRight\.Visibility     = threeCol \? Visibility\.Visible : Visibility\.Collapsed;' 'beta-testers line moves to the third column in triple-column mode'
@@ -329,9 +357,9 @@ foreach ($key in @('hud_trace_x', 'hud_trace_y', 'hud_trace_scale', 'hud_trace_w
 }
 Assert-Contains 'MainWindow.xaml' 'Name="HudSafeMarginSlider"' 'HUD safe-margin control exists'
 Assert-Contains 'dllmain.cpp' 'hudClampToVisible' 'HUD clamps complete bounds to the visible eye rectangle'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 260' 'live state carries overlay placement controls'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 8u\)' 'live state contract is version 8'
-Assert-Contains 'dllmain.cpp' 'snapshot\.version != 8' 'DLL consumes live-state contract version 8'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 264' 'live state carries OBS mirror controls'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 9u\)' 'live state contract is version 9'
+Assert-Contains 'dllmain.cpp' 'snapshot\.version != 9' 'DLL consumes live-state contract version 9'
 Assert-NotContains 'MainWindow.xaml' 'TopmostVisorOverlaysCheck' 'ordinary UI does not expose backend implementation choice'
 Assert-Contains 'dllmain.cpp' '!ReadBoolSetting\(L"overlay_force_direct", false\)' 'automatic topmost is the normal session policy'
 Assert-Contains 'dllmain.cpp' 'maskEnabled && g_featurePresentationPlan\.drawDirectVisor' 'central policy gates the direct visor path'
@@ -415,6 +443,7 @@ Assert-Contains 'NotificationBroker\AppxManifest.xml.template' 'uap10:AllowExter
 Assert-Contains 'NotificationBroker\app.manifest' 'packageName="cooooked.ViewLab.NotificationBroker"' 'broker executable binds to its identity package'
 Assert-Contains 'NotificationBroker\ViewLab.NotificationBroker.csproj' 'IncludeNativeLibrariesForSelfExtract' 'single-file WPF broker extracts its native runtime dependencies'
 Assert-Contains 'xr-viewlab.csproj' 'Compile Remove="Tests\\\*\*"' 'product project excludes independent test-project sources and generated files'
+Assert-Contains 'xr-viewlab.csproj' 'Compile Remove="ReShadePayloadSource\\\*\*"' 'WPF build excludes canonical native ReShade source'
 Assert-Contains 'XRViewLab.UI\NotificationBrokerClient.cs' 'ViewLab.NotificationBroker.exe' 'settings UI controls the independent broker'
 Assert-Contains 'app.manifest' 'requestedExecutionLevel level="asInvoker"' 'ordinary settings UI runs at medium integrity'
 Assert-Contains 'XRViewLab.UI\App.cs' '--set-layer-enabled' 'machine-wide layer changes use the explicit elevated helper path'
@@ -424,7 +453,7 @@ Assert-Contains 'Installer\Product.wxs' 'ViewLab Notification Broker' 'MSI start
 Assert-Contains 'build.ps1' 'makeappx\.exe' 'build creates the external-location identity package'
 Assert-Contains 'build.ps1' 'signtool\.exe' 'build signs the notification identity package'
 Assert-Contains 'Tests\Invoke-RealNotificationFixture.ps1' 'CardCount' 'real packaged notification fixture proves production card delivery'
-Assert-NotContains 'XRViewLab.UI\MainWindow.cs' '_notifications' 'settings window no longer owns notification collection lifetime'
+Assert-NotContains 'XRViewLab.UI\MainWindow.cs' '\b_notifications\b' 'settings window no longer owns notification collection lifetime'
 Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'IRacingEventPublished[\s\S]{0,500}NotifyEnabledCheck' 'racing telemetry cannot silently enable global Windows notifications'
 Assert-Contains 'MainWindow.xaml' 'Test presentation \(synthetic\)' 'truthfully labelled notification presentation test exists'
 Assert-Contains 'MainWindow.xaml' 'Name="NotifyEnabledCheck"' 'notification enable control exists'

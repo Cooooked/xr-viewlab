@@ -10,7 +10,7 @@ namespace XRViewLab.UI;
 internal sealed class LiveStateService : IDisposable
 {
     private const string Name = "Local\\XRViewLabLiveState";
-    private const int Size = 260;
+    private const int Size = 264;
     private const uint Magic = 0x534C4C56; // VLLS
     private MemoryMappedFile? _map;
     private MemoryMappedViewAccessor? _view;
@@ -20,7 +20,7 @@ internal sealed class LiveStateService : IDisposable
     {
         _map = MemoryMappedFile.CreateOrOpen(Name, Size, MemoryMappedFileAccess.ReadWrite);
         _view = _map.CreateViewAccessor(0, Size, MemoryMappedFileAccess.ReadWrite);
-        _view.Write(0, Magic); _view.Write(4, 8u); _view.Write(8, (uint)Size);
+        _view.Write(0, Magic); _view.Write(4, 9u); _view.Write(8, (uint)Size);
     }
 
     public void Publish(uint calibrationMask,
@@ -39,7 +39,8 @@ internal sealed class LiveStateService : IDisposable
         bool iracingEnabled, bool iracingLapPopup, bool iracingSpotterGlow, bool iracingFlagBorder,
         bool clockEnabled, bool sessionTimerEnabled, bool clock24Hour, double clockX, double clockY,
         double clockScale, double clockOpacity, uint clockTheme,
-        IReadOnlyList<int> overlayToggleKeys)
+        IReadOnlyList<int> overlayToggleKeys,
+        uint obsMirrorVisibilityMask)
     {
         if (_view == null) return;
         _view.Write(16, calibrationMask);
@@ -72,6 +73,7 @@ internal sealed class LiveStateService : IDisposable
         _view.Write(212, (float)clockX); _view.Write(216, (float)clockY); _view.Write(220, (float)clockScale); _view.Write(224, (float)clockOpacity);
 		_view.Write(228, clockTheme); _view.Write(232, (float)noseSpreadX);
         for (int i = 0; i < 6; ++i) _view.Write(236 + i * 4, (uint)(i < overlayToggleKeys.Count ? Math.Clamp(overlayToggleKeys[i], 0, 255) : 0));
+        _view.Write(260, obsMirrorVisibilityMask);
         Thread.MemoryBarrier();
         _view.Write(12, unchecked(++_generation));
     }

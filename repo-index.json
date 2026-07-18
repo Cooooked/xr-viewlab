@@ -182,11 +182,12 @@
     },
     "reshadeRemote": {
       "what": "Advanced popout controlling bundled ReShade OpenXR payload via shared memory",
-      "files": ["XRViewLab.UI/ReShadeRemoteWindow.cs", "XRViewLab.UI/ReShadeControlService.cs", "ReShadePayload/"],
-      "symbols": ["ReShadeControlService", "ReShadeRemoteWindow"],
-      "docs": ["ReShadePayload/Docs/ReshadeAIO_OVERVIEW.md", "docs/DECISIONS.md#legacy-reshade-remote-subsystem-pre-2026-07"],
-      "invariants": ["shared-memory XRControlBlock layout frozen", "commands edge-triggered"],
-      "keywords": ["ReShade", "shared memory", "payload", "heartbeat", "quad transform", "ProgramData"]
+      "files": ["XRViewLab.UI/ReShadeRemoteWindow.cs", "XRViewLab.UI/ReShadeControlService.cs", "XRViewLab.UI/BuiltInHelpWindow.cs", "ReShadePayload/", "ReShadePayloadSource/source/openxr/openxr_overlay.hpp", "ReShadePayloadSource/source/openxr/openxr_overlay_preview.cpp", "ReShadePayloadSource/source/openxr/openxr_hooks_swapchain.cpp", "ReShadePayloadSource/source/runtime_gui_vr.cpp"],
+      "symbols": ["ReShadeControlService", "ReShadeRemoteWindow", "BuiltInHelpWindow", "XRControlBlock", "preview_update", "preview_consume_keyboard_input", "draw_gui_vr"],
+      "tests": ["Tests/Verify-ReShadePayloadSource.ps1"],
+      "docs": ["ReShadePayloadSource/README.ViewLab.md", "ReShadePayload/Docs/SOURCE_BUILD.md", "ReShadePayload/Docs/ReshadeAIO_OVERVIEW.md", "docs/DECISIONS.md#legacy-reshade-remote-subsystem-pre-2026-07"],
+      "invariants": ["shared-memory XRControlBlock layout frozen", "commands edge-triggered", "bundled ReShade64.dll must hash-match the canonical source build"],
+      "keywords": ["ReShade", "shared memory", "payload", "heartbeat", "quad transform", "ProgramData", "OpenComposite", "desktop preview", "ReShadePayloadSource"]
     },
     "buildPackaging": {
       "what": "Version bump + WPF publish + native x64/Win32 + WiX MSI + layer registration",

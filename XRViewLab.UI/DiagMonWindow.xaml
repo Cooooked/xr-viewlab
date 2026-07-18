@@ -9,7 +9,12 @@
   </Window.Resources>
   <Grid Margin="14">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="10"/><RowDefinition Height="Auto"/><RowDefinition Height="10"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-    <TextBlock Text="DiagMon(ster)" FontSize="22" FontWeight="SemiBold"/>
+    <Grid>
+      <TextBlock Text="DiagMon(ster)" FontSize="22" FontWeight="SemiBold"/>
+      <Border Width="28" Height="28" CornerRadius="14" HorizontalAlignment="Right" VerticalAlignment="Top" Cursor="Hand" ToolTip="DiagMon(ster) guide" Background="Transparent" BorderBrush="White" BorderThickness="1.5" MouseLeftButtonUp="Help_Click">
+        <TextBlock Text="?" Foreground="White" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      </Border>
+    </Grid>
     <Border Grid.Row="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="5" Padding="12">
       <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="190"/><ColumnDefinition Width="14"/><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>

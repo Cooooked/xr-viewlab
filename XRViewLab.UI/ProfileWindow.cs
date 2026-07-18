@@ -16,9 +16,6 @@ public partial class ProfileWindow : Window
 
 	public bool UseGlobalValues { get; private set; }
 	public bool UseGlobalVisor { get; private set; }
-	public bool UseCircularEyeGuidesValue { get; private set; } = true;
-	public bool UsePerEyeFrameGuidesValue { get; private set; }
-	public double PreviewIpdMillimetresValue { get; private set; } = Quest3PreviewGeometry.DefaultIpdMillimetres;
 
 	public bool HiddenValue { get; private set; }
 
@@ -79,6 +76,9 @@ public partial class ProfileWindow : Window
 	private readonly double _customVisorSize;
 	private readonly double _customVisorInnerBridgeSteepness;
 	private readonly double _customVisorNoseSpreadX;
+	private readonly bool _useCircularEyeGuides;
+	private readonly bool _usePerEyeFrameGuides;
+	private readonly double _previewIpdMillimetres;
 
 	// In-memory boxes feed the legacy mask_vertical/horizontal calculation (not shown in UI).
 	private readonly TextBox MaskVerticalBox = new() { Text = "1" };
@@ -132,13 +132,10 @@ public partial class ProfileWindow : Window
 		_customVisorInnerBridgeSteepness = Math.Clamp(visorInnerBridgeSteepness, -1.0, 2.0);
 		_customVisorNoseSpreadX = Math.Clamp(visorNoseSpreadX, 0.0, 0.5);
 		DisplayName = appName;
-		UseCircularEyeGuidesValue = useCircularEyeGuides;
-		PreviewCircleGuidesCheck.IsChecked = useCircularEyeGuides;
-		UsePerEyeFrameGuidesValue = usePerEyeFrameGuides;
-		PreviewPerEyeFramesCheck.IsChecked = usePerEyeFrameGuides;
-		PreviewIpdMillimetresValue = Math.Round(Math.Clamp(previewIpdMillimetres,
+		_useCircularEyeGuides = useCircularEyeGuides;
+		_usePerEyeFrameGuides = usePerEyeFrameGuides;
+		_previewIpdMillimetres = Math.Round(Math.Clamp(previewIpdMillimetres,
 			Quest3PreviewGeometry.MinimumIpdMillimetres, Quest3PreviewGeometry.MaximumIpdMillimetres), 1);
-		PreviewIpdBox.Text = PreviewIpdMillimetresValue.ToString("0.0", CultureInfo.InvariantCulture);
 		HiddenValue = hidden;
 		NameBox.Text = appName;
 		ExeNameText.Text = exeName;
@@ -234,9 +231,9 @@ public partial class ProfileWindow : Window
 		MaskBeanEditor.InnerBridgePeakX = VisorInnerBridgePeakXSlider?.Value ?? 0.5;
 		MaskBeanEditor.InnerBridgeSteepness = VisorInnerBridgeSteepnessSlider?.Value ?? 0.5;
 		MaskBeanEditor.NoseSpreadX = VisorNoseSpreadXSlider?.Value ?? 0.0;
-		MaskBeanEditor.UseCircularEyeGuides = PreviewCircleGuidesCheck?.IsChecked == true;
-		MaskBeanEditor.UsePerEyeFrameGuides = PreviewPerEyeFramesCheck?.IsChecked == true;
-		MaskBeanEditor.PreviewIpdMillimetres = CurrentPreviewIpd();
+		MaskBeanEditor.UseCircularEyeGuides = _useCircularEyeGuides;
+		MaskBeanEditor.UsePerEyeFrameGuides = _usePerEyeFrameGuides;
+		MaskBeanEditor.PreviewIpdMillimetres = _previewIpdMillimetres;
 		MaskBeanEditor.OffsetX = VisorOffsetXSlider?.Value ?? 0.0;
 		MaskBeanEditor.OffsetY = VisorOffsetYSlider?.Value ?? 0.0;
 		MaskBeanEditor.OpenInnerPreview = true; // Stencil outer edges only is permanently enabled
@@ -347,61 +344,7 @@ public partial class ProfileWindow : Window
 		VisorOffsetXValue = VisorOffsetXSlider.Value;
 		VisorOffsetYValue = VisorOffsetYSlider.Value;
 		UseGlobalVisor = UseGlobalVisorCheck.IsChecked == true;
-		UseCircularEyeGuidesValue = PreviewCircleGuidesCheck.IsChecked == true;
-		UsePerEyeFrameGuidesValue = PreviewPerEyeFramesCheck.IsChecked == true;
-		PreviewIpdMillimetresValue = CurrentPreviewIpd();
 		base.DialogResult = true;
-	}
-
-	private void PreviewGuideMode_Changed(object sender, RoutedEventArgs e)
-	{
-		UseCircularEyeGuidesValue = PreviewCircleGuidesCheck?.IsChecked == true;
-		if (MaskBeanEditor != null)
-			MaskBeanEditor.UseCircularEyeGuides = UseCircularEyeGuidesValue;
-	}
-
-	private void PreviewFrameMode_Changed(object sender, RoutedEventArgs e)
-	{
-		UsePerEyeFrameGuidesValue = PreviewPerEyeFramesCheck?.IsChecked == true;
-		if (MaskBeanEditor != null)
-			MaskBeanEditor.UsePerEyeFrameGuides = UsePerEyeFrameGuidesValue;
-	}
-
-	private double CurrentPreviewIpd()
-	{
-		if (!double.TryParse(PreviewIpdBox?.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
-			return Quest3PreviewGeometry.DefaultIpdMillimetres;
-		return Math.Round(Math.Clamp(value, Quest3PreviewGeometry.MinimumIpdMillimetres,
-			Quest3PreviewGeometry.MaximumIpdMillimetres), 1);
-	}
-
-	private void PreviewIpd_Changed(object sender, TextChangedEventArgs e)
-	{
-		if (!_initialized || MaskBeanEditor == null || !double.TryParse(PreviewIpdBox.Text,
-			NumberStyles.Float, CultureInfo.InvariantCulture, out _)) return;
-		PreviewIpdMillimetresValue = CurrentPreviewIpd();
-		MaskBeanEditor.PreviewIpdMillimetres = PreviewIpdMillimetresValue;
-	}
-
-	private void PreviewIpd_Commit(object sender, KeyboardFocusChangedEventArgs e) =>
-		PreviewIpdBox.Text = CurrentPreviewIpd().ToString("0.0", CultureInfo.InvariantCulture);
-
-	private void PreviewIpd_KeyDown(object sender, KeyEventArgs e)
-	{
-		if (e.Key != Key.Up && e.Key != Key.Down) return;
-		StepPreviewIpd(e.Key == Key.Up ? 0.1 : -0.1);
-		e.Handled = true;
-	}
-
-	private void PreviewIpdUp_Click(object sender, RoutedEventArgs e) => StepPreviewIpd(0.1);
-	private void PreviewIpdDown_Click(object sender, RoutedEventArgs e) => StepPreviewIpd(-0.1);
-
-	private void StepPreviewIpd(double delta)
-	{
-		PreviewIpdBox.Text = Math.Clamp(CurrentPreviewIpd() + delta,
-			Quest3PreviewGeometry.MinimumIpdMillimetres, Quest3PreviewGeometry.MaximumIpdMillimetres)
-			.ToString("0.0", CultureInfo.InvariantCulture);
-		PreviewIpdBox.SelectAll();
 	}
 
 	private void HideShow_Click(object sender, RoutedEventArgs e)

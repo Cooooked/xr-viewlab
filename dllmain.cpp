@@ -285,6 +285,24 @@ void UpdateOverlayFeatureHotkeys() {
 bool obsIndicatorEnabled=false;
 double obsIndicatorOpacity=.72,obsIndicatorThickness=.009;
 
+enum MirrorFeature : uint32_t {
+    MirrorVisor = 1u << 0,
+    MirrorHud = 1u << 1,
+    MirrorTrace = 1u << 2,
+    MirrorClock = 1u << 3,
+    MirrorNotifications = 1u << 4,
+    MirrorStickyNotes = 1u << 5,
+    MirrorCrosshair = 1u << 6,
+    MirrorBoundaryFlash = 1u << 7,
+    MirrorRecordingCue = 1u << 8,
+    MirrorRacingCues = 1u << 9,
+};
+constexpr uint32_t kAllMirrorFeatures = (1u << 10) - 1u;
+uint32_t obsMirrorVisibilityMask = kAllMirrorFeatures;
+inline bool IncludesMirrorFeature(uint32_t mask, MirrorFeature feature) {
+    return (mask & static_cast<uint32_t>(feature)) != 0;
+}
+
 // ---- Generic racing presentation (iRacing is one broker-side producer) ----
 bool iracingEnabled = false, iracingLapPopup = false, iracingSpotterGlow = false, iracingFlagBorder = false;
 double iracingSpotterWidth = 0.12, iracingSpotterStrength = 1.0, iracingSpotterOpacity = 0.65, iracingSpotterFade = 1.8;
@@ -654,9 +672,10 @@ struct LiveStateBlock {
     uint32_t hudWidgetMask, hudWidgetOrder, hudGraphChannels, hudGraphMode; // v7
     uint32_t clockFlags; float clockX,clockY,clockScale,clockOpacity; uint32_t clockTheme; float visorNoseSpreadX;
     uint32_t overlayToggleKeys[6]; // v8
+    uint32_t obsMirrorVisibilityMask; // v9
 };
 #pragma pack(pop)
-static_assert(sizeof(LiveStateBlock)==260,"live state v8 contract size");
+static_assert(sizeof(LiveStateBlock)==264,"live state v9 contract size");
 constexpr uint32_t kLiveStateMagic = 0x534C4C56; // VLLS
 HANDLE g_liveStateMap = nullptr;
 const LiveStateBlock* g_liveState = nullptr;
@@ -781,7 +800,7 @@ void ConsumeLiveState() {
     ConsumeStickyNoteState();
     if (!g_liveState) { ConnectLiveState(); if (!g_liveState) return; }
     const LiveStateBlock snapshot = *g_liveState;
-    if (snapshot.magic != kLiveStateMagic || snapshot.version != 8 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
+    if (snapshot.magic != kLiveStateMagic || snapshot.version != 9 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
     MemoryBarrier();
     const LiveStateBlock stable = *g_liveState;
     if (stable.generation != snapshot.generation) return;
@@ -833,6 +852,7 @@ void ConsumeLiveState() {
     iracingSpotterGlow = (stable.iracingFlags & 4u) != 0; iracingFlagBorder = (stable.iracingFlags & 8u) != 0;
     clockWidgetEnabled=(stable.clockFlags&1u)!=0;clockSessionTimerEnabled=(stable.clockFlags&2u)!=0;clock24Hour=(stable.clockFlags&4u)!=0;
     clockWidgetX=std::clamp((double)stable.clockX,0.0,1.0);clockWidgetY=std::clamp((double)stable.clockY,0.0,1.0);clockWidgetScale=std::clamp((double)stable.clockScale,.1,2.0);clockWidgetOpacity=std::clamp((double)stable.clockOpacity,.1,1.0);clockWidgetTheme=std::clamp(stable.clockTheme,0u,4u);
+    obsMirrorVisibilityMask = stable.obsMirrorVisibilityMask & kAllMirrorFeatures;
     for(size_t i=0;i<(size_t)OverlayFeatureId::Count;++i)g_overlayFeatureVisibility[i].toggleKey=(int)std::clamp(stable.overlayToggleKeys[i],0u,255u);
     if ((stable.flags & 1u) != 0 && !liveVisorUsesProfileOverride) {
         maskEnabled = (stable.flags & 4u) != 0;
@@ -2804,7 +2824,7 @@ HudDrawSnapshot g_hudDrawSnap;
 void DrawCalibrationOverlayToTexture(
     ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
     const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv,
-    bool includeCalibration, bool includeHudTrace) {
+    bool includeCalibration, bool includeHudTrace, uint32_t featureMask = kAllMirrorFeatures) {
     if (!g_d3d11Mask.initialized || !g_d3d11Mask.context || !tex ||
         eye.rect.extent.width <= 0 || eye.rect.extent.height <= 0) return;
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
@@ -2886,7 +2906,8 @@ void DrawCalibrationOverlayToTexture(
     // same angular position (zero angular disparity — it fuses cleanly and never hugs the
     // opposite lens edge), and it stays positioned relative to the final cropped tangent
     // bounds at any eye resolution.
-    if (includeHudTrace && ((hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace))) && eye.viewIndex < 2) {
+    if (includeHudTrace && (((hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) && IncludesMirrorFeature(featureMask, MirrorHud)) ||
+        ((hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace)) && IncludesMirrorFeature(featureMask, MirrorTrace))) && eye.viewIndex < 2) {
         if (eye.viewIndex == 0 || !g_hudDrawSnap.valid) {
             UpdateHudMetrics();
             for (size_t i = 0; i < kHudWidgetCount; ++i) { g_hudDrawSnap.metrics[i] = g_hudMetrics[i]; g_hudDrawSnap.alarm[i] = g_hudAlarm[i].inAlarm; g_hudDrawSnap.states[i]=g_hudAlarm[i].state; }
@@ -3059,7 +3080,7 @@ void DrawCalibrationOverlayToTexture(
                 emit(cx+cosf(a)*ri,cy+sinf(a)*ri,fr,fg,fb); emit(cx+cosf(b2)*radius,cy+sinf(b2)*radius,fr,fg,fb); emit(cx+cosf(b2)*ri,cy+sinf(b2)*ri,fr,fg,fb);
             }
         };
-        if (hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) for (size_t slot=0; slot<drawWidgetCount; ++slot) {
+        if (hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud) && IncludesMirrorFeature(featureMask, MirrorHud)) for (size_t slot=0; slot<drawWidgetCount; ++slot) {
             const int item=drawWidgets[slot];
             const HudWidgetDescriptor& widget=kHudWidgetRegistry[item];
             const size_t row=slot/widgetsPerRow,col=slot%widgetsPerRow;
@@ -3092,7 +3113,7 @@ void DrawCalibrationOverlayToTexture(
         }
         // Modular performance graph. Each mode admits only compatible units; selected channels
         // remain persisted when switching modes but incompatible lines are not drawn.
-        if (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace) && g_hudTraceVisibilityAlpha > .001f) {
+        if (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace) && IncludesMirrorFeature(featureMask, MirrorTrace) && g_hudTraceVisibilityAlpha > .001f) {
         const float traceIntensity=std::clamp((float)hudTraceOpacity,.10f,1.f)*g_hudTraceVisibilityAlpha;
         const size_t historyN = (size_t)std::clamp(hudTraceHistory, 10.0, (double)snap.samples.size());
 		const float traceScale = std::clamp((float)hudTraceScale, 0.25f, 3.0f);
@@ -3200,7 +3221,8 @@ ID3D11ShaderResourceView* EnsureNotifyCardTexture(uint32_t slot, const NotifyCar
 // textured PS for pre-composited notification cards.
 void DrawViewLabOverlaysToTexture(
     ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
-    const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv) {
+    const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv,
+    uint32_t featureMask = kAllMirrorFeatures) {
     if (!g_d3d11Mask.initialized || !g_d3d11Mask.context || !tex ||
         eye.rect.extent.width <= 0 || eye.rect.extent.height <= 0 || eye.viewIndex > 1) return;
 
@@ -3212,19 +3234,21 @@ void DrawViewLabOverlaysToTexture(
         if (elapsed >= kBoundaryFadeMs) { g_boundaryReleaseTick = 0; boundaryAlpha = 0.f; }
         else boundaryAlpha = 1.f - (float)elapsed / (float)kBoundaryFadeMs;
     }
-    const bool wantBoundary = boundaryAlpha > 0.001f;
-    const bool wantClock = clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock) && clockWidgetOpacity > 0.001;
-    const bool wantSticky=stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote();
-    const bool wantObs=ObsRecordingActive();
+    const bool wantBoundary = IncludesMirrorFeature(featureMask, MirrorBoundaryFlash) && boundaryAlpha > 0.001f;
+    const bool wantClock = IncludesMirrorFeature(featureMask, MirrorClock) && clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock) && clockWidgetOpacity > 0.001;
+    const bool wantSticky=IncludesMirrorFeature(featureMask, MirrorStickyNotes) && stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote();
+    const bool wantObs=IncludesMirrorFeature(featureMask, MirrorRecordingCue) && ObsRecordingActive();
     const uint64_t markerUntil=g_traceMarkerConfirmationUntil.load(std::memory_order_acquire);
     const uint32_t markerNumber=g_traceMarkerConfirmation.load(std::memory_order_acquire);
-    const bool wantTraceMarker=markerNumber!=0 && markerUntil>GetTickCount64();
-    const bool wantCrosshair = crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair) && crosshairAlpha > 0.001f;
+    const bool wantTraceMarker=IncludesMirrorFeature(featureMask, MirrorTrace) && markerNumber!=0 && markerUntil>GetTickCount64();
+    const bool wantCrosshair = IncludesMirrorFeature(featureMask, MirrorCrosshair) && crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair) && crosshairAlpha > 0.001f;
     ConsumeRacingState();
-    const bool wantSpotter = ((iracingEnabled && iracingSpotterGlow) || (g_racingStable.presentationFlags & 1u)) && g_racingStable.spotterState != 0;
-    const bool wantFlag = ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
+    const bool wantSpotter = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingSpotterGlow) || (g_racingStable.presentationFlags & 1u)) && g_racingStable.spotterState != 0;
+    const bool wantFlag = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
     bool wantNotify = false;
-    if (((notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications)) || (iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u)) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 2) wantNotify = true; }
+    const bool wantsNotificationCards = IncludesMirrorFeature(featureMask, MirrorNotifications) && notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications);
+    const bool wantsRacingLap = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u));
+    if ((wantsNotificationCards || wantsRacingLap) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 2) wantNotify = true; }
     if (!wantBoundary && !wantClock && !wantSticky && !wantObs && !wantTraceMarker && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
 
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
@@ -3548,12 +3572,12 @@ void DrawViewLabOverlaysToTexture(
 
 void DrawCalibrationPatternsToTexture(ID3D11Texture2D* tex, uint32_t arrSize, int64_t scFormat,
     const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* cachedRtv,
-    bool includeCalibration, bool includeHudAndOverlays) {
+    bool includeCalibration, bool includeHudAndOverlays, uint32_t featureMask = kAllMirrorFeatures) {
     if (includeCalibration && calibrationGrid) DrawCalibrationGridToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv);
     if ((includeCalibration && AnyCalibrationPattern()) || (includeHudAndOverlays && ((hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace)))))
-        DrawCalibrationOverlayToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv,includeCalibration,includeHudAndOverlays);
+        DrawCalibrationOverlayToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv,includeCalibration,includeHudAndOverlays,featureMask);
     if (includeHudAndOverlays && AnyViewLabOverlay())
-        DrawViewLabOverlaysToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv);
+        DrawViewLabOverlaysToTexture(tex, arrSize, scFormat, eye, allViews, cachedRtv,featureMask);
 }
 
 struct TopmostSubmission {
@@ -3719,6 +3743,104 @@ bool RenderTopmostLayer(XrSession session, const XrCompositionLayerProjection* s
         out.views[i].subImage.imageArrayIndex=i;
     }
     return true;
+}
+
+#pragma pack(push, 4)
+struct ObsMirrorSurfaceData {
+    uint32_t lastProcessedIndex, frameNumber, eyeIndex;
+    float overlap, blend, blendPos;
+    uint64_t sharedHandle[3];
+};
+#pragma pack(pop)
+static_assert(sizeof(ObsMirrorSurfaceData) == 48, "OpenXR OBS Mirror surface contract size");
+HANDLE g_obsMirrorSurfaceMap = nullptr;
+const ObsMirrorSurfaceData* g_obsMirrorSurface = nullptr;
+ID3D11Texture2D* g_obsMirrorTexture = nullptr;
+uint64_t g_obsMirrorTextureHandle = 0;
+uint64_t g_obsMirrorNextConnectTick = 0;
+std::atomic<bool> g_obsMirrorConnectedLogged{false};
+
+void DisconnectObsMirrorSurface() {
+    if (g_obsMirrorTexture) g_obsMirrorTexture->Release();
+    if (g_obsMirrorSurface) UnmapViewOfFile(g_obsMirrorSurface);
+    if (g_obsMirrorSurfaceMap) CloseHandle(g_obsMirrorSurfaceMap);
+    g_obsMirrorTexture = nullptr; g_obsMirrorTextureHandle = 0;
+    g_obsMirrorSurface = nullptr; g_obsMirrorSurfaceMap = nullptr;
+    g_obsMirrorNextConnectTick = 0; g_obsMirrorConnectedLogged.store(false);
+}
+
+bool EnsureObsMirrorSurfaceTexture() {
+    if (!g_obsMirrorSurface) {
+        const uint64_t now = GetTickCount64();
+        if (now < g_obsMirrorNextConnectTick) return false;
+        g_obsMirrorNextConnectTick = now + 1000;
+        g_obsMirrorSurfaceMap = OpenFileMappingW(FILE_MAP_READ, FALSE, L"OpenXROBSMirrorSurface");
+        if (!g_obsMirrorSurfaceMap) return false;
+        g_obsMirrorSurface = static_cast<const ObsMirrorSurfaceData*>(MapViewOfFile(
+            g_obsMirrorSurfaceMap, FILE_MAP_READ, 0, 0, sizeof(ObsMirrorSurfaceData)));
+        if (!g_obsMirrorSurface) {
+            CloseHandle(g_obsMirrorSurfaceMap); g_obsMirrorSurfaceMap = nullptr; return false;
+        }
+    }
+    const ObsMirrorSurfaceData snapshot = *g_obsMirrorSurface;
+    MemoryBarrier();
+    if (snapshot.eyeIndex > 2 || !std::isfinite(snapshot.overlap) || snapshot.overlap < 0.f ||
+        snapshot.overlap > 100.f || snapshot.sharedHandle[0] == 0) return false;
+    if (g_obsMirrorTexture && g_obsMirrorTextureHandle == snapshot.sharedHandle[0]) return true;
+    if (g_obsMirrorTexture) { g_obsMirrorTexture->Release(); g_obsMirrorTexture = nullptr; }
+    g_obsMirrorTextureHandle = 0;
+    ID3D11Texture2D* texture = nullptr;
+    const HRESULT opened = g_d3d11Mask.device->OpenSharedResource(
+        reinterpret_cast<HANDLE>(static_cast<uintptr_t>(snapshot.sharedHandle[0])),
+        __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&texture));
+    if (FAILED(opened) || !texture) return false;
+    D3D11_TEXTURE2D_DESC desc{}; texture->GetDesc(&desc);
+    if (desc.Width == 0 || desc.Height == 0 || desc.ArraySize != 1 ||
+        (desc.BindFlags & D3D11_BIND_RENDER_TARGET) == 0) {
+        texture->Release(); return false;
+    }
+    g_obsMirrorTexture = texture; g_obsMirrorTextureHandle = snapshot.sharedHandle[0];
+    if (!g_obsMirrorConnectedLogged.exchange(true))
+        Log("OBS mirror route: connected to OpenXROBSMirrorSurface (%ux%u format=%d eyeMode=%u)\n",
+            desc.Width, desc.Height, static_cast<int>(desc.Format), snapshot.eyeIndex);
+    return true;
+}
+
+void DrawObsMirrorSurface(const XrCompositionLayerProjection* source) {
+    if (!source || !source->views || source->viewCount == 0 || obsMirrorVisibilityMask == 0 ||
+        !g_d3d11Mask.device || !g_d3d11Mask.context || !EnsureObsMirrorSurfaceTexture()) return;
+    const ObsMirrorSurfaceData surface = *g_obsMirrorSurface;
+    D3D11_TEXTURE2D_DESC desc{}; g_obsMirrorTexture->GetDesc(&desc);
+    std::vector<EyeView> sourceViews = g_primaryProjectionContext.topology.AllViews();
+    if (sourceViews.empty()) return;
+    std::sort(sourceViews.begin(), sourceViews.end(), [](const EyeView& a, const EyeView& b) {
+        return a.viewIndex < b.viewIndex;
+    });
+    std::vector<EyeView> mirrorViews;
+    if (surface.eyeIndex < 2) {
+        auto selected = std::find_if(sourceViews.begin(), sourceViews.end(), [&](const EyeView& eye) {
+            return eye.viewIndex == surface.eyeIndex;
+        });
+        EyeView eye = selected != sourceViews.end() ? *selected : sourceViews.front();
+        eye.rect = {{0, 0}, {static_cast<int32_t>(desc.Width), static_cast<int32_t>(desc.Height)}};
+        eye.arraySlice = 0; mirrorViews.push_back(eye);
+    } else {
+        const int32_t eyeWidth = (std::min)(sourceViews.front().rect.extent.width, static_cast<int32_t>(desc.Width));
+        const int32_t offset = static_cast<int32_t>(std::lround(eyeWidth * surface.overlap / 100.f));
+        for (size_t i = 0; i < sourceViews.size() && i < 2; ++i) {
+            EyeView eye = sourceViews[i]; eye.arraySlice = 0;
+            eye.rect = {{i == 0 ? 0 : offset, 0},
+                {(std::min)(eyeWidth, static_cast<int32_t>(desc.Width) - (i == 0 ? 0 : offset)), static_cast<int32_t>(desc.Height)}};
+            if (eye.rect.extent.width > 0) mirrorViews.push_back(eye);
+        }
+    }
+    for (const EyeView& eye : mirrorViews) {
+        if (maskEnabled && IncludesMirrorFeature(obsMirrorVisibilityMask, MirrorVisor))
+            DrawVisorBorderToTexture(g_obsMirrorTexture, 1, desc.Format, eye, mirrorViews, nullptr);
+        DrawCalibrationPatternsToTexture(g_obsMirrorTexture, 1, desc.Format, eye, mirrorViews, nullptr,
+            false, true, obsMirrorVisibilityMask);
+    }
+    g_d3d11Mask.context->Flush();
 }
 
 void DrawCapturedProjectionTextures(bool drawVisor, const char* tag) {
@@ -4240,6 +4362,17 @@ void LoadConfig() {
     obsIndicatorEnabled=ReadBoolSetting(L"obs_indicator_enabled",false);
     obsIndicatorOpacity=std::clamp(ReadDoubleSetting(L"obs_indicator_opacity",.72),.1,1.0);
     obsIndicatorThickness=std::clamp(ReadDoubleSetting(L"obs_indicator_thickness",.009),.002,.04);
+    obsMirrorVisibilityMask = 0;
+    if (ReadBoolSetting(L"obs_mirror_show_visor", true)) obsMirrorVisibilityMask |= MirrorVisor;
+    if (ReadBoolSetting(L"obs_mirror_show_hud", true)) obsMirrorVisibilityMask |= MirrorHud;
+    if (ReadBoolSetting(L"obs_mirror_show_trace", true)) obsMirrorVisibilityMask |= MirrorTrace;
+    if (ReadBoolSetting(L"obs_mirror_show_clock", true)) obsMirrorVisibilityMask |= MirrorClock;
+    if (ReadBoolSetting(L"obs_mirror_show_notifications", true)) obsMirrorVisibilityMask |= MirrorNotifications;
+    if (ReadBoolSetting(L"obs_mirror_show_sticky_notes", true)) obsMirrorVisibilityMask |= MirrorStickyNotes;
+    if (ReadBoolSetting(L"obs_mirror_show_crosshair", true)) obsMirrorVisibilityMask |= MirrorCrosshair;
+    if (ReadBoolSetting(L"obs_mirror_show_boundary_flash", true)) obsMirrorVisibilityMask |= MirrorBoundaryFlash;
+    if (ReadBoolSetting(L"obs_mirror_show_recording_cue", true)) obsMirrorVisibilityMask |= MirrorRecordingCue;
+    if (ReadBoolSetting(L"obs_mirror_show_racing_cues", true)) obsMirrorVisibilityMask |= MirrorRacingCues;
     // Generic racing presentation settings.
     iracingEnabled = ReadBoolSetting(L"iracing_enabled", false);
     iracingLapPopup = ReadBoolSetting(L"iracing_lap_popup", false);
@@ -4804,6 +4937,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
         viewlab::telemetry::SetPreferredAdapterLuid(0);
         ReleaseD3D11MaskRenderer();
         DisconnectLiveState();
+        DisconnectObsMirrorSurface();
         DisconnectTelemetryConfig();
         DisconnectStickyNoteState();
         DisconnectNotify();
@@ -5126,6 +5260,8 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         }
     }
     const XrResult result = nextXrEndFrame(session, submittedTopmost ? &submittedInfo : frameEndInfo);
+    if (XR_SUCCEEDED(result) && primaryProjection && !g_rendererDeviceLost.load(std::memory_order_acquire))
+        DrawObsMirrorSurface(primaryProjection);
     if (TracePipelineSerial(pipelineFrameSerial)) {
         LARGE_INTEGER submittedStop{};
         QueryPerformanceCounter(&submittedStop);

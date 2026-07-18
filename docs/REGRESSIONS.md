@@ -1,5 +1,22 @@
 # Regression memory
 
+## R38 — Remote layout and desktop focus are separate contracts
+
+**What:** duplicated help text clipped the In-HMD controls, while fresh desktop preview windows began headless and
+could not accept normal text focus. **Why:** a fixed-height, non-scrollable body gained another paragraph, and the
+managed mapping defaulted `win_headless=1`. The Remote also reapplied unchanged widget values every poll. **Fix:**
+details live only in help; the readable body has sufficient height plus scrolling; fresh mappings use
+`win_headless=0`; UI state is revision-gated. **Never again:** focused contracts pin all four facts and the binary
+markers for Home, shared control, persisted transform and OpenXR overlay. Payload-internal lag/refresh defects
+cannot be declared fixed without the payload source and a rebuilt binary.
+
+## R37 — A first-read ReShade heartbeat is not a live handshake
+
+**What:** stale shared memory could initially report Connected with no live payload. **Why:** the first poll compared
+a persisted non-zero heartbeat with the window's default zero and called it a fresh update. **Fix:** attachment
+baselines the current value; only a later heartbeat transition starts the Connected freshness window. **Never
+again:** mapping existence and initial contents are transport state, not runtime evidence.
+
 > Institutional scar tissue. Read before touching the areas named here. Append an entry whenever
 > a significant regression occurs: what / why / how detected / fix / how to never repeat it.
 

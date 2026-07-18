@@ -239,20 +239,6 @@
               <TextBlock Grid.Row="18" Grid.Column="0" Text="Y" VerticalAlignment="Center" FontSize="12" />
               <Slider Name="VisorOffsetYSlider" Grid.Row="18" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
             </Grid>
-            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-              <TextBlock Text="IPD" VerticalAlignment="Center" Margin="0,0,4,0" />
-              <Grid Margin="0,0,12,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
-                <TextBox Name="PreviewIpdBox" Text="67.0" VerticalContentAlignment="Center" ToolTip="Preview-only IPD in millimetres. Type a value, use the arrow buttons, or press Up/Down for 0.1 mm steps." TextChanged="PreviewIpd_Changed" LostKeyboardFocus="PreviewIpd_Commit" PreviewKeyDown="PreviewIpd_KeyDown" />
-                <Grid Grid.Column="1">
-                  <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                  <Button Grid.Row="0" Content="▲" Padding="0" FontSize="7" Click="PreviewIpdUp_Click" ToolTip="Increase preview IPD by 0.1 mm" />
-                  <Button Grid.Row="1" Content="▼" Padding="0" FontSize="7" Click="PreviewIpdDown_Click" ToolTip="Decrease preview IPD by 0.1 mm" />
-                </Grid>
-              </Grid>
-              <CheckBox Name="PreviewPerEyeFramesCheck" Content="Per-eye frames" Margin="0,0,12,0" ToolTip="Switch the dotted frame guide between one combined frame and two overlapping per-eye rectangles." Checked="PreviewFrameMode_Changed" Unchecked="PreviewFrameMode_Changed" />
-              <CheckBox Name="PreviewCircleGuidesCheck" Content="Dual eye circles" IsChecked="True" ToolTip="Switch the dotted periphery guide between one binocular oval and two true eye circles." Checked="PreviewGuideMode_Changed" Unchecked="PreviewGuideMode_Changed" />
-            </StackPanel>
             <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,4,0,0" ShapeChanged="MaskBeanEditor_ShapeChanged" />
           </StackPanel>
           <TextBlock Name="CombinedHint" Grid.Row="19" Grid.ColumnSpan="3" Foreground="{StaticResource MutedBrush}" />

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -24,27 +25,35 @@ public sealed class ReShadeRemoteWindow : Window
     static readonly Brush Green = B("#7FB069"), Amber = B("#E0A33A");
 
     const string QuadIni = @"C:\ProgramData\ReShade\openxr_quad_transform.ini";
+    const string PayloadDirectory = @"C:\ProgramData\ReShade";
+    const string PayloadDll = @"C:\ProgramData\ReShade\ReShade64.dll";
+    const string PayloadManifest = @"C:\ProgramData\ReShade\ReShade64_XR.json";
+    const string LayerRegistryPath = @"HKLM:\SOFTWARE\Khronos\OpenXR\1\ApiLayers\Implicit";
 
     readonly ReShadeControlService _svc = new();
-    readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(300) };
+    readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     bool _applying;
-    uint _lastHb; DateTime _lastHbChange = DateTime.MinValue;
+    uint _lastHb; DateTime _lastHbChange = DateTime.MinValue; bool _handshakeBaselineSet;
+    uint _lastAppliedRevision = uint.MaxValue;
 
     TextBlock _status = null!, _setup = null!;
-    Border _gameplay = null!, _tuning = null!, _btnInstall = null!, _btnReposition = null!, _btnTransform = null!;
+    Border _gameplay = null!, _tuning = null!, _btnInstall = null!, _btnEnable = null!, _btnReposition = null!, _btnTransform = null!;
     CheckBox _menu = null!, _headless = null!, _onTop = null!;
     Window? _reposWin, _transWin;
 
     public ReShadeRemoteWindow()
     {
         Title = "Advanced: ReShade Remote";
-        Width = 340; Height = 486; WindowStyle = WindowStyle.None; AllowsTransparency = true;
+        Width = 340;
+        SizeToContent = SizeToContent.Height;
+        MaxHeight = Math.Max(320, SystemParameters.WorkArea.Height - 32);
+        WindowStyle = WindowStyle.None; AllowsTransparency = true;
         Background = Brushes.Transparent; Foreground = Text;
         FontFamily = new FontFamily("Segoe UI"); FontSize = 14;
         WindowStartupLocation = WindowStartupLocation.CenterScreen; ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = true;
         Content = BuildRoot();
-        Loaded += (_, _) => { _svc.TryConnect(); _timer.Tick += OnTick; _timer.Start(); };
+        Loaded += (_, _) => { AttachControlChannel(); _timer.Tick += OnTick; _timer.Start(); OnTick(null, EventArgs.Empty); };
         Closed += (_, _) => { _timer.Stop(); _reposWin?.Close(); _transWin?.Close(); _svc.Dispose(); };
     }
 
@@ -56,6 +65,14 @@ public sealed class ReShadeRemoteWindow : Window
         _svc.WriteBlock(ref b);
     }
 
+    void AttachControlChannel()
+    {
+        if (!_svc.TryConnect()) return;
+        _lastHb = _svc.ReadBlock().heartbeat;
+        _lastHbChange = DateTime.MinValue;
+        _handshakeBaselineSet = true;
+    }
+
     UIElement BuildRoot()
     {
         var root = new Border { CornerRadius = new CornerRadius(10), Background = Shell, BorderBrush = Border_, BorderThickness = new Thickness(1) };
@@ -63,28 +80,23 @@ public sealed class ReShadeRemoteWindow : Window
         dock.Children.Add(TitleBar());
         var body = new StackPanel { Margin = new Thickness(16, 2, 16, 14) };
 
-        body.Children.Add(new TextBlock {
-            Text = "WARNING — DO NOT USE",
-            Foreground = B("#FF4B55"), FontSize = 20, FontWeight = FontWeights.Bold,
-            TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 4, 0, 8)
-        });
-
         _status = new TextBlock { Foreground = Muted, FontSize = 12, Margin = new Thickness(0, 0, 0, 8) };
         body.Children.Add(_status);
         _setup = new TextBlock { Foreground = Muted, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
         body.Children.Add(_setup);
 
         body.Children.Add(Header("SETUP"));
-        _btnInstall = RedButton("Install component", InstallPayload);
-        body.Children.Add(_btnInstall);
+        _btnInstall = RedButton("Install ReShade", ToggleInstallPayload);
+        _btnEnable = RedButton("Enable ReShade", TogglePayloadEnabled);
+        body.Children.Add(Row(_btnInstall, _btnEnable));
 
         body.Children.Add(Header("MODE"));
         _gameplay = Chip("Gameplay", () => SetMode(0));
         _tuning = Chip("Tuning", () => SetMode(1));
         body.Children.Add(Row(_gameplay, _tuning));
 
-        body.Children.Add(Header("MENU"));
-        _menu = Check("Show menu / overlay", v => Mutate((ref ReShadeControlService.XRControlBlock b) => b.menu_visible = v));
+        body.Children.Add(Header("DESKTOP MENU"));
+        _menu = Check("Show desktop menu / overlay", v => Mutate((ref ReShadeControlService.XRControlBlock b) => b.menu_visible = v));
         body.Children.Add(_menu);
 
         body.Children.Add(Header("DESKTOP MENU WINDOW"));
@@ -98,7 +110,12 @@ public sealed class ReShadeRemoteWindow : Window
         _btnTransform = RedButton("Transform", ToggleTrans);
         body.Children.Add(Row(_btnReposition, _btnTransform));
 
-        dock.Children.Add(body);
+        dock.Children.Add(new ScrollViewer
+        {
+            Content = body,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        });
         root.Child = dock;
         return root;
     }
@@ -108,17 +125,36 @@ public sealed class ReShadeRemoteWindow : Window
         var bar = new Grid { Height = 42, Background = Brushes.Transparent };
         bar.ColumnDefinitions.Add(new ColumnDefinition());
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         DockPanel.SetDock(bar, Dock.Top);
         var t = new TextBlock { Text = "ADVANCED  RESHADE  REMOTE", FontSize = 13, FontWeight = FontWeights.Bold, Foreground = Text, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
         Grid.SetColumn(t, 0);
+        var help = HelpIcon(OpenReShadeHelp);
+        Grid.SetColumn(help, 1);
         var x = new TextBlock { Text = "X", FontSize = 14, Foreground = Muted, Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(14, 8, 16, 8) };
         x.MouseLeftButtonDown += (_, e) => { e.Handled = true; Close(); };
         x.MouseEnter += (_, _) => x.Foreground = Red; x.MouseLeave += (_, _) => x.Foreground = Muted;
-        Grid.SetColumn(x, 1);
-        bar.Children.Add(t); bar.Children.Add(x);
-        bar.MouseLeftButtonDown += (_, e) => { if (!ReferenceEquals(e.OriginalSource, x) && e.ButtonState == MouseButtonState.Pressed) { try { DragMove(); } catch { } } };
+        Grid.SetColumn(x, 2);
+        bar.Children.Add(t); bar.Children.Add(help); bar.Children.Add(x);
+        bar.MouseLeftButtonDown += (_, e) => { if (!ReferenceEquals(e.OriginalSource, x) && !help.IsMouseOver && e.ButtonState == MouseButtonState.Pressed) { try { DragMove(); } catch { } } };
         return bar;
     }
+
+    Border HelpIcon(Action onClick)
+    {
+        var icon = new Border { Width = 25, Height = 25, CornerRadius = new CornerRadius(13), BorderBrush = Brushes.White,
+            BorderThickness = new Thickness(1.5), Background = Brushes.Transparent, Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center, ToolTip = "About Advanced ReShade" };
+        icon.Child = new TextBlock { Text = "?", Foreground = Brushes.White, FontWeight = FontWeights.Bold,
+            FontSize = 15, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        icon.MouseEnter += (_, _) => icon.Background = B("#34363B");
+        icon.MouseLeave += (_, _) => icon.Background = Brushes.Transparent;
+        icon.MouseLeftButtonDown += (_, e) => { e.Handled = true; icon.Background = Red; };
+        icon.MouseLeftButtonUp += (_, e) => { e.Handled = true; icon.Background = B("#34363B"); onClick(); };
+        return icon;
+    }
+
+    void OpenReShadeHelp() => BuiltInHelpWindow.Show(this, "About Advanced ReShade", BuiltInHelpWindow.ReShadeSections);
 
     UIElement Header(string s) => new TextBlock { Text = s, Foreground = Head, FontSize = 10, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 11, 0, 5) };
 
@@ -335,27 +371,58 @@ public sealed class ReShadeRemoteWindow : Window
 
     static bool HasBundledPayload() => PayloadRoot() != null;
 
-    static bool IsBundledPayloadDeployed()
+    static string PsQuote(string value) => "'" + value.Replace("'", "''") + "'";
+
+    static bool IsPayloadInstalled() => File.Exists(PayloadDll) && File.Exists(PayloadManifest);
+
+    static bool IsPayloadEnabled()
     {
         try
         {
-            string? payload = PayloadRoot();
-            if (payload == null) return false;
-            FileInfo source = new(Path.Combine(payload, "ReShade64.dll"));
-            FileInfo deployed = new(@"C:\ProgramData\ReShade\ReShade64.dll");
-            return source.Exists && deployed.Exists && source.Length == deployed.Length &&
-                File.Exists(@"C:\ProgramData\ReShade\ReShade64_XR.json");
+            using RegistryKey baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+            using RegistryKey? key = baseKey.OpenSubKey(@"SOFTWARE\Khronos\OpenXR\1\ApiLayers\Implicit", false);
+            return key?.GetValue(PayloadManifest) is int value && value == 0;
         }
-        catch
-        {
-            return false;
-        }
+        catch { return false; }
     }
 
-    static string PsQuote(string value) => "'" + value.Replace("'", "''") + "'";
+    static void SetButtonText(Border button, string text) => ((TextBlock)button.Child).Text = text;
 
-    void InstallPayload()
+    bool RunElevated(string command, string failed, string cancelled)
     {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " +
+                Convert.ToBase64String(Encoding.Unicode.GetBytes("$ErrorActionPreference='Stop';" + command)),
+            UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden
+        };
+        try
+        {
+            using Process? process = Process.Start(psi);
+            if (process == null) { _setup.Text = failed; return false; }
+            process.WaitForExit();
+            if (process.ExitCode == 0) return true;
+            _setup.Text = failed;
+        }
+        catch { _setup.Text = cancelled; }
+        return false;
+    }
+
+    void ToggleInstallPayload()
+    {
+        if (IsPayloadInstalled())
+        {
+            string remove =
+                "Remove-Item -LiteralPath " + PsQuote(PayloadDll) + " -Force -ErrorAction SilentlyContinue;" +
+                "Remove-Item -LiteralPath " + PsQuote(PayloadManifest) + " -Force -ErrorAction SilentlyContinue;";
+            if (RunElevated(remove, "Uninstall failed. Close any game using the payload and try again.",
+                "Uninstall cancelled. Windows permission is required to remove ViewLab's payload files."))
+                _setup.Text = "Payload files removed. OpenXR layer registration was not changed.";
+            OnTick(null, EventArgs.Empty);
+            return;
+        }
+
         string? payload = PayloadRoot();
         if (payload == null)
         {
@@ -363,65 +430,44 @@ public sealed class ReShadeRemoteWindow : Window
             return;
         }
 
-        string command =
-            "$ErrorActionPreference='Stop';" +
-            "$src=" + PsQuote(payload) + ";" +
+        string command = "$src=" + PsQuote(payload) + ";" +
             "$dest='C:\\ProgramData\\ReShade';" +
             "New-Item -ItemType Directory -Force -Path $dest | Out-Null;" +
             "Copy-Item -LiteralPath (Join-Path $src 'ReShade64.dll') -Destination (Join-Path $dest 'ReShade64.dll') -Force;" +
-            "Copy-Item -LiteralPath (Join-Path $src 'ReShade64_XR.json') -Destination (Join-Path $dest 'ReShade64_XR.json') -Force;" +
-            "$key='HKLM:\\SOFTWARE\\Khronos\\OpenXR\\1\\ApiLayers\\Implicit';" +
-            // NEVER use New-Item -Force here: on an existing registry key it recreates the
-            // key and deletes every other implicit OpenXR layer registered on the machine.
-            "if(-not(Test-Path $key)){New-Item -Path $key | Out-Null};" +
-            "$json='C:\\ProgramData\\ReShade\\ReShade64_XR.json';" +
-            "New-ItemProperty -Path $key -Name $json -PropertyType DWord -Value 0 -Force | Out-Null;";
+            "Copy-Item -LiteralPath (Join-Path $src 'ReShade64_XR.json') -Destination (Join-Path $dest 'ReShade64_XR.json') -Force;";
+        if (RunElevated(command, "Install failed. Close any game using the payload and try again.",
+            "Install cancelled. Windows permission is required to copy ViewLab's payload files."))
+            _setup.Text = "Payload files installed. Enable the ViewLab layer when required.";
+        OnTick(null, EventArgs.Empty);
+    }
 
-        ProcessStartInfo psi = new()
-        {
-            FileName = "powershell.exe",
-            // -EncodedCommand avoids Windows/PowerShell quoting ambiguities that previously
-            // allowed the elevation prompt to appear while the copy command did nothing.
-            Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " +
-                Convert.ToBase64String(Encoding.Unicode.GetBytes(command)),
-            UseShellExecute = true,
-            Verb = "runas",
-            WindowStyle = ProcessWindowStyle.Hidden
-        };
-
-        try
-        {
-            using Process? p = Process.Start(psi);
-            if (p == null)
-            {
-                _setup.Text = "Install failed: Windows did not start the installer.";
-                return;
-            }
-            p.WaitForExit();
-            if (p.ExitCode == 0)
-            {
-                _setup.Text = "ReShade installed. Launch the game and ReShade Remote will connect.";
-            }
-            else
-            {
-                _setup.Text = "Install failed: ReShade is in use. Close the game and click Install again.";
-            }
-        }
-        catch
-        {
-            _setup.Text = "Install cancelled. ReShade Remote needs permission to copy the layer to ProgramData and register OpenXR.";
-        }
+    void TogglePayloadEnabled()
+    {
+        bool enabled = IsPayloadEnabled();
+        string command = enabled
+            ? "$key=" + PsQuote(LayerRegistryPath) + ";$json=" + PsQuote(PayloadManifest) + ";if(Test-Path $key){Remove-ItemProperty -Path $key -Name $json -ErrorAction SilentlyContinue};"
+            : "$key=" + PsQuote(LayerRegistryPath) + ";$json=" + PsQuote(PayloadManifest) + ";if(-not(Test-Path $key)){New-Item -Path $key | Out-Null};New-ItemProperty -Path $key -Name $json -PropertyType DWord -Value 0 -Force | Out-Null;";
+        string verb = enabled ? "Disable" : "Enable";
+        if (RunElevated(command, verb + " failed. No other OpenXR registration was changed.",
+            verb + " cancelled. Windows permission is required to change ViewLab's registration."))
+            _setup.Text = enabled ? "ViewLab layer deregistered; payload files remain installed."
+                                  : "ViewLab layer registered and enabled; payload files were not changed.";
+        OnTick(null, EventArgs.Empty);
     }
 
     void UpdateSetupText(bool live)
     {
         bool hasPayload = HasBundledPayload();
-        bool deployed = IsBundledPayloadDeployed();
+        bool installed = IsPayloadInstalled();
+        bool enabled = IsPayloadEnabled();
 
         // Controls are always usable once a payload is present. The remote should behave like a TV
         // remote: buttons can be pressed even if the game is not currently running. Settings apply
         // when the game starts.
-        SetButtonEnabled(_btnInstall, hasPayload && !live);
+        SetButtonText(_btnInstall, installed ? "Uninstall ReShade" : "Install ReShade");
+        SetButtonText(_btnEnable, enabled ? "Disable ReShade" : "Enable ReShade");
+        SetButtonEnabled(_btnInstall, (hasPayload || installed) && !live);
+        SetButtonEnabled(_btnEnable, installed || enabled);
         SetButtonEnabled(_gameplay, hasPayload);
         SetButtonEnabled(_tuning, hasPayload);
         SetButtonEnabled(_btnReposition, hasPayload);
@@ -430,11 +476,7 @@ public sealed class ReShadeRemoteWindow : Window
         _headless.IsEnabled = hasPayload;
         _onTop.IsEnabled = hasPayload;
 
-        if (!_svc.Connected)
-        {
-            _setup.Text = "Control channel failed. Close and reopen ReShade Remote.";
-        }
-        else if (live)
+        if (live)
         {
             _setup.Text = "Connected: ReShade is running in the game.";
         }
@@ -442,19 +484,21 @@ public sealed class ReShadeRemoteWindow : Window
         {
             _setup.Text = "Unavailable: this ViewLab build does not include the ReShade Remote component.";
         }
-        else if (!deployed)
+        else if (!installed)
         {
-            _setup.Text = "ReShade is not installed yet. Click Install, approve Windows permission, then launch the game.";
+            _setup.Text = "Not installed. Install copies only ViewLab's payload files.";
         }
+        else if (!enabled)
+            _setup.Text = "Installed but disabled. Enable registers only ViewLab's OpenXR layer.";
         else
         {
-            _setup.Text = "Ready: ReShade is installed. Launch your game to connect.";
+            _setup.Text = "Installed and enabled. Connected requires a live game-side handshake.";
         }
     }
 
     void OnTick(object? sender, EventArgs e)
     {
-        if (!_svc.Connected) _svc.TryConnect();
+        if (!_svc.Connected) AttachControlChannel();
         if (!_svc.Connected)
         {
             _status.Text = "[Unavailable] Control channel failed";
@@ -464,37 +508,42 @@ public sealed class ReShadeRemoteWindow : Window
         }
 
         var b = _svc.ReadBlock();
-        if (b.heartbeat != _lastHb) { _lastHb = b.heartbeat; _lastHbChange = DateTime.Now; }
-        bool live = (DateTime.Now - _lastHbChange).TotalSeconds < 2.0;
+        if (!_handshakeBaselineSet) { _lastHb = b.heartbeat; _handshakeBaselineSet = true; }
+        else if (b.heartbeat != _lastHb) { _lastHb = b.heartbeat; _lastHbChange = DateTime.Now; }
+        bool live = _lastHbChange != DateTime.MinValue && (DateTime.Now - _lastHbChange).TotalSeconds < 2.0;
 
         if (live)
         {
             _status.Text = "[Connected] ReShade running";
             _status.Foreground = Green;
         }
-        else if (IsBundledPayloadDeployed())
+        else if (!IsPayloadInstalled())
         {
-            _status.Text = "[Ready] Install complete — launch game";
+            _status.Text = "[Not installed]";
             _status.Foreground = Amber;
         }
-        else if (HasBundledPayload())
+        else if (IsPayloadEnabled())
         {
-            _status.Text = "[Not installed] Click Install";
+            _status.Text = "[Installed and enabled]";
             _status.Foreground = Amber;
         }
         else
         {
-            _status.Text = "[Unavailable] Component missing";
-            _status.Foreground = Muted;
+            _status.Text = "[Installed but disabled]";
+            _status.Foreground = Amber;
         }
 
         UpdateSetupText(live);
 
-        _applying = true;
-        SetChip(_gameplay, b.xr_mode == 0); SetChip(_tuning, b.xr_mode == 1);
-        _menu.IsChecked = b.menu_visible != 0;
-        _headless.IsChecked = b.win_headless != 0;
-        _onTop.IsChecked = b.win_always_on_top != 0;
-        _applying = false;
+        if (b.revision != _lastAppliedRevision)
+        {
+            _lastAppliedRevision = b.revision;
+            _applying = true;
+            SetChip(_gameplay, b.xr_mode == 0); SetChip(_tuning, b.xr_mode == 1);
+            _menu.IsChecked = b.menu_visible != 0;
+            _headless.IsChecked = b.win_headless != 0;
+            _onTop.IsChecked = b.win_always_on_top != 0;
+            _applying = false;
+        }
     }
 }

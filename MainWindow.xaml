@@ -418,27 +418,12 @@
                   <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
                   <Button Name="ReShadeButton" Content="ReShade ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
                   <Button Name="CalibrationButton" Content="Calibration ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Texture-pixel diagnostics for stream, colour, and frame quality." Click="CalibrationButton_Click" />
+                  <Button Name="PreviewButton" Content="Preview ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Global desktop-preview guide preferences." Click="PreviewButton_Click" />
                   <Button Name="OverlaysButton" Content="Overlays ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Crosshair, desktop notifications, and future integrations." Click="OverlaysButton_Click" />
                   <Button Name="DiagMonButton" Content="DiagMon(ster)" Style="{StaticResource RedButton}" Padding="10,4" ToolTip="Start and stop application-agnostic performance captures, review session history, and export analysis evidence." Click="OpenDiagMon_Click" />
                 </WrapPanel>
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
-                <DockPanel Margin="0,0,0,6">
-                  <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                  <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <TextBlock Text="IPD" Foreground="#A8A8A8" VerticalAlignment="Center" Margin="0,0,4,0" />
-                    <Grid Margin="0,0,12,0">
-                      <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="18"/></Grid.ColumnDefinitions>
-                      <TextBox Name="PreviewIpdBox" Text="67.0" VerticalContentAlignment="Center" ToolTip="Preview-only IPD in millimetres. Type a value, use the arrow buttons, or press Up/Down for 0.1 mm steps." TextChanged="PreviewIpd_Changed" LostKeyboardFocus="PreviewIpd_Commit" PreviewKeyDown="PreviewIpd_KeyDown" />
-                      <Grid Grid.Column="1">
-                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                        <Button Grid.Row="0" Content="▲" Padding="0" FontSize="7" Click="PreviewIpdUp_Click" ToolTip="Increase preview IPD by 0.1 mm" />
-                        <Button Grid.Row="1" Content="▼" Padding="0" FontSize="7" Click="PreviewIpdDown_Click" ToolTip="Decrease preview IPD by 0.1 mm" />
-                      </Grid>
-                    </Grid>
-                    <CheckBox Name="PreviewPerEyeFramesCheck" Content="Per-eye frames" Foreground="#A8A8A8" Margin="0,0,12,0" ToolTip="Switch the dotted frame guide between one combined frame and two overlapping per-eye rectangles." Checked="PreviewFrameMode_Changed" Unchecked="PreviewFrameMode_Changed" />
-                    <CheckBox Name="PreviewCircleGuidesCheck" Content="Dual eye circles" Foreground="#A8A8A8" IsChecked="True" ToolTip="Switch the dotted periphery guide between one binocular oval and two true eye circles." Checked="PreviewGuideMode_Changed" Unchecked="PreviewGuideMode_Changed" />
-                  </StackPanel>
-                </DockPanel>
+                <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                 <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Binocular preview: the dotted outer reference is Quest 3 at Horizontal 1.00 / Vertical 1.00; the solid inner rectangle is the current post-crop area. Overlay replicas use their configured placement and uniform scale." />
                 <Grid Margin="0,0,0,0">
                   <Grid.ColumnDefinitions>
@@ -524,11 +509,43 @@
                   </ScrollViewer>
                 </Border>
               </Popup>
+              <Popup Name="PreviewPopup" StaysOpen="False" AllowsTransparency="True">
+                <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10">
+                  <StackPanel Width="280">
+                    <TextBlock Text="PREVIEW GUIDES" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                    <TextBlock Text="Global calibration helpers used by every desktop preview. They never change headset rendering." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,8" />
+                    <TextBlock Text="IPD (mm)" Foreground="#A8A8A8" Margin="0,0,0,2" />
+                    <Grid Width="92" HorizontalAlignment="Left" Margin="0,0,0,7">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="66"/><ColumnDefinition Width="26"/></Grid.ColumnDefinitions>
+                      <TextBox Name="PreviewIpdBox" Text="67.0" VerticalContentAlignment="Center" ToolTip="Preview-only IPD in millimetres. Type a value, hold the arrow buttons, or press Up/Down for 0.1 mm steps." TextChanged="PreviewIpd_Changed" LostKeyboardFocus="PreviewIpd_Commit" PreviewKeyDown="PreviewIpd_KeyDown" />
+                      <Grid Grid.Column="1">
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <RepeatButton Grid.Row="0" Content="▲" Padding="0" FontSize="8" Delay="350" Interval="55" Click="PreviewIpdUp_Click" ToolTip="Hold to increase preview IPD in 0.1 mm steps" />
+                        <RepeatButton Grid.Row="1" Content="▼" Padding="0" FontSize="8" Delay="350" Interval="55" Click="PreviewIpdDown_Click" ToolTip="Hold to decrease preview IPD in 0.1 mm steps" />
+                      </Grid>
+                    </Grid>
+                    <CheckBox Name="PreviewPerEyeFramesCheck" Content="Per-eye frames" Foreground="#A8A8A8" Margin="0,0,0,5" ToolTip="Switch the dotted frame guide between one combined frame and two overlapping per-eye rectangles." Checked="PreviewFrameMode_Changed" Unchecked="PreviewFrameMode_Changed" />
+                    <CheckBox Name="PreviewCircleGuidesCheck" Content="Dual-eye circles" Foreground="#A8A8A8" IsChecked="True" ToolTip="Switch the dotted periphery guide between one binocular oval and two true eye circles." Checked="PreviewGuideMode_Changed" Unchecked="PreviewGuideMode_Changed" />
+                  </StackPanel>
+                </Border>
+              </Popup>
               <Popup Name="OverlaysPopup" StaysOpen="False" AllowsTransparency="True">
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" MaxHeight="560">
                   <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Name="OverlaysSettingsPanel" Width="300">
                       <StackPanel Name="CommonOverlaySettingsPanel">
+                      <TextBlock Text="SHOW IN OBS MIRROR" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
+                      <TextBlock Text="These switches affect OpenXR Mirror Capture only. Headset visibility is unchanged." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,6" />
+                      <CheckBox Name="ObsMirrorVisorCheck" Content="Visor mask" Foreground="#A8A8A8" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
+                      <CheckBox Name="ObsMirrorClockCheck" Content="Clock + Timer" Foreground="#A8A8A8" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
+                      <CheckBox Name="ObsMirrorNotificationsCheck" Content="Notifications" Foreground="#A8A8A8" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
+                      <CheckBox Name="ObsMirrorHudCheck" Content="HUD" Foreground="#A8A8A8" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
+                      <CheckBox Name="ObsMirrorTraceCheck" Content="Performance Trace" Foreground="#A8A8A8" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
+                      <CheckBox Name="ObsMirrorCrosshairCheck" Content="Crosshair" Foreground="#A8A8A8" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
+                      <CheckBox Name="ObsMirrorStickyCheck" Content="Sticky Notes" Foreground="#A8A8A8" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
+                      <CheckBox Name="ObsMirrorRecordingCueCheck" Content="OBS Recording Cue" Foreground="#A8A8A8" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
+                      <CheckBox Name="ObsMirrorRacingCheck" Content="Racing Cues" Foreground="#A8A8A8" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
+                      <CheckBox Name="ObsMirrorBoundaryCheck" Content="Boundary Flash" Foreground="#A8A8A8" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="CLOCK + SESSION" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" />
                       <CheckBox Name="ClockWidgetEnabledCheck" Content="Show clock" Foreground="#A8A8A8" Margin="0,4,0,0" Checked="ClockWidgetControl_Changed" Unchecked="ClockWidgetControl_Changed" />

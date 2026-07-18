@@ -3,7 +3,7 @@
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
      xmlns:iis="http://schemas.microsoft.com/wix/IIsExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.247"
+           Language="1033" Version="4.1.252"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -165,6 +165,7 @@
                 <File Id="ReShadePayloadDocsOpenComposite" Source="..\ReShadePayload\Docs\OpenComposite_ReShade_fix.md" Name="OpenComposite_ReShade_fix.md"/>
                 <File Id="ReShadePayloadDocsDeployReference" Source="..\ReShadePayload\Docs\Deploy-ReShade.reference.ps1" Name="Deploy-ReShade.reference.ps1"/>
                 <File Id="ReShadePayloadDocsAddGameReference" Source="..\ReShadePayload\Docs\Add-Game.reference.ps1" Name="Add-Game.reference.ps1"/>
+                <File Id="ReShadePayloadDocsSourceBuild" Source="..\ReShadePayload\Docs\SOURCE_BUILD.md" Name="SOURCE_BUILD.md"/>
                 <RemoveFolder Id="RemoveReShadePayloadDocsFolder" On="uninstall"/>
               </Component>
             </Directory>

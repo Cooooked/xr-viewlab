@@ -3,7 +3,8 @@ ViewLab ReShade Remote payload
 This payload contains the patched ReShade OpenXR layer used by the Advanced: ReShade Remote panel.
 
 Files:
-- ReShade64.dll: patched ReShade OpenXR layer built from F:\AI-Projects\ReshadeAI\reshade\build\Release.
+- ReShade64.dll: patched ReShade OpenXR layer built from the repository's
+  ReShadePayloadSource\build\Release output. See Docs\SOURCE_BUILD.md.
 - ReShade64_XR.json: OpenXR implicit-layer manifest. The DLL path is relative to the manifest.
 
 Deployment model:
