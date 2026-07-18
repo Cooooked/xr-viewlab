@@ -19,13 +19,49 @@ internal static class OverlayPreviewReplicaLayout
 {
     // Reference dimensions describe the native overlay footprint at scale 1. Scale is applied once,
     // and any preview-bound fit uses one factor for both axes so the aspect ratio cannot be distorted.
-    internal static Size ResolveSize(OverlayPreviewItem item, Size available)
+    internal static Size ResolveSize(OverlayPreviewItem item, Rect area)
     {
-        double width = Math.Max(0.5, item.ReferenceWidth * available.Width * item.Scale);
-        double height = Math.Max(0.5, item.ReferenceHeight * available.Height * item.Scale);
+        // Native scale contracts mapped once into the same centred normalized box used for
+        // placement. Content remains labelled, but crop never rescales or repositions it.
+        double width, height;
+        switch (item.Style)
+        {
+            case OverlayPreviewStyle.Hud:
+                double unit = Quest3PreviewGeometry.ReferencePixelsToY(area, 128.0) * item.Scale;
+                double radius = unit * 0.48;
+                double count = Math.Max(1.0, item.ReferenceWidth);
+                double gap = unit * (0.25 + 3.0 * 0.018);
+                width = radius * 2.0 * count + gap * (count - 1.0);
+                height = radius * 2.0 + unit * 0.08 + unit * 0.045 * 7.0;
+                break;
+            case OverlayPreviewStyle.Trace:
+                width = area.Width * Math.Clamp(item.ReferenceWidth, 0.10, 1.0) * item.Scale;
+                height = Quest3PreviewGeometry.ReferencePixelsToY(area, 128.0 * 0.55) * item.Scale;
+                break;
+            case OverlayPreviewStyle.Clock:
+                double glyphX = Quest3PreviewGeometry.ReferencePixelsToX(area, 4.2) * item.Scale;
+                double glyphY = Quest3PreviewGeometry.ReferencePixelsToY(area, 4.2) * item.Scale;
+                width = 77.75 * glyphX;
+                height = (item.ReferenceHeight > 0.5 ? 23.05 : 13.75) * glyphY;
+                break;
+            case OverlayPreviewStyle.Notification:
+                width = Math.Min(area.Width * 920.0 / 1080.0 * item.Scale, area.Width * 0.60);
+                height = area.Height * 920.0 / 1080.0 * item.Scale * (96.0 / 336.0);
+                break;
+            case OverlayPreviewStyle.Sticky:
+                width = height = area.Height * 0.12 * item.Scale;
+                break;
+            default:
+                width = item.ReferenceWidth * area.Width * item.Scale;
+                height = item.ReferenceHeight * area.Height * item.Scale;
+                break;
+        }
+        width = Math.Max(0.5, width);
+        height = Math.Max(0.5, height);
+        Rect shared = Quest3PreviewGeometry.SharedFullArea(area);
         double fit = Math.Min(1.0, Math.Min(
-            available.Width * 0.75 / Math.Max(0.5, width),
-            available.Height * 0.45 / Math.Max(0.5, height)));
+            shared.Width / Math.Max(0.5, width),
+            shared.Height / Math.Max(0.5, height)));
         return new Size(width * fit, height * fit);
     }
 }

@@ -3,8 +3,8 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-07-17
-**Current version:** 4.1.243 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.243.msi`
+**Updated:** 2026-07-18
+**Current version:** 4.1.246 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.246.msi`
 **Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
 AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
 remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
@@ -18,6 +18,36 @@ extracted-payload validation. Build 4.1.224 additionally passes the full determi
 WPF, broker, signed identity, x64/Win32 native, MSI extraction, pinned PresentMon hash/notice validation;
 its DiagMon real-game CSV and live Trace-cap checks remain mandatory before release.
 **Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+
+## Profile persistence and centred Quest 3 preview (implemented; headset validation pending, 2026-07-18)
+
+The profile editor now distinguishes the visor-only `Use global visor settings` checkbox from the explicit
+whole-profile `Use Global Values` action. Normal Save always persists crop/resolution overrides and enables the
+profile; a global visor is represented only by `visor_size=0`. The main application list reloads from the registry
+after saving. Settings startup now publishes once after hydration so all enabled widget previews are present without
+waiting for a toggle.
+
+The Quest 3 preview is one centred fixed `55:48` outer box, not a projection-degree diagram. Horizontal and vertical
+values map directly into it: horizontal `0.8` is exactly 80% wide and symmetric vertical `0.15` is exactly 15% high.
+Split top/bottom values translate the direct crop. The periphery layer toggles between one binocular oval and two
+overlapping true circles; both use 90% of box height and 85% of box width. Crop, visor geometry, widget anchors,
+hit-testing and drag deltas share the same full-box normalised space;
+crop is coverage only and is never applied twice. The runtime outer-only crop now also retains the exact configured
+fraction, rather than converting `0.8` to an effective `0.9`.
+
+The frame guide has its own independent display choice: one combined binocular rectangle or two overlapping
+per-eye rectangles preserving the actual `2064:2208` eye aspect. Frame mode and periphery mode are guides only;
+neither writes to the layer or changes crop. A persisted preview IPD helper defaults to `67.0` mm, updates live
+in 0.1 mm steps, and changes only the centre separation/overlap of dual guide geometry.
+
+The preview's product purpose is trustworthy desktop tuning: the user can read full frame, useful periphery,
+post-crop coverage, final visor and overlay placement/scale without repeatedly putting the headset on. Runtime
+remains the source of truth; the preview is its calibration mirror, not an independent approximation.
+
+`mask_nose_spread_x` adds a mirrored nose-boundary translation to the global editor, per-app profiles, live-state
+contract and native visor geometry. Its zero default preserves prior output. Deterministic WPF, geometry, plumbing
+and native source contracts cover the change. No interactive desktop or headset control was used; this build still
+requires the user's in-headset validation before publication.
 
 ## Native OpenXR stereo ghosting repair (implemented and matched headset-validated, 2026-07-17)
 

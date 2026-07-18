@@ -224,6 +224,8 @@
                    under binocular fusion. Values and plumbing are retained. -->
               <TextBlock Grid.Row="6" Grid.Column="0" Text="Inner low" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
               <Slider Name="VisorInnerLowerSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="0.666" ValueChanged="VisorInnerLowerSlider_Changed" Visibility="Collapsed" />
+			  <TextBlock Grid.Row="6" Grid.Column="0" Text="Nose Spread X" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12" />
+			  <Slider Name="VisorNoseSpreadXSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="0.5" ValueChanged="VisorInnerBridgeDetailSlider_Changed" MouseRightButtonUp="VisorNoseSpreadXSlider_Reset" ToolTip="Mirrors the nose boundary outward in both eyes; zero preserves the existing shape." />
               <TextBlock Grid.Row="8" Grid.Column="0" Text="Bridge" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
               <Slider Name="VisorInnerBridgeSlider" Grid.Row="8" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="VisorInnerBridgeSlider_Changed" Visibility="Collapsed" />
               <TextBlock Grid.Row="10" Grid.Column="0" Text="Rise" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed" />
@@ -237,7 +239,13 @@
               <TextBlock Grid.Row="18" Grid.Column="0" Text="Y" VerticalAlignment="Center" FontSize="12" />
               <Slider Name="VisorOffsetYSlider" Grid.Row="18" Grid.Column="1" Minimum="-1" Maximum="1" ValueChanged="MaskShapeSlider_Changed" />
             </Grid>
-            <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,8,0,0" ShapeChanged="MaskBeanEditor_ShapeChanged" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+              <TextBlock Text="IPD" VerticalAlignment="Center" Margin="0,0,4,0" />
+              <TextBox Name="PreviewIpdBox" Text="67.0" Width="48" Margin="0,0,12,0" VerticalContentAlignment="Center" ToolTip="Preview-only IPD in millimetres. Type a value or use Up/Down for 0.1 mm steps." TextChanged="PreviewIpd_Changed" LostKeyboardFocus="PreviewIpd_Commit" PreviewKeyDown="PreviewIpd_KeyDown" />
+              <CheckBox Name="PreviewPerEyeFramesCheck" Content="Per-eye frames" Margin="0,0,12,0" ToolTip="Switch the dotted frame guide between one combined frame and two overlapping per-eye rectangles." Checked="PreviewFrameMode_Changed" Unchecked="PreviewFrameMode_Changed" />
+              <CheckBox Name="PreviewCircleGuidesCheck" Content="Dual eye circles" IsChecked="True" ToolTip="Switch the dotted periphery guide between one binocular oval and two true eye circles." Checked="PreviewGuideMode_Changed" Unchecked="PreviewGuideMode_Changed" />
+            </StackPanel>
+            <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,4,0,0" ShapeChanged="MaskBeanEditor_ShapeChanged" />
           </StackPanel>
           <TextBlock Name="CombinedHint" Grid.Row="19" Grid.ColumnSpan="3" Foreground="{StaticResource MutedBrush}" />
           <StackPanel Grid.Row="21" Grid.ColumnSpan="3" Orientation="Horizontal">

@@ -422,7 +422,15 @@
                   <Button Name="DiagMonButton" Content="DiagMon(ster)" Style="{StaticResource RedButton}" Padding="10,4" ToolTip="Start and stop application-agnostic performance captures, review session history, and export analysis evidence." Click="OpenDiagMon_Click" />
                 </WrapPanel>
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
-                <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                <DockPanel Margin="0,0,0,6">
+                  <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                  <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <TextBlock Text="IPD" Foreground="#A8A8A8" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBox Name="PreviewIpdBox" Text="67.0" Width="48" Margin="0,0,12,0" VerticalContentAlignment="Center" ToolTip="Preview-only IPD in millimetres. Type a value or use Up/Down for 0.1 mm steps." TextChanged="PreviewIpd_Changed" LostKeyboardFocus="PreviewIpd_Commit" PreviewKeyDown="PreviewIpd_KeyDown" />
+                    <CheckBox Name="PreviewPerEyeFramesCheck" Content="Per-eye frames" Foreground="#A8A8A8" Margin="0,0,12,0" ToolTip="Switch the dotted frame guide between one combined frame and two overlapping per-eye rectangles." Checked="PreviewFrameMode_Changed" Unchecked="PreviewFrameMode_Changed" />
+                    <CheckBox Name="PreviewCircleGuidesCheck" Content="Dual eye circles" Foreground="#A8A8A8" IsChecked="True" ToolTip="Switch the dotted periphery guide between one binocular oval and two true eye circles." Checked="PreviewGuideMode_Changed" Unchecked="PreviewGuideMode_Changed" />
+                  </StackPanel>
+                </DockPanel>
                 <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Binocular preview: the dotted outer reference is Quest 3 at Horizontal 1.00 / Vertical 1.00; the solid inner rectangle is the current post-crop area. Overlay replicas use their configured placement and uniform scale." />
                 <Grid Margin="0,0,0,0">
                   <Grid.ColumnDefinitions>
@@ -436,7 +444,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="0" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="0" />
                   </Grid.RowDefinitions>
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="Size" VerticalAlignment="Center" FontSize="12" />
@@ -451,6 +459,8 @@
                   <Slider Name="MaskApexYSlider" Grid.Row="4" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="MaskApexYSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Moves the outer visor curve apex vertically." />
                   <TextBlock Grid.Row="5" Grid.Column="0" Text="Nose" VerticalAlignment="Center" FontSize="12" />
                   <Slider Name="MaskInnerLowerSlider" Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="0.666" ValueChanged="MaskInnerLowerSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Raises the inner lower edge to form a nose notch; zero disables it." />
+				  <TextBlock Grid.Row="6" Grid.Column="0" Text="Nose Spread X" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12" />
+				  <Slider Name="MaskNoseSpreadXSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="0.5" ValueChanged="MaskNoseSpreadXSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Mirrors the nose boundary outward in each eye. Zero preserves the original nose geometry." />
                   <Slider Name="MaskOffsetXSlider" Grid.Row="6" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
                   <Slider Name="MaskOffsetYSlider" Grid.Row="7" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
                 </Grid>

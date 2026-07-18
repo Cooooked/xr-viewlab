@@ -63,6 +63,7 @@ double visorInnerBridgeWidth = 0.5;    // mask_inner_bridge_width: 0..1, bezier 
 double visorInnerBridgeRise = 0.0;     // mask_inner_bridge_rise: -0.5..1, endpoint tangent rise
 double visorInnerBridgePeakX = 0.5;    // mask_inner_bridge_peak_x: -1..2, handle horizontal shift
 double visorInnerBridgeSteepness = 0.5;// mask_inner_bridge_steepness: -1..2, handle length scale
+double visorNoseSpreadX = 0.0;         // mask_nose_spread_x: 0..0.5, mirrored outward from each eye centre
 double liveVisorRevision = 0.0;
 bool liveVisorUsesProfileOverride = false;
 constexpr bool visorHD = false;          // HD visor removed
@@ -651,7 +652,7 @@ struct LiveStateBlock {
     float crosshairOffsetX, crosshairOffsetY; // normalized full-lens tangent coordinates
     uint32_t topmostFlags;    // v6: bit0 experimental topmost composition layer
     uint32_t hudWidgetMask, hudWidgetOrder, hudGraphChannels, hudGraphMode; // v7
-    uint32_t clockFlags; float clockX,clockY,clockScale,clockOpacity; uint32_t clockTheme,reservedV8;
+    uint32_t clockFlags; float clockX,clockY,clockScale,clockOpacity; uint32_t clockTheme; float visorNoseSpreadX;
     uint32_t overlayToggleKeys[6]; // v8
 };
 #pragma pack(pop)
@@ -839,6 +840,7 @@ void ConsumeLiveState() {
         visorOuterApexY = std::clamp((double)stable.apexY, -0.5, 0.5); visorInnerLowerY = std::clamp((double)stable.innerLow, 0.0, 0.666);
         visorInnerBridgeWidth = std::clamp((double)stable.bridgeWidth, 0.0, 1.0); visorInnerBridgeRise = std::clamp((double)stable.bridgeRise, -0.5, 1.0);
         visorInnerBridgePeakX = std::clamp((double)stable.bridgePeakX, -1.0, 2.0); visorInnerBridgeSteepness = std::clamp((double)stable.bridgeSteepness, -1.0, 2.0);
+        visorNoseSpreadX = std::clamp((double)stable.visorNoseSpreadX, 0.0, 0.5);
     }
 }
 bool uevrLikeProcess = false;
@@ -2324,7 +2326,9 @@ uint32_t BuildOpenInnerEyeVisorVerts(
     if (visorInnerLowerY > 0.0) {
         const float innerX = outerLeft ? bboxMaxX : bboxMinX;
         const float bandTopY = std::clamp(y0 + static_cast<float>(visorInnerLowerY) * (y1 - y0), y0, y1);
-        BuildNoseBridgeCurve(vertsOut, v, vertCapacity, cx, innerX, y0, bandTopY);
+		const float spreadStartX = std::clamp(cx + (outerLeft ? -1.0f : 1.0f) *
+			static_cast<float>(visorNoseSpreadX) * bboxW, bboxMinX, bboxMaxX);
+        BuildNoseBridgeCurve(vertsOut, v, vertCapacity, spreadStartX, innerX, y0, bandTopY);
     }
 
     return v;
@@ -4286,6 +4290,7 @@ void LoadConfig() {
     visorInnerBridgeRise = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_rise", 0.0), -0.5, 1.0);
     visorInnerBridgePeakX = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_peak_x", 0.5), -1.0, 2.0);
     visorInnerBridgeSteepness = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_steepness", 0.5), -1.0, 2.0);
+    visorNoseSpreadX = std::clamp(ReadDoubleSetting(L"mask_nose_spread_x", 0.0), 0.0, 0.5);
 
     if (splitMode) {
         topTangent = std::clamp(
@@ -4370,12 +4375,14 @@ void LoadConfig() {
         DWORD profileBridgeSteepness = (visorInnerBridgeSteepness < 0.0 || visorInnerBridgeSteepness > 1.0)
             ? static_cast<DWORD>(std::lround(30000.0 + (visorInnerBridgeSteepness + 1.0) * 1000.0))
             : static_cast<DWORD>(std::lround(visorInnerBridgeSteepness * 1000.0));
+        DWORD profileNoseSpreadX = static_cast<DWORD>(std::lround(visorNoseSpreadX * 1000.0));
         ReadProfileDword(L"mask_outer_apex_y", profileOuterApexY);
         ReadProfileDword(L"mask_inner_lower_y", profileInnerLowerY);
         ReadProfileDword(L"mask_inner_bridge_width", profileBridgeWidth);
         ReadProfileDword(L"mask_inner_bridge_rise", profileBridgeRise);
         ReadProfileDword(L"mask_inner_bridge_peak_x", profileBridgePeakX);
         ReadProfileDword(L"mask_inner_bridge_steepness", profileBridgeSteepness);
+        ReadProfileDword(L"mask_nose_spread_x", profileNoseSpreadX);
         visorOuterApexY = std::clamp(SignedMillisToUnit(profileOuterApexY, visorOuterApexY), -0.5, 0.5);
         visorInnerLowerY = std::clamp(static_cast<double>(profileInnerLowerY) / 1000.0, 0.0, 0.666);
         visorInnerBridgeWidth = std::clamp(static_cast<double>(profileBridgeWidth) / 1000.0, 0.0, 1.0);
@@ -4390,6 +4397,7 @@ void LoadConfig() {
         visorInnerBridgeSteepness = profileBridgeSteepness >= 30000u
             ? std::clamp((static_cast<double>(profileBridgeSteepness) - 30000.0) / 1000.0 - 1.0, -1.0, 2.0)
             : std::clamp(static_cast<double>(profileBridgeSteepness) / 1000.0, 0.0, 1.0);
+        visorNoseSpreadX = std::clamp(static_cast<double>(profileNoseSpreadX) / 1000.0, 0.0, 0.5);
         if (!ReadProfileDouble(L"render_scale", renderScale)) {
             ReadProfileDword(L"render_scale", profileRenderScale);
             renderScale = DwordToRenderScale(profileRenderScale, renderScale);
@@ -4490,6 +4498,7 @@ void RefreshLiveVisorConfig() {
     visorInnerBridgeRise = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_rise", visorInnerBridgeRise), -0.5, 1.0);
     visorInnerBridgePeakX = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_peak_x", visorInnerBridgePeakX), -1.0, 2.0);
     visorInnerBridgeSteepness = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_steepness", visorInnerBridgeSteepness), -1.0, 2.0);
+    visorNoseSpreadX = std::clamp(ReadDoubleSetting(L"mask_nose_spread_x", visorNoseSpreadX), 0.0, 0.5);
     visorCurve = std::clamp(1.0 - maskCorner, 0.0, 1.0);
     liveVisorRevision = revision;
     Log("visor: live settings refreshed revision=%.0f size=%.3f curve=%.3f apex=%.3f inner=%.3f bridge=%.3f/%.3f/%.3f/%.3f\n",
@@ -4517,13 +4526,9 @@ void EnsureInitialized() {
 
 double EffectiveOuterEdgeHorizontalScale() {
     const double horizontalScale = std::clamp(horizontalRenderWidth, MinRenderScale, 1.0);
-    if (!cropOuterEdgesOnly) {
-        return horizontalScale;
-    }
-    // Horizontal crop preserves the inner eye edges and scales only the outer edges.
-    // For the normal near-symmetric stereo frustum, the total per-eye FOV width is
-    // therefore half unchanged inner FOV plus half scaled outer FOV.
-    return std::clamp((1.0 + horizontalScale) * 0.5, MinRenderScale, 1.0);
+	// horizontal_render_width is retained per-eye tangent width. Outer-edge-only chooses
+	// which boundary moves; it does not halve the requested reduction.
+    return horizontalScale;
 }
 
 double ConservativeRecommendedScale(double scale) {
@@ -4579,18 +4584,19 @@ void ApplyXRViewLabFov(uint32_t viewIndex, XrView& view, bool& compensated, floa
     const double topScale = std::clamp(topTangent * 2.0, 0.0, 1.0);
     const double bottomScale = std::clamp(bottomTangent * 2.0, 0.0, 1.0);
     const double horizontalScale = std::clamp(horizontalRenderWidth, MinRenderScale, 1.0);
-    const double originalLeftTan = (std::max)(0.0, -std::tan(static_cast<double>(view.fov.angleLeft)));
-    const double originalRightTan = (std::max)(0.0, std::tan(static_cast<double>(view.fov.angleRight)));
+    const double originalLeftTan = std::tan(static_cast<double>(view.fov.angleLeft));
+    const double originalRightTan = std::tan(static_cast<double>(view.fov.angleRight));
     double desiredLeftTan = originalLeftTan;
     double desiredRightTan = originalRightTan;
     if (cropOuterEdgesOnly && viewIndex == 0) {
-        // Left eye: keep the inner/right edge stable and scale only the outer/left edge.
-        desiredLeftTan = originalLeftTan * horizontalScale;
+		// Left eye: retain exactly horizontalScale of the full tangent width while the
+		// inner/right boundary remains fixed.
+        desiredLeftTan = originalRightTan - (originalRightTan - originalLeftTan) * horizontalScale;
     } else if (cropOuterEdgesOnly && viewIndex == 1) {
-        // Right eye: keep the inner/left edge stable and scale only the outer/right edge.
-        desiredRightTan = originalRightTan * horizontalScale;
+		// Right eye: mirrored; the inner/left boundary remains fixed.
+        desiredRightTan = originalLeftTan + (originalRightTan - originalLeftTan) * horizontalScale;
     } else {
-        // Full crop scales both sides of each eye around its centre.
+		// Legacy full crop scales both sides around tangent zero.
         desiredLeftTan = originalLeftTan * horizontalScale;
         desiredRightTan = originalRightTan * horizontalScale;
     }
@@ -4599,7 +4605,7 @@ void ApplyXRViewLabFov(uint32_t viewIndex, XrView& view, bool& compensated, floa
     const double desiredTopTan = originalTopTan * topScale;
     const double desiredBottomTan = originalBottomTan * bottomScale;
 
-    view.fov.angleLeft = -static_cast<float>(std::atan(desiredLeftTan));
+    view.fov.angleLeft = static_cast<float>(std::atan(desiredLeftTan));
     view.fov.angleRight = static_cast<float>(std::atan(desiredRightTan));
 
     compensated = false;

@@ -116,7 +116,9 @@ modulo the documented y-flip. The contract test pins parts of this.
 preserves the full existing opening; lowering it hides an outer band without changing crop
 tangents, submitted FOV, or recommended render resolution. Peak X is mirrored by passing the
 same sign-aware Bezier formula to each eye; its extended `-0.5..1` range is intentionally stronger
-on the left end.
+on the left end. `mask_nose_spread_x` translates the left-eye nose boundary left and the right-eye
+boundary right by the same normalised amount before the shared curve is built; zero is the exact
+legacy geometry.
 
 The main visor card keeps the Edge Masks and ReShade Remote pop-outs together above the visor
 toggle. `BeanMaskEditor` exposes a draggable preview pin for every shape slider, so slider and
@@ -270,8 +272,8 @@ major resolution/API/refresh/frame-cap/hardware/driver mismatches are excluded w
 | Subsystem | Where |
 |---|---|
 | Settings load/save | `MainWindow.cs` `LoadSettings`/`SaveSettings` + `WritePrivateProfileString`; key constants at top of class |
-| Visor preview + pins | `BeanMaskEditor.cs` (`OnRender`, `DrawOverlayPreviews`, `OverlayPreviewGeometries`, `HitOverlayHandle`, `PinPositions`, mouse handlers) is the geometry reference and placement editor. `OverlayPreviewReplicaLayout.ResolveSize` owns footprint sizing: unscaled reference width/height receive one uniform Scale and, only when required, one aspect-preserving fit. Overlay layout and hit-testing always use the full H/V 1.00 area; crop is only a solid coverage rectangle, so off-crop nodes remain visible and recoverable. `MainWindow.RefreshMaskOverlayPreview` supplies enabled common overlays using their real anchors and scale; dynamic content remains labelled placeholder geometry pending a native replica-data contract. Screen-space-compensated labels and mini pins stay readable while zooming. Top-centre move and top-right scale drags emit one generic `OverlayPreviewChanged` event; `MainWindow.MaskBeanEditor_OverlayPreviewChanged` writes it through the existing shared controls, persistence and live publisher. The dotted outer rectangle is the Quest 3 H/V 1.00 binocular reference, the inner oval approximates naturally visible binocular coverage, and the solid rectangle is current crop. Active visor geometry is red; disabled geometry is faint grey. Edge-only cues remain indicators because they have no ordinary X/Y/scale contract. |
-| App list / per-app profiles | `MainWindow.cs` app-table region, `AppProfile.cs`, `ProfileWindow.cs`; registry encode helpers `ToMillis`/`ToSignedMillis`/`FromMillis`/`FromSignedMillis` |
+| Visor preview + pins | `Quest3PreviewGeometry.cs` owns the centred fixed `55:48` outer box, direct crop rectangle, guide geometry and shared full-box normalised coordinate transforms. `BeanMaskEditor.cs` (`OnRender`, `DrawOverlayPreviews`, `OverlayPreviewGeometries`, `HitOverlayHandle`, `PinPositions`, mouse handlers) is the visor geometry reference and placement editor. Its four calibration layers are full frame, periphery guide, grey post-crop rectangle and final visor shape; overlay placement is drawn in the same map. Frame and periphery presentation are independent. `preview_per_eye_frames` switches the frame layer between one combined dotted rectangle and two overlapping rectangles at the actual `2064:2208` per-eye aspect. `preview_circle_guides` switches the periphery layer between one binocular oval and two overlapping true circles without changing its 85%-wide/90%-high useful boundary. `preview_ipd_mm` defaults to `67.0` and adjusts only centre separation for the dual guide modes, live in 0.1 mm steps. These controls are UI-only. Container aspect cannot stretch circle mode. Horizontal `0.8` occupies exactly 80% of the outer box; symmetric vertical `0.15` occupies exactly 15% about the centre. Split top/bottom values translate crop without changing direct scale. `OverlayPreviewReplicaLayout.ResolveSize` applies unscaled reference width/height once in that same full-box space. Crop is coverage only, never a second coordinate transform, so off-crop nodes remain visible and recoverable. `MainWindow.RefreshMaskOverlayPreview` supplies enabled common overlays using their real anchors and scale; dynamic content remains labelled placeholder geometry pending a native replica-data contract. Screen-space-compensated labels and mini pins stay readable while zooming. Top-centre move and top-right scale drags emit one generic `OverlayPreviewChanged` event through existing controls, persistence and live publishing. Active visor geometry is red; disabled geometry is faint grey. Edge-only cues remain indicators because they have no ordinary X/Y/scale contract. |
+| App list / per-app profiles | `MainWindow.cs` app-table region, `AppProfile.cs`, `ProfileWindow.cs`; registry encode helpers `ToMillis`/`ToSignedMillis`/`FromMillis`/`FromSignedMillis`. `Use global visor settings` clears only the visor override; the distinct `Use Global Values` action is the only whole-profile reset. After Save, the table is reloaded from the registry. |
 | ReShade Remote | `ReShadeRemoteWindow.cs` + `ReShadeControlService.cs`: shared-memory control block + `openxr_quad_transform.ini` under ProgramData, controls the bundled payload in `ReShadePayload/` (payload internals: `ReShadePayload/Docs/`) |
 | Update check | `UpdateRelease.cs` + GitHub releases endpoint in `MainWindow.cs` |
 
@@ -296,9 +298,11 @@ stereo disparity:
   rays, zero unintended angular disparity). Its CS pixels are fixed tangent spans (`2/1080`) and
   become eye pixels through that eye's pixels-per-tangent density. Crop changes therefore change
   clipping/density, not convergence or angular size.
-- **Combined visor-preview space:** a user-facing fused representation of both eyes. It shows one
-  resolved crosshair at the complete crop rectangle's visual centre; it does not display the two
-  unequal native per-eye pixel projections.
+- **Combined visor-preview space:** a centred, normalised representation of the headset view inside
+  the fixed Quest 3 `55:48` box. Crop values are direct retained fractions of that box; no projection
+  degree/tangent conversion or second crop is applied. Overlay anchors, hit-testing and drag deltas use
+  the same full-box coordinates. It shows one resolved crosshair at the crop's visual centre rather than
+  two unequal native per-eye pixel projections.
 
 The performance HUD and frame-trace positions are shared-overlap tangent points. Their base size is
 angular; trace width remains intentionally relative to the available visible overlap because it is

@@ -333,6 +333,7 @@ public sealed class AppProfile : INotifyPropertyChanged
 	public double VisorInnerBridgeRise { get; set; }
 	public double VisorInnerBridgePeakX { get; set; }
 	public double VisorInnerBridgeSteepness { get; set; }
+	public double VisorNoseSpreadX { get; set; }
 
 	public string Summary
 	{

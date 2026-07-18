@@ -14,7 +14,11 @@ public partial class ProfileWindow : Window
 
 	public double HorizontalValue { get; private set; }
 
-	public bool UseGlobal { get; private set; }
+	public bool UseGlobalValues { get; private set; }
+	public bool UseGlobalVisor { get; private set; }
+	public bool UseCircularEyeGuidesValue { get; private set; } = true;
+	public bool UsePerEyeFrameGuidesValue { get; private set; }
+	public double PreviewIpdMillimetresValue { get; private set; } = Quest3PreviewGeometry.DefaultIpdMillimetres;
 
 	public bool HiddenValue { get; private set; }
 
@@ -60,6 +64,7 @@ public partial class ProfileWindow : Window
 	private readonly double _globalVisorInnerBridgePeakX;
 	private readonly double _globalVisorSize;
 	private readonly double _globalVisorInnerBridgeSteepness;
+	private readonly double _globalVisorNoseSpreadX;
 	private readonly bool _customMaskEnabled;
 	private readonly double _customMaskVertical;
 	private readonly double _customMaskHorizontal;
@@ -73,6 +78,7 @@ public partial class ProfileWindow : Window
 	private readonly double _customVisorInnerBridgePeakX;
 	private readonly double _customVisorSize;
 	private readonly double _customVisorInnerBridgeSteepness;
+	private readonly double _customVisorNoseSpreadX;
 
 	// In-memory boxes feed the legacy mask_vertical/horizontal calculation (not shown in UI).
 	private readonly TextBox MaskVerticalBox = new() { Text = "1" };
@@ -92,8 +98,9 @@ public partial class ProfileWindow : Window
 	public double VisorInnerBridgeRiseValue { get; private set; }
 	public double VisorInnerBridgePeakXValue { get; private set; } = 0.5;
 	public double VisorInnerBridgeSteepnessValue { get; private set; } = 0.5;
+	public double VisorNoseSpreadXValue { get; private set; }
 
-	public ProfileWindow(string appName, string exeName, bool hidden, double top, double bottom, double horizontal, double renderScale, bool maskEnabled, double maskVertical, double maskHorizontal, bool maskRounded, double maskCorner, double maskTopBias, double maskBottomBias, double maskLeftBias, double maskRightBias, double maskTopCurve, double maskBottomCurve, bool globalMaskEnabled, double globalMaskVertical, double globalMaskHorizontal, double globalMaskCorner, double globalOffsetX, double globalOffsetY, double visorSize, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double visorInnerBridgeRise, double visorInnerBridgePeakX, double visorInnerBridgeSteepness, double globalVisorSize, double globalVisorOuterApexY, double globalVisorInnerLowerY, double globalVisorInnerBridgeWidth, double globalVisorInnerBridgeRise, double globalVisorInnerBridgePeakX, double globalVisorInnerBridgeSteepness, bool globalStencilOuterEdges)
+	public ProfileWindow(string appName, string exeName, bool hidden, double top, double bottom, double horizontal, double renderScale, bool maskEnabled, double maskVertical, double maskHorizontal, bool maskRounded, double maskCorner, double maskTopBias, double maskBottomBias, double maskLeftBias, double maskRightBias, double maskTopCurve, double maskBottomCurve, bool globalMaskEnabled, double globalMaskVertical, double globalMaskHorizontal, double globalMaskCorner, double globalOffsetX, double globalOffsetY, double visorSize, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double visorInnerBridgeRise, double visorInnerBridgePeakX, double visorInnerBridgeSteepness, double visorNoseSpreadX, double globalVisorSize, double globalVisorOuterApexY, double globalVisorInnerLowerY, double globalVisorInnerBridgeWidth, double globalVisorInnerBridgeRise, double globalVisorInnerBridgePeakX, double globalVisorInnerBridgeSteepness, double globalVisorNoseSpreadX, bool useCircularEyeGuides, bool usePerEyeFrameGuides, double previewIpdMillimetres, bool globalStencilOuterEdges)
 	{
 		InitializeComponent();
 		_globalMaskEnabled = globalMaskEnabled;
@@ -109,6 +116,7 @@ public partial class ProfileWindow : Window
 		_globalVisorInnerBridgeRise = globalVisorInnerBridgeRise;
 		_globalVisorInnerBridgePeakX = globalVisorInnerBridgePeakX;
 		_globalVisorInnerBridgeSteepness = globalVisorInnerBridgeSteepness;
+		_globalVisorNoseSpreadX = Math.Clamp(globalVisorNoseSpreadX, 0.0, 0.5);
 		_customMaskEnabled = maskEnabled;
 		_customMaskVertical = maskVertical;
 		_customMaskHorizontal = maskHorizontal;
@@ -122,7 +130,15 @@ public partial class ProfileWindow : Window
 		_customVisorInnerBridgeRise = Math.Clamp(visorInnerBridgeRise, -0.5, 1.0);
 		_customVisorInnerBridgePeakX = Math.Clamp(visorInnerBridgePeakX, -1.0, 2.0);
 		_customVisorInnerBridgeSteepness = Math.Clamp(visorInnerBridgeSteepness, -1.0, 2.0);
+		_customVisorNoseSpreadX = Math.Clamp(visorNoseSpreadX, 0.0, 0.5);
 		DisplayName = appName;
+		UseCircularEyeGuidesValue = useCircularEyeGuides;
+		PreviewCircleGuidesCheck.IsChecked = useCircularEyeGuides;
+		UsePerEyeFrameGuidesValue = usePerEyeFrameGuides;
+		PreviewPerEyeFramesCheck.IsChecked = usePerEyeFrameGuides;
+		PreviewIpdMillimetresValue = Math.Round(Math.Clamp(previewIpdMillimetres,
+			Quest3PreviewGeometry.MinimumIpdMillimetres, Quest3PreviewGeometry.MaximumIpdMillimetres), 1);
+		PreviewIpdBox.Text = PreviewIpdMillimetresValue.ToString("0.0", CultureInfo.InvariantCulture);
 		HiddenValue = hidden;
 		NameBox.Text = appName;
 		ExeNameText.Text = exeName;
@@ -217,11 +233,18 @@ public partial class ProfileWindow : Window
 		MaskBeanEditor.InnerBridgeRise = VisorInnerBridgeRiseSlider?.Value ?? 0.0;
 		MaskBeanEditor.InnerBridgePeakX = VisorInnerBridgePeakXSlider?.Value ?? 0.5;
 		MaskBeanEditor.InnerBridgeSteepness = VisorInnerBridgeSteepnessSlider?.Value ?? 0.5;
+		MaskBeanEditor.NoseSpreadX = VisorNoseSpreadXSlider?.Value ?? 0.0;
+		MaskBeanEditor.UseCircularEyeGuides = PreviewCircleGuidesCheck?.IsChecked == true;
+		MaskBeanEditor.UsePerEyeFrameGuides = PreviewPerEyeFramesCheck?.IsChecked == true;
+		MaskBeanEditor.PreviewIpdMillimetres = CurrentPreviewIpd();
 		MaskBeanEditor.OffsetX = VisorOffsetXSlider?.Value ?? 0.0;
 		MaskBeanEditor.OffsetY = VisorOffsetYSlider?.Value ?? 0.0;
 		MaskBeanEditor.OpenInnerPreview = true; // Stencil outer edges only is permanently enabled
 		// Preview rect tracks the post-crop render area so the mask aspect is WYSIWYG.
-		MaskBeanEditor.CropVertical = CurrentVerticalCrop();
+		if (TryRead(TopBox.Text, out double previewTop) && TryRead(BottomBox.Text, out double previewBottom))
+			MaskBeanEditor.SetCropVertical(previewTop, previewBottom);
+		else
+			MaskBeanEditor.CropVertical = CurrentVerticalCrop();
 		MaskBeanEditor.CropHorizontal = CurrentHorizontalCrop();
 	}
 
@@ -236,6 +259,7 @@ public partial class ProfileWindow : Window
 		VisorInnerBridgeRiseSlider.IsEnabled = enabled;
 		VisorInnerBridgePeakXSlider.IsEnabled = enabled;
 		VisorInnerBridgeSteepnessSlider.IsEnabled = enabled;
+		VisorNoseSpreadXSlider.IsEnabled = enabled;
 		VisorOffsetXSlider.IsEnabled = enabled;
 		VisorOffsetYSlider.IsEnabled = enabled;
 		MaskBeanEditor.IsEnabled = enabled;
@@ -319,10 +343,58 @@ public partial class ProfileWindow : Window
 		VisorInnerBridgeRiseValue = VisorInnerBridgeRiseSlider.Value;
 		VisorInnerBridgePeakXValue = VisorInnerBridgePeakXSlider.Value;
 		VisorInnerBridgeSteepnessValue = VisorInnerBridgeSteepnessSlider.Value;
+		VisorNoseSpreadXValue = VisorNoseSpreadXSlider.Value;
 		VisorOffsetXValue = VisorOffsetXSlider.Value;
 		VisorOffsetYValue = VisorOffsetYSlider.Value;
-		UseGlobal = UseGlobalVisorCheck.IsChecked == true;
+		UseGlobalVisor = UseGlobalVisorCheck.IsChecked == true;
+		UseCircularEyeGuidesValue = PreviewCircleGuidesCheck.IsChecked == true;
+		UsePerEyeFrameGuidesValue = PreviewPerEyeFramesCheck.IsChecked == true;
+		PreviewIpdMillimetresValue = CurrentPreviewIpd();
 		base.DialogResult = true;
+	}
+
+	private void PreviewGuideMode_Changed(object sender, RoutedEventArgs e)
+	{
+		UseCircularEyeGuidesValue = PreviewCircleGuidesCheck?.IsChecked == true;
+		if (MaskBeanEditor != null)
+			MaskBeanEditor.UseCircularEyeGuides = UseCircularEyeGuidesValue;
+	}
+
+	private void PreviewFrameMode_Changed(object sender, RoutedEventArgs e)
+	{
+		UsePerEyeFrameGuidesValue = PreviewPerEyeFramesCheck?.IsChecked == true;
+		if (MaskBeanEditor != null)
+			MaskBeanEditor.UsePerEyeFrameGuides = UsePerEyeFrameGuidesValue;
+	}
+
+	private double CurrentPreviewIpd()
+	{
+		if (!double.TryParse(PreviewIpdBox?.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
+			return Quest3PreviewGeometry.DefaultIpdMillimetres;
+		return Math.Round(Math.Clamp(value, Quest3PreviewGeometry.MinimumIpdMillimetres,
+			Quest3PreviewGeometry.MaximumIpdMillimetres), 1);
+	}
+
+	private void PreviewIpd_Changed(object sender, TextChangedEventArgs e)
+	{
+		if (!_initialized || MaskBeanEditor == null || !double.TryParse(PreviewIpdBox.Text,
+			NumberStyles.Float, CultureInfo.InvariantCulture, out _)) return;
+		PreviewIpdMillimetresValue = CurrentPreviewIpd();
+		MaskBeanEditor.PreviewIpdMillimetres = PreviewIpdMillimetresValue;
+	}
+
+	private void PreviewIpd_Commit(object sender, KeyboardFocusChangedEventArgs e) =>
+		PreviewIpdBox.Text = CurrentPreviewIpd().ToString("0.0", CultureInfo.InvariantCulture);
+
+	private void PreviewIpd_KeyDown(object sender, KeyEventArgs e)
+	{
+		if (e.Key != Key.Up && e.Key != Key.Down) return;
+		double delta = e.Key == Key.Up ? 0.1 : -0.1;
+		PreviewIpdBox.Text = Math.Clamp(CurrentPreviewIpd() + delta,
+			Quest3PreviewGeometry.MinimumIpdMillimetres, Quest3PreviewGeometry.MaximumIpdMillimetres)
+			.ToString("0.0", CultureInfo.InvariantCulture);
+		PreviewIpdBox.SelectAll();
+		e.Handled = true;
 	}
 
 	private void HideShow_Click(object sender, RoutedEventArgs e)
@@ -346,6 +418,7 @@ public partial class ProfileWindow : Window
 		VisorInnerBridgeRiseSlider.Value = _globalVisorInnerBridgeRise;
 		VisorInnerBridgePeakXSlider.Value = _globalVisorInnerBridgePeakX;
 		VisorInnerBridgeSteepnessSlider.Value = _globalVisorInnerBridgeSteepness;
+		VisorNoseSpreadXSlider.Value = _globalVisorNoseSpreadX;
 		VisorOffsetXSlider.Value = _globalOffsetX;
 		VisorOffsetYSlider.Value = _globalOffsetY;
 	}
@@ -363,13 +436,15 @@ public partial class ProfileWindow : Window
 		VisorInnerBridgeRiseSlider.Value = _customVisorInnerBridgeRise;
 		VisorInnerBridgePeakXSlider.Value = _customVisorInnerBridgePeakX;
 		VisorInnerBridgeSteepnessSlider.Value = _customVisorInnerBridgeSteepness;
+		VisorNoseSpreadXSlider.Value = _customVisorNoseSpreadX;
 		VisorOffsetXSlider.Value = _customOffsetX;
 		VisorOffsetYSlider.Value = _customOffsetY;
 	}
 
 	private void UseGlobal_Click(object sender, RoutedEventArgs e)
 	{
-		UseGlobal = true;
+		UseGlobalValues = true;
+		UseGlobalVisor = true;
 		LoadGlobalVisorValues();
 		UseGlobalVisorCheck.IsChecked = true;
 		SetVisorSlidersEnabled(false);
@@ -414,11 +489,17 @@ public partial class ProfileWindow : Window
 		SyncMaskEditorFromSliders();
 	}
 
+	private void VisorNoseSpreadXSlider_Reset(object sender, MouseButtonEventArgs e)
+	{
+		e.Handled = true;
+		VisorNoseSpreadXSlider.Value = 0.0;
+	}
+
 	private void UseGlobalVisor_Changed(object sender, RoutedEventArgs e)
 	{
 		if (!_initialized) return;
 		bool useGlobal = UseGlobalVisorCheck.IsChecked == true;
-		UseGlobal = useGlobal;
+		UseGlobalVisor = useGlobal;
 		if (useGlobal)
 		{
 			LoadGlobalVisorValues();
@@ -447,6 +528,7 @@ public partial class ProfileWindow : Window
 		VisorInnerBridgeRiseSlider.Value = MaskBeanEditor.InnerBridgeRise;
 		VisorInnerBridgePeakXSlider.Value = MaskBeanEditor.InnerBridgePeakX;
 		VisorInnerBridgeSteepnessSlider.Value = MaskBeanEditor.InnerBridgeSteepness;
+		VisorNoseSpreadXSlider.Value = MaskBeanEditor.NoseSpreadX;
 		_syncingControls = false;
 	}
 

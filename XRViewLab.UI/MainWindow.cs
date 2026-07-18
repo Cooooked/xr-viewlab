@@ -52,6 +52,10 @@ public partial class MainWindow : Window
 	private const string MaskBottomCurveKey = "mask_bottom_curve";
 	private const string MaskOuterApexYKey = "mask_outer_apex_y";
 	private const string MaskInnerLowerYKey = "mask_inner_lower_y";
+	private const string MaskNoseSpreadXKey = "mask_nose_spread_x";
+	private const string PreviewCircleGuidesKey = "preview_circle_guides";
+	private const string PreviewPerEyeFramesKey = "preview_per_eye_frames";
+	private const string PreviewIpdKey = "preview_ipd_mm";
 	private const string MaskInnerBridgeWidthKey = "mask_inner_bridge_width";
 	private const string MaskInnerBridgeRiseKey = "mask_inner_bridge_rise";
 	private const string MaskInnerBridgePeakXKey = "mask_inner_bridge_peak_x";
@@ -1047,6 +1051,10 @@ public partial class MainWindow : Window
 		MaskBeanEditor.OffsetY = MaskOffsetYSlider?.Value ?? 0.0;
 		MaskBeanEditor.OuterApexY = MaskApexYSlider?.Value ?? 0.0;
 		MaskBeanEditor.InnerLowerY = MaskInnerLowerSlider?.Value ?? 0.0;
+		MaskBeanEditor.NoseSpreadX = MaskNoseSpreadXSlider?.Value ?? 0.0;
+		MaskBeanEditor.UseCircularEyeGuides = PreviewCircleGuidesCheck?.IsChecked == true;
+		MaskBeanEditor.UsePerEyeFrameGuides = PreviewPerEyeFramesCheck?.IsChecked == true;
+		MaskBeanEditor.PreviewIpdMillimetres = CurrentPreviewIpd();
 		MaskBeanEditor.InnerBridgeWidth = FixedInnerBridgeWidth;
 		MaskBeanEditor.InnerBridgeRise = FixedInnerBridgeRise;
 		MaskBeanEditor.InnerBridgePeakX = FixedInnerBridgePeakX;
@@ -1054,7 +1062,10 @@ public partial class MainWindow : Window
 		MaskBeanEditor.SetVisorVisible(MaskEnabledCheck?.IsChecked==true);
 		MaskBeanEditor.OpenInnerPreview = true; // Stencil outer edges only is permanently enabled
 		// Preview rect tracks the post-crop render area so the mask aspect is WYSIWYG.
-		MaskBeanEditor.CropVertical = CurrentVerticalCrop();
+		if (SplitCheck?.IsChecked == true && TryReadTextBox(TopBox, out double previewTop) && TryReadTextBox(BottomBox, out double previewBottom))
+			MaskBeanEditor.SetCropVertical(previewTop, previewBottom);
+		else
+			MaskBeanEditor.CropVertical = CurrentVerticalCrop();
 		MaskBeanEditor.CropHorizontal = CurrentHorizontalCrop();
 	}
 
@@ -1082,6 +1093,10 @@ public partial class MainWindow : Window
 
 		MaskApexYSlider.Value = ReadRangeSetting(MaskOuterApexYKey, 0.0, -0.5, 0.5);
 		MaskInnerLowerSlider.Value = ReadRangeSetting(MaskInnerLowerYKey, 0.0, 0.0, 0.666);
+		MaskNoseSpreadXSlider.Value = ReadRangeSetting(MaskNoseSpreadXKey, 0.0, 0.0, 0.5);
+		PreviewCircleGuidesCheck.IsChecked = ReadBoolSetting(PreviewCircleGuidesKey, true);
+		PreviewPerEyeFramesCheck.IsChecked = ReadBoolSetting(PreviewPerEyeFramesKey, false);
+		PreviewIpdBox.Text = ReadRangeSetting(PreviewIpdKey, 67.0, 50.0, 80.0).ToString("0.0", CultureInfo.InvariantCulture);
 		MaskOffsetXSlider.Value = 0.0;
 		MaskOffsetYSlider.Value = 0.0;
 		SyncMaskEditorFromSliders();
@@ -1203,6 +1218,9 @@ public partial class MainWindow : Window
 		_loading = false;
 		EnsureIRacingProvider();
 		ApplyNotificationSettings();
+		// Hydrate the live mappings and preview from the complete saved control state. Previously
+		// the first preview refresh happened only after a user toggled an overlay.
+		PublishLiveState();
 		UpdateModeControls();
 		UpdateHints();
 		StatusText.Text = "Config: " + ConfigPath;
@@ -1440,6 +1458,7 @@ public partial class MainWindow : Window
 			SetSliderValue(MaskHeightSlider, MaskBeanEditor.HeightScale);
 			SetSliderValue(MaskRoundnessSlider, MaskBeanEditor.Curve);
 			SetSliderValue(MaskInnerLowerSlider, MaskBeanEditor.InnerLowerY);
+			SetSliderValue(MaskNoseSpreadXSlider, MaskBeanEditor.NoseSpreadX);
 			_syncingControls = false;
 			SaveGlobalSettings();
 		}
@@ -1463,6 +1482,61 @@ public partial class MainWindow : Window
 		}
 	}
 
+	private void MaskNoseSpreadXSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (!_loading && !_syncingControls && MaskBeanEditor != null)
+		{
+			SyncMaskEditorFromSliders();
+			SaveGlobalSettings();
+		}
+	}
+
+	private void PreviewGuideMode_Changed(object sender, RoutedEventArgs e)
+	{
+		if (MaskBeanEditor != null)
+			MaskBeanEditor.UseCircularEyeGuides = PreviewCircleGuidesCheck?.IsChecked == true;
+		if (!_loading)
+			SaveGlobalSettings();
+	}
+
+	private void PreviewFrameMode_Changed(object sender, RoutedEventArgs e)
+	{
+		if (MaskBeanEditor != null)
+			MaskBeanEditor.UsePerEyeFrameGuides = PreviewPerEyeFramesCheck?.IsChecked == true;
+		if (!_loading)
+			SaveGlobalSettings();
+	}
+
+	private double CurrentPreviewIpd()
+	{
+		if (!double.TryParse(PreviewIpdBox?.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
+			return Quest3PreviewGeometry.DefaultIpdMillimetres;
+		return Math.Round(Math.Clamp(value, Quest3PreviewGeometry.MinimumIpdMillimetres,
+			Quest3PreviewGeometry.MaximumIpdMillimetres), 1);
+	}
+
+	private void PreviewIpd_Changed(object sender, TextChangedEventArgs e)
+	{
+		if (_loading || MaskBeanEditor == null || !double.TryParse(PreviewIpdBox.Text,
+			NumberStyles.Float, CultureInfo.InvariantCulture, out _)) return;
+		MaskBeanEditor.PreviewIpdMillimetres = CurrentPreviewIpd();
+		SaveGlobalSettings();
+	}
+
+	private void PreviewIpd_Commit(object sender, KeyboardFocusChangedEventArgs e) =>
+		PreviewIpdBox.Text = CurrentPreviewIpd().ToString("0.0", CultureInfo.InvariantCulture);
+
+	private void PreviewIpd_KeyDown(object sender, KeyEventArgs e)
+	{
+		if (e.Key != Key.Up && e.Key != Key.Down) return;
+		double delta = e.Key == Key.Up ? 0.1 : -0.1;
+		PreviewIpdBox.Text = Math.Clamp(CurrentPreviewIpd() + delta,
+			Quest3PreviewGeometry.MinimumIpdMillimetres, Quest3PreviewGeometry.MaximumIpdMillimetres)
+			.ToString("0.0", CultureInfo.InvariantCulture);
+		PreviewIpdBox.SelectAll();
+		e.Handled = true;
+	}
+
 	private void MaskSliderReset_RightClick(object sender, MouseButtonEventArgs e)
 	{
 		if (_loading) return;
@@ -1474,6 +1548,7 @@ public partial class MainWindow : Window
 		else if (sender == MaskRoundnessSlider) MaskRoundnessSlider.Value = 0.5;
 		else if (sender == MaskApexYSlider)     MaskApexYSlider.Value     = 0.0;
 		else if (sender == MaskInnerLowerSlider) MaskInnerLowerSlider.Value = 0.0;
+		else if (sender == MaskNoseSpreadXSlider) MaskNoseSpreadXSlider.Value = 0.0;
 		SyncMaskEditorFromSliders();
 		_syncingControls = false;
 		SaveGlobalSettings();
@@ -1811,7 +1886,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		_liveState.Publish(mask,
 			MaskEnabledCheck.IsChecked == true, !ReadBoolSetting(OverlayForceDirectKey, false), MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
 			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, FixedInnerBridgeWidth,
-			FixedInnerBridgeRise, FixedInnerBridgePeakX, FixedInnerBridgeSteepness,
+			FixedInnerBridgeRise, FixedInnerBridgePeakX, FixedInnerBridgeSteepness, MaskNoseSpreadXSlider.Value,
 			HudEnabledCheck.IsChecked == true, Math.Max(0, HudTraceVisibilityCombo.SelectedIndex), HudXSlider.Value, HudYSlider.Value, HudScaleSlider.Value,
 			HudSafeMarginSlider.Value, HudClampCheck.IsChecked == true, HudAlarmOnlyCheck.IsChecked == true,
 			HudTraceSensitivitySlider.Value, HudTraceXSlider.Value, HudTraceYSlider.Value, HudTraceScaleSlider.Value,
@@ -1836,9 +1911,9 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void RefreshMaskOverlayPreview()
 	{
 		if(MaskBeanEditor==null)return;var items=new List<OverlayPreviewItem>();
-		if(HudEnabledCheck.IsChecked==true){int count=_hudWidgets.Count(w=>w.Enabled);items.Add(new("hud","HUD",HudXSlider.Value,HudYSlider.Value,Math.Max(.055*count,.07),.12,HudScaleSlider.Value,HudScaleSlider.Minimum,HudScaleSlider.Maximum,HudOpacitySlider.Value,OverlayPreviewAnchor.TopLeft,OverlayPreviewStyle.Hud));}
+		if(HudEnabledCheck.IsChecked==true){int count=_hudWidgets.Count(w=>w.Enabled);items.Add(new("hud","HUD",HudXSlider.Value,HudYSlider.Value,Math.Max(1,count),0,HudScaleSlider.Value,HudScaleSlider.Minimum,HudScaleSlider.Maximum,HudOpacitySlider.Value,OverlayPreviewAnchor.TopLeft,OverlayPreviewStyle.Hud));}
 		if(HudTraceVisibilityCombo.SelectedIndex>0)items.Add(new("trace","PERFORMANCE TRACE",HudTraceXSlider.Value,HudTraceYSlider.Value,HudTraceWidthSlider.Value,.16,HudTraceScaleSlider.Value,HudTraceScaleSlider.Minimum,HudTraceScaleSlider.Maximum,HudTraceOpacitySlider.Value,OverlayPreviewAnchor.TopLeft,OverlayPreviewStyle.Trace));
-		if(ClockWidgetEnabledCheck.IsChecked==true)items.Add(new("clock",ClockSessionTimerCheck.IsChecked==true?"CLOCK + TIMER":"CLOCK",ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,.22,ClockSessionTimerCheck.IsChecked==true?.16:.09,ClockWidgetScaleSlider.Value,ClockWidgetScaleSlider.Minimum,ClockWidgetScaleSlider.Maximum,ClockWidgetOpacitySlider.Value,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Clock,Math.Max(0,ClockThemeCombo.SelectedIndex)));
+		if(ClockWidgetEnabledCheck.IsChecked==true)items.Add(new("clock",ClockSessionTimerCheck.IsChecked==true?"CLOCK + TIMER":"CLOCK",ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,0,ClockSessionTimerCheck.IsChecked==true?1:0,ClockWidgetScaleSlider.Value,ClockWidgetScaleSlider.Minimum,ClockWidgetScaleSlider.Maximum,ClockWidgetOpacitySlider.Value,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Clock,Math.Max(0,ClockThemeCombo.SelectedIndex)));
 		if(StickyNoteEnabledCheck.IsChecked==true)for(int i=0;i<_stickyNotes.Count;++i){var n=_stickyNotes[i];if(n.Enabled&&!string.IsNullOrWhiteSpace(n.Text))items.Add(new($"sticky:{i}",$"NOTE {i+1}",n.X,n.Y,.12,.12,n.Scale,.5,2.5,n.Opacity,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Sticky,n.Theme));}
 		if(NotifyEnabledCheck.IsChecked==true)items.Add(new("notifications","NOTIFICATION",NotifyXSlider.Value,NotifyYSlider.Value,.28,.12,NotifyScaleSlider.Value,NotifyScaleSlider.Minimum,NotifyScaleSlider.Maximum,NotifyOpacitySlider.Value,OverlayPreviewAnchor.BottomRight,OverlayPreviewStyle.Notification,Math.Max(0,NotifyThemeCombo.SelectedIndex)));
 		if(ObsIndicatorEnabledCheck.IsChecked==true)items.Add(new(string.Empty,"OBS RECORDING CUE",.5,.5,1,1,1,1,1,ObsIndicatorOpacitySlider.Value,OverlayPreviewAnchor.Edge,OverlayPreviewStyle.System));
@@ -2459,6 +2534,10 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", MaskCornerKey, FormatStorageScale(1.0 - MaskRoundnessSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", MaskOuterApexYKey, FormatStorageScale(MaskApexYSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", MaskInnerLowerYKey, FormatStorageScale(MaskInnerLowerSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", MaskNoseSpreadXKey, FormatStorageScale(MaskNoseSpreadXSlider.Value), ConfigPath);
+		WritePrivateProfileString("Settings", PreviewCircleGuidesKey, PreviewCircleGuidesCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", PreviewPerEyeFramesKey, PreviewPerEyeFramesCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", PreviewIpdKey, CurrentPreviewIpd().ToString("0.0", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", MaskInnerBridgeWidthKey, FormatStorageScale(FixedInnerBridgeWidth), ConfigPath);
 		WritePrivateProfileString("Settings", MaskInnerBridgeRiseKey, FormatStorageScale(FixedInnerBridgeRise), ConfigPath);
 		WritePrivateProfileString("Settings", MaskInnerBridgePeakXKey, FormatStorageScale(FixedInnerBridgePeakX), ConfigPath);
@@ -2771,6 +2850,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		double visorInnerBridgeRise = FromRiseMillis(appKey.GetValue("mask_inner_bridge_rise"), 0.0);
 		double visorInnerBridgePeakX = FromPeakXMillis(appKey.GetValue("mask_inner_bridge_peak_x"), 0.5);
 		double visorInnerBridgeSteepness = FromSteepMillis(appKey.GetValue("mask_inner_bridge_steepness"), 0.5);
+		double visorNoseSpreadX = FromMillis(appKey.GetValue("mask_nose_spread_x"), ReadRangeSetting(MaskNoseSpreadXKey, 0.0, 0.0, 0.5));
 		return new AppProfile
 		{
 			Key = keyName,
@@ -2803,7 +2883,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			VisorInnerBridgeWidth = visorInnerBridgeWidth,
 			VisorInnerBridgeRise = visorInnerBridgeRise,
 			VisorInnerBridgePeakX = visorInnerBridgePeakX,
-			VisorInnerBridgeSteepness = visorInnerBridgeSteepness
+			VisorInnerBridgeSteepness = visorInnerBridgeSteepness,
+			VisorNoseSpreadX = visorNoseSpreadX
 		};
 	}
 
@@ -2967,7 +3048,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 	}
 
-	private (bool enabled, double vertical, double horizontal, bool rounded, double corner, double topBias, double bottomBias, double leftBias, double rightBias, double topCurve, double bottomCurve, double visorSize, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double visorInnerBridgeRise, double visorInnerBridgePeakX, double visorInnerBridgeSteepness) CurrentGlobalMaskValues()
+	private (bool enabled, double vertical, double horizontal, bool rounded, double corner, double topBias, double bottomBias, double leftBias, double rightBias, double topCurve, double bottomCurve, double visorSize, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double visorInnerBridgeRise, double visorInnerBridgePeakX, double visorInnerBridgeSteepness, double visorNoseSpreadX) CurrentGlobalMaskValues()
 	{
 		TryReadTextBox(MaskVerticalBox, out var maskVertical);
 		TryReadTextBox(MaskHorizontalBox, out var maskHorizontal);
@@ -2989,7 +3070,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			FixedInnerBridgeWidth,
 			FixedInnerBridgeRise,
 			FixedInnerBridgePeakX,
-			FixedInnerBridgeSteepness);
+			FixedInnerBridgeSteepness,
+			MaskNoseSpreadXSlider?.Value ?? 0.0);
 	}
 
 	private void ApplyGlobalMaskValuesToProfile(AppProfile appProfile)
@@ -3013,6 +3095,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		appProfile.VisorInnerBridgeRise = 0;
 		appProfile.VisorInnerBridgePeakX = 0;
 		appProfile.VisorInnerBridgeSteepness = 0;
+		appProfile.VisorNoseSpreadX = 0;
 	}
 
 
@@ -3030,12 +3113,15 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 
 		var globalMask = CurrentGlobalMaskValues();
-		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, appProfile.VisorSize, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, globalMask.visorSize, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness, true) // Stencil outer edges only is permanently enabled
+		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, appProfile.VisorSize, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, appProfile.VisorNoseSpreadX, globalMask.visorSize, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness, globalMask.visorNoseSpreadX, PreviewCircleGuidesCheck.IsChecked == true, PreviewPerEyeFramesCheck.IsChecked == true, CurrentPreviewIpd(), true) // Stencil outer edges only is permanently enabled
 		{
 			Owner = this
 		};
 		if (profileWindow.ShowDialog() == true)
 		{
+			PreviewCircleGuidesCheck.IsChecked = profileWindow.UseCircularEyeGuidesValue;
+			PreviewPerEyeFramesCheck.IsChecked = profileWindow.UsePerEyeFrameGuidesValue;
+			PreviewIpdBox.Text = profileWindow.PreviewIpdMillimetresValue.ToString("0.0", CultureInfo.InvariantCulture);
 			if (profileWindow.HiddenChanged)
 			{
 				SetAppHidden(appProfile, profileWindow.HiddenValue);
@@ -3047,7 +3133,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 				appProfile.DisplayName = newName;
 				appProfile.Display = newName;
 			}
-			if (profileWindow.UseGlobal)
+			if (profileWindow.UseGlobalValues)
 			{
 				ResetAppCustomProfile(appProfile);
 				ApplyGlobalMaskValuesToProfile(appProfile);
@@ -3055,7 +3141,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			}
 			else
 			{
-				WriteAppCustomProfile(appProfile, profileWindow.TopValue, profileWindow.BottomValue, profileWindow.HorizontalValue, profileWindow.RenderScaleValue, profileWindow.MaskEnabledValue, profileWindow.MaskVerticalValue, profileWindow.MaskHorizontalValue, profileWindow.MaskRoundedValue, profileWindow.MaskCornerValue, profileWindow.MaskTopBiasValue, profileWindow.MaskBottomBiasValue, profileWindow.MaskLeftBiasValue, profileWindow.MaskRightBiasValue, profileWindow.MaskTopCurveValue, profileWindow.MaskBottomCurveValue, profileWindow.VisorSizeValue, profileWindow.VisorOuterApexYValue, profileWindow.VisorInnerLowerYValue, profileWindow.VisorInnerBridgeWidthValue, profileWindow.VisorInnerBridgeRiseValue, profileWindow.VisorInnerBridgePeakXValue, profileWindow.VisorInnerBridgeSteepnessValue, profileEnabled: true);
+				double savedVisorSize = profileWindow.UseGlobalVisor ? 0.0 : profileWindow.VisorSizeValue;
+				WriteAppCustomProfile(appProfile, profileWindow.TopValue, profileWindow.BottomValue, profileWindow.HorizontalValue, profileWindow.RenderScaleValue, profileWindow.MaskEnabledValue, profileWindow.MaskVerticalValue, profileWindow.MaskHorizontalValue, profileWindow.MaskRoundedValue, profileWindow.MaskCornerValue, profileWindow.MaskTopBiasValue, profileWindow.MaskBottomBiasValue, profileWindow.MaskLeftBiasValue, profileWindow.MaskRightBiasValue, profileWindow.MaskTopCurveValue, profileWindow.MaskBottomCurveValue, savedVisorSize, profileWindow.VisorOuterApexYValue, profileWindow.VisorInnerLowerYValue, profileWindow.VisorInnerBridgeWidthValue, profileWindow.VisorInnerBridgeRiseValue, profileWindow.VisorInnerBridgePeakXValue, profileWindow.VisorInnerBridgeSteepnessValue, profileWindow.VisorNoseSpreadXValue, profileEnabled: true);
 				appProfile.Top = profileWindow.TopValue;
 				appProfile.Bottom = profileWindow.BottomValue;
 				appProfile.Horizontal = profileWindow.HorizontalValue;
@@ -3071,7 +3158,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 				appProfile.MaskRightBias = profileWindow.MaskRightBiasValue;
 				appProfile.MaskTopCurve = profileWindow.MaskTopCurveValue;
 				appProfile.MaskBottomCurve = profileWindow.MaskBottomCurveValue;
-				appProfile.VisorSize = profileWindow.VisorSizeValue;
+				appProfile.VisorSize = savedVisorSize;
 
 				appProfile.VisorOuterApexY = profileWindow.VisorOuterApexYValue;
 				appProfile.VisorInnerLowerY = profileWindow.VisorInnerLowerYValue;
@@ -3079,9 +3166,11 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 				appProfile.VisorInnerBridgeRise = profileWindow.VisorInnerBridgeRiseValue;
 				appProfile.VisorInnerBridgePeakX = profileWindow.VisorInnerBridgePeakXValue;
 				appProfile.VisorInnerBridgeSteepness = profileWindow.VisorInnerBridgeSteepnessValue;
+				appProfile.VisorNoseSpreadX = profileWindow.VisorNoseSpreadXValue;
 				appProfile.ProfileEnabled = true;
 			}
 			appProfile.RefreshSummary();
+			LoadAppProfiles();
 			StatusText.Text = "Saved app profile. Restart the VR game.";
 		}
 	}
@@ -3106,7 +3195,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		registryKey.SetValue("custom_name", name, RegistryValueKind.String);
 	}
 
-	private static void WriteAppCustomProfile(AppProfile profile, double top, double bottom, double horizontal, double renderScale, bool maskEnabled, double maskVertical, double maskHorizontal, bool maskRounded, double maskCorner, double maskTopBias, double maskBottomBias, double maskLeftBias, double maskRightBias, double maskTopCurve, double maskBottomCurve, double visorSize, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double visorInnerBridgeRise, double visorInnerBridgePeakX, double visorInnerBridgeSteepness, bool profileEnabled)
+	private static void WriteAppCustomProfile(AppProfile profile, double top, double bottom, double horizontal, double renderScale, bool maskEnabled, double maskVertical, double maskHorizontal, bool maskRounded, double maskCorner, double maskTopBias, double maskBottomBias, double maskLeftBias, double maskRightBias, double maskTopCurve, double maskBottomCurve, double visorSize, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double visorInnerBridgeRise, double visorInnerBridgePeakX, double visorInnerBridgeSteepness, double visorNoseSpreadX, bool profileEnabled)
 	{
 		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(AppRegistryRoot + "\\" + profile.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
 		registryKey.SetValue("profile_enabled", profileEnabled ? 1 : 0, RegistryValueKind.DWord);
@@ -3137,6 +3226,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		registryKey.SetValue("mask_inner_bridge_rise", ToRiseMillis(visorInnerBridgeRise), RegistryValueKind.DWord);
 		registryKey.SetValue("mask_inner_bridge_peak_x", ToPeakXMillis(visorInnerBridgePeakX), RegistryValueKind.DWord);
 		registryKey.SetValue("mask_inner_bridge_steepness", ToSteepMillis(visorInnerBridgeSteepness), RegistryValueKind.DWord);
+		registryKey.SetValue("mask_nose_spread_x", ToMillis(visorNoseSpreadX), RegistryValueKind.DWord);
 	}
 
 	private static void ResetAppCustomProfile(AppProfile profile)
@@ -3173,5 +3263,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		registryKey.DeleteValue("mask_inner_bridge_rise", throwOnMissingValue: false);
 		registryKey.DeleteValue("mask_inner_bridge_peak_x", throwOnMissingValue: false);
 		registryKey.DeleteValue("mask_inner_bridge_steepness", throwOnMissingValue: false);
+		registryKey.DeleteValue("mask_nose_spread_x", throwOnMissingValue: false);
 	}
 }

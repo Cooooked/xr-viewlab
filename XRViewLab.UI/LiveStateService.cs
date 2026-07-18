@@ -25,7 +25,7 @@ internal sealed class LiveStateService : IDisposable
 
     public void Publish(uint calibrationMask,
         bool maskEnabled, bool topmostOverlays, double size, double corner, double apex, double innerLow,
-        double bridgeWidth, double bridgeRise, double bridgePeakX, double bridgeSteepness,
+        double bridgeWidth, double bridgeRise, double bridgePeakX, double bridgeSteepness, double noseSpreadX,
         bool hudEnabled, int traceVisibilityMode, double hudX, double hudY, double hudScale, double hudSafeMargin, bool hudClamp,
         bool hudAlarmOnly, double hudTraceSensitivityMs, double traceX, double traceY, double traceScale,
         double traceWidth, double traceHistory, double alarmHoldMs,
@@ -70,7 +70,7 @@ internal sealed class LiveStateService : IDisposable
         _view.Write(200, hudGraphChannels); _view.Write(204, hudGraphMode);
         _view.Write(208, (clockEnabled ? 1u : 0u) | (sessionTimerEnabled ? 2u : 0u) | (clock24Hour ? 4u : 0u));
         _view.Write(212, (float)clockX); _view.Write(216, (float)clockY); _view.Write(220, (float)clockScale); _view.Write(224, (float)clockOpacity);
-        _view.Write(228, clockTheme); _view.Write(232, 0u);
+		_view.Write(228, clockTheme); _view.Write(232, (float)noseSpreadX);
         for (int i = 0; i < 6; ++i) _view.Write(236 + i * 4, (uint)(i < overlayToggleKeys.Count ? Math.Clamp(overlayToggleKeys[i], 0, 255) : 0));
         Thread.MemoryBarrier();
         _view.Write(12, unchecked(++_generation));

@@ -33,7 +33,7 @@ the Session Library, with confirmation; valid raw evidence is never removed by a
 | `enabled` | 1 | `enabled` | `app_enabled`, `profile_enabled` | master switch |
 | `total_render_height` | 0..1 / 0.18 | `totalTangent` | millis | legacy fallbacks `total_share`, `vertical_tangent` |
 | `split_mode` + `top_tangent` / `bottom_tangent` | 0.09/0.09 | `topTangent`/`bottomTangent` | millis | split top/bottom crop |
-| `horizontal_render_width` | 0..1 / 0.80 | `horizontalRenderWidth` | millis | |
+| `horizontal_render_width` | 0..1 / 0.80 | `horizontalRenderWidth` | millis | Exact retained width. `0.8` keeps 80% of each eye's submitted horizontal span; with outer-edge-only policy the entire 20% is removed from the outer boundary while the inner boundary stays fixed. |
 | `crop_outer_edges_only` | 1 | `cropOuterEdgesOnly` | — | **Permanently enabled** — config key ignored. Horizontal crop takes from outer edges only. |
 | `foveated_center_compensation` | 0 | retired/false | dword | Retained only for compatibility; ignored and permanently off because pose compensation tilted asymmetric crops. |
 | `visual_mask_only`, `horizontal_visual_mask_only` | 0 | same names | — | mask instead of crop (loses GPU savings); Edge Masks popup "Both" controls write these keys |
@@ -48,19 +48,29 @@ the Session Library, with confirmation; valid raw evidence is never removed by a
 | `mask_corner` | 0..1 | `visorCurve = 1 − maskCorner` | `mask_corner` millis | Curve slider (stored inverted). Near zero stays visually square through one continuous curve; Inner low remains active. |
 | `mask_outer_apex_y` | −0.5..0.5 / 0 | `visorOuterApexY` | signed millis | Apex Y slider + red pin |
 | `mask_inner_lower_y` | 0..0.666 / 0 | `visorInnerLowerY` | millis | Inner low slider + orange pin |
+| `mask_nose_spread_x` | 0..0.5 / 0 | `visorNoseSpreadX` | millis | Nose Spread X. Moves the left-eye nose boundary left and the right-eye boundary right by the same normalized amount. Zero preserves prior geometry. Published live and supported by per-app visor overrides. |
 | `mask_inner_bridge_width` | 0..1 / 0.5 | `visorInnerBridgeWidth` | millis | Legacy compatibility key; the main editor fixes the supported curve at 0.5. |
 | `mask_inner_bridge_rise` | −0.5..1 / 0 | `visorInnerBridgeRise` | legacy millis plus extended marker encoding for per-app profiles | Legacy compatibility key; the main editor fixes the supported curve at 0. |
 | `mask_inner_bridge_peak_x` | −1..2 / 0.5 | `visorInnerBridgePeakX` | legacy millis 0..1000; extended marker encoding for per-app profiles | Legacy compatibility key; the main editor fixes the supported curve at 0.5. |
 | `mask_inner_bridge_steepness` | −1..2 / 0.5 | `visorInnerBridgeSteepness` | legacy millis plus extended marker encoding for per-app profiles | Legacy compatibility key; the main editor fixes the supported curve at 0.5. |
 | `visor_live_revision` | monotonic timestamp | `liveVisorRevision` | — | Internal commit marker. The UI writes it last after global visor controls, allowing a safe live visor-only refresh at `xrEndFrame`. |
-
-Global visor controls are always published through the generation-stamped live-state mapping while
-the UI is open. The retired `live_visor_tuning` switch is ignored/removed; per-app profile overrides
-remain startup-owned and are never overwritten by the global live snapshot.
 | `mask_width_scale` / `mask_height_scale` | 1.0 | `visorWidth`/`visorHeight` | `visor_width`/`visor_height` | Fixed at 1.0; the visor mask always fills the crop opening and only affects corners. |
 | `visor_technique` | `c` | `visorTechnique` | — | a/b hidden; DirectWrite is the product path |
 | `visor_hd` | 0 | — | — | **Removed** — code disabled; key ignored. |
 | `visor_antialiasing` | 0 | — | — | **Removed** — code disabled; key ignored. |
+| `preview_circle_guides` | 1 | UI-only | — | Preview calibration preference. `1` shows two overlapping true circles; `0` shows one binocular oval. Both use the same 85% width / 90% height periphery boundary and do not alter runtime. |
+| `preview_per_eye_frames` | 0 | UI-only | — | Independent frame-guide preference. `0` shows one combined binocular outer frame; `1` shows two overlapping per-eye rectangles at the actual `2064:2208` eye aspect. Guide-only; crop and runtime are unchanged. |
+| `preview_ipd_mm` | 50.0..80.0 / 67.0 | UI-only | — | Calibration-helper IPD with 0.1 mm input steps. Changes only centre separation/overlap for the two-circle and two-per-eye-frame guides. It never changes crop, visor, overlays or native runtime output. |
+
+Global visor controls are always published through the generation-stamped live-state mapping while
+the UI is open. The retired `live_visor_tuning` switch is ignored/removed; per-app profile overrides
+remain startup-owned and are never overwritten by the global live snapshot.
+
+The profile window has two distinct global actions. `Use global visor settings` stores
+`visor_size=0` while preserving the app's crop/resolution override. `Use Global Values` is the
+explicit whole-profile reset and clears `profile_enabled`. Saving ordinary crop/resolution edits
+always writes `profile_enabled=1`, reloads the registry-backed app list, and never treats the
+visor-only checkbox as permission to discard the profile.
 
 ## Stencil / visibility mask
 

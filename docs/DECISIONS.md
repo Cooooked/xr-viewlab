@@ -319,3 +319,18 @@ from `dev` to `master` only after the repository contracts and full build pass a
 is recorded. Experiment or feature branches are created only on explicit request. The remote `main` ref is
 an obsolete disconnected history and is not an integration target. Force pushes, history rewrites and branch
 deletion remain prohibited without explicit user approval.
+
+## D34 - The Quest 3 preview is a centred normalised headset view (2026-07-18)
+
+The preview is not a projection-angle plot. `Quest3PreviewGeometry` fits one fixed `55:48` outer box,
+centres it, and applies horizontal and vertical retained fractions directly: `0.8` is 80% of box width
+and symmetric `0.15` is 15% of box height. Split top/bottom values move the rectangle according to their
+actual shares. The periphery layer can show one binocular oval or two square-bounded circles. Both use the
+same boundary: 90% of box height and 85% of box width; circle mode never inherits container stretching.
+Independently, the full-frame guide can be one combined rectangle or two overlapping per-eye rectangles
+whose `2064:2208` aspect is preserved. A persisted `67.0` mm IPD calibration input scales only the centre
+separation of dual guide geometry, in 0.1 mm steps. These are display preferences only and never publish to runtime.
+The current crop, visor shape, overlay anchors, hit-testing and drag deltas
+all use the same full-box normalised coordinates. Zoom and pan are display-only. Rejected: deriving preview
+placement from asymmetric projection degrees, normalising ordinary elements into the crop, applying crop a
+second time, or stretching an eye guide to the container aspect.

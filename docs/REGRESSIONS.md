@@ -3,6 +3,44 @@
 > Institutional scar tissue. Read before touching the areas named here. Append an entry whenever
 > a significant regression occurs: what / why / how detected / fix / how to never repeat it.
 
+## R35 — Startup state must hydrate the preview immediately
+
+**What:** saved overlay widgets were absent from the preview until the user toggled or changed a control.
+**Why:** `LoadSettings` suppressed live/preview work while `_loading` was true but never published and refreshed
+once loading ended. **Fix:** the completed load performs one deterministic `PublishLiveState`, which refreshes the
+shared preview descriptors from the hydrated controls. **Never again:** source contracts pin that post-load call;
+startup preview state may not depend on an input event.
+
+## R34 — A visor-only global choice is not a whole-profile reset
+
+**What:** saving crop or resolution edits while `Use global visor settings` remained checked could delete the
+entire application profile, and the main table could remain stale. **Why:** one `UseGlobal` result represented both
+the visor-only checkbox and the explicit whole-profile reset action; the caller interpreted either as permission
+to clear `profile_enabled`. It then mutated the existing row without reading the registry back. **Fix:** the dialog
+returns separate `UseGlobalVisor` and `UseGlobalValues` intentions. Ordinary Save always enables the app profile,
+stores `visor_size=0` only for a global visor, and reloads the registry-backed list. **Never again:** only the
+explicit `Use Global Values` action may erase the profile; deterministic contracts pin both branches.
+
+## R33 — The headset preview is not a projection-degree diagram
+
+**What:** the new preview appeared shifted upward and too small, its eye guides were ovals, and horizontal `0.8`
+did not approach the dotted usable boundary. **Why:** preview geometry reinterpreted asymmetric projection angles,
+split the eyes into container-shaped regions and applied crop-relative coordinates after already drawing a crop.
+That mixed spaces, effectively cropped elements twice, and let aspect ratio stretch the guides. **Fix:** one centred
+fixed-aspect full box now owns direct crop, visor, guide and widget coordinates. Eye guides have square bounds and
+equal radii. A retained preference switches between those two circles and one binocular oval without changing the
+shared periphery boundary. Independent frame/periphery guide modes and preview IPD affect guide drawing only.
+`0.8` is exactly 80% of box width and `0.15` exactly 15% of height. **Never again:** preview geometry
+contains no degree/tangent conversion; contracts numerically pin scale, centring, asymmetry and circularity.
+
+## R32 — Outer-only horizontal crop must retain the requested fraction
+
+**What:** horizontal `0.8` retained about 90% of recommended width, so runtime crop and preview could not agree.
+**Why:** the outer-only path scaled one tangent magnitude, then reported `(1 + horizontal)/2` as effective width,
+halving the requested reduction. **Fix:** each eye keeps its inner tangent boundary and places its outer boundary so
+the remaining span is exactly `horizontal_render_width` of the submitted full span; effective resolution scale is
+that same value. **Never again:** fixtures pin the direct span equation and the `0.8` result.
+
 ## R31 — Swapchain ownership is not stereo projection context
 
 **What:** fused direct-to-eye overlays were correct in Pistol Whip but appeared as separated left/right ghosts in

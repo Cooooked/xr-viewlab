@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased - 2026-07-18 (profile persistence and centred preview)
+
+- Separated the per-app `Use global visor settings` choice from the explicit `Use Global Values`
+  reset. Saving crop or resolution edits now preserves and enables the app profile, stores only the
+  visor as global when requested, and refreshes the main table from the registry immediately.
+- Rebuilt the Quest 3 preview as one centred fixed-aspect coordinate space. Crop percentages now map
+  directly to the outer box, the visor and all widget anchors use that same space once, and asymmetric
+  vertical values translate the crop in the expected direction. The periphery-guide toggle preserves one
+  binocular oval mode and adds two overlapping true-circle mode without changing the shared boundary.
+  A separate frame-guide toggle selects one combined binocular rectangle or two overlapping per-eye
+  rectangles at the actual 2064:2208 eye aspect; both switches are preview-only.
+  Added a persisted 67.0 mm IPD calibration input with 0.1 mm steps; it live-adjusts only dual-guide
+  overlap and has no effect on crop, visor, overlay placement or runtime output.
+- Corrected outer-only horizontal runtime cropping and recommended resolution scaling so `0.8` retains
+  exactly 80% of each eye's full horizontal span, with the entire reduction taken from its outer edge.
+- Hydrated saved overlay widgets in the preview as soon as settings load, without requiring a toggle.
+- Added mirrored Nose Spread X control, INI/profile persistence and live-state/native rendering support.
+  Zero preserves the former visor geometry.
+- Added deterministic geometry/profile contracts for direct percentage scale, centring, circular guides,
+  runtime parity, profile-save intent and startup preview hydration.
+
 ## Unreleased - 2026-07-17 (cross-runtime renderer diagnosis)
 
 - Added bounded verbose `PIPE` evidence across OpenXR frame timing, locate-view pose/FOV acquisition,
