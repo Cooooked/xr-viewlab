@@ -14,6 +14,12 @@ Also: calibration menu capture-info text moved from amber `#C08A2A` to `MutedBru
 iRacing spotter R/G/B sliders gained right-click-reset to their default (255,69,0) (item 20 polish). WPF Release
 builds clean (0/0); the four preview/overlay/HUD/baseline verifiers pass. Native/MSI rebuild and headset/OBS/iRacing
 live validation for this version remain pending.
+**Build-environment note (2026-07-19):** the WPF/broker managed projects build cleanly with dotnet 8.0.422.
+The native `XRViewLabLayer.vcxproj`/`ViewLabBridge.vcxproj` target Platform Toolset **v145**, which is NOT installed
+on this machine's VS 2022 BuildTools — MSBuild fails with MSB8020. Native x64/Win32 layers, the OBS plugin DLL and a
+complete MSI therefore cannot be produced or validated in the current agent environment; managed-only changes are the
+verifiable surface. Do not retarget the toolset casually to force a build (it changes binary behaviour that cannot be
+headset-validated here).
 **Prior version:** 4.1.271 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.271.msi` (removes the Quest 3 lens-outline preview feature; all 20 deterministic scripts pass; headset validation pending)
 **Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
 AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
