@@ -1,5 +1,74 @@
 # Regression memory
 
+## R45 — OBS Recording Cue preview used the full-lens frame
+
+**Symptom:** The OBS Recording Cue preview border stayed on the dotted outer frame instead of moving and resizing
+with the solid post-crop rectangle. Its top-left label also collided with the iRacing label when both were visible.
+
+**Cause:** The main preview created OBS with the generic `Edge` anchor, and the per-app preview did not add its
+effective OBS feature state to the shared preview item list.
+
+**Contract:** Main and per-app previews create OBS with `RecordingRenderEdge`. `BeanMaskEditor` resolves that anchor
+to the exact `PreviewCropRect` and labels it bottom-left. The existing iRacing `RenderEdge` inset and top-left label,
+ordinary widget transforms, visor geometry and native OBS cue renderer remain unchanged.
+
+## R44 — Widget preview forward and inverse transforms must share the full-lens rectangle
+
+**Symptom:** Widgets bunched near the centre, ordinary drags became far too sensitive and the usable movement range
+collapsed after a preview-only correction attempted to place X/Y inside the small post-crop rectangle.
+
+**Cause:** A preview-only pass changed drawing to `cropOrigin + saved * cropSize` and dragging to divide by crop size,
+while persistence and native rendering continued using `OverlayPlacement::FullLens`. At 15% vertical crop this
+compressed restarted widgets into the narrow centre band, amplified drag by 6.67× and saved values that native
+interpreted in a different frame. Recorded matched-locate logs prove `fullFov` is the original FOV; the earlier
+fallback assumption was false.
+
+**Contract:** `ResolveFullLens` and `ApplyFullLensDrag` use the exact same full preview rectangle in main and per-app
+previews. Crop is visibility only. Frame/eye guides, equal split crop, visor, crosshair, widgets and edge cues use one
+geometric preview centre; size calibration cannot move it. Restart round-trip, forward/inverse, small-delta and preview/native numerical fixtures must pass.
+Zoom/pan never enter persisted coordinates. Runtime and saved coordinates remain unchanged.
+
+## R43 — iRacing edge preview used the full-lens guide
+
+**Symptom:** The red iRacing telemetry outline appeared on the outer dotted Quest 3 reference instead of the
+solid post-crop render boundary.
+
+**Cause:** All non-editable edge placeholders shared `OverlayPreviewAnchor.Edge`, whose geometry was always the
+full preview area. The native racing cue already used the submitted post-crop eye rectangle; only its calibration
+preview represented the wrong boundary.
+
+**Contract:** iRacing uses `OverlayPreviewAnchor.RenderEdge`, resolved through `PreviewCropRect`. The generic lens
+edge anchor remains separate so unrelated feature previews are not silently reinterpreted.
+
+## R41 — Global live mappings must not overwrite app overlay overrides
+
+Placement-only profile data was overwritten by each global live-state generation. Active-app configuration now sets
+native feature masks; live-state, telemetry-config and sticky-note consumers leave overridden features alone. Reset
+deletes both `overlay_override_*` and `overlay_layout_*` values.
+
+## R42 — Factory defaults must not drift between INI and fallback literals
+
+The captured 4.1.255 JSON supplies missing-key fallbacks and is pinned against the packaged INI. Its one-time marker
+is `FactoryBaselineAppliedVersion`; never widen it to app profiles or ReShade deployment state.
+
+## R40 — Per-app visor configuration cannot be half global and half custom
+
+**What:** the profile checkbox was deliberately disabled, native code ignored per-app `mask_enabled`, and the
+profile preview stayed grey because it never received the enabled state. Its visible controls also predated the
+main Size/Width/Height/Curve/Outer Dip/Nose/Nose Spread X model. **Fix:** custom profiles persist and load all seven
+current values plus enable, while `visor_size=0` removes custom visor keys and follows globals. Both editors use
+`BeanMaskEditor`; the profile now calls `SetVisorVisible` on every relevant change. **Never again:** contracts pin
+control names/ranges, red active state, registry round-trip and native enable consumption.
+
+## R39 — Split crop controls must be relative to their own lens half
+
+**What:** The preview treated each `0..1` Top/Bottom control as a full-lens fraction and saturated it at `0.5`.
+Top `0.5` plus Bottom `0.5` therefore filled the whole lens instead of the centred middle half.
+
+**Contract:** UI controls are half-relative; each contributes `value × 0.5` of full height. Stored/native
+`top_tangent` and `bottom_tangent` remain full-lens shares. Deterministic checkpoints pin `1/1`, `1/0`, `0/1`
+and `0.5/0.5`.
+
 ## R38 — Remote layout and desktop focus are separate contracts
 
 **What:** duplicated help text clipped the In-HMD controls, while fresh desktop preview windows began headless and

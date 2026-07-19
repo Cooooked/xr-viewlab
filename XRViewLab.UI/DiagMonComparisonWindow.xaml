@@ -1,5 +1,6 @@
 <Window x:Class="XRViewLab.UI.DiagMonComparisonWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ViewLab — Session comparison" Width="1050" Height="560" MinWidth="760" MinHeight="420" Background="#101112" Foreground="#E4E4E4" WindowStartupLocation="CenterOwner">
+  <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="DiagMonDarkStyles.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Window.Resources>
   <Grid Margin="14">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="8"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <TextBlock Text="Selected session comparison" FontSize="18" FontWeight="SemiBold"/>

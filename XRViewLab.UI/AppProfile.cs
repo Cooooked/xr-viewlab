@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.Generic;
 
 namespace XRViewLab.UI;
 
@@ -334,6 +335,8 @@ public sealed class AppProfile : INotifyPropertyChanged
 	public double VisorInnerBridgePeakX { get; set; }
 	public double VisorInnerBridgeSteepness { get; set; }
 	public double VisorNoseSpreadX { get; set; }
+	public Dictionary<string, OverlayPlacementOverride> OverlayPlacements { get; init; } = new();
+	public OverlayProfileOverrides OverlayOverrides { get; init; } = new();
 
 	public string Summary
 	{

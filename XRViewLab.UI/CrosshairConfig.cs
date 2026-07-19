@@ -14,7 +14,7 @@ namespace XRViewLab.UI;
 //
 // Only static visual settings are represented. Dynamic spread, recoil, per-weapon gaps, movement
 // and split-distance are parsed if present but deliberately discarded so the crosshair stays fixed.
-internal sealed class CrosshairSettings
+public sealed class CrosshairSettings
 {
     public double Size = 5.0;            // cl_crosshairsize (CS reference pixels)
     public double Gap = -2.0;            // cl_crosshairgap (may be negative)
@@ -28,6 +28,13 @@ internal sealed class CrosshairSettings
     public double VrScale = 1.0;         // ViewLab-only overall VR scale (not a CS setting)
 
     public uint ColorRgb => (uint)((R << 16) | (G << 8) | B);
+
+    internal CrosshairSettings Clone() => new()
+    {
+        Size = Size, Gap = Gap, Thickness = Thickness, Dot = Dot, Outline = Outline,
+        OutlineThickness = OutlineThickness, Alpha = Alpha, R = R, G = G, B = B,
+        TStyle = TStyle, VrScale = VrScale
+    };
 
     private static readonly (byte r, byte g, byte b)[] Presets =
     {

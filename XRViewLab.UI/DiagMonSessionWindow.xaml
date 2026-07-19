@@ -1,4 +1,5 @@
 <Window x:Class="XRViewLab.UI.DiagMonSessionWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="DiagMon(ster) session" Width="900" Height="680" Background="#101112" Foreground="#E4E4E4" WindowStartupLocation="CenterOwner">
+  <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="DiagMonDarkStyles.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Window.Resources>
   <Grid Margin="12"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="8"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <WrapPanel><Button Content="Open session folder" Click="OpenFolder_Click" Padding="9,4" Margin="0,0,7,0"/><Button Content="Export analysis package" Click="Export_Click" Padding="9,4"/></WrapPanel>
     <TabControl Grid.Row="2" Background="#191A1D" BorderBrush="#34363B">

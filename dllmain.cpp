@@ -66,6 +66,10 @@ double visorInnerBridgeSteepness = 0.5;// mask_inner_bridge_steepness: -1..2, ha
 double visorNoseSpreadX = 0.0;         // mask_nose_spread_x: 0..0.5, mirrored outward from each eye centre
 double liveVisorRevision = 0.0;
 bool liveVisorUsesProfileOverride = false;
+uint32_t profileOverlayOverrideMask = 0;
+uint32_t profileStickyOverlayOverrideMask = 0;
+bool profileObsFeatureOverride = false;
+bool profileIRacingFeatureOverride = false;
 constexpr bool visorHD = false;          // HD visor removed
 constexpr bool visorAntialiasing = false; // anti-aliasing removed
 // There is one product visor: a ViewLab-owned curved corner mask drawn into the
@@ -253,13 +257,19 @@ float crosshairR = 0.0f, crosshairG = 1.0f, crosshairB = 0.0f; // default CS gre
 // thread. These are just the render-side settings.
 bool notifyEnabled = false;
 bool topmostVisorOverlays = false;
+bool experimentalDrawInVoid = false; // Persisted future route request; deliberately has no rendering effect.
 double notifyX = 0.98, notifyY = 0.98, notifyScale = 1.0, notifyOpacity = 1.0;
 
 // ---- Dedicated clock and OpenXR-session timer widget ----
 // The session clock starts at successful xrCreateSession and uses monotonic uptime; local time is
 // read only for display. It is deliberately independent of notifications and performance alarms.
 bool clockWidgetEnabled = false, clockSessionTimerEnabled = true, clock24Hour = true;
+// clockWidgetTheme selects the visual DESIGN (0 Classic card, 1 Minimal, 2 Terminal,
+// 3 Banner); clockWidgetPalette selects the colour set only (0 Graphite, 1 Paper, 2 OLED,
+// 3 Amber, 4 Mint). Legacy configs stored the palette in clock_widget_theme; a missing
+// clock_widget_palette key migrates that value so old selections keep their colours.
 uint32_t clockWidgetTheme = 0;
+uint32_t clockWidgetPalette = 0;
 double clockWidgetX = 0.50, clockWidgetY = 0.10, clockWidgetScale = 1.0, clockWidgetOpacity = 0.82;
 std::atomic<uint64_t> g_clockSessionStartTick{0};
 
@@ -673,9 +683,10 @@ struct LiveStateBlock {
     uint32_t clockFlags; float clockX,clockY,clockScale,clockOpacity; uint32_t clockTheme; float visorNoseSpreadX;
     uint32_t overlayToggleKeys[6]; // v8
     uint32_t obsMirrorVisibilityMask; // v9
+    uint32_t clockPalette; // v10: clockTheme is now the layout design; palette is colours only
 };
 #pragma pack(pop)
-static_assert(sizeof(LiveStateBlock)==264,"live state v9 contract size");
+static_assert(sizeof(LiveStateBlock)==268,"live state v10 contract size");
 constexpr uint32_t kLiveStateMagic = 0x534C4C56; // VLLS
 HANDLE g_liveStateMap = nullptr;
 const LiveStateBlock* g_liveState = nullptr;
@@ -704,9 +715,9 @@ void ConsumeTelemetryConfig() {
     if(!g_telemetryConfig){g_telemetryConfigMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabTelemetryConfigV1");if(g_telemetryConfigMap)g_telemetryConfig=(const TelemetryConfigBlock*)MapViewOfFile(g_telemetryConfigMap,FILE_MAP_READ,0,0,sizeof(TelemetryConfigBlock));}
     if(!g_telemetryConfig||g_telemetryConfig->magic!=0x31435456u||g_telemetryConfig->version!=1||g_telemetryConfig->size!=64||g_telemetryConfig->generation==g_telemetryConfigGeneration)return;
     const TelemetryConfigBlock stable=*g_telemetryConfig;if(stable.generation!=g_telemetryConfig->generation)return;
-    hudWidgetMask=stable.widgetMask&((1ull<<kHudWidgetCount)-1);hudWidgetSymbolMask=stable.flags&0xFFFFu;hudMaxPerRow=std::clamp(stable.maxPerRow,1u,16u);hudSysWarningThreshold=std::clamp((double)stable.sysWarning,10.0,60.0);hudSysCriticalThreshold=std::clamp((double)stable.sysCritical,0.0,hudSysWarningThreshold);
+    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Hud))==0){hudWidgetMask=stable.widgetMask&((1ull<<kHudWidgetCount)-1);hudWidgetSymbolMask=stable.flags&0xFFFFu;hudMaxPerRow=std::clamp(stable.maxPerRow,1u,16u);hudSysWarningThreshold=std::clamp((double)stable.sysWarning,10.0,60.0);hudSysCriticalThreshold=std::clamp((double)stable.sysCritical,0.0,hudSysWarningThreshold);
     viewlab::telemetry::SetNetworkProbeEnabled((hudWidgetMask & (0xFull<<12)) != 0);
-    std::array<bool,kHudWidgetCount> seen{};size_t n=0;for(uint8_t id:stable.order)if(id<kHudWidgetCount&&!seen[id]){hudWidgetOrder[n++]=id;seen[id]=true;}for(uint8_t id=0;id<kHudWidgetCount;++id)if(!seen[id])hudWidgetOrder[n++]=id;
+    std::array<bool,kHudWidgetCount> seen{};size_t n=0;for(uint8_t id:stable.order)if(id<kHudWidgetCount&&!seen[id]){hudWidgetOrder[n++]=id;seen[id]=true;}for(uint8_t id=0;id<kHudWidgetCount;++id)if(!seen[id])hudWidgetOrder[n++]=id;}
     g_telemetryConfigGeneration=stable.generation;
 }
 void DisconnectTelemetryConfig(){if(g_telemetryConfig)UnmapViewOfFile(g_telemetryConfig);if(g_telemetryConfigMap)CloseHandle(g_telemetryConfigMap);g_telemetryConfig=nullptr;g_telemetryConfigMap=nullptr;g_telemetryConfigGeneration=0;}
@@ -789,8 +800,9 @@ void ConsumeStickyNoteState(){
     if(!g_stickyNoteState){const uint64_t now=GetTickCount64();if(now<g_stickyNoteNextConnectTick)return;g_stickyNoteNextConnectTick=now+1000;g_stickyNoteMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabStickyNotes");if(g_stickyNoteMap)g_stickyNoteState=(const StickyNoteLiveBlock*)MapViewOfFile(g_stickyNoteMap,FILE_MAP_READ,0,0,sizeof(StickyNoteLiveBlock));}
     if(!g_stickyNoteState||g_stickyNoteState->magic!=0x314E5356u||g_stickyNoteState->version!=1||g_stickyNoteState->size!=sizeof(StickyNoteLiveBlock)||g_stickyNoteState->generation==g_stickyNoteGeneration)return;
     const StickyNoteLiveBlock snapshot=*g_stickyNoteState;MemoryBarrier();if(snapshot.generation!=g_stickyNoteState->generation)return;
-    stickyNoteEnabled=snapshot.enabled!=0;stickyNoteCount=0;
-    for(size_t i=0;i<kStickyNoteMax;++i){const auto&r=snapshot.notes[i];size_t length=0;while(length<std::size(r.text)&&r.text[length])++length;if(length==0&&!r.enabled)continue;auto&n=stickyNotes[stickyNoteCount++];n.enabled=r.enabled!=0;n.x=std::clamp((double)r.x,0.0,1.0);n.y=std::clamp((double)r.y,0.0,1.0);n.scale=std::clamp((double)r.scale,.5,2.5);n.opacity=std::clamp((double)r.opacity,.1,1.0);n.theme=std::clamp(r.theme,0u,4u);n.text.assign(r.text,length);}
+    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::StickyNote))!=0){g_stickyNoteGeneration=snapshot.generation;return;}
+    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::StickyNote))==0)stickyNoteEnabled=snapshot.enabled!=0;stickyNoteCount=0;
+    for(size_t i=0;i<kStickyNoteMax;++i){const auto&r=snapshot.notes[i];size_t length=0;while(length<std::size(r.text)&&r.text[length])++length;if(length==0&&!r.enabled)continue;auto&n=stickyNotes[stickyNoteCount++];n.enabled=r.enabled!=0;if((profileStickyOverlayOverrideMask&(1u<<i))==0){n.x=std::clamp((double)r.x,0.0,1.0);n.y=std::clamp((double)r.y,0.0,1.0);n.scale=std::clamp((double)r.scale,.5,2.5);}n.opacity=std::clamp((double)r.opacity,.1,1.0);n.theme=std::clamp(r.theme,0u,4u);n.text.assign(r.text,length);}
     g_stickyNoteGeneration=snapshot.generation;
 }
 void DisconnectStickyNoteState(){if(g_stickyNoteState)UnmapViewOfFile(g_stickyNoteState);if(g_stickyNoteMap)CloseHandle(g_stickyNoteMap);g_stickyNoteState=nullptr;g_stickyNoteMap=nullptr;g_stickyNoteGeneration=0;g_stickyNoteNextConnectTick=0;}
@@ -800,7 +812,7 @@ void ConsumeLiveState() {
     ConsumeStickyNoteState();
     if (!g_liveState) { ConnectLiveState(); if (!g_liveState) return; }
     const LiveStateBlock snapshot = *g_liveState;
-    if (snapshot.magic != kLiveStateMagic || snapshot.version != 9 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
+    if (snapshot.magic != kLiveStateMagic || snapshot.version != 10 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
     MemoryBarrier();
     const LiveStateBlock stable = *g_liveState;
     if (stable.generation != snapshot.generation) return;
@@ -810,22 +822,12 @@ void ConsumeLiveState() {
     calibrationBeacon = (stable.calibrationMask & (1u << 4)) != 0; calibrationEdgeProbes = (stable.calibrationMask & (1u << 5)) != 0;
     calibrationCheckerboards = (stable.calibrationMask & (1u << 6)) != 0; calibrationZonePlate = (stable.calibrationMask & (1u << 7)) != 0;
     calibrationClippingSteps = (stable.calibrationMask & (1u << 8)) != 0; calibrationMotionStrip = (stable.calibrationMask & (1u << 9)) != 0;
-    hudEnabled = (stable.hudFlags & 1u) != 0; hudClampToVisible = (stable.hudFlags & 2u) != 0; hudAlarmOnly = (stable.hudFlags & 4u) != 0;
-    hudAnchorX = std::clamp((double)stable.hudAnchorX, 0.0, 1.0); hudAnchorY = std::clamp((double)stable.hudAnchorY, 0.0, 1.0);
-    hudScale = std::clamp((double)stable.hudScale, 0.15, 3.0); hudSafeMargin = std::clamp((double)stable.hudSafeMargin, 0.0, 0.25);
-    hudTraceSensitivityMs = std::clamp((double)stable.traceSensitivityMs, 0.25, 8.0);
-    hudTraceX = std::clamp((double)stable.traceX, 0.0, 1.0); hudTraceY = std::clamp((double)stable.traceY, 0.0, 1.0);
-    hudTraceScale = std::clamp((double)stable.traceScale, 0.25, 3.0); hudTraceWidth = std::clamp((double)stable.traceWidth, 0.10, 1.0);
-    hudTraceHistory = std::clamp((double)stable.traceHistory, 10.0, 600.0);
-    hudAlarmHoldMs = std::clamp((double)stable.alarmHoldMs, 0.0, 10000.0);
-    hudTraceEnabled = (stable.traceFlags & 1u) != 0;
-    hudTraceVisibilityMode = !hudTraceEnabled ? 0u : (stable.traceFlags & 2u) != 0 ? 2u : 1u;
+    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Hud))==0){hudEnabled = (stable.hudFlags & 1u) != 0; hudClampToVisible = (stable.hudFlags & 2u) != 0; hudAlarmOnly = (stable.hudFlags & 4u) != 0;hudAnchorX = std::clamp((double)stable.hudAnchorX, 0.0, 1.0); hudAnchorY = std::clamp((double)stable.hudAnchorY, 0.0, 1.0); hudScale = std::clamp((double)stable.hudScale, 0.15, 3.0);hudSafeMargin = std::clamp((double)stable.hudSafeMargin, 0.0, 0.25);hudAlarmHoldMs = std::clamp((double)stable.alarmHoldMs, 0.0, 10000.0);}
+    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Trace))==0){hudTraceSensitivityMs = std::clamp((double)stable.traceSensitivityMs, 0.25, 8.0);hudTraceX = std::clamp((double)stable.traceX, 0.0, 1.0); hudTraceY = std::clamp((double)stable.traceY, 0.0, 1.0); hudTraceScale = std::clamp((double)stable.traceScale, 0.25, 3.0);hudTraceWidth = std::clamp((double)stable.traceWidth, 0.10, 1.0);hudTraceHistory = std::clamp((double)stable.traceHistory, 10.0, 600.0);hudTraceEnabled = (stable.traceFlags & 1u) != 0;hudTraceVisibilityMode = !hudTraceEnabled ? 0u : (stable.traceFlags & 2u) != 0 ? 2u : 1u;}
     // Backend selection is session-owned and profile-aware. Live UI snapshots must not override a
     // per-game diagnostic force-direct policy halfway through a session.
-    hudWidgetMask=(hudWidgetMask&~0x0Full)|(stable.hudWidgetMask&0x0Fu);
-    hudWidgetOrderPacked=stable.hudWidgetOrder;
-    hudGraphChannels=stable.hudGraphChannels&0x7Fu;
-    hudGraphMode=(HudGraphMode)std::clamp(stable.hudGraphMode,0u,3u);
+    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Hud))==0){hudWidgetMask=(hudWidgetMask&~0x0Full)|(stable.hudWidgetMask&0x0Fu);hudWidgetOrderPacked=stable.hudWidgetOrder;}
+    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Trace))==0){hudGraphChannels=stable.hudGraphChannels&0x7Fu;hudGraphMode=(HudGraphMode)std::clamp(stable.hudGraphMode,0u,3u);}
     // Feature 1: render-boundary flash drag state. A rising edge to inactive stamps the fade start.
     {
         const bool dragNow = (stable.interactFlags & 1u) != 0;
@@ -834,26 +836,22 @@ void ConsumeLiveState() {
         g_boundaryDragActive = dragNow;
     }
     // Feature 2: crosshair.
-    crosshairEnabled = (stable.crosshairFlags & 1u) != 0; crosshairDot = (stable.crosshairFlags & 2u) != 0;
+    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Crosshair))==0){crosshairEnabled = (stable.crosshairFlags & 1u) != 0; crosshairDot = (stable.crosshairFlags & 2u) != 0;
     crosshairOutline = (stable.crosshairFlags & 4u) != 0; crosshairTStyle = (stable.crosshairFlags & 8u) != 0;
     crosshairSize = std::clamp((double)stable.chSize, 0.0, 1000.0); crosshairGap = std::clamp((double)stable.chGap, -50.0, 50.0);
     crosshairThickness = std::clamp((double)stable.chThickness, 0.1, 50.0); crosshairOutlineThickness = std::clamp((double)stable.chOutlineThickness, 0.0, 10.0);
-    crosshairAlpha = std::clamp((double)stable.chAlpha, 0.0, 1.0); crosshairScale = std::clamp((double)stable.chScale, 0.1, 10.0);
-    crosshairOffsetX = std::clamp((double)stable.crosshairOffsetX, -1.0, 1.0); crosshairOffsetY = std::clamp((double)stable.crosshairOffsetY, -1.0, 1.0);
+    crosshairAlpha = std::clamp((double)stable.chAlpha, 0.0, 1.0);crosshairScale = std::clamp((double)stable.chScale, 0.1, 10.0);crosshairOffsetX = std::clamp((double)stable.crosshairOffsetX, -1.0, 1.0); crosshairOffsetY = std::clamp((double)stable.crosshairOffsetY, -1.0, 1.0);
     crosshairR = ((stable.chColor >> 16) & 0xFF) / 255.f; crosshairG = ((stable.chColor >> 8) & 0xFF) / 255.f; crosshairB = (stable.chColor & 0xFF) / 255.f;
+    }
     Log("crosshair: live resolve generation=%u enabled=%d size=%.2f gap=%.2f thickness=%.2f outline=%d/%.2f dot=%d tstyle=%d rgba=(%.3f,%.3f,%.3f,%.3f) scale=%.2f\n",
         stable.generation,crosshairEnabled?1:0,crosshairSize,crosshairGap,crosshairThickness,crosshairOutline?1:0,crosshairOutlineThickness,crosshairDot?1:0,crosshairTStyle?1:0,crosshairR,crosshairG,crosshairB,crosshairAlpha,crosshairScale);
     // Feature 3: notification render settings (content arrives via the separate mapping).
-    notifyEnabled = (stable.notifyFlags & 1u) != 0;
-    notifyX = std::clamp((double)stable.notifyX, 0.0, 1.0); notifyY = std::clamp((double)stable.notifyY, 0.0, 1.0);
-    notifyScale = std::clamp((double)stable.notifyScale, 0.1, 3.0); notifyOpacity = std::clamp((double)stable.notifyOpacity, 0.1, 1.0);
+    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Notifications))==0){notifyEnabled = (stable.notifyFlags & 1u) != 0;notifyX = std::clamp((double)stable.notifyX, 0.0, 1.0); notifyY = std::clamp((double)stable.notifyY, 0.0, 1.0);notifyScale = std::clamp((double)stable.notifyScale, 0.1, 3.0);notifyOpacity = std::clamp((double)stable.notifyOpacity, 0.1, 1.0);}
     // Generic racing presentation enables; event state arrives through its dedicated mapping.
-    iracingEnabled = (stable.iracingFlags & 1u) != 0; iracingLapPopup = (stable.iracingFlags & 2u) != 0;
-    iracingSpotterGlow = (stable.iracingFlags & 4u) != 0; iracingFlagBorder = (stable.iracingFlags & 8u) != 0;
-    clockWidgetEnabled=(stable.clockFlags&1u)!=0;clockSessionTimerEnabled=(stable.clockFlags&2u)!=0;clock24Hour=(stable.clockFlags&4u)!=0;
-    clockWidgetX=std::clamp((double)stable.clockX,0.0,1.0);clockWidgetY=std::clamp((double)stable.clockY,0.0,1.0);clockWidgetScale=std::clamp((double)stable.clockScale,.1,2.0);clockWidgetOpacity=std::clamp((double)stable.clockOpacity,.1,1.0);clockWidgetTheme=std::clamp(stable.clockTheme,0u,4u);
+    if(!profileIRacingFeatureOverride){iracingEnabled = (stable.iracingFlags & 1u) != 0; iracingLapPopup = (stable.iracingFlags & 2u) != 0;iracingSpotterGlow = (stable.iracingFlags & 4u) != 0; iracingFlagBorder = (stable.iracingFlags & 8u) != 0;}
+    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Clock))==0){clockWidgetEnabled=(stable.clockFlags&1u)!=0;clockSessionTimerEnabled=(stable.clockFlags&2u)!=0;clock24Hour=(stable.clockFlags&4u)!=0;clockWidgetX=std::clamp((double)stable.clockX,0.0,1.0);clockWidgetY=std::clamp((double)stable.clockY,0.0,1.0);clockWidgetScale=std::clamp((double)stable.clockScale,.1,2.0);clockWidgetOpacity=std::clamp((double)stable.clockOpacity,.1,1.0);clockWidgetTheme=std::clamp(stable.clockTheme,0u,3u);clockWidgetPalette=std::clamp(stable.clockPalette,0u,4u);}
     obsMirrorVisibilityMask = stable.obsMirrorVisibilityMask & kAllMirrorFeatures;
-    for(size_t i=0;i<(size_t)OverlayFeatureId::Count;++i)g_overlayFeatureVisibility[i].toggleKey=(int)std::clamp(stable.overlayToggleKeys[i],0u,255u);
+    for(size_t i=0;i<(size_t)OverlayFeatureId::Count;++i)if((profileOverlayOverrideMask&(1u<<(uint32_t)i))==0)g_overlayFeatureVisibility[i].toggleKey=(int)std::clamp(stable.overlayToggleKeys[i],0u,255u);
     if ((stable.flags & 1u) != 0 && !liveVisorUsesProfileOverride) {
         maskEnabled = (stable.flags & 4u) != 0;
         visorSize = std::clamp((double)stable.visorSize, 0.1, 1.0); visorCurve = std::clamp(1.0 - (double)stable.maskCorner, 0.0, 1.0);
@@ -869,6 +867,16 @@ double topTangent = DefaultTopTangent;
 double bottomTangent = DefaultBottomTangent;
 double horizontalRenderWidth = DefaultHorizontalRenderWidth;
 std::wstring currentAppKey;
+
+#pragma pack(push,4)
+struct ActiveProfileBlock { uint32_t magic,version,generation,reserved; wchar_t appKey[128]; };
+#pragma pack(pop)
+HANDLE g_activeProfileMap=nullptr;ActiveProfileBlock* g_activeProfileBlock=nullptr;
+void PublishActiveProfile(){
+    if(!g_activeProfileMap)g_activeProfileMap=CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,sizeof(ActiveProfileBlock),L"Local\\XRViewLabActiveProfileV1");
+    if(g_activeProfileMap&&!g_activeProfileBlock)g_activeProfileBlock=(ActiveProfileBlock*)MapViewOfFile(g_activeProfileMap,FILE_MAP_ALL_ACCESS,0,0,sizeof(ActiveProfileBlock));
+    if(!g_activeProfileBlock)return;ActiveProfileBlock next{};next.magic=0x31504156u;next.version=1;next.generation=g_activeProfileBlock->generation+1;wcsncpy_s(next.appKey,currentAppKey.c_str(),_TRUNCATE);*g_activeProfileBlock=next;MemoryBarrier();
+}
 
 PFN_xrGetInstanceProcAddr nextXrGetInstanceProcAddr = nullptr;
 PFN_xrCreateSession nextXrCreateSession = nullptr;
@@ -1567,6 +1575,7 @@ void SetRegistryDwordValue(HKEY key, const wchar_t* name, DWORD value) {
 
 void RememberApplication(const char* openXrAppName, const char* openXrEngineName, XrResult createResult, const char* runtimeName) {
     currentAppKey = SanitizeRegistryKey(CurrentProcessFileName());
+    PublishActiveProfile();
     const std::wstring displayName = Utf8ToWide(openXrAppName);
     const std::wstring engineName = Utf8ToWide(openXrEngineName);
     const std::wstring runtime = Utf8ToWide(runtimeName);
@@ -1667,6 +1676,13 @@ bool ReadProfileDouble(const wchar_t* keyName, double& value) {
     }
     value = parsed;
     return true;
+}
+
+bool ReadProfileString(const wchar_t* keyName, std::wstring& value) {
+    if (currentAppKey.empty()) return false;
+    HKEY key = nullptr;if(RegOpenKeyExW(HKEY_CURRENT_USER,AppRegistryPath(currentAppKey).c_str(),0,KEY_QUERY_VALUE,&key)!=ERROR_SUCCESS)return false;
+    wchar_t buffer[512]{};DWORD type=0,size=sizeof(buffer);const LONG result=RegQueryValueExW(key,keyName,nullptr,&type,reinterpret_cast<BYTE*>(buffer),&size);RegCloseKey(key);
+    if(result!=ERROR_SUCCESS||(type!=REG_SZ&&type!=REG_EXPAND_SZ))return false;buffer[std::size(buffer)-1]=0;value=buffer;return true;
 }
 
 double MillisToRenderHeight(DWORD value, double fallback) {
@@ -3429,23 +3445,12 @@ void DrawViewLabOverlaysToTexture(
         const float referenceUnit = (float)clockWidgetScale * (2.f/1080.f);
         const float glyphX = (std::max)(1.f, floorf(referenceUnit*pxPerTanX*2.1f+.5f));
         const float glyphY = (std::max)(1.f, floorf(referenceUnit*pxPerTanY*2.1f+.5f));
-        const float padX=4.f*glyphX,padY=2.5f*glyphY,iconW=8.f*glyphX;
-        const float primaryScale=1.25f,secondaryScale=.90f;
-        const float primaryH=7.f*glyphY*primaryScale,secondaryH=7.f*glyphY*secondaryScale;
-        const float cardW=padX*2+iconW+2.f*glyphX+47.f*glyphX*primaryScale;
-        const float cardH=padY*2+primaryH+(clockSessionTimerEnabled?secondaryH+3.f*glyphY:0.f);
-        const float sharedLeft=fullLeft,sharedRight=fullRight;
-        const float sharedTop=fullTop,sharedBottom=fullBottom;
-        float cx=anchorX(clockWidgetX),cy=anchorY(clockWidgetY);
-        cx=sharedRight-sharedLeft>cardW?std::clamp(cx,sharedLeft+cardW*.5f,sharedRight-cardW*.5f):(sharedLeft+sharedRight)*.5f;
-        cy=sharedBottom-sharedTop>cardH?std::clamp(cy,sharedTop+cardH*.5f,sharedBottom-cardH*.5f):(sharedTop+sharedBottom)*.5f;
-        const float x0=cx-cardW*.5f,y0=cy-cardH*.5f,x1=cx+cardW*.5f,y1=cy+cardH*.5f;
+        // Palette = colours only; theme = the actual visual design (layout, type scale,
+        // padding, borders, icons, information arrangement). Classic (0) is byte-identical to
+        // the historical card so migrated configs keep their exact appearance.
+        struct ClockPalette{float br,bg,bb,ar,ag,ab,pr,pg,pb,sr,sg,sb;};constexpr ClockPalette palettes[]={{.055f,.058f,.064f,.72f,.73f,.76f,.96f,.96f,.95f,.68f,.69f,.72f},{.90f,.86f,.76f,.58f,.42f,.22f,.16f,.14f,.11f,.38f,.32f,.25f},{0,0,0,1,1,1,1,1,1,.68f,.68f,.68f},{.09f,.06f,.025f,.95f,.60f,.16f,1.f,.88f,.62f,.83f,.60f,.27f},{.025f,.075f,.06f,.24f,.82f,.60f,.90f,1.f,.95f,.48f,.78f,.67f}};const auto&theme=palettes[std::clamp(clockWidgetPalette,0u,4u)];
+        const uint32_t clockLayout=std::clamp(clockWidgetTheme,0u,3u);
         const float opacity=(float)clockWidgetOpacity;
-        struct ClockPalette{float br,bg,bb,ar,ag,ab,pr,pg,pb,sr,sg,sb;};constexpr ClockPalette themes[]={{.055f,.058f,.064f,.72f,.73f,.76f,.96f,.96f,.95f,.68f,.69f,.72f},{.90f,.86f,.76f,.58f,.42f,.22f,.16f,.14f,.11f,.38f,.32f,.25f},{0,0,0,1,1,1,1,1,1,.68f,.68f,.68f},{.09f,.06f,.025f,.95f,.60f,.16f,1.f,.88f,.62f,.83f,.60f,.27f},{.025f,.075f,.06f,.24f,.82f,.60f,.90f,1.f,.95f,.48f,.78f,.67f}};const auto&theme=themes[std::clamp(clockWidgetTheme,0u,4u)];
-        rectFill(x0,y0,x1,y1,theme.br,theme.bg,theme.bb,.92f*opacity); flushFlat(theme.br,theme.bg,theme.bb,.92f*opacity);
-        rectFill(x0,y0,x0+glyphX,y1,theme.ar,theme.ag,theme.ab,.90f*opacity); flushFlat(theme.ar,theme.ag,theme.ab,.90f*opacity);
-        const float dividerY=y0+padY+primaryH+1.5f*glyphY;
-        if(clockSessionTimerEnabled){rectFill(x0+padX,dividerY,x1-padX,dividerY+(std::max)(1.f,glyphY*.35f),theme.ar,theme.ag,theme.ab,.35f*opacity); flushFlat(theme.ar,theme.ag,theme.ab,.35f*opacity);}
 
         static const unsigned char font[14][7]={
             {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E},{0x04,0x0C,0x04,0x04,0x04,0x04,0x0E},
@@ -3459,18 +3464,106 @@ void DrawViewLabOverlaysToTexture(
         auto drawClockText=[&](float tx,float ty,const char* value,float cr,float cg,float cb,float alpha,float textScale){
             for(const char* p=value;*p;++p){const int gi=*p==':'?10:*p=='A'?11:*p=='M'?12:*p=='P'?13:(*p>='0'&&*p<='9'?*p-'0':-1);if(gi>=0)for(int row=0;row<7;++row){const unsigned char bits=font[gi][row];for(int col=0;col<5;){if(bits&(0x10>>col)){const int first=col;while(col<5&&(bits&(0x10>>col)))++col;rectFill(tx+first*glyphX*textScale,ty+row*glyphY*textScale,tx+col*glyphX*textScale,ty+(row+1)*glyphY*textScale,cr,cg,cb,alpha);}else ++col;}}tx+=*p==' '?3.f*glyphX*textScale:6.f*glyphX*textScale;}flushFlat(cr,cg,cb,alpha);
         };
-        const float iconX=x0+padX, textX=iconX+iconW+2.f*glyphX;
-        const float firstY=y0+padY,secondY=dividerY+2.f*glyphY;
-        // Square clock face with two hands.
-        const float ith=(std::max)(1.f,glyphX*.7f),ic=iconX+3.f*glyphX,iy=firstY+3.5f*glyphY;
-        rectFill(iconX,firstY,iconX+6*glyphX,firstY+ith,theme.ar,theme.ag,theme.ab,opacity);rectFill(iconX,firstY+7*glyphY-ith,iconX+6*glyphX,firstY+7*glyphY,theme.ar,theme.ag,theme.ab,opacity);
-        rectFill(iconX,firstY,iconX+ith,firstY+7*glyphY,theme.ar,theme.ag,theme.ab,opacity);rectFill(iconX+6*glyphX-ith,firstY,iconX+6*glyphX,firstY+7*glyphY,theme.ar,theme.ag,theme.ab,opacity);
-        rectFill(ic-ith*.5f,firstY+glyphY,ic+ith*.5f,iy+.5f*glyphY,theme.ar,theme.ag,theme.ab,opacity);rectFill(ic,iy-ith*.5f,iconX+5*glyphX,iy+ith*.5f,theme.ar,theme.ag,theme.ab,opacity);flushFlat(theme.ar,theme.ag,theme.ab,opacity);
-        // Hourglass for elapsed session time.
-        if(clockSessionTimerEnabled){rectFill(iconX,secondY,iconX+6*glyphX,secondY+ith,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX,secondY+7*glyphY-ith,iconX+6*glyphX,secondY+7*glyphY,theme.sr,theme.sg,theme.sb,opacity);
-        for(int step=0;step<3;++step){rectFill(iconX+(step+1)*glyphX,secondY+(step+1)*glyphY,iconX+(step+2)*glyphX,secondY+(step+2)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(step+1)*glyphY,iconX+(5-step)*glyphX,secondY+(step+2)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(step+1)*glyphX,secondY+(5-step)*glyphY,iconX+(step+2)*glyphX,secondY+(6-step)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(5-step)*glyphY,iconX+(5-step)*glyphX,secondY+(6-step)*glyphY,theme.sr,theme.sg,theme.sb,opacity);}flushFlat(theme.sr,theme.sg,theme.sb,opacity);}
-        drawClockText(textX,firstY,text.local.data(),theme.pr,theme.pg,theme.pb,opacity,primaryScale);
-        if(clockSessionTimerEnabled)drawClockText(textX,secondY,text.session.data(),theme.sr,theme.sg,theme.sb,opacity,secondaryScale);
+        auto clockTextWidth=[&](const char* value,float textScale){float total=0.f;for(const char* p=value;*p;++p)total+=*p==' '?3.f:6.f;return total*glyphX*textScale;};
+
+        // Per-design metrics. Every design keeps the same anchor/clamp contract; only the
+        // card geometry and content arrangement differ.
+        float primaryScale,secondaryScale,padX,padY,iconW;
+        switch(clockLayout){
+        default: primaryScale=1.25f;secondaryScale=.90f;padX=4.f*glyphX;padY=2.5f*glyphY;iconW=8.f*glyphX;break; // Classic
+        case 1u: primaryScale=1.70f;secondaryScale=1.00f;padX=1.5f*glyphX;padY=1.0f*glyphY;iconW=0.f;break;      // Minimal
+        case 2u: primaryScale=1.00f;secondaryScale=.85f;padX=2.f*glyphX;padY=1.5f*glyphY;iconW=0.f;break;        // Terminal
+        case 3u: primaryScale=1.15f;secondaryScale=.90f;padX=5.f*glyphX;padY=3.f*glyphY;iconW=0.f;break;         // Banner
+        }
+        const float primaryH=7.f*glyphY*primaryScale,secondaryH=7.f*glyphY*secondaryScale;
+        const float timeW=clockTextWidth(text.local.data(),primaryScale);
+        const float sessW=clockSessionTimerEnabled?clockTextWidth(text.session.data(),secondaryScale):0.f;
+        const float terminalBorder=(std::max)(1.f,glyphX*.8f),terminalHeader=3.f*glyphY;
+        const float bannerCap=1.5f*glyphX,bannerDivider=(std::max)(1.f,glyphX*.5f),bannerGap=3.f*glyphX;
+        float cardW,cardH;
+        switch(clockLayout){
+        default:
+            cardW=padX*2+iconW+2.f*glyphX+47.f*glyphX*primaryScale;
+            cardH=padY*2+primaryH+(clockSessionTimerEnabled?secondaryH+3.f*glyphY:0.f);break;
+        case 1u:
+            cardW=padX*2+(std::max)(timeW,sessW);
+            cardH=padY*2+primaryH+(clockSessionTimerEnabled?secondaryH+2.f*glyphY:0.f);break;
+        case 2u:
+            cardW=terminalBorder*2+padX*2+(std::max)(timeW,sessW);
+            cardH=terminalBorder*2+terminalHeader+padY*2+primaryH+(clockSessionTimerEnabled?secondaryH+2.f*glyphY:0.f);break;
+        case 3u:
+            cardW=padX*2+bannerCap*2+timeW+(clockSessionTimerEnabled?bannerGap*2+bannerDivider+sessW:0.f);
+            cardH=padY*2+primaryH;break;
+        }
+        const float sharedLeft=fullLeft,sharedRight=fullRight;
+        const float sharedTop=fullTop,sharedBottom=fullBottom;
+        float cx=anchorX(clockWidgetX),cy=anchorY(clockWidgetY);
+        cx=sharedRight-sharedLeft>cardW?std::clamp(cx,sharedLeft+cardW*.5f,sharedRight-cardW*.5f):(sharedLeft+sharedRight)*.5f;
+        cy=sharedBottom-sharedTop>cardH?std::clamp(cy,sharedTop+cardH*.5f,sharedBottom-cardH*.5f):(sharedTop+sharedBottom)*.5f;
+        const float x0=cx-cardW*.5f,y0=cy-cardH*.5f,x1=cx+cardW*.5f,y1=cy+cardH*.5f;
+
+        if(clockLayout==0u){
+            // Classic: leading accent bar, clock-face and hourglass icons, stacked lanes.
+            rectFill(x0,y0,x1,y1,theme.br,theme.bg,theme.bb,.92f*opacity); flushFlat(theme.br,theme.bg,theme.bb,.92f*opacity);
+            rectFill(x0,y0,x0+glyphX,y1,theme.ar,theme.ag,theme.ab,.90f*opacity); flushFlat(theme.ar,theme.ag,theme.ab,.90f*opacity);
+            const float dividerY=y0+padY+primaryH+1.5f*glyphY;
+            if(clockSessionTimerEnabled){rectFill(x0+padX,dividerY,x1-padX,dividerY+(std::max)(1.f,glyphY*.35f),theme.ar,theme.ag,theme.ab,.35f*opacity); flushFlat(theme.ar,theme.ag,theme.ab,.35f*opacity);}
+            const float iconX=x0+padX, textX=iconX+iconW+2.f*glyphX;
+            const float firstY=y0+padY,secondY=dividerY+2.f*glyphY;
+            // Square clock face with two hands.
+            const float ith=(std::max)(1.f,glyphX*.7f),ic=iconX+3.f*glyphX,iy=firstY+3.5f*glyphY;
+            rectFill(iconX,firstY,iconX+6*glyphX,firstY+ith,theme.ar,theme.ag,theme.ab,opacity);rectFill(iconX,firstY+7*glyphY-ith,iconX+6*glyphX,firstY+7*glyphY,theme.ar,theme.ag,theme.ab,opacity);
+            rectFill(iconX,firstY,iconX+ith,firstY+7*glyphY,theme.ar,theme.ag,theme.ab,opacity);rectFill(iconX+6*glyphX-ith,firstY,iconX+6*glyphX,firstY+7*glyphY,theme.ar,theme.ag,theme.ab,opacity);
+            rectFill(ic-ith*.5f,firstY+glyphY,ic+ith*.5f,iy+.5f*glyphY,theme.ar,theme.ag,theme.ab,opacity);rectFill(ic,iy-ith*.5f,iconX+5*glyphX,iy+ith*.5f,theme.ar,theme.ag,theme.ab,opacity);flushFlat(theme.ar,theme.ag,theme.ab,opacity);
+            // Hourglass for elapsed session time.
+            if(clockSessionTimerEnabled){rectFill(iconX,secondY,iconX+6*glyphX,secondY+ith,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX,secondY+7*glyphY-ith,iconX+6*glyphX,secondY+7*glyphY,theme.sr,theme.sg,theme.sb,opacity);
+            for(int step=0;step<3;++step){rectFill(iconX+(step+1)*glyphX,secondY+(step+1)*glyphY,iconX+(step+2)*glyphX,secondY+(step+2)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(step+1)*glyphY,iconX+(5-step)*glyphX,secondY+(step+2)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(step+1)*glyphX,secondY+(5-step)*glyphY,iconX+(step+2)*glyphX,secondY+(6-step)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(5-step)*glyphY,iconX+(5-step)*glyphX,secondY+(6-step)*glyphY,theme.sr,theme.sg,theme.sb,opacity);}flushFlat(theme.sr,theme.sg,theme.sb,opacity);}
+            drawClockText(textX,firstY,text.local.data(),theme.pr,theme.pg,theme.pb,opacity,primaryScale);
+            if(clockSessionTimerEnabled)drawClockText(textX,secondY,text.session.data(),theme.sr,theme.sg,theme.sb,opacity,secondaryScale);
+        } else if(clockLayout==1u){
+            // Minimal: no card surface at all — large centred digits with a pixel drop shadow
+            // for legibility, session lane centred underneath.
+            const float shadow=(std::max)(1.f,glyphX*.4f);
+            const float firstY=y0+padY,secondY=firstY+primaryH+2.f*glyphY;
+            const float timeX=cx-timeW*.5f,sessX=cx-sessW*.5f;
+            drawClockText(timeX+shadow,firstY+shadow,text.local.data(),0.f,0.f,0.f,.75f*opacity,primaryScale);
+            drawClockText(timeX,firstY,text.local.data(),theme.pr,theme.pg,theme.pb,opacity,primaryScale);
+            if(clockSessionTimerEnabled){
+                drawClockText(sessX+shadow,secondY+shadow,text.session.data(),0.f,0.f,0.f,.75f*opacity,secondaryScale);
+                drawClockText(sessX,secondY,text.session.data(),theme.sr,theme.sg,theme.sb,opacity,secondaryScale);
+            }
+        } else if(clockLayout==2u){
+            // Terminal: thick square frame, solid accent header band, tight left-aligned
+            // monospaced lanes beneath it.
+            rectFill(x0,y0,x1,y1,theme.br,theme.bg,theme.bb,.94f*opacity);flushFlat(theme.br,theme.bg,theme.bb,.94f*opacity);
+            rectFill(x0,y0,x1,y0+terminalBorder,theme.ar,theme.ag,theme.ab,opacity);
+            rectFill(x0,y1-terminalBorder,x1,y1,theme.ar,theme.ag,theme.ab,opacity);
+            rectFill(x0,y0,x0+terminalBorder,y1,theme.ar,theme.ag,theme.ab,opacity);
+            rectFill(x1-terminalBorder,y0,x1,y1,theme.ar,theme.ag,theme.ab,opacity);
+            rectFill(x0+terminalBorder,y0+terminalBorder,x1-terminalBorder,y0+terminalBorder+terminalHeader,theme.ar,theme.ag,theme.ab,.55f*opacity);
+            flushFlat(theme.ar,theme.ag,theme.ab,opacity);
+            const float textX=x0+terminalBorder+padX;
+            const float firstY=y0+terminalBorder+terminalHeader+padY,secondY=firstY+primaryH+2.f*glyphY;
+            drawClockText(textX,firstY,text.local.data(),theme.pr,theme.pg,theme.pb,opacity,primaryScale);
+            if(clockSessionTimerEnabled)drawClockText(textX,secondY,text.session.data(),theme.sr,theme.sg,theme.sb,opacity,secondaryScale);
+        } else {
+            // Banner: one wide row — time and session side by side with a vertical divider,
+            // accent end caps and thin horizontal rails instead of a boxed border.
+            rectFill(x0,y0,x1,y1,theme.br,theme.bg,theme.bb,.92f*opacity);flushFlat(theme.br,theme.bg,theme.bb,.92f*opacity);
+            const float rail=(std::max)(1.f,glyphY*.4f);
+            rectFill(x0,y0,x1,y0+rail,theme.ar,theme.ag,theme.ab,.85f*opacity);
+            rectFill(x0,y1-rail,x1,y1,theme.ar,theme.ag,theme.ab,.85f*opacity);
+            rectFill(x0,y0,x0+bannerCap,y1,theme.ar,theme.ag,theme.ab,opacity);
+            rectFill(x1-bannerCap,y0,x1,y1,theme.ar,theme.ag,theme.ab,opacity);
+            flushFlat(theme.ar,theme.ag,theme.ab,opacity);
+            const float timeX=x0+bannerCap+padX,timeY=y0+padY;
+            drawClockText(timeX,timeY,text.local.data(),theme.pr,theme.pg,theme.pb,opacity,primaryScale);
+            if(clockSessionTimerEnabled){
+                const float divX=timeX+timeW+bannerGap;
+                rectFill(divX,y0+padY,divX+bannerDivider,y1-padY,theme.sr,theme.sg,theme.sb,.55f*opacity);flushFlat(theme.sr,theme.sg,theme.sb,.55f*opacity);
+                drawClockText(divX+bannerDivider+bannerGap,timeY+(primaryH-secondaryH),text.session.data(),theme.sr,theme.sg,theme.sb,opacity,secondaryScale);
+            }
+        }
     }
 
     // Feature 2: CS-style static crosshair at the calibrated stereo centre. CS reference pixels
@@ -3806,8 +3899,17 @@ bool EnsureObsMirrorSurfaceTexture() {
     return true;
 }
 
-void DrawObsMirrorSurface(const XrCompositionLayerProjection* source) {
-    if (!source || !source->views || source->viewCount == 0 || obsMirrorVisibilityMask == 0 ||
+// Draws the checkbox-selected ViewLab features onto the OpenXR-OBSMirror shared display
+// texture. Capture-point contract (from the MIT-licensed Jabbah/OpenXR-Layer-OBSMirror
+// source): the mirror layer blends the frame into its private compositor at xrEndFrame,
+// queues compositor->sharedHandle[0] in copyToMirror(), and only Flush()es that copy at the
+// NEXT xrBeginFrame, which is also when lastProcessedIndex advances. Drawing after
+// xrEndFrame therefore gets overwritten at the start of every frame and OBS almost never
+// samples the overlaid texture. This must be called from xrBeginFrame AFTER the call has
+// passed down the chain, so the mirror's copy is already submitted and ViewLab's drawing
+// stays on the displayed texture for the whole frame in either implicit-layer order.
+void DrawObsMirrorSurface() {
+    if (obsMirrorVisibilityMask == 0 ||
         !g_d3d11Mask.device || !g_d3d11Mask.context || !EnsureObsMirrorSurfaceTexture()) return;
     const ObsMirrorSurfaceData surface = *g_obsMirrorSurface;
     D3D11_TEXTURE2D_DESC desc{}; g_obsMirrorTexture->GetDesc(&desc);
@@ -3841,6 +3943,422 @@ void DrawObsMirrorSurface(const XrCompositionLayerProjection* source) {
             false, true, obsMirrorVisibilityMask);
     }
     g_d3d11Mask.context->Flush();
+}
+
+// ---- Experimental calibration-suite left-eye capture -------------------------------------
+// The settings app owns a small read/write control block ("XRViewLabCalibrationCapture").
+// While a session is submitting frames the layer stamps a heartbeat tick; when the UI
+// advances requestSerial the layer copies the final submitted left-eye sub-image (game
+// pixels + crop + every direct-drawn ViewLab feature; ordered-carrier features are
+// composited onto the copy) into a staging texture on the render thread, then encodes a
+// real PNG plus a JSON metadata sidecar on a worker thread. No desktop capture, OBS,
+// ReShade or UI automation is involved and no placeholder file is ever produced.
+#include <wincodec.h>
+#pragma comment(lib, "windowscodecs.lib")
+#pragma comment(lib, "ole32.lib")
+
+#pragma pack(push, 4)
+struct CalibrationCaptureBlock {
+    uint32_t version;         // 1
+    uint32_t requestSerial;   // UI increments to request one capture of the current left eye
+    uint32_t completedSerial; // layer sets equal to requestSerial when the request finishes
+    int32_t  resultCode;      // 0 ok; see CalibrationCaptureResult codes below
+    uint64_t heartbeatTick;   // GetTickCount64 stamped every xrEndFrame of the active session
+    uint32_t cancelledSerial;
+    uint32_t reserved;
+    wchar_t  requestStem[96];
+    wchar_t  resultPath[512];
+};
+#pragma pack(pop)
+static_assert(sizeof(CalibrationCaptureBlock) == 16 + 8 + 8 + 96 * 2 + 512 * 2,
+    "calibration capture control-block contract");
+
+// Result codes shared with the UI backend: 0 ok, 1 no projection context, 2 unsupported
+// texture format, 3 renderer unavailable, 4 encode/write failed, 5 no left-eye view,
+// 6 GPU copy/map failed, 7 cancelled.
+HANDLE g_calibCaptureMap = nullptr;
+CalibrationCaptureBlock* g_calibCapture = nullptr;
+uint64_t g_calibCaptureNextConnectTick = 0;
+uint32_t g_calibCaptureProcessedSerial = 0;
+
+void ConnectCalibrationCapture() {
+    if (g_calibCapture) return;
+    const uint64_t now = GetTickCount64();
+    if (now < g_calibCaptureNextConnectTick) return;
+    g_calibCaptureNextConnectTick = now + 1000;
+    g_calibCaptureMap = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, L"XRViewLabCalibrationCapture");
+    if (!g_calibCaptureMap) return;
+    g_calibCapture = static_cast<CalibrationCaptureBlock*>(MapViewOfFile(
+        g_calibCaptureMap, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(CalibrationCaptureBlock)));
+    if (!g_calibCapture) {
+        CloseHandle(g_calibCaptureMap); g_calibCaptureMap = nullptr; return;
+    }
+    if (g_calibCapture->version != 1) {
+        UnmapViewOfFile(g_calibCapture); CloseHandle(g_calibCaptureMap);
+        g_calibCapture = nullptr; g_calibCaptureMap = nullptr; return;
+    }
+    // Requests raised before this session connected are stale; the UI gates on the heartbeat
+    // before submitting real requests, so dropping them can never lose a live capture.
+    g_calibCaptureProcessedSerial = g_calibCapture->requestSerial;
+    Log("calibration capture: connected to UI control block\n");
+}
+
+struct CalibrationCapturePixels {
+    uint32_t width = 0, height = 0, rowPitch = 0;
+    DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+    std::vector<uint8_t> data;
+    std::wstring stem;
+    XrFovf fov{};
+    XrFovf fullFov{};
+    bool orderedCarrierComposited = false;
+    int64_t swapchainFormat = 0;
+};
+
+DXGI_FORMAT ResolveCaptureReadFormat(int64_t scFormat, DXGI_FORMAT descFormat) {
+    DXGI_FORMAT format = static_cast<DXGI_FORMAT>(scFormat);
+    switch (format) {
+    case DXGI_FORMAT_R8G8B8A8_TYPELESS: return DXGI_FORMAT_R8G8B8A8_UNORM;
+    case DXGI_FORMAT_B8G8R8A8_TYPELESS: return DXGI_FORMAT_B8G8R8A8_UNORM;
+    case DXGI_FORMAT_R16G16B16A16_TYPELESS: return DXGI_FORMAT_R16G16B16A16_FLOAT;
+    case DXGI_FORMAT_R10G10B10A2_TYPELESS: return DXGI_FORMAT_R10G10B10A2_UNORM;
+    case DXGI_FORMAT_UNKNOWN: break;
+    default: return format;
+    }
+    switch (descFormat) {
+    case DXGI_FORMAT_R8G8B8A8_TYPELESS: return DXGI_FORMAT_R8G8B8A8_UNORM;
+    case DXGI_FORMAT_B8G8R8A8_TYPELESS: return DXGI_FORMAT_B8G8R8A8_UNORM;
+    case DXGI_FORMAT_R16G16B16A16_TYPELESS: return DXGI_FORMAT_R16G16B16A16_FLOAT;
+    case DXGI_FORMAT_R10G10B10A2_TYPELESS: return DXGI_FORMAT_R10G10B10A2_UNORM;
+    default: return descFormat;
+    }
+}
+
+inline float CaptureHalfToFloat(uint16_t half) {
+    const uint32_t sign = (half & 0x8000u) << 16;
+    uint32_t exponent = (half >> 10) & 0x1Fu;
+    uint32_t mantissa = half & 0x3FFu;
+    uint32_t bits;
+    if (exponent == 0) {
+        if (mantissa == 0) { bits = sign; }
+        else {
+            exponent = 127 - 15 + 1;
+            while ((mantissa & 0x400u) == 0) { mantissa <<= 1; --exponent; }
+            mantissa &= 0x3FFu;
+            bits = sign | (exponent << 23) | (mantissa << 13);
+        }
+    } else if (exponent == 0x1Fu) {
+        bits = sign | 0x7F800000u | (mantissa << 13);
+    } else {
+        bits = sign | ((exponent - 15 + 127) << 23) | (mantissa << 13);
+    }
+    float value;
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+inline uint8_t CaptureLinearToSrgb8(float v) {
+    v = (std::min)(1.0f, (std::max)(0.0f, v));
+    const float srgb = v <= 0.0031308f ? v * 12.92f : 1.055f * std::pow(v, 1.0f / 2.4f) - 0.055f;
+    return static_cast<uint8_t>(std::lround(srgb * 255.0f));
+}
+
+bool ConvertCapturePixelsToBgra(const CalibrationCapturePixels& in, std::vector<uint8_t>& bgra) {
+    bgra.assign(static_cast<size_t>(in.width) * in.height * 4, 0);
+    for (uint32_t y = 0; y < in.height; ++y) {
+        const uint8_t* row = in.data.data() + static_cast<size_t>(y) * in.rowPitch;
+        uint8_t* out = bgra.data() + static_cast<size_t>(y) * in.width * 4;
+        switch (in.format) {
+        case DXGI_FORMAT_R8G8B8A8_UNORM:
+        case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+            for (uint32_t x = 0; x < in.width; ++x) {
+                out[x * 4 + 0] = row[x * 4 + 2]; out[x * 4 + 1] = row[x * 4 + 1];
+                out[x * 4 + 2] = row[x * 4 + 0]; out[x * 4 + 3] = 255;
+            }
+            break;
+        case DXGI_FORMAT_B8G8R8A8_UNORM:
+        case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+            for (uint32_t x = 0; x < in.width; ++x) {
+                out[x * 4 + 0] = row[x * 4 + 0]; out[x * 4 + 1] = row[x * 4 + 1];
+                out[x * 4 + 2] = row[x * 4 + 2]; out[x * 4 + 3] = 255;
+            }
+            break;
+        case DXGI_FORMAT_R10G10B10A2_UNORM:
+            for (uint32_t x = 0; x < in.width; ++x) {
+                uint32_t v; std::memcpy(&v, row + x * 4, 4);
+                out[x * 4 + 0] = static_cast<uint8_t>(((v >> 20) & 0x3FFu) >> 2);
+                out[x * 4 + 1] = static_cast<uint8_t>(((v >> 10) & 0x3FFu) >> 2);
+                out[x * 4 + 2] = static_cast<uint8_t>((v & 0x3FFu) >> 2);
+                out[x * 4 + 3] = 255;
+            }
+            break;
+        case DXGI_FORMAT_R16G16B16A16_FLOAT:
+            for (uint32_t x = 0; x < in.width; ++x) {
+                const uint16_t* px = reinterpret_cast<const uint16_t*>(row + x * 8);
+                out[x * 4 + 0] = CaptureLinearToSrgb8(CaptureHalfToFloat(px[2]));
+                out[x * 4 + 1] = CaptureLinearToSrgb8(CaptureHalfToFloat(px[1]));
+                out[x * 4 + 2] = CaptureLinearToSrgb8(CaptureHalfToFloat(px[0]));
+                out[x * 4 + 3] = 255;
+            }
+            break;
+        default:
+            return false;
+        }
+    }
+    return true;
+}
+
+bool SaveCapturePngBgra(const std::filesystem::path& path, uint32_t width, uint32_t height,
+    std::vector<uint8_t>& bgra) {
+    IWICImagingFactory* factory = nullptr;
+    IWICBitmapEncoder* encoder = nullptr;
+    IWICBitmapFrameEncode* frame = nullptr;
+    IWICStream* stream = nullptr;
+    bool ok = false;
+    HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(&factory));
+    if (SUCCEEDED(hr)) hr = factory->CreateStream(&stream);
+    if (SUCCEEDED(hr)) hr = stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE);
+    if (SUCCEEDED(hr)) hr = factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder);
+    if (SUCCEEDED(hr)) hr = encoder->Initialize(stream, WICBitmapEncoderNoCache);
+    if (SUCCEEDED(hr)) hr = encoder->CreateNewFrame(&frame, nullptr);
+    if (SUCCEEDED(hr)) hr = frame->Initialize(nullptr);
+    if (SUCCEEDED(hr)) hr = frame->SetSize(width, height);
+    WICPixelFormatGUID pixelFormat = GUID_WICPixelFormat32bppBGRA;
+    if (SUCCEEDED(hr)) hr = frame->SetPixelFormat(&pixelFormat);
+    if (SUCCEEDED(hr)) hr = frame->WritePixels(height, width * 4,
+        static_cast<UINT>(bgra.size()), bgra.data());
+    if (SUCCEEDED(hr)) hr = frame->Commit();
+    if (SUCCEEDED(hr)) hr = encoder->Commit();
+    ok = SUCCEEDED(hr);
+    if (frame) frame->Release();
+    if (encoder) encoder->Release();
+    if (stream) stream->Release();
+    if (factory) factory->Release();
+    if (!ok) Log("calibration capture: PNG encode failed hr=0x%08X for %ls\n",
+        static_cast<unsigned>(hr), path.c_str());
+    return ok;
+}
+
+bool WriteCaptureMetadata(const std::filesystem::path& path, const CalibrationCapturePixels& p,
+    const std::wstring& pngName) {
+    wchar_t exePath[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    SYSTEMTIME st{}; GetSystemTime(&st);
+    std::ofstream meta(path, std::ios::binary | std::ios::trunc);
+    if (!meta) return false;
+    auto narrow = [](const std::wstring& w) {
+        std::string s; s.reserve(w.size());
+        for (wchar_t c : w) { if (c == L'\\') { s += "\\\\"; } else if (c == L'"') { s += "\\\""; } else if (c < 128) { s += static_cast<char>(c); } else { s += '?'; } }
+        return s;
+    };
+    char iso[40]{};
+    std::snprintf(iso, sizeof(iso), "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ",
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+    meta << "{\n"
+        << "  \"pattern\": \"" << narrow(p.stem) << "\",\n"
+        << "  \"image\": \"" << narrow(pngName) << "\",\n"
+        << "  \"capturedUtc\": \"" << iso << "\",\n"
+        << "  \"application\": \"" << narrow(exePath) << "\",\n"
+        << "  \"eye\": \"left\",\n"
+        << "  \"width\": " << p.width << ",\n"
+        << "  \"height\": " << p.height << ",\n"
+        << "  \"dxgiSwapchainFormat\": " << p.swapchainFormat << ",\n"
+        << "  \"dxgiReadFormat\": " << static_cast<int>(p.format) << ",\n"
+        << "  \"submittedFov\": { \"left\": " << p.fov.angleLeft << ", \"right\": " << p.fov.angleRight
+        << ", \"up\": " << p.fov.angleUp << ", \"down\": " << p.fov.angleDown << " },\n"
+        << "  \"fullFov\": { \"left\": " << p.fullFov.angleLeft << ", \"right\": " << p.fullFov.angleRight
+        << ", \"up\": " << p.fullFov.angleUp << ", \"down\": " << p.fullFov.angleDown << " },\n"
+        << "  \"orderedCarrierComposited\": " << (p.orderedCarrierComposited ? "true" : "false") << ",\n"
+        << "  \"source\": \"ViewLab submitted left-eye texture at xrEndFrame\"\n"
+        << "}\n";
+    meta.flush();
+    return meta.good();
+}
+
+int32_t CaptureLeftEyePixels(const std::wstring& stem, CalibrationCapturePixels& out) {
+    if (!g_d3d11Mask.initialized || !g_d3d11Mask.device || !g_d3d11Mask.context ||
+        g_rendererDeviceLost.load(std::memory_order_acquire)) return 3;
+    ID3D11Texture2D* sourceTex = nullptr;
+    EyeView leftEye{};
+    std::vector<EyeView> projectionViews;
+    int64_t scFormat = 0;
+    {
+        std::lock_guard<std::mutex> lk(g_swapchainMutex);
+        if (!g_primaryProjectionContext.ValidFor(g_d3d11Mask.session)) return 1;
+        projectionViews = g_primaryProjectionContext.topology.AllViews();
+        bool found = false;
+        for (const auto& kv : g_swapchains) {
+            const TrackedSwapchain& ts = kv.second;
+            if (ts.session != g_d3d11Mask.session || ts.lastAcquiredIndex >= ts.textures.size()) continue;
+            for (const EyeView& ev : g_primaryProjectionContext.topology.TargetsFor(kv.first)) {
+                if (ev.viewIndex != 0) continue;
+                sourceTex = ts.textures[ts.lastAcquiredIndex];
+                if (sourceTex) sourceTex->AddRef();
+                leftEye = ev;
+                scFormat = ts.format;
+                found = true;
+                break;
+            }
+            if (found) break;
+        }
+        if (!found || !sourceTex) return 5;
+    }
+    const uint32_t width = static_cast<uint32_t>((std::max)(0, leftEye.rect.extent.width));
+    const uint32_t height = static_cast<uint32_t>((std::max)(0, leftEye.rect.extent.height));
+    if (width == 0 || height == 0) { sourceTex->Release(); return 5; }
+    D3D11_TEXTURE2D_DESC srcDesc{}; sourceTex->GetDesc(&srcDesc);
+    const DXGI_FORMAT readFormat = ResolveCaptureReadFormat(scFormat, srcDesc.Format);
+
+    D3D11_TEXTURE2D_DESC copyDesc{};
+    copyDesc.Width = width; copyDesc.Height = height;
+    copyDesc.MipLevels = 1; copyDesc.ArraySize = 1;
+    copyDesc.Format = srcDesc.Format;
+    copyDesc.SampleDesc.Count = 1;
+    copyDesc.Usage = D3D11_USAGE_DEFAULT;
+    copyDesc.BindFlags = D3D11_BIND_RENDER_TARGET;
+    ID3D11Texture2D* copyTex = nullptr;
+    HRESULT hr = g_d3d11Mask.device->CreateTexture2D(&copyDesc, nullptr, &copyTex);
+    if (FAILED(hr) || !copyTex) { sourceTex->Release(); return 6; }
+    D3D11_BOX box{};
+    box.left = static_cast<UINT>((std::max)(0, leftEye.rect.offset.x));
+    box.top = static_cast<UINT>((std::max)(0, leftEye.rect.offset.y));
+    box.right = box.left + width; box.bottom = box.top + height;
+    box.front = 0; box.back = 1;
+    const UINT sourceSubresource = D3D11CalcSubresource(0, leftEye.arraySlice, srcDesc.MipLevels);
+    g_d3d11Mask.context->CopySubresourceRegion(copyTex, 0, 0, 0, 0, sourceTex, sourceSubresource, &box);
+    sourceTex->Release();
+
+    // Ordered-carrier frames keep the game texture free of common features; composite the
+    // same content onto the copy so the capture matches what the headset compositor shows.
+    EyeView copyEye = leftEye;
+    copyEye.rect = { {0, 0}, {static_cast<int32_t>(width), static_cast<int32_t>(height)} };
+    copyEye.arraySlice = 0;
+    bool composited = false;
+    if (maskEnabled && !g_featurePresentationPlan.drawDirectVisor) {
+        DrawVisorBorderToTexture(copyTex, 1, scFormat, copyEye, projectionViews, nullptr);
+        composited = true;
+    }
+    if (!g_featurePresentationPlan.drawDirectCommonFeatures) {
+        DrawCalibrationPatternsToTexture(copyTex, 1, scFormat, copyEye, projectionViews, nullptr,
+            false, true);
+        composited = true;
+    }
+
+    D3D11_TEXTURE2D_DESC stagingDesc = copyDesc;
+    stagingDesc.BindFlags = 0;
+    stagingDesc.Usage = D3D11_USAGE_STAGING;
+    stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ID3D11Texture2D* staging = nullptr;
+    hr = g_d3d11Mask.device->CreateTexture2D(&stagingDesc, nullptr, &staging);
+    if (FAILED(hr) || !staging) { copyTex->Release(); return 6; }
+    g_d3d11Mask.context->CopyResource(staging, copyTex);
+    copyTex->Release();
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    hr = g_d3d11Mask.context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(hr)) { staging->Release(); return 6; }
+    out.width = width; out.height = height;
+    out.rowPitch = mapped.RowPitch;
+    out.format = readFormat;
+    out.swapchainFormat = scFormat;
+    out.stem = stem;
+    out.fov = leftEye.fov;
+    out.fullFov = leftEye.fullFov;
+    out.orderedCarrierComposited = composited;
+    out.data.resize(static_cast<size_t>(mapped.RowPitch) * height);
+    std::memcpy(out.data.data(), mapped.pData, out.data.size());
+    g_d3d11Mask.context->Unmap(staging, 0);
+    staging->Release();
+    return 0;
+}
+
+void CompleteCalibrationCapture(uint32_t serial, int32_t code, const std::wstring& path) {
+    if (!g_calibCapture) return;
+    wmemset(g_calibCapture->resultPath, 0, std::size(g_calibCapture->resultPath));
+    if (!path.empty()) {
+        const size_t count = (std::min)(path.size(), std::size(g_calibCapture->resultPath) - 1);
+        wmemcpy(g_calibCapture->resultPath, path.c_str(), count);
+    }
+    g_calibCapture->resultCode = code;
+    MemoryBarrier();
+    g_calibCapture->completedSerial = serial;
+}
+
+bool CalibrationCaptureCancelled(uint32_t serial) {
+    MemoryBarrier();
+    return g_calibCapture && g_calibCapture->cancelledSerial == serial;
+}
+
+void ProcessCalibrationCaptureRequest() {
+    ConnectCalibrationCapture();
+    if (!g_calibCapture) return;
+    g_calibCapture->heartbeatTick = GetTickCount64();
+    const uint32_t requested = g_calibCapture->requestSerial;
+    if (requested == g_calibCaptureProcessedSerial) return;
+    g_calibCaptureProcessedSerial = requested;
+    wchar_t stemBuffer[96]{};
+    wmemcpy(stemBuffer, g_calibCapture->requestStem, std::size(stemBuffer) - 1);
+    std::wstring stem(stemBuffer);
+    // Only a safe file-name stem is accepted; anything else falls back to a fixed name.
+    for (wchar_t& c : stem) {
+        if (c == L'\\' || c == L'/' || c == L':' || c == L'*' || c == L'?' || c == L'"' ||
+            c == L'<' || c == L'>' || c == L'|') c = L'-';
+    }
+    if (stem.empty()) stem = L"capture";
+    if (CalibrationCaptureCancelled(requested)) {
+        CompleteCalibrationCapture(requested, 7, L"");
+        return;
+    }
+    CalibrationCapturePixels pixels;
+    const int32_t code = CaptureLeftEyePixels(stem, pixels);
+    if (code != 0) {
+        Log("calibration capture: request %u failed on render thread (code %d)\n", requested, code);
+        CompleteCalibrationCapture(requested, code, L"");
+        return;
+    }
+    std::thread([requested, pixels = std::move(pixels)]() mutable {
+        const HRESULT coInit = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        int32_t workerCode = 0;
+        std::wstring finalPath;
+        std::filesystem::path pngPath, metadataPath;
+        std::error_code ec;
+        std::vector<uint8_t> bgra;
+        if (CalibrationCaptureCancelled(requested)) {
+            workerCode = 7;
+        } else if (!ConvertCapturePixelsToBgra(pixels, bgra)) {
+            Log("calibration capture: unsupported texture format %d\n", static_cast<int>(pixels.format));
+            workerCode = 2;
+        } else {
+            const std::filesystem::path directory = UserDataDirectory() / L"CalibrationCaptures";
+            std::filesystem::create_directories(directory, ec);
+            SYSTEMTIME lt{}; GetLocalTime(&lt);
+            wchar_t suffix[32]{};
+            std::swprintf(suffix, std::size(suffix), L"-%04u%02u%02u-%02u%02u%02u",
+                lt.wYear, lt.wMonth, lt.wDay, lt.wHour, lt.wMinute, lt.wSecond);
+            const std::wstring baseName = pixels.stem + suffix;
+            pngPath = directory / (baseName + L".png");
+            metadataPath = directory / (baseName + L".json");
+            if (!SaveCapturePngBgra(pngPath, pixels.width, pixels.height, bgra)) {
+                workerCode = 4;
+            } else if (!WriteCaptureMetadata(metadataPath, pixels, baseName + L".png")) {
+                Log("calibration capture: metadata write failed for %ls\n", pngPath.c_str());
+                std::filesystem::remove(pngPath, ec);
+                workerCode = 4;
+            } else {
+                finalPath = pngPath.wstring();
+            }
+        }
+        if (CalibrationCaptureCancelled(requested)) {
+            if (!pngPath.empty()) std::filesystem::remove(pngPath, ec);
+            if (!metadataPath.empty()) std::filesystem::remove(metadataPath, ec);
+            finalPath.clear();
+            workerCode = 7;
+        } else if (workerCode == 0) {
+            Log("calibration capture: saved %ux%u left-eye image to %ls\n",
+                pixels.width, pixels.height, finalPath.c_str());
+        }
+        CompleteCalibrationCapture(requested, workerCode, finalPath);
+        if (SUCCEEDED(coInit)) CoUninitialize();
+    }).detach();
 }
 
 void DrawCapturedProjectionTextures(bool drawVisor, const char* tag) {
@@ -4311,6 +4829,7 @@ void LoadConfig() {
         (ReadBoolSetting(L"hud_graph_display_period",false)?GraphDisplayPeriod:0u);
     hudGraphMode=(HudGraphMode)std::clamp((int)ReadDoubleSetting(L"hud_graph_mode",0.0),0,3);
     topmostVisorOverlays = !ReadBoolSetting(L"overlay_force_direct", false);
+    experimentalDrawInVoid = ReadBoolSetting(L"experimental_draw_in_void", false);
     hudAlarmOnly = ReadBoolSetting(L"hud_alarm_only", false);
     hudAlarmHoldMs = std::clamp(ReadDoubleSetting(L"hud_alarm_hold_ms", 1500.0), 0.0, 10000.0);
     hudDebugValues = ReadBoolSetting(L"hud_debug_values", false);
@@ -4340,7 +4859,15 @@ void LoadConfig() {
     notifyScale = std::clamp(ReadDoubleSetting(L"notify_scale", 1.0), 0.1, 3.0);
     notifyOpacity = std::clamp(ReadDoubleSetting(L"notify_opacity", 1.0), 0.1, 1.0);
     clockWidgetEnabled = ReadBoolSetting(L"clock_widget_enabled", false);
-    clockSessionTimerEnabled=ReadBoolSetting(L"clock_session_timer_enabled",true);clock24Hour=ReadBoolSetting(L"clock_24_hour",true);clockWidgetTheme=(uint32_t)std::clamp(ReadDoubleSetting(L"clock_widget_theme",0),0.0,4.0);
+    clockSessionTimerEnabled=ReadBoolSetting(L"clock_session_timer_enabled",true);clock24Hour=ReadBoolSetting(L"clock_24_hour",true);
+    {
+        // Migration: legacy configs stored the recolour in clock_widget_theme. When the new
+        // palette key is absent, that value becomes the palette and the design stays Classic.
+        const double storedTheme=std::clamp(ReadDoubleSetting(L"clock_widget_theme",0),0.0,4.0);
+        const double storedPalette=ReadDoubleSetting(L"clock_widget_palette",-1.0);
+        if(storedPalette<0.0){clockWidgetPalette=(uint32_t)storedTheme;clockWidgetTheme=0;}
+        else{clockWidgetPalette=(uint32_t)std::clamp(storedPalette,0.0,4.0);clockWidgetTheme=(uint32_t)std::clamp(storedTheme,0.0,3.0);}
+    }
     clockWidgetX = std::clamp(ReadDoubleSetting(L"clock_widget_x", 0.50), 0.0, 1.0);
     clockWidgetY = std::clamp(ReadDoubleSetting(L"clock_widget_y", 0.10), 0.0, 1.0);
     clockWidgetScale = std::clamp(ReadDoubleSetting(L"clock_widget_scale", 1.0), 0.10, 2.0);
@@ -4446,12 +4973,15 @@ void LoadConfig() {
     }
 
     liveVisorUsesProfileOverride = false;
+    profileOverlayOverrideMask = 0;
+    profileStickyOverlayOverrideMask = 0;
+    profileObsFeatureOverride = false;
+    profileIRacingFeatureOverride = false;
     DWORD profileEnabled = 0;
     DWORD profileVisorSize = 0;
     DWORD profileVisorWidth = 0;
     DWORD profileVisorHeight = 0;
     if (ReadProfileDword(L"profile_enabled", profileEnabled) && profileEnabled != 0) {
-        liveVisorUsesProfileOverride = true;
         DWORD profileSplitMode = splitMode ? 1u : 0u;
         DWORD profileTotal = static_cast<DWORD>(std::lround(totalTangent * 1000.0));
         DWORD profileTop = static_cast<DWORD>(std::lround(topTangent * 1000.0));
@@ -4466,6 +4996,7 @@ void LoadConfig() {
         DWORD profileMaskVertical = static_cast<DWORD>(std::lround(maskVertical * 1000.0));
         DWORD profileMaskHorizontal = static_cast<DWORD>(std::lround(maskHorizontal * 1000.0));
         DWORD profileMaskRounded = maskRounded ? 1u : 0u;
+        DWORD profileMaskEnabled = maskEnabled ? 1u : 0u;
         DWORD profileMaskCorner = static_cast<DWORD>(std::lround(maskCorner * 1000.0));
         DWORD profileMaskTopBias = static_cast<DWORD>(std::lround((std::clamp(maskTopBias, -1.0, 1.0) + 1.0) * 1000.0));
         DWORD profileMaskBottomBias = static_cast<DWORD>(std::lround((std::clamp(maskBottomBias, -1.0, 1.0) + 1.0) * 1000.0));
@@ -4474,9 +5005,6 @@ void LoadConfig() {
         DWORD profileMaskTopCurve = static_cast<DWORD>(std::lround((std::clamp(maskTopCurve, -1.0, 1.0) + 1.0) * 1000.0));
         DWORD profileMaskBottomCurve = static_cast<DWORD>(std::lround((std::clamp(maskBottomCurve, -1.0, 1.0) + 1.0) * 1000.0));
         DWORD profileMaskOffsetY = static_cast<DWORD>(std::lround(((maskTopBias + maskBottomBias) * 0.5 + 1.0) * 1000.0));
-        // Visor ENABLE is global-only now: per-app profiles no longer carry/override mask_enabled.
-        // (Per-app shape values below are still honored.) This stops stale per-app mask_enabled=0
-        // from silently overriding the global visor toggle.
         ReadProfileDword(L"mask_vertical", profileMaskVertical);
         ReadProfileDword(L"mask_horizontal", profileMaskHorizontal);
         DWORD profileRenderScale = static_cast<DWORD>(std::lround(renderScale * 1000000.0));
@@ -4492,6 +5020,11 @@ void LoadConfig() {
         ReadProfileDword(L"visor_size", profileVisorSize);
         ReadProfileDword(L"visor_width", profileVisorWidth);
         ReadProfileDword(L"visor_height", profileVisorHeight);
+        if (profileVisorSize > 0) {
+            ReadProfileDword(L"mask_enabled", profileMaskEnabled);
+            maskEnabled = profileMaskEnabled != 0;
+            liveVisorUsesProfileOverride = true;
+        }
 
         // Per-app visor shape overrides (ProfileWindow stores apex-y as signed millis
         // (v+1)*1000, inner-low/bridge-width as plain millis v*1000). Initialized from
@@ -4536,7 +5069,6 @@ void LoadConfig() {
             renderScale = DwordToRenderScale(profileRenderScale, renderScale);
         }
         renderScale = std::clamp(renderScale, 0.1, 3.0);
-        // maskEnabled intentionally NOT overridden per-app — it stays at the global value read above.
         maskVertical = MillisToRenderHeight(profileMaskVertical, maskVertical);
         maskHorizontal = MillisToMaskScale(profileMaskHorizontal, maskHorizontal);
         maskRounded = profileMaskRounded != 0;
@@ -4548,6 +5080,110 @@ void LoadConfig() {
         maskRightBias = SignedMillisToUnit(profileMaskRightBias, maskRightBias);
         maskTopCurve = SignedMillisToUnit(profileMaskTopCurve, maskTopCurve);
         maskBottomCurve = SignedMillisToUnit(profileMaskBottomCurve, maskBottomCurve);
+
+        auto readOverlayPlacement = [&](const wchar_t* xKey,const wchar_t* yKey,const wchar_t* scaleKey,
+            double& x,double& y,double& scale,double minX,double maxX,double minScale,double maxScale,OverlayFeatureId feature) {
+            double px=x,py=y,ps=scale;
+            const bool present=ReadProfileDouble(xKey,px)|ReadProfileDouble(yKey,py)|ReadProfileDouble(scaleKey,ps);
+            if(!present)return;
+            x=std::clamp(px,minX,maxX);y=std::clamp(py,minX,maxX);scale=std::clamp(ps,minScale,maxScale);
+            profileOverlayOverrideMask|=1u<<(uint32_t)feature;
+        };
+        readOverlayPlacement(L"overlay_layout_hud_x",L"overlay_layout_hud_y",L"overlay_layout_hud_scale",hudAnchorX,hudAnchorY,hudScale,0,1,.15,3,OverlayFeatureId::Hud);
+        readOverlayPlacement(L"overlay_layout_trace_x",L"overlay_layout_trace_y",L"overlay_layout_trace_scale",hudTraceX,hudTraceY,hudTraceScale,0,1,.25,3,OverlayFeatureId::Trace);
+        readOverlayPlacement(L"overlay_layout_clock_x",L"overlay_layout_clock_y",L"overlay_layout_clock_scale",clockWidgetX,clockWidgetY,clockWidgetScale,0,1,.1,2,OverlayFeatureId::Clock);
+        readOverlayPlacement(L"overlay_layout_crosshair_x",L"overlay_layout_crosshair_y",L"overlay_layout_crosshair_scale",crosshairOffsetX,crosshairOffsetY,crosshairScale,-1,1,.1,5,OverlayFeatureId::Crosshair);
+        readOverlayPlacement(L"overlay_layout_notifications_x",L"overlay_layout_notifications_y",L"overlay_layout_notifications_scale",notifyX,notifyY,notifyScale,0,1,.1,3,OverlayFeatureId::Notifications);
+        for(size_t i=0;i<stickyNoteCount&&i<kStickyNoteMax;++i){
+            wchar_t xKey[64]{},yKey[64]{},scaleKey[64]{};swprintf_s(xKey,L"overlay_layout_sticky_%zu_x",i);swprintf_s(yKey,L"overlay_layout_sticky_%zu_y",i);swprintf_s(scaleKey,L"overlay_layout_sticky_%zu_scale",i);
+            double x=stickyNotes[i].x,y=stickyNotes[i].y,scale=stickyNotes[i].scale;
+            if(ReadProfileDouble(xKey,x)|ReadProfileDouble(yKey,y)|ReadProfileDouble(scaleKey,scale)){stickyNotes[i].x=std::clamp(x,0.0,1.0);stickyNotes[i].y=std::clamp(y,0.0,1.0);stickyNotes[i].scale=std::clamp(scale,.5,2.5);profileStickyOverlayOverrideMask|=1u<<i;profileOverlayOverrideMask|=1u<<(uint32_t)OverlayFeatureId::StickyNote;}
+        }
+
+        auto readOverlayBool=[&](const wchar_t* key,bool& value,OverlayFeatureId feature){double raw=value?1.0:0.0;if(!ReadProfileDouble(key,raw))return false;value=raw!=0.0;profileOverlayOverrideMask|=1u<<(uint32_t)feature;return true;};
+        auto readOverlayDouble=[&](const wchar_t* key,double& value,double lo,double hi,OverlayFeatureId feature){double raw=value;if(!ReadProfileDouble(key,raw))return false;value=std::clamp(raw,lo,hi);profileOverlayOverrideMask|=1u<<(uint32_t)feature;return true;};
+        auto readOverlayU32=[&](const wchar_t* key,uint32_t& value,uint32_t lo,uint32_t hi,OverlayFeatureId feature){double raw=value;if(!ReadProfileDouble(key,raw))return false;value=std::clamp((uint32_t)std::lround(raw),lo,hi);profileOverlayOverrideMask|=1u<<(uint32_t)feature;return true;};
+
+        readOverlayBool(L"overlay_override_clock__clock_widget_enabled",clockWidgetEnabled,OverlayFeatureId::Clock);
+        readOverlayBool(L"overlay_override_clock__clock_session_timer_enabled",clockSessionTimerEnabled,OverlayFeatureId::Clock);
+        readOverlayBool(L"overlay_override_clock__clock_24_hour",clock24Hour,OverlayFeatureId::Clock);
+        readOverlayDouble(L"overlay_override_clock__clock_widget_x",clockWidgetX,0,1,OverlayFeatureId::Clock);
+        readOverlayDouble(L"overlay_override_clock__clock_widget_y",clockWidgetY,0,1,OverlayFeatureId::Clock);
+        readOverlayDouble(L"overlay_override_clock__clock_widget_scale",clockWidgetScale,.1,2,OverlayFeatureId::Clock);
+        readOverlayDouble(L"overlay_override_clock__clock_widget_opacity",clockWidgetOpacity,.1,1,OverlayFeatureId::Clock);
+        readOverlayU32(L"overlay_override_clock__clock_widget_theme",clockWidgetTheme,0,3,OverlayFeatureId::Clock);
+        readOverlayU32(L"overlay_override_clock__clock_widget_palette",clockWidgetPalette,0,4,OverlayFeatureId::Clock);
+
+        readOverlayBool(L"overlay_override_hud__hud_enabled",hudEnabled,OverlayFeatureId::Hud);
+        readOverlayBool(L"overlay_override_hud__hud_alarm_only",hudAlarmOnly,OverlayFeatureId::Hud);
+        readOverlayBool(L"overlay_override_hud__hud_clamp_to_visible",hudClampToVisible,OverlayFeatureId::Hud);
+        readOverlayDouble(L"overlay_override_hud__hud_anchor_x",hudAnchorX,0,1,OverlayFeatureId::Hud);
+        readOverlayDouble(L"overlay_override_hud__hud_anchor_y",hudAnchorY,0,1,OverlayFeatureId::Hud);
+        readOverlayDouble(L"overlay_override_hud__hud_scale",hudScale,.15,3,OverlayFeatureId::Hud);
+        readOverlayDouble(L"overlay_override_hud__hud_opacity",hudOpacity,.1,1,OverlayFeatureId::Hud);
+        readOverlayDouble(L"overlay_override_hud__hud_safe_margin",hudSafeMargin,0,.25,OverlayFeatureId::Hud);
+        constexpr const wchar_t* profileWidgetKeys[kHudWidgetCount]={L"cpu",L"gpu",L"app",L"vr",L"cpu_peak",L"cpu_frequency",L"ram",L"commit",L"vram",L"sys",L"fps",L"frame_interval",L"network_ping",L"network_loss",L"network_jitter",L"network_status"};
+        std::array<std::pair<int,uint8_t>,kHudWidgetCount> profileWidgetOrder{};
+        for(size_t i=0;i<kHudWidgetCount;++i){
+            wchar_t enabledKey[128]{},symbolKey[128]{},orderKey[128]{},warningKey[128]{},criticalKey[128]{};
+            swprintf_s(enabledKey,L"overlay_override_hud__hud_widget_%s_enabled",profileWidgetKeys[i]);swprintf_s(symbolKey,L"overlay_override_hud__hud_widget_%s_symbol",profileWidgetKeys[i]);swprintf_s(orderKey,L"overlay_override_hud__hud_widget_%s_order",profileWidgetKeys[i]);swprintf_s(warningKey,L"overlay_override_hud__hud_widget_%s_warning",profileWidgetKeys[i]);swprintf_s(criticalKey,L"overlay_override_hud__hud_widget_%s_critical",profileWidgetKeys[i]);
+            bool enabled=(hudWidgetMask&(1ull<<i))!=0;if(readOverlayBool(enabledKey,enabled,OverlayFeatureId::Hud)){if(enabled)hudWidgetMask|=1ull<<i;else hudWidgetMask&=~(1ull<<i);}
+            bool symbol=(hudWidgetSymbolMask&(1u<<i))!=0;if(readOverlayBool(symbolKey,symbol,OverlayFeatureId::Hud)){if(symbol)hudWidgetSymbolMask|=1u<<i;else hudWidgetSymbolMask&=~(1u<<i);}
+            double order=(double)i;ReadProfileDouble(orderKey,order);profileWidgetOrder[i]={(int)order,(uint8_t)i};
+            readOverlayDouble(warningKey,hudWidgetWarning[i],0,1000000,OverlayFeatureId::Hud);readOverlayDouble(criticalKey,hudWidgetCritical[i],0,1000000,OverlayFeatureId::Hud);
+        }
+        if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Hud))!=0){std::stable_sort(profileWidgetOrder.begin(),profileWidgetOrder.end(),[](const auto&a,const auto&b){return a.first<b.first;});for(size_t i=0;i<kHudWidgetCount;++i)hudWidgetOrder[i]=profileWidgetOrder[i].second;viewlab::telemetry::SetNetworkProbeEnabled((hudWidgetMask&(0xFull<<12))!=0);}
+
+        readOverlayBool(L"overlay_override_trace__hud_trace_enabled",hudTraceEnabled,OverlayFeatureId::Trace);
+        readOverlayU32(L"overlay_override_trace__hud_trace_visibility_mode",hudTraceVisibilityMode,0,2,OverlayFeatureId::Trace);
+        readOverlayDouble(L"overlay_override_trace__hud_trace_x",hudTraceX,0,1,OverlayFeatureId::Trace);
+        readOverlayDouble(L"overlay_override_trace__hud_trace_y",hudTraceY,0,1,OverlayFeatureId::Trace);
+        readOverlayDouble(L"overlay_override_trace__hud_trace_scale",hudTraceScale,.25,3,OverlayFeatureId::Trace);
+        readOverlayDouble(L"overlay_override_trace__hud_trace_width",hudTraceWidth,.1,1,OverlayFeatureId::Trace);
+        readOverlayDouble(L"overlay_override_trace__hud_trace_opacity",hudTraceOpacity,.1,1,OverlayFeatureId::Trace);
+        readOverlayDouble(L"overlay_override_trace__hud_trace_history",hudTraceHistory,10,600,OverlayFeatureId::Trace);
+        readOverlayDouble(L"overlay_override_trace__hud_trace_sensitivity_ms",hudTraceSensitivityMs,.25,8,OverlayFeatureId::Trace);
+        uint32_t graphMode=(uint32_t)hudGraphMode;if(readOverlayU32(L"overlay_override_trace__hud_graph_mode",graphMode,0,3,OverlayFeatureId::Trace))hudGraphMode=(HudGraphMode)graphMode;
+        readOverlayBool(L"overlay_override_trace__performance_trace_recording",performanceTraceRecording,OverlayFeatureId::Trace);double markerKey=performanceTraceMarkerKey;if(ReadProfileDouble(L"overlay_override_trace__performance_trace_marker_vk",markerKey)){performanceTraceMarkerKey=(int)std::clamp(markerKey,1.0,255.0);profileOverlayOverrideMask|=1u<<(uint32_t)OverlayFeatureId::Trace;}
+        struct ProfileGraphKey{const wchar_t* key;uint32_t flag;};const ProfileGraphKey graphKeys[]={{L"overlay_override_trace__hud_graph_frame_interval",GraphFrameInterval},{L"overlay_override_trace__hud_graph_fps",GraphFps},{L"overlay_override_trace__hud_graph_budget_deviation",GraphBudgetDeviation},{L"overlay_override_trace__hud_graph_app_work",GraphAppWork},{L"overlay_override_trace__hud_graph_wait_duration",GraphWaitDuration},{L"overlay_override_trace__hud_graph_submit_duration",GraphSubmitDuration},{L"overlay_override_trace__hud_graph_display_period",GraphDisplayPeriod}};
+        for(const auto& graph:graphKeys){bool enabled=(hudGraphChannels&graph.flag)!=0;if(readOverlayBool(graph.key,enabled,OverlayFeatureId::Trace)){if(enabled)hudGraphChannels|=graph.flag;else hudGraphChannels&=~graph.flag;}}
+
+        readOverlayBool(L"overlay_override_sticky__sticky_note_enabled",stickyNoteEnabled,OverlayFeatureId::StickyNote);
+        double profileStickyCount=(double)stickyNoteCount;
+        if(ReadProfileDouble(L"overlay_override_sticky__sticky_note_count",profileStickyCount)){
+            profileOverlayOverrideMask|=1u<<(uint32_t)OverlayFeatureId::StickyNote;stickyNoteCount=(size_t)std::clamp(std::round(profileStickyCount),0.0,(double)kStickyNoteMax);
+            for(size_t i=0;i<stickyNoteCount;++i){
+                wchar_t enabledKey[128]{},textKey[128]{},xKey[128]{},yKey[128]{},scaleKey[128]{},opacityKey[128]{},themeKey[128]{};
+                swprintf_s(enabledKey,L"overlay_override_sticky__sticky_note_%zu_enabled",i);swprintf_s(textKey,L"overlay_override_sticky__sticky_note_%zu_text",i);swprintf_s(xKey,L"overlay_override_sticky__sticky_note_%zu_x",i);swprintf_s(yKey,L"overlay_override_sticky__sticky_note_%zu_y",i);swprintf_s(scaleKey,L"overlay_override_sticky__sticky_note_%zu_scale",i);swprintf_s(opacityKey,L"overlay_override_sticky__sticky_note_%zu_opacity",i);swprintf_s(themeKey,L"overlay_override_sticky__sticky_note_%zu_theme",i);
+                auto& note=stickyNotes[i];readOverlayBool(enabledKey,note.enabled,OverlayFeatureId::StickyNote);std::wstring noteText;if(ReadProfileString(textKey,noteText)){note.text.assign(noteText.begin(),noteText.end());profileOverlayOverrideMask|=1u<<(uint32_t)OverlayFeatureId::StickyNote;}
+                readOverlayDouble(xKey,note.x,0,1,OverlayFeatureId::StickyNote);readOverlayDouble(yKey,note.y,0,1,OverlayFeatureId::StickyNote);readOverlayDouble(scaleKey,note.scale,.5,2.5,OverlayFeatureId::StickyNote);readOverlayDouble(opacityKey,note.opacity,.1,1,OverlayFeatureId::StickyNote);readOverlayU32(themeKey,note.theme,0,4,OverlayFeatureId::StickyNote);
+            }
+        }
+
+        readOverlayBool(L"overlay_override_crosshair__crosshair_enabled",crosshairEnabled,OverlayFeatureId::Crosshair);
+        readOverlayBool(L"overlay_override_crosshair__crosshair_dot",crosshairDot,OverlayFeatureId::Crosshair);
+        readOverlayBool(L"overlay_override_crosshair__crosshair_outline",crosshairOutline,OverlayFeatureId::Crosshair);
+        readOverlayBool(L"overlay_override_crosshair__crosshair_tstyle",crosshairTStyle,OverlayFeatureId::Crosshair);
+        readOverlayDouble(L"overlay_override_crosshair__crosshair_offset_x",crosshairOffsetX,-1,1,OverlayFeatureId::Crosshair);
+        readOverlayDouble(L"overlay_override_crosshair__crosshair_offset_y",crosshairOffsetY,-1,1,OverlayFeatureId::Crosshair);
+        readOverlayDouble(L"overlay_override_crosshair__crosshair_size",crosshairSize,0,1000,OverlayFeatureId::Crosshair);
+        readOverlayDouble(L"overlay_override_crosshair__crosshair_gap",crosshairGap,-50,50,OverlayFeatureId::Crosshair);
+        readOverlayDouble(L"overlay_override_crosshair__crosshair_thickness",crosshairThickness,.1,50,OverlayFeatureId::Crosshair);
+        readOverlayDouble(L"overlay_override_crosshair__crosshair_outline_thickness",crosshairOutlineThickness,0,10,OverlayFeatureId::Crosshair);
+        readOverlayDouble(L"overlay_override_crosshair__crosshair_scale",crosshairScale,.1,10,OverlayFeatureId::Crosshair);
+        double crosshairAlphaValue=crosshairAlpha;if(readOverlayDouble(L"overlay_override_crosshair__crosshair_alpha",crosshairAlphaValue,0,1,OverlayFeatureId::Crosshair))crosshairAlpha=(float)crosshairAlphaValue;
+        double crosshairColorValue=((uint32_t)(crosshairR*255)<<16)|((uint32_t)(crosshairG*255)<<8)|(uint32_t)(crosshairB*255);if(readOverlayDouble(L"overlay_override_crosshair__crosshair_color",crosshairColorValue,0,0xFFFFFF,OverlayFeatureId::Crosshair)){uint32_t color=(uint32_t)std::lround(crosshairColorValue);crosshairR=((color>>16)&255)/255.f;crosshairG=((color>>8)&255)/255.f;crosshairB=(color&255)/255.f;}
+
+        readOverlayBool(L"overlay_override_notifications__notify_enabled",notifyEnabled,OverlayFeatureId::Notifications);
+        readOverlayDouble(L"overlay_override_notifications__notify_x",notifyX,0,1,OverlayFeatureId::Notifications);
+        readOverlayDouble(L"overlay_override_notifications__notify_y",notifyY,0,1,OverlayFeatureId::Notifications);
+        readOverlayDouble(L"overlay_override_notifications__notify_scale",notifyScale,.1,3,OverlayFeatureId::Notifications);
+        readOverlayDouble(L"overlay_override_notifications__notify_opacity",notifyOpacity,.1,1,OverlayFeatureId::Notifications);
+
+        double featureEnabled=obsIndicatorEnabled?1.0:0.0;if(ReadProfileDouble(L"overlay_override_obs__obs_indicator_enabled",featureEnabled)){obsIndicatorEnabled=featureEnabled!=0;profileObsFeatureOverride=true;}
+        featureEnabled=iracingEnabled?1.0:0.0;if(ReadProfileDouble(L"overlay_override_iracing__iracing_enabled",featureEnabled)){iracingEnabled=featureEnabled!=0;profileIRacingFeatureOverride=true;}
+        const struct{const wchar_t* key;OverlayFeatureId feature;} profileHotkeys[]={{L"overlay_override_hud__overlay_hud_toggle_vk",OverlayFeatureId::Hud},{L"overlay_override_trace__overlay_trace_toggle_vk",OverlayFeatureId::Trace},{L"overlay_override_clock__overlay_clock_toggle_vk",OverlayFeatureId::Clock},{L"overlay_override_sticky__overlay_sticky_note_toggle_vk",OverlayFeatureId::StickyNote},{L"overlay_override_crosshair__overlay_crosshair_toggle_vk",OverlayFeatureId::Crosshair},{L"overlay_override_notifications__overlay_notifications_toggle_vk",OverlayFeatureId::Notifications}};
+        for(const auto& hotkey:profileHotkeys){double value=g_overlayFeatureVisibility[(size_t)hotkey.feature].toggleKey;if(ReadProfileDouble(hotkey.key,value)){g_overlayFeatureVisibility[(size_t)hotkey.feature].toggleKey=(int)std::clamp(value,0.0,255.0);profileOverlayOverrideMask|=1u<<(uint32_t)hotkey.feature;}}
 
         splitMode = profileSplitMode != 0;
         totalTangent = MillisToRenderHeight(profileTotal, totalTangent);
@@ -5011,6 +5647,12 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrBeginFrame(
         }
     }
     const XrResult result = nextXrBeginFrame(session, frameBeginInfo);
+    // After the chain returns, the OBS mirror layer (wherever it sits in the implicit stack)
+    // has flushed its compositor copy for the previous frame; drawing now keeps ViewLab's
+    // selected features on the displayed shared texture for the entire frame window.
+    if (XR_SUCCEEDED(result) && !g_rendererDeviceLost.load(std::memory_order_acquire) &&
+        g_d3d11Mask.initialized && session == g_d3d11Mask.session)
+        DrawObsMirrorSurface();
     QueryPerformanceCounter(&stop);
     if (frameIndex < g_hudTrackedFrames.size()) {
         std::lock_guard<std::mutex> lock(g_hudTimingMutex);
@@ -5234,6 +5876,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         if (maskEnabled && (!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked.load(std::memory_order_acquire)) && !releaseDrewVisor) {
             DrawCapturedProjectionTextures(true, "visor");
         }
+        // The submitted textures now contain the frame's complete direct-drawn content, so
+        // this is the calibration suite's capture point for the final left-eye image.
+        ProcessCalibrationCaptureRequest();
     }
 
     XrFrameEndInfo submittedInfo=*frameEndInfo;
@@ -5260,8 +5905,6 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         }
     }
     const XrResult result = nextXrEndFrame(session, submittedTopmost ? &submittedInfo : frameEndInfo);
-    if (XR_SUCCEEDED(result) && primaryProjection && !g_rendererDeviceLost.load(std::memory_order_acquire))
-        DrawObsMirrorSurface(primaryProjection);
     if (TracePipelineSerial(pipelineFrameSerial)) {
         LARGE_INTEGER submittedStop{};
         QueryPerformanceCounter(&submittedStop);

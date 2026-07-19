@@ -210,6 +210,18 @@ New-Item -ItemType Directory -Path $ViewLabDir -Force | Out-Null
 $MSBuild = Find-MSBuild
 Write-Host "Using MSBuild: $MSBuild"
 
+Write-Host "Building ViewLab Mirror OBS plugin (x64)..."
+$ObsPluginProject = Join-Path $Root "ViewLabMirrorPlugin\ViewLabMirrorPlugin.vcxproj"
+$ObsPluginDll = Join-Path $Root "ViewLabMirrorPlugin\x64\$Configuration\viewlab-mirror.dll"
+if (Test-Path $ObsPluginDll) { Remove-Item -Force $ObsPluginDll }
+Invoke-Native $MSBuild $ObsPluginProject /p:Configuration=$Configuration /p:Platform=x64 /m
+if (!(Test-Path $ObsPluginDll)) { throw "ViewLab Mirror OBS plugin was not produced at $ObsPluginDll" }
+$ObsPluginPublishDir = Join-Path $PublishDir "ObsPlugin"
+New-Item -ItemType Directory -Path $ObsPluginPublishDir -Force | Out-Null
+Copy-Item -Path $ObsPluginDll -Destination "$ObsPluginPublishDir\" -Force
+Copy-Item -Path (Join-Path $Root "ViewLabMirrorPlugin\LICENSE") -Destination (Join-Path $ObsPluginPublishDir "LICENSE.txt") -Force
+Copy-Item -Path (Join-Path $Root "ViewLabMirrorPlugin\README.md") -Destination "$ObsPluginPublishDir\" -Force
+
 Write-Host "Building OpenXR API layer (x64)..."
 $Dll64Expected = Join-Path $Root "x64\$Configuration\XR_APILAYER_cooooked_xrviewlab.dll"
 $Dll32Expected = Join-Path $Root "$Configuration\XR_APILAYER_cooooked_xrviewlab32.dll"
@@ -271,7 +283,7 @@ $PublishVersion = (Get-Item $PublishExe).VersionInfo.ProductVersion
 if ($PublishVersion -ne $version) {
     throw "Published executable version $PublishVersion does not match build version $version"
 }
-foreach ($FreshOutput in @($PublishExe, $BrokerExe, $BrokerPackagePath, $BrokerCertificatePath, $Dll64Src, $Dll32Src, $MsiSource)) {
+foreach ($FreshOutput in @($PublishExe, $BrokerExe, $BrokerPackagePath, $BrokerCertificatePath, $Dll64Src, $Dll32Src, $ObsPluginDll, $MsiSource)) {
     if (!(Test-Path $FreshOutput)) { throw "Required fresh build output missing: $FreshOutput" }
     if ((Get-Item $FreshOutput).LastWriteTimeUtc -lt $BuildStartedUtc) {
         throw "Build output predates this build and may be stale: $FreshOutput"

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace XRViewLab.UI;
 
@@ -43,4 +44,22 @@ internal static class OverlaySettingsCatalog
 
     internal static int VirtualKeyFromComboIndex(int index) =>
         index is >= 1 and <= 7 ? FirstFunctionKey + index - 1 : NoHotkey;
+}
+
+/// <summary>Per-app overlay configuration stored as string values using the canonical INI keys.</summary>
+public sealed class OverlayProfileOverrides
+{
+    public Dictionary<string, string> Values { get; } = new(System.StringComparer.OrdinalIgnoreCase);
+
+    public OverlayProfileOverrides Clone()
+    {
+        var clone = new OverlayProfileOverrides();
+        foreach (var pair in Values) clone.Values[pair.Key] = pair.Value;
+        return clone;
+    }
+
+    public bool HasFeature(string id) => Values.Keys.Any(key => key.StartsWith(id + ":", System.StringComparison.OrdinalIgnoreCase));
+    public string? Get(string feature, string key) => Values.TryGetValue(feature + ":" + key, out string? value) ? value : null;
+    public void Set(string feature, string key, string value) => Values[feature + ":" + key] = value;
+    public void Clear() => Values.Clear();
 }

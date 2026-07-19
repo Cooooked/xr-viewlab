@@ -3,16 +3,19 @@ using System.Windows;
 
 namespace XRViewLab.UI;
 
-internal enum OverlayPreviewAnchor { Centre, TopLeft, BottomRight, Edge }
-internal enum OverlayPreviewStyle { Hud, Trace, Clock, Notification, Sticky, System }
-internal enum OverlayPreviewEditKind { Position, Scale }
+public enum OverlayPreviewAnchor { Centre, TopLeft, BottomRight, Edge, RenderEdge, RecordingRenderEdge }
+public enum OverlayPreviewStyle { Hud, Trace, Clock, Notification, Sticky, System }
+public enum OverlayPreviewEditKind { Position, Scale }
 
-internal readonly record struct OverlayPreviewItem(
+public readonly record struct OverlayPlacementOverride(double X, double Y, double Scale);
+
+public readonly record struct OverlayPreviewItem(
     string Id, string Label, double X, double Y, double ReferenceWidth, double ReferenceHeight, double Scale,
     double MinScale, double MaxScale, double Opacity, OverlayPreviewAnchor Anchor,
     OverlayPreviewStyle Style, int Theme = 0)
 {
-    public bool Editable => Anchor != OverlayPreviewAnchor.Edge && !string.IsNullOrWhiteSpace(Id);
+    public bool Editable => Anchor is not OverlayPreviewAnchor.Edge and not OverlayPreviewAnchor.RenderEdge
+        and not OverlayPreviewAnchor.RecordingRenderEdge && !string.IsNullOrWhiteSpace(Id);
 }
 
 internal static class OverlayPreviewReplicaLayout
@@ -27,7 +30,7 @@ internal static class OverlayPreviewReplicaLayout
         switch (item.Style)
         {
             case OverlayPreviewStyle.Hud:
-                double unit = Quest3PreviewGeometry.ReferencePixelsToY(area, 128.0) * item.Scale;
+                double unit = Quest3PreviewGeometry.TangentReferencePixelsUniform(area, 128.0) * item.Scale;
                 double radius = unit * 0.48;
                 double count = Math.Max(1.0, item.ReferenceWidth);
                 double gap = unit * (0.25 + 3.0 * 0.018);
@@ -36,17 +39,17 @@ internal static class OverlayPreviewReplicaLayout
                 break;
             case OverlayPreviewStyle.Trace:
                 width = area.Width * Math.Clamp(item.ReferenceWidth, 0.10, 1.0) * item.Scale;
-                height = Quest3PreviewGeometry.ReferencePixelsToY(area, 128.0 * 0.55) * item.Scale;
+                height = Quest3PreviewGeometry.TangentReferencePixelsUniform(area, 128.0 * 0.55) * item.Scale;
                 break;
             case OverlayPreviewStyle.Clock:
-                double glyphX = Quest3PreviewGeometry.ReferencePixelsToX(area, 4.2) * item.Scale;
-                double glyphY = Quest3PreviewGeometry.ReferencePixelsToY(area, 4.2) * item.Scale;
+                double glyphX = Quest3PreviewGeometry.TangentReferencePixelsToX(area, 4.2) * item.Scale;
+                double glyphY = Quest3PreviewGeometry.TangentReferencePixelsToY(area, 4.2) * item.Scale;
                 width = 77.75 * glyphX;
                 height = (item.ReferenceHeight > 0.5 ? 23.05 : 13.75) * glyphY;
                 break;
             case OverlayPreviewStyle.Notification:
-                width = Math.Min(area.Width * 920.0 / 1080.0 * item.Scale, area.Width * 0.60);
-                height = area.Height * 920.0 / 1080.0 * item.Scale * (96.0 / 336.0);
+                width = Math.Min(Quest3PreviewGeometry.TangentReferencePixelsToX(area, 920.0) * item.Scale, area.Width * 0.60);
+                height = Quest3PreviewGeometry.TangentReferencePixelsToY(area, 920.0) * item.Scale * (96.0 / 336.0);
                 break;
             case OverlayPreviewStyle.Sticky:
                 width = height = area.Height * 0.12 * item.Scale;

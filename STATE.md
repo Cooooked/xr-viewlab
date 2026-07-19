@@ -3,8 +3,18 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-07-18
-**Current version:** 4.1.252 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.252.msi`
+**Updated:** 2026-07-19
+**Current version:** 4.1.272 — source at `Properties/AssemblyInfo.cs`; MSI not yet rebuilt for this version. The 4.1.272
+working tree adds the permanent measured desktop-preview/HMD widget correction (`WidgetPreviewShimY = 0.077`
+full-lens Y in `BeanMaskEditor.OverlayPreviewGeometries`, applied to the forward draw only; dragging stays
+delta-based so saved coordinates are untouched — item 9). The two preview contracts that still expected the
+pre-shim `ResolveFullLens(area,item.X,item.Y)` form were reconciled to the shim'd form plus a numerical pin on
+the 0.077 constant and the delta-drag invariant (`Verify-ViewLabContracts.ps1`, `Verify-Quest3PreviewAndProfiles.ps1`).
+Also: calibration menu capture-info text moved from amber `#C08A2A` to `MutedBrush` grey (item 11), and the
+iRacing spotter R/G/B sliders gained right-click-reset to their default (255,69,0) (item 20 polish). WPF Release
+builds clean (0/0); the four preview/overlay/HUD/baseline verifiers pass. Native/MSI rebuild and headset/OBS/iRacing
+live validation for this version remain pending.
+**Prior version:** 4.1.271 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.271.msi` (removes the Quest 3 lens-outline preview feature; all 20 deterministic scripts pass; headset validation pending)
 **Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
 AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
 remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
@@ -17,7 +27,132 @@ and has clean contracts/fixtures plus WPF, broker, x64/Win32 native, signed iden
 extracted-payload validation. Build 4.1.224 additionally passes the full deterministic suite and fresh
 WPF, broker, signed identity, x64/Win32 native, MSI extraction, pinned PresentMon hash/notice validation;
 its DiagMon real-game CSV and live Trace-cap checks remain mandatory before release.
-**Publish state:** 4.1.148 published at the user's direction (2026-07-12): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.148 — includes the installer-safety repair and the binocular fixed-reference preview.
+**Publish state:** 4.1.252 published at the user's direction (2026-07-18): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.252.
+
+## Calibration capture, preview centre repair, OBS mirror routing, ViewLab Mirror plugin, themes/palettes (implemented; runtime validation pending, 2026-07-19)
+
+The calibration suite's native backend is implemented. The UI owns a small read/write `XRViewLabCalibrationCapture`
+control block; the layer stamps a heartbeat every submitted frame and answers request serials by copying the final
+submitted left-eye sub-image at xrEndFrame (game pixels, crop, visor, calibration pattern and direct-drawn features;
+ordered-carrier features are composited onto the copy), then a worker thread encodes a real PNG plus a verified JSON
+metadata sidecar into `%LOCALAPPDATA%\XR ViewLab\CalibrationCaptures`. Each pattern settles for six observed submitted
+frames rather than a wall-clock guess. Failure codes are truthful; cancellation/timeout serials stop accepted worker work
+and remove partial output; prior calibration state restores in `finally`; metadata failure cannot report success.
+
+The preview centre contract is now: every layer (frames, crop, visor, guides, crosshair, widgets, edge cues, lens
+outlines) anchors around the geometric centre of the fitted 55:48 area, and the persisted optical-centre checkbox
+translates that COMPLETE area rigidly via `FitAreaAtCentre(RenderSize, OpticalPreviewCentreY)` — translate only, no
+zoom, resize or re-anchoring, identical in main and per-app previews. The shared editor now exposes a live hover inspector
+for both full-lens and post-crop normalized coordinates using the same inverse transform as dragging. This repairs the regression where the crop was
+still anchored at the optical Y with a crop-dependent compensation while guides, crosshair and widgets did not move by
+the same amount. `RuntimeCropRect` is the half-lens split around 0.5 pinned by the split-crop checkpoints.
+
+`Show in OBS Mirror` routing is fixed at its capture point. The MIT-licensed Jabbah/OpenXR-Layer-OBSMirror source
+proves the mirror layer queues its compositor→sharedHandle[0] copy at xrEndFrame and only flushes it (and advances
+lastProcessedIndex) at the NEXT xrBeginFrame, so ViewLab's former post-xrEndFrame drawing was overwritten at the start
+of every frame. `DrawObsMirrorSurface()` now runs in `XRViewLab_xrBeginFrame` after the call returns up the chain, so
+the selected features stay on the displayed texture for the whole frame in either implicit-layer order. All ten
+checkboxes remain independently respected; headset visibility is unchanged. Live OBS validation remains pending.
+
+`ViewLabMirrorPlugin/` is a real buildable OBS source plugin skeleton (`viewlab-mirror.dll`, GPL-2.0-or-later): it
+registers the `ViewLab Mirror` source with an eye-mode property UI, resolves every libobs entry point at runtime from
+the host's obs.dll (no SDK link), reports the host's own version from `obs_module_ver`, and consumes the versioned
+`Local\XRViewLabMirrorSurface` triple-buffer contract in `viewlab_mirror_contract.h`. The layer-side producer is the
+documented next step; until it ships the source renders nothing rather than fabricating frames. The MSI carries the
+plugin under `ObsPlugin\`, and the Overlays menu's `Install ViewLab Mirror Plugin` button installs per user into
+`%APPDATA%\obs-studio\plugins\viewlab-mirror\bin\64bit` with installed/outdated/missing SHA-256 detection and a
+restart-OBS notice. OBS is never launched or controlled.
+
+The `Show Quest 3 Lens Outlines` preview feature was designed and then removed within this same unreleased batch:
+the photo-digitised truncated-circle path was visually inaccurate (Meta publishes no lens CAD) and low value. All of
+its plumbing is gone — Preview submenu toggle, main/per-app rendering, `Quest3LensOutlines` geometry,
+`ShowQuest3LensOutlines` state and the `preview_lens_outlines` load/save. An old saved `preview_lens_outlines` key is
+harmlessly ignored. No replacement approximation was drawn. Contract tests now assert the feature no longer exists.
+
+Clock and Notifications now separate Theme (actual visual design) from Palette (colours only). The five legacy
+recolours are palettes; Clock designs are Classic Card, Minimal, Terminal and Banner (native layouts with different
+type scale, padding, borders, icons and information arrangement), and Notification designs are Classic, Compact
+Banner, Minimal and Bold (compositor layouts with different dimensions, corner shape, icon treatment, typography and
+accent placement). Live state moves to v10 (268 bytes) adding clockPalette; `clock_widget_palette` and
+`notify_palette` persist globally and through per-app overlay overrides. A missing palette key migrates the legacy
+theme value into the palette and resets the design to Classic (raw ini probes bypass the factory-baseline fallback so
+migration still triggers on legacy configs); the captured baseline now records theme 0 + palette 2 for the clock.
+Enabled state, position, scale, opacity, hotkeys and preview/runtime behaviour are unchanged.
+
+Build 4.1.270 passes all 20 deterministic scripts plus fresh WPF, broker, signed identity, OBS plugin, x64/Win32 native,
+MSI and extracted-payload validation. Headset/OBS/calibration runtime validation remains pending. Detailed planning-only designs for
+the Rear-Closing Pressure Cue, Performance HUD connection icons and Grip-O-Bar are recorded in
+`IRACING_IMPLEMENTATION.md`; none of those three planned features is implemented.
+
+## Compact overlays, app overrides and captured factory baseline (implemented; headset validation pending, 2026-07-18)
+
+The six configurable overlays are Clock, Performance HUD, Performance Trace, Sticky Notes, Crosshair and Notifications. OBS
+Recording Cue and iRacing Telemetry remain feature modules with global detail settings and per-app enable overrides.
+The global Overlays menu presents all eight configurable/detail-bearing sections with one aligned checkbox,
+clickable label, chevron and divider pattern. The HUD label is now Performance HUD. OBS WebSocket settings live
+inside its collapsed section; iRacing settings are grouped by lap, spotter, flag and fuel features, including an
+RGB spotter-colour editor backed by the existing colour key. The ten unchanged OBS Mirror visibility switches are
+last in the menu. Presentation tests remain independent of a live iRacing connection.
+Boundary Flash remains the transient HUD/Trace drag guide. The iRacing edge-feature preview follows the solid
+post-crop render rectangle rather than the dotted full-lens guide; native cues already draw into the submitted
+post-crop eye rectangle. The OBS Recording Cue preview also follows the exact post-crop bounds in main and per-app
+editors, with its label at bottom-left while iRacing remains top-left. Ordinary desktop widget previews match the
+native `OverlayPlacement::FullLens`: saved X/Y and inverse dragging use the full-lens rectangle, while post-crop
+coverage clips visibility without redefining position. The failed crop-relative pass compressed restarted positions
+into the centre band and amplified vertical dragging by 6.67× at 15% crop. The entire preview now uses one shared
+centre: by default frame/eye guides, equal split crop, visor, crosshair, widgets and render-edge cues remain aligned
+around the geometric centre. A persisted Preview-menu checkbox can instead move that complete coordinate system
+together around the alternate optical centre; this is display-only and shared by main and per-app previews.
+Main and per-app editors share `BeanMaskEditor`; zoom and pan
+remain display-only. HUD, Trace, Clock and Notification preview footprints retain calibrated size conversion without
+changing that shared centre. Runtime rendering and saved coordinates are unchanged. Focused restart, forward/inverse,
+small-delta, split-crop, profile and preview/runtime numerical fixtures pass; headset validation remains required.
+Per-app values use canonical INI keys stored as
+`overlay_override_<feature>__<key>` registry strings; layout uses `overlay_layout_<feature>_{x,y,scale}`. Profiles
+inherit globals until edited, and `Use Global Values` deletes all overlay/module and layout overrides. Native feature
+masks prevent global live snapshots from replacing an active app's settings.
+
+OBS setup uses the existing `obs_websocket_url` and `obs_websocket_password` persistence contract, presenting the
+endpoint as Host/IP plus Port and composing it back into one WebSocket URL. Built-in help covers local and LAN OBS
+configuration. The provider publishes Disconnected, Connecting, Connected or Authentication failed; only its distinct
+Recording state activates the native cue, so connection and authentication failures remain safely off.
+
+The shared visor preview treats a non-widget right-click as view navigation reset: zoom returns to startup identity,
+pan clears, and the existing `FitArea` render path again aligns the outer frame. No crop, visor, overlay or profile
+value is changed, so main and per-app previews receive identical behavior without runtime effects.
+
+Nose controls remain serialized but are hidden. The launcher is `DiagMon ▾`; its popup remains `DiagMon(ster)`.
+The experimental calibration suite has a cancellable ten-pattern sequence and left-eye capture interface; the
+unavailable backend creates no fake files and state restores in `finally`. `experimental_draw_in_void` is persisted
+and read at startup but deliberately has no rendering effect.
+
+The captured configuration is canonical in `config/factory-baseline-v4.1.255.json`. It drives clean-install values,
+missing-key fallbacks and a one-time `FactoryBaselineAppliedVersion=4.1.255` migration. Per-app profiles, ReShade
+deployment/registration/handshake and unlisted settings are preserved.
+
+The full 4.1.263 WPF, broker, signed identity, x64/Win32 layer and MSI build completed with zero warnings/errors.
+Focused OBS protocol, preview/profile, overlay and repository contracts pass; MSI payload/hash validation confirms
+fresh WPF/native/broker outputs, pinned PresentMon and signed identity content. Headset/runtime validation remains.
+
+## Per-app Visor Mask parity (implemented; headset validation pending, 2026-07-18)
+
+The per-app editor now uses the main editor's current Size, Width, Height, Curve, Outer Dip, Nose and Nose Spread X
+controls, ranges, defaults, live `BeanMaskEditor` geometry and red enabled-state styling. Custom profiles persist
+their own `mask_enabled` and complete visor shape; reopening reloads those registry values and the native layer
+applies them only when `visor_size>0`. `Use global visor settings` keeps the crop/resolution profile but writes the
+zero sentinel and removes custom visor keys so the complete global visor configuration remains authoritative.
+Focused profile/preview and repository contracts pass. The full 4.1.254 WPF, broker, signed identity, x64/Win32
+native and MSI build plus deterministic installer payload validation completed with zero warnings or errors.
+
+## Split vertical crop preview repair (implemented; headset validation pending, 2026-07-18)
+
+Top and Bottom split controls now scale within their respective half-lens rather than each consuming a full-lens
+fraction. The four pinned checkpoints are `1/1` full height, `1/0` top half, `0/1` bottom half and `0.5/0.5`
+the centred middle half. Existing `top_tangent`/`bottom_tangent` INI and registry values remain full-lens shares;
+main and profile editors convert ×2 on load and ×0.5 on save so native runtime behaviour and old settings remain
+compatible while controls, hints and preview agree.
+Focused split-geometry and repository contracts pass. The full 4.1.253 WPF, broker, signed identity, x64/Win32
+native and MSI build plus administrative payload extraction completed with zero warnings or errors.
 
 ## ReShade/DiagMon help and OBS mirror routing (implemented; runtime validation pending, 2026-07-18)
 
@@ -25,6 +160,7 @@ ReShade Remote now has concise built-in help, independent Install/Uninstall and 
 truthful states, and a post-attachment heartbeat requirement for Connected. File actions touch only the two
 ViewLab payload paths; registration actions touch only ViewLab's 64-bit manifest value. DiagMon(ster) now has a
 matching white circular help icon and scrollable capture, graph, interpretation and export guide. The inherited
+healthy `[Installed and enabled]` state uses normal text rather than warning yellow; Connected alone remains green.
 OBS work routes selected ViewLab overlays to `OpenXROBSMirrorSurface` via live-state v9 without changing headset
 visibility. WPF and native x64/Win32 direct builds plus contracts pass; runtime validation remains pending.
 
@@ -166,8 +302,9 @@ top-centre move and top-right scale pins update the existing shared controls, pe
 contract, and their labels remain screen-readable under canvas zoom. Performance Trace now treats Scale as
 whole-widget scale while Width defines its base shape. A dotted Quest 3 H/V 1.00 binocular reference surrounds
 the solid current post-crop rectangle, with an inner oval marking approximate naturally visible binocular area.
-Preview and native common-overlay placement now resolve against full-lens coordinates; crop is a coverage/clipping
-boundary and cannot resize, deform or relocate an overlay. Nodes beyond crop remain editable in the full preview.
+Native coordinates remain unchanged. Recorded matched-locate evidence proves `fullFov` is the original FOV on the
+active route. Desktop widget X/Y therefore uses the same full-lens normalized frame and crop affects visibility only.
+Dragging is the exact inverse over the full preview; no second offset or coordinate migration occurs.
 The visor outline is active red only while Visor mask is enabled and becomes a faint grey geometry reference when
 disabled. Placeholder content is not yet a native pixel replica.
 

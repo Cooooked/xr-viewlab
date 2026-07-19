@@ -1,5 +1,21 @@
 # Decision log
 
+## D32 — Overlay categories, inheritance and baseline (2026-07-18)
+
+Clock, HUD, Performance Trace, Sticky Notes, Crosshair and Notifications are configurable overlays. OBS Recording
+Cue and iRacing Telemetry are feature modules with global detail settings and per-app enable gates. Boundary Flash
+belongs to HUD/Trace layout feedback. A profile inherits until edited; `Use Global Values` removes its complete
+overlay/module configuration and layout. The 4.1.255 baseline is an embedded JSON allowlist and never migrates app
+profiles or machine-specific ReShade deployment state.
+
+## D31 — Per-app visor state and shape form one override (2026-07-18; supersedes D4)
+
+`Use global visor settings` means the entire visor configuration follows the main editor. Its registry sentinel is
+`visor_size=0`, and custom-only visor keys are removed. When unchecked, the profile owns enable, Size, Width,
+Height, Curve, Outer Dip, Nose and Nose Spread X; the native layer reads that enable only when the custom sentinel
+is active. The profile and main editors share `BeanMaskEditor` as their geometry implementation and identical
+ranges/defaults. Rejected: a global-only enable switch and a profile editor with a second, obsolete control set.
+
 ## D30 — ReShade files, registration and connection evidence are independent
 
 Install/Uninstall touch only ViewLab's two payload files. Enable/Disable touch only ViewLab's 64-bit implicit-layer
@@ -150,7 +166,7 @@ Never derive the opening from legacy `mask_vertical`/`mask_horizontal` — their
 fallback computes 1.0 = full opening = invisible mask (the "no mask for 3 days" bug, R4).
 Missing-key fallback is 0.82 in BOTH UI and DLL.
 
-## D4 — Visor enable is global-only (4.1.6x)
+## D4 — Visor enable was global-only (4.1.6x; superseded by D31)
 Per-app registry `mask_enabled` is deliberately ignored; stale per-app 0s silently overrode the
 global toggle. Per-app SHAPE values are still honored.
 
@@ -317,14 +333,13 @@ both dimensions. The preview separately shows the full Quest 3 H/V 1.00 binocula
 Exact content replicas require a future native layout/content data contract; labelled footprints must not be
 described as pixel-identical before that exists.
 
-## D32 - Crop clips overlays; it does not own their coordinates (2026-07-15)
+## D32 - Crop clips overlays; it never redefines overlay coordinates (revised 2026-07-19)
 
-Ordinary overlay position, full-widget bounds and preview footprints live in the H/V 1.00 full-binocular
-coordinate space. A smaller crop changes coverage only: native rendering clips at the submitted image/FOV,
-while the editor deliberately keeps out-of-crop nodes visible so users can recover them. Angular size still
-uses current pixels-per-tangent, not raw crop dimensions. Rejected: normalizing overlay anchors into the crop,
-clamping them back into the selected FOV, or capping widget size from cropped width/height; all three make a
-crop slider silently move or deform unrelated features.
+Native rendering and the desktop calibration mirror both keep persisted widget X/Y in full-lens normalized space.
+The current crop is coverage and clipping only. Forward placement, footprint scale and inverse dragging use the
+same fitted H/V 1.00 rectangle; the preview must not clamp an item merely to keep its visible footprint on-canvas
+when the corresponding runtime feature is unclamped. Rejected: crop-relative coordinates, visual offsets, scaling
+footprints from cropped dimensions, applying crop twice, or changing runtime coordinates to compensate for preview.
 
 ## D33 - Master is stable and dev is the single working branch (2026-07-17)
 
@@ -346,7 +361,12 @@ whose `2064:2208` aspect is preserved. A persisted `67.0` mm IPD calibration inp
 separation of dual guide geometry, in 0.1 mm steps exposed through direct typing, keyboard input and visible buttons.
 Vertical preview state is one retained scale plus centre; `1.0` is exactly the full outer-frame height. These are
 display preferences only and never publish to runtime.
-The current crop, visor shape, overlay anchors, hit-testing and drag deltas
-all use the same full-box normalised coordinates. Zoom and pan are display-only. Rejected: deriving preview
-placement from asymmetric projection degrees, normalising ordinary elements into the crop, applying crop a
-second time, or stretching an eye guide to the container aspect.
+The current crop and visor shape use the fixed outer-box geometry. Widget X/Y, hit-testing, footprint scale and drag
+deltas use that same full fitted box. Crop is display-only coverage, while zoom and pan are display-only transforms.
+Rejected: deriving preview placement from asymmetric projection degrees, one-off widget offsets, applying crop
+twice, scaling widgets from crop dimensions, or stretching an eye guide to the container aspect.
+
+Split Top and Bottom controls are relative to their respective half of the lens. A control value contributes
+`value × 0.5` to full-lens retained height, so `1/0` selects the top half, `0/1` the bottom half, `0.5/0.5`
+the centred middle half, and `1/1` the full height. Existing `top_tangent` and `bottom_tangent` persistence stays
+in full-lens shares for native compatibility; UI load/save performs the ×2/×0.5 boundary conversion.

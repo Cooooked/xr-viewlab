@@ -29,6 +29,14 @@ internal static class BuiltInHelpWindow
         new HelpSection("Exporting", "Stop and finalise first, then Export Analysis Package creates a ZIP with the manifest, metrics, summary and retained raw evidence. Read collector states and limitations alongside any conclusion.")
     };
 
+    internal static readonly IReadOnlyList<HelpSection> ObsRecordingSections = new[]
+    {
+        new HelpSection("Enable OBS WebSocket", "In OBS, open Tools > WebSocket Server Settings, then enable the WebSocket server."),
+        new HelpSection("OBS on this PC", "Use localhost for Host / IP. Use the same port shown in OBS, normally 4455, and enter the OBS WebSocket password in ViewLab."),
+        new HelpSection("OBS on another PC", "Enter that computer's local network IP address and the WebSocket port shown by OBS. Both computers must be reachable on the same local network."),
+        new HelpSection("What ViewLab reads", "ViewLab only reads whether OBS is currently recording. A failed connection or authentication never activates the recording cue.")
+    };
+
     internal static void Show(Window owner, string title, IReadOnlyList<HelpSection> sections)
     {
         var panel = new StackPanel { Margin = new Thickness(18) };

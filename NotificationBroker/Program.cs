@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Pipes;
+using System.IO.MemoryMappedFiles;
+using Microsoft.Win32;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -24,6 +26,7 @@ internal static class NotificationBrokerProgram
     private static readonly string ConfigPath = Path.Combine(ConfigDirectory, "xr-viewlab.ini");
     private static readonly string StatusPath = Path.Combine(ConfigDirectory, "notification-broker-status.json");
     private static readonly string IRacingStatusPath = Path.Combine(ConfigDirectory, "iracing-status.json");
+    private static string? _activeProfileKey;
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern uint GetPrivateProfileString(string section, string key, string fallback, StringBuilder value, uint size, string path);
@@ -229,8 +232,17 @@ internal static class NotificationBrokerProgram
         catch { /* the status file will reveal a broker startup failure */ }
     }
 
-    private static NotificationSettings ReadSettings() => new()
-    {
+	private static NotificationSettings ReadSettings()
+	{
+		_activeProfileKey = TryReadActiveProfileKey();
+		// Migration: legacy configs stored the recolour in notify_theme. When notify_palette is
+		// absent, that value becomes the palette and the card design stays Classic (0).
+		double storedTheme = ReadDouble("notify_theme", 0, 0, 4);
+		double storedPalette = ReadDouble("notify_palette", -1, -1, 4);
+		int layoutTheme = storedPalette < 0 ? 0 : (int)Math.Clamp(storedTheme, 0, 3);
+		int palette = storedPalette < 0 ? (int)storedTheme : (int)storedPalette;
+		return new()
+		{
         Enabled = ReadBool("notify_enabled", false),
         X = ReadDouble("notify_x", 0.98, 0, 1),
         Y = ReadDouble("notify_y", 0.98, 0, 1),
@@ -239,19 +251,44 @@ internal static class NotificationBrokerProgram
         DurationMs = ReadDouble("notify_duration_ms", 3000, 500, 15000),
         MaxVisible = (int)ReadDouble("notify_max_visible", 3, 1, 6),
         Privacy = (int)ReadDouble("notify_privacy", 0, 0, 2),
-        Theme = (int)ReadDouble("notify_theme", 0, 0, 4),
+        Theme = layoutTheme,
+        Palette = palette,
         ShowIcon = ReadBool("notify_show_icon", true),
         ShowImage = ReadBool("notify_show_image", true),
         AllowlistMode = ReadBool("notify_allowlist_mode", false),
-        AppFilters = Read("notify_app_filters", string.Empty).Split(new[] { ',', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-    };
+		AppFilters = Read("notify_app_filters", string.Empty).Split(new[] { ',', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+		};
+	}
 
     private static string Read(string key, string fallback)
     {
+		if (!string.IsNullOrWhiteSpace(_activeProfileKey))
+		{
+			using RegistryKey? profile = Registry.CurrentUser.OpenSubKey(@"Software\cooooked\xr-viewlab\Apps\" + _activeProfileKey);
+			if (Convert.ToInt32(profile?.GetValue("profile_enabled", 0), CultureInfo.InvariantCulture) != 0)
+			{
+				object? value = profile?.GetValue("overlay_override_notifications__" + key);
+				if (value != null) return Convert.ToString(value, CultureInfo.InvariantCulture) ?? fallback;
+			}
+		}
         var b = new StringBuilder(2048);
         GetPrivateProfileString("Settings", key, fallback, b, (uint)b.Capacity, ConfigPath);
         return b.ToString();
     }
+
+	private static string? TryReadActiveProfileKey()
+	{
+		try
+		{
+			using MemoryMappedFile mapping = MemoryMappedFile.OpenExisting("Local\\XRViewLabActiveProfileV1", MemoryMappedFileRights.Read);
+			using MemoryMappedViewAccessor view = mapping.CreateViewAccessor(0, 272, MemoryMappedFileAccess.Read);
+			if (view.ReadUInt32(0) != 0x31504156u || view.ReadUInt32(4) != 1u) return null;
+			byte[] bytes = new byte[256]; view.ReadArray(16, bytes, 0, bytes.Length);
+			return Encoding.Unicode.GetString(bytes).TrimEnd('\0');
+		}
+		catch (FileNotFoundException) { return null; }
+		catch (UnauthorizedAccessException) { return null; }
+	}
 
     private static bool ReadBool(string key, bool fallback) => Read(key, fallback ? "1" : "0") is "1" or "true" or "yes" or "on";
     private static double ReadDouble(string key, double fallback, double min, double max) =>
@@ -260,7 +297,7 @@ internal static class NotificationBrokerProgram
 
     private static bool Equivalent(NotificationSettings a, NotificationSettings b) =>
         a.Enabled == b.Enabled && a.X == b.X && a.Y == b.Y && a.Scale == b.Scale && a.Opacity == b.Opacity &&
-        a.DurationMs == b.DurationMs && a.MaxVisible == b.MaxVisible && a.Privacy == b.Privacy && a.Theme == b.Theme &&
+        a.DurationMs == b.DurationMs && a.MaxVisible == b.MaxVisible && a.Privacy == b.Privacy && a.Theme == b.Theme && a.Palette == b.Palette &&
         a.ShowIcon == b.ShowIcon && a.ShowImage == b.ShowImage && a.AllowlistMode == b.AllowlistMode &&
         string.Join('\0', a.AppFilters) == string.Join('\0', b.AppFilters);
 

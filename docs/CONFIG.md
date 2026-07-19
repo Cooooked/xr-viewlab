@@ -1,5 +1,21 @@
 # Config contract — every key, both sides
 
+## Factory baseline and per-app overlays
+
+`config/factory-baseline-v4.1.255.json` is the machine-readable clean-install and missing-key baseline. Startup
+applies only its listed keys once when `HKCU\Software\cooooked\xr-viewlab\FactoryBaselineAppliedVersion` is not
+`4.1.255`. It never alters `Apps`, ReShade registration, payload files or handshake state.
+
+Per-app true-overlay values are `overlay_override_<feature>__<canonical_ini_key>` registry strings. OBS Recording
+Cue and iRacing Telemetry use this form only for enable state. Layout uses `overlay_layout_<id>_{x,y,scale}`.
+The native layer publishes its current executable key through `Local\XRViewLabActiveProfileV1`; the independent
+notification broker uses that key only to resolve `overlay_override_notifications__*` values for an enabled profile,
+then falls back to the global INI. This keeps notification filters, privacy, theme and presentation options aligned
+with the same profile selected by the renderer.
+`experimental_draw_in_void` defaults off and has no renderer effect. ReShade UI preferences use
+`reshade_remote_xr_mode`, `reshade_remote_menu_visible`, `reshade_remote_win_headless` and
+`reshade_remote_win_always_on_top`; deployment state is deliberately absent.
+
 ## OBS mirror-only visibility
 
 `obs_mirror_show_visor`, `obs_mirror_show_hud`, `obs_mirror_show_trace`, `obs_mirror_show_clock`,
@@ -39,7 +55,7 @@ the Session Library, with confirmation; valid raw evidence is never removed by a
 |---|---|---|---|---|
 | `enabled` | 1 | `enabled` | `app_enabled`, `profile_enabled` | master switch |
 | `total_render_height` | 0..1 / 0.18 | `totalTangent` | millis | legacy fallbacks `total_share`, `vertical_tangent` |
-| `split_mode` + `top_tangent` / `bottom_tangent` | 0.09/0.09 | `topTangent`/`bottomTangent` | millis | split top/bottom crop |
+| `split_mode` + `top_tangent` / `bottom_tangent` | 0.09/0.09 | `topTangent`/`bottomTangent` | millis | Stored values are full-lens shares (`0..0.5` effective per side). UI split controls are half-relative `0..1`, converted ×0.5 on save and ×2 on load. |
 | `horizontal_render_width` | 0..1 / 0.80 | `horizontalRenderWidth` | millis | Exact retained width. `0.8` keeps 80% of each eye's submitted horizontal span; with outer-edge-only policy the entire 20% is removed from the outer boundary while the inner boundary stays fixed. |
 | `crop_outer_edges_only` | 1 | `cropOuterEdgesOnly` | — | **Permanently enabled** — config key ignored. Horizontal crop takes from outer edges only. |
 | `foveated_center_compensation` | 0 | retired/false | dword | Retained only for compatibility; ignored and permanently off because pose compensation tilted asymmetric crops. |
@@ -50,23 +66,24 @@ the Session Library, with confirmation; valid raw evidence is never removed by a
 
 | ini key | range/default | DLL global | per-app | UI control |
 |---|---|---|---|---|
-| `mask_enabled` | 0 | `maskEnabled` | global-only (per-app enable deliberately ignored — DECISIONS D6) | Visor mask checkbox |
+| `mask_enabled` | 0 | `maskEnabled` | `mask_enabled` DWORD when `visor_size > 0`; absent when using globals | Visor mask checkbox |
 | `mask_size` | 0.1..1 / **1.0** | `visorSize` | `visor_size` millis | Uniform visor-opening scale. `1.0` preserves the existing full opening; smaller values hide an outer band without changing crop/FOV/resolution. |
-| `mask_corner` | 0..1 | `visorCurve = 1 − maskCorner` | `mask_corner` millis | Curve slider (stored inverted). Near zero stays visually square through one continuous curve; Inner low remains active. |
-| `mask_outer_apex_y` | −0.5..0.5 / 0 | `visorOuterApexY` | signed millis | Apex Y slider + red pin |
-| `mask_inner_lower_y` | 0..0.666 / 0 | `visorInnerLowerY` | millis | Inner low slider + orange pin |
+| `mask_corner` | 0..1 | `visorCurve = 1 − maskCorner` | `mask_corner` millis when custom | Curve slider (stored inverted). Near zero stays visually square through one continuous curve; Nose remains active. |
+| `mask_outer_apex_y` | −0.5..0.5 / 0 | `visorOuterApexY` | signed millis | Outer Dip slider + red pin |
+| `mask_inner_lower_y` | 0..0.666 / 0 | `visorInnerLowerY` | millis | Nose slider + orange pin |
 | `mask_nose_spread_x` | 0..0.5 / 0 | `visorNoseSpreadX` | millis | Nose Spread X. Moves the left-eye nose boundary left and the right-eye boundary right by the same normalized amount. Zero preserves prior geometry. Published live and supported by per-app visor overrides. |
 | `mask_inner_bridge_width` | 0..1 / 0.5 | `visorInnerBridgeWidth` | millis | Legacy compatibility key; the main editor fixes the supported curve at 0.5. |
 | `mask_inner_bridge_rise` | −0.5..1 / 0 | `visorInnerBridgeRise` | legacy millis plus extended marker encoding for per-app profiles | Legacy compatibility key; the main editor fixes the supported curve at 0. |
 | `mask_inner_bridge_peak_x` | −1..2 / 0.5 | `visorInnerBridgePeakX` | legacy millis 0..1000; extended marker encoding for per-app profiles | Legacy compatibility key; the main editor fixes the supported curve at 0.5. |
 | `mask_inner_bridge_steepness` | −1..2 / 0.5 | `visorInnerBridgeSteepness` | legacy millis plus extended marker encoding for per-app profiles | Legacy compatibility key; the main editor fixes the supported curve at 0.5. |
 | `visor_live_revision` | monotonic timestamp | `liveVisorRevision` | — | Internal commit marker. The UI writes it last after global visor controls, allowing a safe live visor-only refresh at `xrEndFrame`. |
-| `mask_width_scale` / `mask_height_scale` | 1.0 | `visorWidth`/`visorHeight` | `visor_width`/`visor_height` | Fixed at 1.0; the visor mask always fills the crop opening and only affects corners. |
+| `mask_width_scale` / `mask_height_scale` | 0.25..2 / 1.0 | `visorWidth`/`visorHeight` | `visor_width`/`visor_height` millis when custom | Width and Height sliders; Size scales both uniformly. |
 | `visor_technique` | `c` | `visorTechnique` | — | a/b hidden; DirectWrite is the product path |
 | `visor_hd` | 0 | — | — | **Removed** — code disabled; key ignored. |
 | `visor_antialiasing` | 0 | — | — | **Removed** — code disabled; key ignored. |
 | `preview_circle_guides` | 1 | UI-only | — | Preview calibration preference. `1` shows two overlapping true circles; `0` shows one binocular oval. Both use the same 85% width / 90% height periphery boundary and do not alter runtime. |
 | `preview_per_eye_frames` | 0 | UI-only | — | Independent frame-guide preference. `0` shows one combined binocular outer frame; `1` shows two overlapping per-eye rectangles at the actual `2064:2208` eye aspect. Guide-only; crop and runtime are unchanged. |
+| `preview_optical_centre` | 0 | UI-only | — | Optional Preview-menu display mode. `0` uses the geometric centre. `1` moves the complete preview coordinate system—frame/lens guides, crop, visor, crosshair, widgets and feature guides—together around the alternate optical centre. It never changes saved widget coordinates or runtime output. |
 | `preview_ipd_mm` | 50.0..80.0 / 67.0 | UI-only | — | Calibration-helper IPD with 0.1 mm input steps. Changes only centre separation/overlap for the two-circle and two-per-eye-frame guides. It never changes crop, visor, overlays or native runtime output. |
 
 Global visor controls are always published through the generation-stamped live-state mapping while
@@ -106,7 +123,7 @@ visor-only checkbox as permission to discard the profile.
 | `hud_trace_enabled` | 0 | migration only | Legacy boolean read only when `hud_trace_visibility_mode` is absent; saves mirror mode != off for older builds. |
 | `overlay_force_direct` | 0 | backend diagnostics | Automatic selection keeps projection-only applications on direct eye-texture rendering and demands Topmost only after a distinct application compositor layer appears. Set to 1 only for diagnostics. Topmost gets one stable allocation attempt per session; any failure latches direct fallback. |
 | `topmost_visor_overlays` | — | — | Legacy experimental switch; ignored. Backend choice is automatic. |
-| `hud_anchor_x`, `hud_anchor_y` | 0.04, 0.05 | `hudAnchorX`, `hudAnchorY` | Normalized position within the shared binocular overlap of the cropped views; live HUD X/Y sliders (full 0–1 range). |
+| `hud_anchor_x`, `hud_anchor_y` | 0.04, 0.05 | `hudAnchorX`, `hudAnchorY` | Full-lens normalized position in the shared binocular coordinate system; crop clips rather than redefining X/Y. Live HUD sliders retain the full 0–1 range. |
 | `hud_scale`, `hud_spacing`, `hud_opacity` | 1.0, 0.018, 0.70 | shared overlay/HUD layout | Whole-widget scale (0.15–3.0), normalized gap, and opacity. Rings, literal labels, unit-bearing values, spacing, and padding scale together. |
 | `hud_safe_margin`, `hud_clamp_to_visible` | 0.025, 1 | HUD layout | Normalized safe margin and complete-bounds clamp against the binocular overlap region. The HUD uses the smaller current eye-region dimension then applies `hud_scale`, so crop/resolution changes retain its proportion. |
 | `hud_update_ms` | 100 | HUD telemetry | Bounded CPU/GPU/widget-state refresh period (50–1000 ms). Fixed-ring OpenXR timing samples feed APP, VR, and graph channels per frame. |
@@ -139,7 +156,7 @@ visor-only checkbox as permission to discard the profile.
 | `overlay_{hud,trace,clock,sticky_note,crosshair,notifications}_toggle_vk` | 0 except sticky note 118 (F7) | shared overlay visibility | Optional rising-edge show/hide bind. `0` means None; the UI offers None and F6-F12. Bind changes publish live. |
 | `sticky_note_toggle_vk` | 118 (F7) | migration only | Legacy sticky-note bind read only when `overlay_sticky_note_toggle_vk` is absent; the shared settings path mirrors it while existing settings migrate. |
 | `obs_indicator_enabled` | 0 | OBS provider/native cue | Enables authenticated local obs-websocket `GetRecordStatus` polling in the broker and subtle red native visor corners only while recording is active. OBS process presence is never treated as recording. |
-| `obs_websocket_url`, `obs_websocket_password` | `ws://127.0.0.1:4455`, empty | OBS provider | OBS WebSocket v5 endpoint and optional authentication password. The password is stored in the local user ini; restrict the endpoint to localhost. |
+| `obs_websocket_url`, `obs_websocket_password` | `ws://127.0.0.1:4455`, empty | OBS provider | OBS WebSocket v5 endpoint and authentication password. The UI edits the endpoint as Host/IP plus Port and recomposes this existing URL key. Use localhost/127.0.0.1 on the same PC or the OBS computer's local-network IP when remote. The password remains in the local user ini. |
 | `obs_indicator_opacity`, `obs_indicator_thickness` | 0.72, 0.009 | native cue | Red-corner alpha and thickness fraction of the eye minimum dimension. Capture exclusion is unverified; because the cue is drawn into submitted eye textures it must be assumed capturable. |
 | `crosshair_enabled` | 0 | `crosshairEnabled` | Static CS-style crosshair at the calibrated stereo centre (both eyes, zero disparity). |
 | `crosshair_size`, `crosshair_gap`, `crosshair_thickness` | 5, -2, 1 | crosshair | CS reference-pixel size, gap (may be negative), and arm thickness. One CS pixel is a fixed tangent span (`2/1080`), projected with each eye's X/Y pixels-per-tangent density and pixel-snapped; crop changes cannot alter angular size or convergence. |
@@ -184,10 +201,10 @@ inner-low slider enablement. ReShade Remote state lives in ProgramData (shared-m
   or recommended render resolution.
 - `visor_hd` is now native: it doubles visor curve tessellation. `visor_antialiasing` is now
   native: it enables a per-vertex alpha feather strip on the visor aperture edge.
-- Per-app profiles now carry all six shape keys: `mask_outer_apex_y`, `mask_inner_lower_y`,
-  `mask_inner_bridge_width`, `mask_inner_bridge_rise`, `mask_inner_bridge_peak_x`, and
-  `mask_inner_bridge_steepness`. Visor enable remains global-only and the UI deletes any stale
-  per-app `mask_enabled` override when saving a custom profile.
+- Custom per-app visors carry `mask_enabled`, `visor_size`, `visor_width`, `visor_height`,
+  `mask_corner`, `mask_outer_apex_y`, `mask_inner_lower_y`, `mask_nose_spread_x` and the retained
+  compatibility bridge keys. `visor_size=0` means use the complete global visor configuration;
+  saving that state deletes the custom-only visor keys rather than preserving a stale partial override.
 - Missing `mask_size` falls back directly to `1.0` in both UI and DLL. Do not reintroduce
   legacy `mask_vertical`/`mask_horizontal` opening derivations as a fallback.
 - `visibility_mask_visor` no longer changes runtime geometry. The Direct C visor is the product

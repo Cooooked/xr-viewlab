@@ -1,5 +1,70 @@
 # Changelog
 
+## Unreleased - 2026-07-19 (calibration capture, mirror routing, ViewLab Mirror plugin, themes/palettes)
+
+- Implement the native calibration-suite capture backend: `Run Calibration Suite (Experimental)` now captures
+  the real final submitted left-eye image (crop, visor, calibration pattern and ViewLab overlays; ordered-carrier
+  features are composited onto the copy) via a shared control block, saving timestamped PNGs plus verified JSON
+  metadata under `%LOCALAPPDATA%\XR ViewLab\CalibrationCaptures`. Each pattern settles for six submitted frames;
+  timeout/cancellation stop accepted worker work and clean partial output, prior state is restored, and incomplete output is never success.
+- Fix the geometric/optical preview-centre toggle to one rigid whole-scene translation: crop, visor, crosshair,
+  frame guides, FOV oval, dual-eye circles, widgets, OBS cue and iRacing guides all anchor around
+  the geometric centre and move together by exactly the fixed optical offset when the toggle is on. Add a shared
+  live full-lens/post-crop coordinate inspector backed by the same inverse transform as dragging. This also repairs
+  the current-build regression where widgets stayed anchored too high in geometrically centred mode.
+- Fix `Show in OBS Mirror`: ViewLab now draws the selected features onto the OpenXR-OBSMirror shared texture
+  immediately after `xrBeginFrame` passes down the layer chain instead of after `xrEndFrame`, so the mirror
+  layer's deferred compositor copy can no longer overwrite ViewLab's drawing before OBS samples the texture.
+- Add the buildable `ViewLab Mirror` OBS source plugin skeleton (GPL-2.0-or-later, runtime-resolved libobs ABI,
+  versioned `XRViewLabMirrorSurface` frame-transfer contract) plus an `Install ViewLab Mirror Plugin` button
+  that installs per user into `%APPDATA%\obs-studio\plugins` with installed/outdated/missing detection and a
+  restart-OBS notice. The plugin ships inside the MSI under `ObsPlugin\`.
+- Separate Theme from Palette for Clock and Notifications. The former recolour "themes" become palettes
+  (Graphite/Paper/OLED/Amber/Mint) and both widgets gain genuinely distinct designs — Clock: Classic Card,
+  Minimal, Terminal, Banner; Notifications: Classic, Compact Banner, Minimal, Bold — with automatic migration
+  of existing saved theme values and unchanged positions, scales and per-app override behaviour.
+
+## Unreleased - 2026-07-18 (compact overlays and captured baseline)
+
+- Standardise the Overlays menu around aligned expandable headers and dividers, promote OBS Recording Cue and
+  iRacing Telemetry into those sections, group telemetry controls by effect with an RGB spotter-colour picker,
+  rename HUD to Performance HUD, and move the unchanged ten-item OBS Mirror visibility section to the bottom.
+- Match ordinary widget previews to native `OverlayPlacement::FullLens`: saved X/Y and inverse dragging use the
+  full-lens frame while crop changes visibility only. Align frame/eye guides, equal split crop, visor, crosshair,
+  widgets and render-edge cues around one shared preview centre while retaining calibrated footprint sizing.
+  The default is geometric centre; a persisted Preview-menu checkbox moves the entire main/per-app display to
+  the alternate optical centre without changing runtime coordinates or existing saved positions.
+- Apply one explicit dark theme to DiagMon(ster) dropdown items, tables, headers, rows and cells so system-default
+  white surfaces cannot make its light text unreadable.
+- Show the healthy ReShade `[Installed and enabled]` state in normal text instead of warning yellow; connected remains green.
+- Anchor the iRacing telemetry edge preview to the post-crop render rectangle instead of the full-lens guide.
+- Anchor the OBS Recording Cue preview to the exact post-crop rectangle in main and per-app editors, with its label
+  at bottom-left so it remains distinguishable from the unchanged top-left iRacing label.
+- Replace the OBS cue setup warning with concise WebSocket guidance and built-in help, split the existing endpoint
+  into labelled Host/IP and Port fields, and expose disconnected/connecting/connected/authentication-failed status.
+- Reset main and per-app preview navigation to the startup auto-fit on non-widget right-click without touching settings.
+- Add six expandable configurable overlay rows globally and per app, with independent app configuration and layout overrides.
+- Keep OBS Recording Cue and iRacing Telemetry as feature modules; retain Boundary Flash as HUD/Trace layout feedback.
+- Add the cancellable calibration-suite seam, future Draw in Void flag, `DiagMon ▾` launcher and hidden compatibility-only nose controls.
+- Promote the captured 2026-07-18 configuration to the 4.1.255 factory baseline and one-time allowlisted migration.
+- Publish the active native app-profile key to the notification broker so per-app notification filters, themes and
+  presentation options resolve through the same profile as the renderer.
+
+## Unreleased - 2026-07-18 (per-app Visor Mask parity)
+
+- Replaced the obsolete per-app visor controls with Size, Width, Height, Curve, Outer Dip, Nose and Nose Spread X,
+  matching the main editor's ranges, defaults, live preview geometry and right-click resets.
+- Made visor enable editable per app and persisted the complete custom visor configuration through the registry and
+  native profile loader. Enabled previews are red; disabled previews remain grey.
+- Made `Use global visor settings` follow the entire global visor configuration by clearing custom visor keys behind
+  the existing `visor_size=0` sentinel.
+
+## Unreleased - 2026-07-18 (split vertical preview scale)
+
+- Corrected split Top and Bottom controls to scale within their own half of the lens. `1.0/1.0` is full height,
+  `1.0/0.0` and `0.0/1.0` select one half, and `0.5/0.5` produces the centred middle 50%.
+- Preserved existing INI and per-app native tangent values through explicit UI load/save conversion.
+
 ## Unreleased - 2026-07-18 (Advanced help and truthful ReShade state)
 
 - Split ReShade payload file deployment from ViewLab layer registration and added truthful Not installed,

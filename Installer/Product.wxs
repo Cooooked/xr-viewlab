@@ -3,7 +3,7 @@
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
      xmlns:iis="http://schemas.microsoft.com/wix/IIsExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.252"
+           Language="1033" Version="4.1.272"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -104,6 +104,7 @@
       <ComponentRef Id="StartMenuShortcut"/>
       <ComponentRef Id="ReShadePayloadFiles"/>
       <ComponentRef Id="ReShadePayloadDocs"/>
+      <ComponentRef Id="ObsPluginFiles"/>
     </Feature>
 
     <Directory Id="TARGETDIR" Name="SourceDir">
@@ -150,6 +151,17 @@
             <RemoveFile Id="RemoveNotificationIdentityPublicCertificate" Name="ViewLab.NotificationIdentity.cer" On="uninstall"/>
             <RemoveFile Id="RemoveNotificationBrokerLogo" Name="xr-viewlab.png" On="uninstall"/>
           </Component>
+          <Directory Id="ObsPluginFolder" Name="ObsPlugin">
+            <Component Id="ObsPluginFiles" Guid="4C7A9E10-6D2B-4B4E-8F3A-1E9C05B7D2A8" Win64="yes">
+              <File Id="ViewLabMirrorPluginDll" Source="..\ViewLabMirrorPlugin\x64\Release\viewlab-mirror.dll" Name="viewlab-mirror.dll" KeyPath="yes"/>
+              <File Id="ViewLabMirrorPluginLicense" Source="..\ViewLabMirrorPlugin\LICENSE" Name="LICENSE.txt"/>
+              <File Id="ViewLabMirrorPluginReadme" Source="..\ViewLabMirrorPlugin\README.md" Name="README.md"/>
+              <RemoveFile Id="RemoveViewLabMirrorPluginDll" Name="viewlab-mirror.dll" On="uninstall"/>
+              <RemoveFile Id="RemoveViewLabMirrorPluginLicense" Name="LICENSE.txt" On="uninstall"/>
+              <RemoveFile Id="RemoveViewLabMirrorPluginReadme" Name="README.md" On="uninstall"/>
+              <RemoveFolder Id="RemoveObsPluginFolder" On="uninstall"/>
+            </Component>
+          </Directory>
           <Directory Id="ReShadePayloadFolder" Name="ReShadePayload">
             <Component Id="ReShadePayloadFiles" Guid="D73B2F3B-0F6A-4EB5-A9B6-78F0E51F37E5" Win64="yes">
               <File Id="ReShadePayloadDll" Source="..\ReShadePayload\ReShade64.dll" Name="ReShade64.dll" KeyPath="yes"/>

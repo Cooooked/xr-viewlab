@@ -1,5 +1,8 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Globalization;
+using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -38,6 +41,7 @@ public sealed class ReShadeControlService : IDisposable
     private IntPtr _hMap;
     private IntPtr _view;
     private bool _connected;
+	private static string ConfigPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XR ViewLab", "xr-viewlab.ini");
 
     public bool Connected => _connected;
 
@@ -87,6 +91,9 @@ public sealed class ReShadeControlService : IDisposable
             WriteBlock(ref block);
         }
 
+		ApplyPersistedPreferences(ref block);
+		WriteBlock(ref block);
+
         _connected = true;
         ConnectionChanged?.Invoke(true);
         return true;
@@ -112,7 +119,32 @@ public sealed class ReShadeControlService : IDisposable
         if (_view == IntPtr.Zero) return;
         block.revision++;
         Marshal.StructureToPtr(block, _view, false);
+		PersistPreferences(block);
     }
+
+	private static void ApplyPersistedPreferences(ref XRControlBlock block)
+	{
+		block.xr_mode = ReadPreference("xr_mode", FactoryBaseline.ReShadeRemote["xr_mode"]);
+		block.menu_visible = ReadPreference("menu_visible", FactoryBaseline.ReShadeRemote["menu_visible"]);
+		block.win_headless = ReadPreference("win_headless", FactoryBaseline.ReShadeRemote["win_headless"]);
+		block.win_always_on_top = ReadPreference("win_always_on_top", FactoryBaseline.ReShadeRemote["win_always_on_top"]);
+	}
+
+	private static uint ReadPreference(string key, uint fallback)
+	{
+		var value = new StringBuilder(32);
+		GetPrivateProfileStringW("Settings", "reshade_remote_" + key, fallback.ToString(CultureInfo.InvariantCulture), value, (uint)value.Capacity, ConfigPath);
+		return uint.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out uint parsed) ? parsed : fallback;
+	}
+
+	private static void PersistPreferences(XRControlBlock block)
+	{
+		Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+		WritePrivateProfileStringW("Settings", "reshade_remote_xr_mode", block.xr_mode.ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileStringW("Settings", "reshade_remote_menu_visible", block.menu_visible.ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileStringW("Settings", "reshade_remote_win_headless", block.win_headless.ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileStringW("Settings", "reshade_remote_win_always_on_top", block.win_always_on_top.ToString(CultureInfo.InvariantCulture), ConfigPath);
+	}
 
 	public bool CheckMappingExists()
 	{
@@ -135,6 +167,12 @@ public sealed class ReShadeControlService : IDisposable
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern IntPtr OpenFileMappingW(uint dwDesiredAccess, bool bInheritHandle, string lpName);
+
+	[DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+	private static extern uint GetPrivateProfileStringW(string section, string key, string defaultValue, StringBuilder value, uint size, string filePath);
+
+	[DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+	private static extern bool WritePrivateProfileStringW(string section, string key, string? value, string filePath);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr MapViewOfFile(IntPtr hFileMappingObject, uint dwDesiredAccess, uint dwFileOffsetHigh, uint dwFileOffsetLow, UIntPtr dwNumberOfBytesToMap);

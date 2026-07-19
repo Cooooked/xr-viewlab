@@ -12,6 +12,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -56,6 +57,7 @@ public partial class MainWindow : Window
 	private const string PreviewCircleGuidesKey = "preview_circle_guides";
 	private const string PreviewPerEyeFramesKey = "preview_per_eye_frames";
 	private const string PreviewIpdKey = "preview_ipd_mm";
+	private const string PreviewOpticalCentreKey = "preview_optical_centre";
 	private const string ObsMirrorVisorKey = "obs_mirror_show_visor";
 	private const string ObsMirrorClockKey = "obs_mirror_show_clock";
 	private const string ObsMirrorNotificationsKey = "obs_mirror_show_notifications";
@@ -86,6 +88,7 @@ public partial class MainWindow : Window
 	private const string CalibrationZonePlateKey = "calibration_zone_plate";
 	private const string CalibrationClippingStepsKey = "calibration_clipping_steps";
 	private const string CalibrationMotionStripKey = "calibration_motion_strip";
+	private const string ExperimentalDrawInVoidKey = "experimental_draw_in_void";
 	private const string HudTraceEnabledKey = "hud_trace_enabled";
 	private const string HudTraceSensitivityKey = "hud_trace_sensitivity_ms";
 	private const string HudTraceWidthKey = "hud_trace_width";
@@ -99,8 +102,8 @@ public partial class MainWindow : Window
 	private const string HudClampKey = "hud_clamp_to_visible";
 	private const string HudGraphModeKey = "hud_graph_mode";
 	private const string StickyNoteTextKey="sticky_note_text";
-	private const string ClockSessionTimerKey="clock_session_timer_enabled",Clock24HourKey="clock_24_hour",ClockThemeKey="clock_widget_theme";
-	private const string NotifyThemeKey="notify_theme";
+	private const string ClockSessionTimerKey="clock_session_timer_enabled",Clock24HourKey="clock_24_hour",ClockThemeKey="clock_widget_theme",ClockPaletteKey="clock_widget_palette";
+	private const string NotifyThemeKey="notify_theme",NotifyPaletteKey="notify_palette";
 	private const string TelemetrySettingsVersionKey = "telemetry_settings_version";
 	private static readonly string[] HudWidgetIds = { "cpu", "gpu", "app", "vr", "cpu_peak", "cpu_frequency", "ram", "commit", "vram", "sys", "fps", "frame_interval", "network_ping", "network_loss", "network_jitter", "network_status" };
 	private const string NetworkProbeTargetKey = "network_probe_target";
@@ -195,6 +198,8 @@ public partial class MainWindow : Window
 
 	private readonly ReShadeControlService _xrControl = new();
 	private readonly LiveStateService _liveState = new();
+	private readonly IOpenXrLeftEyeCaptureBackend _calibrationCaptureBackend = CalibrationCaptureBackendFactory.Create();
+	private CancellationTokenSource? _calibrationSuiteCancellation;
 	private readonly StickyNoteLiveStateService _stickyNoteLiveState = new();
 	private readonly TelemetryConfigService _telemetryConfig = new();
 	private readonly CrosshairSettings _crosshair = new();
@@ -257,6 +262,7 @@ public partial class MainWindow : Window
 		UpdateEnabledBadge();
 		LoadAppProfiles();
 		VersionText.Text = CurrentVersion;
+		RefreshViewLabMirrorPluginStatus();
 		UpdateResponsiveLayout();
 		UpdateFooterLayout();
 		VisualMasksPopup.Closed += (_, _) => _visualMasksPopupClosedAt = DateTime.UtcNow;
@@ -322,6 +328,16 @@ public partial class MainWindow : Window
 		if (!File.Exists(ConfigPath) && File.Exists(LegacyConfigPath))
 		{
 			File.Copy(LegacyConfigPath, ConfigPath, overwrite: false);
+		}
+
+		using RegistryKey productKey = Registry.CurrentUser.CreateSubKey(@"Software\cooooked\xr-viewlab", writable: true);
+		if (!string.Equals(productKey.GetValue(FactoryBaseline.MigrationMarker) as string, FactoryBaseline.Version, StringComparison.Ordinal))
+		{
+			foreach ((string key, string value) in FactoryBaseline.IniSettings)
+				if (!WritePrivateProfileString("Settings", key, value, ConfigPath)) throw new IOException($"Could not migrate factory setting '{key}'.");
+			foreach ((string key, uint value) in FactoryBaseline.ReShadeRemote)
+				if (!WritePrivateProfileString("Settings", "reshade_remote_" + key, value.ToString(CultureInfo.InvariantCulture), ConfigPath)) throw new IOException($"Could not migrate ReShade preference '{key}'.");
+			productKey.SetValue(FactoryBaseline.MigrationMarker, FactoryBaseline.Version, RegistryValueKind.String);
 		}
 	}
 
@@ -855,8 +871,22 @@ public partial class MainWindow : Window
 	[DllImport("user32.dll", SetLastError = true)]
 	private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+	// Raw ini probe that deliberately BYPASSES the factory-baseline fallback: the
+	// theme->palette migrations must see whether the live ini genuinely carries the key.
+	private static double ReadRawRangeSetting(string key, double fallback, double min, double max)
+	{
+		StringBuilder stringBuilder = new StringBuilder(256);
+		GetPrivateProfileString("Settings", key, "", stringBuilder, (uint)stringBuilder.Capacity, ConfigPath);
+		if (!double.TryParse(stringBuilder.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
+		{
+			return fallback;
+		}
+		return Math.Clamp(result, min, max);
+	}
+
 	private static string ReadSetting(string key, string fallback)
 	{
+		fallback = FactoryBaseline.Resolve(key, fallback);
 		StringBuilder stringBuilder = new StringBuilder(256);
 		GetPrivateProfileString("Settings", key, fallback, stringBuilder, (uint)stringBuilder.Capacity, ConfigPath);
 		return stringBuilder.ToString();
@@ -1048,7 +1078,7 @@ public partial class MainWindow : Window
 			TryReadTextBox(TopBox, out var top) &&
 			TryReadTextBox(BottomBox, out var bottom))
 		{
-			return Math.Clamp(top + bottom, 0.01, 1.0);
+			return Math.Clamp((top + bottom) * 0.5, 0.01, 1.0);
 		}
 		return TryReadTextBox(TotalBox, out var total) ? Math.Clamp(total, 0.01, 1.0) : 1.0;
 	}
@@ -1075,6 +1105,7 @@ public partial class MainWindow : Window
 		MaskBeanEditor.NoseSpreadX = MaskNoseSpreadXSlider?.Value ?? 0.0;
 		MaskBeanEditor.UseCircularEyeGuides = PreviewCircleGuidesCheck?.IsChecked == true;
 		MaskBeanEditor.UsePerEyeFrameGuides = PreviewPerEyeFramesCheck?.IsChecked == true;
+		MaskBeanEditor.UseOpticalPreviewCentre = PreviewOpticalCentreCheck?.IsChecked == true;
 		MaskBeanEditor.PreviewIpdMillimetres = CurrentPreviewIpd();
 		MaskBeanEditor.InnerBridgeWidth = FixedInnerBridgeWidth;
 		MaskBeanEditor.InnerBridgeRise = FixedInnerBridgeRise;
@@ -1099,8 +1130,8 @@ public partial class MainWindow : Window
 		_viewlabEnabled = ReadBoolSetting("enabled", fallback: true);
 		SplitCheck.IsChecked = value2;
 		TotalBox.Text = FormatScale(num);
-		TopBox.Text = FormatScale(ReadScaleSetting("top_tangent", num * 0.5));
-		BottomBox.Text = FormatScale(ReadScaleSetting("bottom_tangent", num * 0.5));
+		TopBox.Text = FormatScale(Math.Clamp(ReadScaleSetting("top_tangent", num * 0.5) * 2.0, 0.0, 1.0));
+		BottomBox.Text = FormatScale(Math.Clamp(ReadScaleSetting("bottom_tangent", num * 0.5) * 2.0, 0.0, 1.0));
 		HorizontalBox.Text = FormatScale(value);
 		// Mask (visor): absolute bounds, default 1.0 = no mask on that axis.
 		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
@@ -1117,6 +1148,7 @@ public partial class MainWindow : Window
 		MaskNoseSpreadXSlider.Value = ReadRangeSetting(MaskNoseSpreadXKey, 0.0, 0.0, 0.5);
 		PreviewCircleGuidesCheck.IsChecked = ReadBoolSetting(PreviewCircleGuidesKey, true);
 		PreviewPerEyeFramesCheck.IsChecked = ReadBoolSetting(PreviewPerEyeFramesKey, false);
+		PreviewOpticalCentreCheck.IsChecked = ReadBoolSetting(PreviewOpticalCentreKey, false);
 		PreviewIpdBox.Text = ReadRangeSetting(PreviewIpdKey, 67.0, 50.0, 80.0).ToString("0.0", CultureInfo.InvariantCulture);
 		ObsMirrorVisorCheck.IsChecked = ReadBoolSetting(ObsMirrorVisorKey, true);
 		ObsMirrorClockCheck.IsChecked = ReadBoolSetting(ObsMirrorClockKey, true);
@@ -1145,10 +1177,12 @@ public partial class MainWindow : Window
 		CalZonePlateCheck.IsChecked = ReadBoolSetting(CalibrationZonePlateKey, fallback: false);
 		CalClippingCheck.IsChecked = ReadBoolSetting(CalibrationClippingStepsKey, fallback: false);
 		CalMotionCheck.IsChecked = ReadBoolSetting(CalibrationMotionStripKey, fallback: false);
+		ExperimentalDrawInVoidCheck.IsChecked = ReadBoolSetting(ExperimentalDrawInVoidKey, fallback: false);
 		LoadStickyNotes();
 		string traceModeText = ReadSetting(HudTraceVisibilityKey, string.Empty);
 		HudTraceVisibilityCombo.SelectedIndex = int.TryParse(traceModeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int traceMode)
 			? Math.Clamp(traceMode, 0, 2) : (ReadBoolSetting(HudTraceEnabledKey, fallback: false) ? 1 : 0);
+		TraceEnabledCheck.IsChecked = HudTraceVisibilityCombo.SelectedIndex > 0;
 		PerformanceTraceRecordingCheck.IsChecked = ReadBoolSetting(PerformanceTraceRecordingKey, fallback: true);
 		PerformanceTraceMarkerKeyCombo.SelectedIndex = Math.Clamp((int)ReadRangeSetting(PerformanceTraceMarkerVkKey, 119, 117, 123)-117,0,6);
 		HudTraceSensitivitySlider.Value = ReadRangeSetting(HudTraceSensitivityKey, 2.0, 0.5, 8.0);
@@ -1213,18 +1247,31 @@ public partial class MainWindow : Window
 		NotifyDurationSlider.Value = ReadRangeSetting(NotifyDurationKey, 3000.0, 500.0, 15000.0);
 		NotifyMaxSlider.Value = ReadRangeSetting(NotifyMaxKey, 3.0, 1.0, 6.0);
 		NotifyPrivacyCombo.SelectedIndex = (int)ReadRangeSetting(NotifyPrivacyKey, 0, 0, 2);
-		NotifyThemeCombo.SelectedIndex = (int)ReadRangeSetting(NotifyThemeKey, 0, 0, 4);
+		{
+			// Migration: legacy configs stored the recolour in notify_theme. A missing palette
+			// key adopts that value as the palette and resets the design to Classic.
+			double storedNotifyTheme = ReadRangeSetting(NotifyThemeKey, 0, 0, 4);
+			double storedNotifyPalette = ReadRawRangeSetting(NotifyPaletteKey, -1, -1, 4);
+			NotifyThemeCombo.SelectedIndex = storedNotifyPalette < 0 ? 0 : (int)Math.Clamp(storedNotifyTheme, 0, 3);
+			NotifyPaletteCombo.SelectedIndex = storedNotifyPalette < 0 ? (int)storedNotifyTheme : (int)storedNotifyPalette;
+		}
 		NotifyShowIconCheck.IsChecked = ReadBoolSetting(NotifyShowIconKey, true);
 		NotifyShowImageCheck.IsChecked = ReadBoolSetting(NotifyShowImageKey, true);
 		NotifyAllowlistModeCheck.IsChecked = ReadBoolSetting(NotifyAllowlistModeKey, false);
 		NotifyFiltersBox.Text = ReadSetting(NotifyFiltersKey, string.Empty);
 		MediaNotifyEnabledCheck.IsChecked = ReadBoolSetting(MediaNotifyEnabledKey, false);
-		ObsIndicatorEnabledCheck.IsChecked=ReadBoolSetting(ObsIndicatorEnabledKey,false);ObsWebSocketUrlBox.Text=ReadSetting(ObsWebSocketUrlKey,"ws://127.0.0.1:4455");ObsWebSocketPasswordBox.Password=ReadSetting(ObsWebSocketPasswordKey,string.Empty);
+		ObsIndicatorEnabledCheck.IsChecked=ReadBoolSetting(ObsIndicatorEnabledKey,false);LoadObsWebSocketEndpoint(ReadSetting(ObsWebSocketUrlKey,"ws://localhost:4455"));ObsWebSocketPasswordBox.Password=ReadSetting(ObsWebSocketPasswordKey,string.Empty);
 		ObsIndicatorOpacitySlider.Value=ReadRangeSetting(ObsIndicatorOpacityKey,.72,.1,1);ObsIndicatorThicknessSlider.Value=ReadRangeSetting(ObsIndicatorThicknessKey,.009,.002,.04);
 		LoadCommonOverlaySettings();
 		ClockSessionTimerCheck.IsChecked=ReadBoolSetting(ClockSessionTimerKey,true);
 		Clock24HourCheck.IsChecked=ReadBoolSetting(Clock24HourKey,true);
-		ClockThemeCombo.SelectedIndex=(int)ReadRangeSetting(ClockThemeKey,0,0,4);
+		{
+			// Same migration for the clock: old clock_widget_theme values were palettes.
+			double storedClockTheme = ReadRangeSetting(ClockThemeKey, 0, 0, 4);
+			double storedClockPalette = ReadRawRangeSetting(ClockPaletteKey, -1, -1, 4);
+			ClockThemeCombo.SelectedIndex = storedClockPalette < 0 ? 0 : (int)Math.Clamp(storedClockTheme, 0, 3);
+			ClockPaletteCombo.SelectedIndex = storedClockPalette < 0 ? (int)storedClockTheme : (int)storedClockPalette;
+		}
 
 		// iRacing provider and generic racing presentation
 		IRacingEnabledCheck.IsChecked = ReadBoolSetting(IRacingEnabledKey, false);
@@ -1238,8 +1285,7 @@ public partial class MainWindow : Window
 		IRacingSpotterOpacitySlider.Value = ReadRangeSetting(IRacingSpotterOpacityKey, 0.65, 0.05, 1.0);
 		IRacingSpotterFadeSlider.Value = ReadRangeSetting(IRacingSpotterFadeKey, 1.8, 0.25, 4.0);
 		uint spotterColor = (uint)ReadRangeSetting(IRacingSpotterColorKey, 0xFF4500, 0, 0xFFFFFF);
-		IRacingSpotterColorBox.Text = spotterColor.ToString("X6", CultureInfo.InvariantCulture);
-		IRacingSpotterColorPreview.Background = new SolidColorBrush(Color.FromRgb((byte)(spotterColor >> 16), (byte)(spotterColor >> 8), (byte)spotterColor));
+		SyncIRacingSpotterColorControls(spotterColor);
 		IRacingFlagWidthSlider.Value = ReadRangeSetting(IRacingFlagWidthKey, 0.018, 0.003, 0.12);
 		IRacingFlagOpacitySlider.Value = ReadRangeSetting(IRacingFlagOpacityKey, 0.60, 0.05, 1.0);
 		IRacingLapDurationSlider.Value = ReadRangeSetting(IRacingLapDurationKey, 4500, 1000, 15000);
@@ -1285,7 +1331,7 @@ public partial class MainWindow : Window
 		bool valueOrDefault = SplitCheck.IsChecked == true;
 		if (!valueOrDefault && flag)
 		{
-			double num = value * 0.5;
+			double num = value;
 			if (!_loading)
 			{
 				TopBox.TextChanged -= RenderValue_Changed;
@@ -1308,7 +1354,7 @@ public partial class MainWindow : Window
 		TopHint.ToolTip = (flag2 ? (FormatPercent(value2) + " top") : null);
 		BottomHint.ToolTip = (flag3 ? (FormatPercent(value3) + " bottom") : null);
 		HorizontalHint.ToolTip = (flag4 ? (FormatPercent(value4) + " total render width") : null);
-		CombinedHint.Text = ((valueOrDefault && flag2 && flag3) ? ("Combined: " + FormatPercent(value2 + value3) + " total render height") : (flag ? ("Combined: " + FormatPercent(value) + " total render height") : "Combined: enter valid values"));
+		CombinedHint.Text = ((valueOrDefault && flag2 && flag3) ? ("Combined: " + FormatPercent((value2 + value3) * 0.5) + " total render height") : (flag ? ("Combined: " + FormatPercent(value) + " total render height") : "Combined: enter valid values"));
 		SyncSlidersFromText();
 	}
 
@@ -1742,6 +1788,13 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void HudLayout_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading || _applyingOverlayPreviewEdit) return;
+		bool traceEnabled = HudTraceVisibilityCombo.SelectedIndex > 0;
+		if (TraceEnabledCheck.IsChecked != traceEnabled)
+		{
+			_loading = true;
+			try { TraceEnabledCheck.IsChecked = traceEnabled; }
+			finally { _loading = false; }
+		}
 		SaveCalibrationSettings();
 		PublishLiveState();
 		StatusText.Text = "HUD position applied live.";
@@ -1848,6 +1901,156 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		StatusText.Text = "Calibration setting applied live.";
 	}
 
+	private void PreviewOpticalCentre_Changed(object sender, RoutedEventArgs e)
+	{
+		if (MaskBeanEditor != null)
+			MaskBeanEditor.UseOpticalPreviewCentre = PreviewOpticalCentreCheck?.IsChecked == true;
+		if (!_loading)
+			SaveGlobalSettings();
+	}
+
+
+	private void TraceEnabled_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		int target = TraceEnabledCheck.IsChecked == true
+			? Math.Max(1, HudTraceVisibilityCombo.SelectedIndex)
+			: 0;
+		if (HudTraceVisibilityCombo.SelectedIndex != target)
+			HudTraceVisibilityCombo.SelectedIndex = target;
+		else
+			HudLayout_Changed(sender, e);
+	}
+
+	private uint CurrentCalibrationMask()
+	{
+		CheckBox[] checks = { CalGridCheck, CalRulerCheck, CalGratingsCheck, CalBarsCheck, CalBeaconCheck,
+			CalEdgeProbesCheck, CalCheckerboardsCheck, CalZonePlateCheck, CalClippingCheck, CalMotionCheck };
+		uint mask = 0; for (int i = 0; i < checks.Length; i++) if (checks[i].IsChecked == true) mask |= 1u << i;
+		return mask;
+	}
+
+	private Task ApplyCalibrationMaskForSuiteAsync(uint mask)
+	{
+		CheckBox[] checks = { CalGridCheck, CalRulerCheck, CalGratingsCheck, CalBarsCheck, CalBeaconCheck,
+			CalEdgeProbesCheck, CalCheckerboardsCheck, CalZonePlateCheck, CalClippingCheck, CalMotionCheck };
+		bool loading = _loading; _loading = true;
+		try { for (int i = 0; i < checks.Length; i++) checks[i].IsChecked = (mask & (1u << i)) != 0; }
+		finally { _loading = loading; }
+		PublishLiveState();
+		return Task.CompletedTask;
+	}
+
+	// ---- ViewLab Mirror OBS plugin installation -------------------------------------------
+	// Installs the bundled plugin into OBS's per-user plugin location (supported by OBS 28+),
+	// so no elevation is needed and OBS itself is never launched or controlled.
+	private static string ViewLabMirrorPluginTargetDirectory => Path.Combine(
+		Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+		"obs-studio", "plugins", "viewlab-mirror", "bin", "64bit");
+
+	private static string ViewLabMirrorPluginTargetPath =>
+		Path.Combine(ViewLabMirrorPluginTargetDirectory, "viewlab-mirror.dll");
+
+	private static string? ViewLabMirrorPluginBundledPath
+	{
+		get
+		{
+			string local = Path.Combine(ProcessDirectory, "ObsPlugin", "viewlab-mirror.dll");
+			if (File.Exists(local)) return local;
+			string installed = Path.Combine(ProgramFilesInstallDirectory, "ObsPlugin", "viewlab-mirror.dll");
+			return File.Exists(installed) ? installed : null;
+		}
+	}
+
+	private static string? TryFileSha256(string path)
+	{
+		try
+		{
+			using FileStream stream = File.OpenRead(path);
+			return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream));
+		}
+		catch (Exception) { return null; }
+	}
+
+	private void RefreshViewLabMirrorPluginStatus()
+	{
+		if (ViewLabMirrorPluginStatusText == null || InstallViewLabMirrorPluginButton == null) return;
+		string? bundled = ViewLabMirrorPluginBundledPath;
+		if (bundled == null)
+		{
+			InstallViewLabMirrorPluginButton.IsEnabled = false;
+			ViewLabMirrorPluginStatusText.Text = "Bundled plugin payload not found (ObsPlugin\\viewlab-mirror.dll). Reinstall ViewLab to restore it.";
+			return;
+		}
+		InstallViewLabMirrorPluginButton.IsEnabled = true;
+		if (!File.Exists(ViewLabMirrorPluginTargetPath))
+		{
+			InstallViewLabMirrorPluginButton.Content = "Install ViewLab Mirror Plugin";
+			ViewLabMirrorPluginStatusText.Text = "Not installed.";
+			return;
+		}
+		bool upToDate = TryFileSha256(bundled) is string bundledHash &&
+			TryFileSha256(ViewLabMirrorPluginTargetPath) == bundledHash;
+		InstallViewLabMirrorPluginButton.Content = upToDate ? "Reinstall ViewLab Mirror Plugin" : "Update ViewLab Mirror Plugin";
+		ViewLabMirrorPluginStatusText.Text = upToDate
+			? "Installed and up to date: " + ViewLabMirrorPluginTargetPath
+			: "Installed but OUTDATED — click to update, then restart OBS.";
+	}
+
+	private void InstallViewLabMirrorPlugin_Click(object sender, RoutedEventArgs e)
+	{
+		string? bundled = ViewLabMirrorPluginBundledPath;
+		if (bundled == null)
+		{
+			StatusText.Text = "ViewLab Mirror plugin payload is missing from this installation.";
+			return;
+		}
+		try
+		{
+			Directory.CreateDirectory(ViewLabMirrorPluginTargetDirectory);
+			File.Copy(bundled, ViewLabMirrorPluginTargetPath, overwrite: true);
+			string? license = Path.Combine(Path.GetDirectoryName(bundled)!, "LICENSE.txt");
+			if (File.Exists(license))
+				File.Copy(license, Path.Combine(ViewLabMirrorPluginTargetDirectory, "LICENSE.txt"), overwrite: true);
+			StatusText.Text = "ViewLab Mirror plugin installed. Restart OBS, then add the 'ViewLab Mirror' source.";
+		}
+		catch (IOException ex)
+		{
+			StatusText.Text = "Plugin install failed (is OBS running?): " + ex.Message;
+		}
+		catch (Exception ex)
+		{
+			StatusText.Text = "Plugin install failed: " + ex.Message;
+		}
+		RefreshViewLabMirrorPluginStatus();
+	}
+
+	private async void RunCalibrationSuite_Click(object sender, RoutedEventArgs e)
+	{
+		if (_calibrationSuiteCancellation != null) { _calibrationSuiteCancellation.Cancel(); return; }
+		_calibrationSuiteCancellation = new CancellationTokenSource();
+		RunCalibrationSuiteButton.Content = "Cancel Calibration Suite";
+		try
+		{
+			var progress = new Progress<string>(message => StatusText.Text = message);
+			CalibrationSuiteResult result = await CalibrationSuite.RunAsync(CurrentCalibrationMask(),
+				ApplyCalibrationMaskForSuiteAsync, _calibrationCaptureBackend, progress, _calibrationSuiteCancellation.Token);
+			StatusText.Text = result.Message;
+			if (result.Outcome is CalibrationSuiteOutcome.CaptureUnavailable or CalibrationSuiteOutcome.NoActiveSession or CalibrationSuiteOutcome.CaptureFailed)
+				MessageBox.Show(this, result.Message, "Calibration Suite (Experimental)", MessageBoxButton.OK, MessageBoxImage.Information);
+		}
+		catch (Exception ex)
+		{
+			StatusText.Text = "Calibration suite failed: " + ex.Message;
+			MessageBox.Show(this, StatusText.Text, "Calibration Suite (Experimental)", MessageBoxButton.OK, MessageBoxImage.Error);
+		}
+		finally
+		{
+			_calibrationSuiteCancellation.Dispose(); _calibrationSuiteCancellation = null;
+			RunCalibrationSuiteButton.Content = "Run Calibration Suite (Experimental)";
+		}
+	}
+
 	private void LoadOverlayHotkeys()
 	{
 		foreach ((string id, ComboBox combo) in new[] { ("clock", ClockWidgetToggleKeyCombo), ("hud", HudToggleKeyCombo), ("trace", HudTraceToggleKeyCombo), ("sticky", StickyNoteToggleKeyCombo), ("crosshair", CrosshairToggleKeyCombo), ("notifications", NotifyToggleKeyCombo) })
@@ -1927,6 +2130,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", ClockSessionTimerKey, ClockSessionTimerCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", Clock24HourKey, Clock24HourCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", ClockThemeKey, Math.Max(0, ClockThemeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", ClockPaletteKey, Math.Max(0, ClockPaletteCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		PublishLiveState(); StatusText.Text = "Clock and session timer applied live.";
 	}
 	private void ClockWidgetSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => ClockWidgetControl_Changed(sender, e);
@@ -1973,24 +2177,70 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			IRacingEnabledCheck.IsChecked == true, IRacingLapPopupCheck.IsChecked == true,
 			IRacingSpotterGlowCheck.IsChecked == true, IRacingFlagBorderCheck.IsChecked == true,
 			ClockWidgetEnabledCheck.IsChecked==true,ClockSessionTimerCheck.IsChecked==true,Clock24HourCheck.IsChecked==true,
-			ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,ClockWidgetScaleSlider.Value,ClockWidgetOpacitySlider.Value,(uint)Math.Max(0,ClockThemeCombo.SelectedIndex),
+			ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,ClockWidgetScaleSlider.Value,ClockWidgetOpacitySlider.Value,(uint)Math.Max(0,ClockThemeCombo.SelectedIndex),(uint)Math.Max(0,ClockPaletteCombo.SelectedIndex),
 			new[]{OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudTraceToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(ClockWidgetToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(StickyNoteToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(CrosshairToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(NotifyToggleKeyCombo.SelectedIndex)},
 			CurrentObsMirrorVisibilityMask());
 		_stickyNoteLiveState.Publish(StickyNoteEnabledCheck.IsChecked==true,_stickyNotes);
 		RefreshMaskOverlayPreview();
 	}
 
+	private List<OverlayPreviewItem> BuildOverlayPreviewItems(bool includeDisabled = false, bool includeFeatureModules = true)
+	{
+		var items=new List<OverlayPreviewItem>();
+		if(includeDisabled||HudEnabledCheck.IsChecked==true){int count=_hudWidgets.Count(w=>w.Enabled);items.Add(new("hud","PERFORMANCE HUD",HudXSlider.Value,HudYSlider.Value,Math.Max(1,count),0,HudScaleSlider.Value,HudScaleSlider.Minimum,HudScaleSlider.Maximum,HudOpacitySlider.Value,OverlayPreviewAnchor.TopLeft,OverlayPreviewStyle.Hud));}
+		if(includeDisabled||HudTraceVisibilityCombo.SelectedIndex>0)items.Add(new("trace","PERFORMANCE TRACE",HudTraceXSlider.Value,HudTraceYSlider.Value,HudTraceWidthSlider.Value,.16,HudTraceScaleSlider.Value,HudTraceScaleSlider.Minimum,HudTraceScaleSlider.Maximum,HudTraceOpacitySlider.Value,OverlayPreviewAnchor.TopLeft,OverlayPreviewStyle.Trace));
+		if(includeDisabled||ClockWidgetEnabledCheck.IsChecked==true)items.Add(new("clock",ClockSessionTimerCheck.IsChecked==true?"CLOCK + TIMER":"CLOCK",ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,0,ClockSessionTimerCheck.IsChecked==true?1:0,ClockWidgetScaleSlider.Value,ClockWidgetScaleSlider.Minimum,ClockWidgetScaleSlider.Maximum,ClockWidgetOpacitySlider.Value,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Clock,Math.Max(0,ClockThemeCombo.SelectedIndex)));
+		if(includeDisabled||StickyNoteEnabledCheck.IsChecked==true)for(int i=0;i<_stickyNotes.Count;++i){var n=_stickyNotes[i];if(n.Enabled&&!string.IsNullOrWhiteSpace(n.Text))items.Add(new($"sticky:{i}",$"NOTE {i+1}",n.X,n.Y,.12,.12,n.Scale,.5,2.5,n.Opacity,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Sticky,n.Theme));}
+		if(includeDisabled||NotifyEnabledCheck.IsChecked==true)items.Add(new("notifications","NOTIFICATION",NotifyXSlider.Value,NotifyYSlider.Value,.28,.12,NotifyScaleSlider.Value,NotifyScaleSlider.Minimum,NotifyScaleSlider.Maximum,NotifyOpacitySlider.Value,OverlayPreviewAnchor.BottomRight,OverlayPreviewStyle.Notification,Math.Max(0,NotifyThemeCombo.SelectedIndex)));
+		if(includeFeatureModules&&ObsIndicatorEnabledCheck.IsChecked==true)items.Add(new(string.Empty,"OBS RECORDING CUE",.5,.5,1,1,1,1,1,ObsIndicatorOpacitySlider.Value,OverlayPreviewAnchor.RecordingRenderEdge,OverlayPreviewStyle.System));
+		if(includeFeatureModules&&(IRacingLapPopupCheck.IsChecked==true||IRacingSpotterGlowCheck.IsChecked==true||IRacingFlagBorderCheck.IsChecked==true))items.Add(new(string.Empty,"iRACING TELEMETRY",.5,.5,1,1,1,1,1,.7,OverlayPreviewAnchor.RenderEdge,OverlayPreviewStyle.System));
+		return items;
+	}
+
+	private OverlayProfileOverrides BuildGlobalOverlaySettings()
+	{
+		var result = new OverlayProfileOverrides();
+		foreach ((string key, string fallback) in FactoryBaseline.IniSettings)
+		{
+			string? feature = key.StartsWith("clock_", StringComparison.Ordinal) || key == "overlay_clock_toggle_vk" ? "clock"
+				: key.StartsWith("hud_trace_", StringComparison.Ordinal) || key.StartsWith("hud_graph_", StringComparison.Ordinal) || key.StartsWith("performance_trace_", StringComparison.Ordinal) || key == "overlay_trace_toggle_vk" ? "trace"
+				: key.StartsWith("hud_", StringComparison.Ordinal) || key == "network_probe_target" || key == "overlay_hud_toggle_vk" ? "hud"
+				: key.StartsWith("sticky_note", StringComparison.Ordinal) || key == "overlay_sticky_note_toggle_vk" ? "sticky"
+				: key.StartsWith("crosshair_", StringComparison.Ordinal) || key == "overlay_crosshair_toggle_vk" ? "crosshair"
+				: key.StartsWith("notify_", StringComparison.Ordinal) || key == "media_notify_enabled" || key == "overlay_notifications_toggle_vk" ? "notifications"
+				: key.StartsWith("obs_indicator_", StringComparison.Ordinal) || key.StartsWith("obs_websocket_", StringComparison.Ordinal) ? "obs"
+				: key.StartsWith("iracing_", StringComparison.Ordinal) ? "iracing" : null;
+			if (feature != null) result.Set(feature, key, ReadSetting(key, fallback));
+		}
+		for (int index = 0; index < _hudWidgets.Count; index++)
+		{
+			HudWidgetOption widget = _hudWidgets[index]; string prefix = $"hud_widget_{widget.Id}_";
+			result.Set("hud", prefix + "enabled", widget.Enabled ? "1" : "0"); result.Set("hud", prefix + "symbol", widget.UseSymbol ? "1" : "0");
+			result.Set("hud", prefix + "order", index.ToString(CultureInfo.InvariantCulture)); result.Set("hud", prefix + "warning", widget.Warning.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("hud", prefix + "critical", widget.Critical.ToString("0.###", CultureInfo.InvariantCulture));
+		}
+		result.Set("sticky", "sticky_note_count", _stickyNotes.Count.ToString(CultureInfo.InvariantCulture));
+		for (int index = 0; index < _stickyNotes.Count; index++)
+		{
+			StickyNoteOption note = _stickyNotes[index]; string prefix = $"sticky_note_{index}_";
+			result.Set("sticky", prefix + "enabled", note.Enabled ? "1" : "0"); result.Set("sticky", prefix + "text", note.Text);
+			result.Set("sticky", prefix + "x", note.X.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "y", note.Y.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "scale", note.Scale.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "opacity", note.Opacity.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "theme", note.Theme.ToString(CultureInfo.InvariantCulture));
+		}
+		return result;
+	}
+
+	private void ExperimentalDrawInVoid_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		WritePrivateProfileString("Settings", ExperimentalDrawInVoidKey, ExperimentalDrawInVoidCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		StatusText.Text = ExperimentalDrawInVoidCheck.IsChecked == true
+			? "Experimental Draw in Void requested; the rendering route is not implemented yet."
+			: "Experimental Draw in Void disabled; standard overlay rendering is unchanged.";
+	}
+
 	private void RefreshMaskOverlayPreview()
 	{
-		if(MaskBeanEditor==null)return;var items=new List<OverlayPreviewItem>();
-		if(HudEnabledCheck.IsChecked==true){int count=_hudWidgets.Count(w=>w.Enabled);items.Add(new("hud","HUD",HudXSlider.Value,HudYSlider.Value,Math.Max(1,count),0,HudScaleSlider.Value,HudScaleSlider.Minimum,HudScaleSlider.Maximum,HudOpacitySlider.Value,OverlayPreviewAnchor.TopLeft,OverlayPreviewStyle.Hud));}
-		if(HudTraceVisibilityCombo.SelectedIndex>0)items.Add(new("trace","PERFORMANCE TRACE",HudTraceXSlider.Value,HudTraceYSlider.Value,HudTraceWidthSlider.Value,.16,HudTraceScaleSlider.Value,HudTraceScaleSlider.Minimum,HudTraceScaleSlider.Maximum,HudTraceOpacitySlider.Value,OverlayPreviewAnchor.TopLeft,OverlayPreviewStyle.Trace));
-		if(ClockWidgetEnabledCheck.IsChecked==true)items.Add(new("clock",ClockSessionTimerCheck.IsChecked==true?"CLOCK + TIMER":"CLOCK",ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,0,ClockSessionTimerCheck.IsChecked==true?1:0,ClockWidgetScaleSlider.Value,ClockWidgetScaleSlider.Minimum,ClockWidgetScaleSlider.Maximum,ClockWidgetOpacitySlider.Value,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Clock,Math.Max(0,ClockThemeCombo.SelectedIndex)));
-		if(StickyNoteEnabledCheck.IsChecked==true)for(int i=0;i<_stickyNotes.Count;++i){var n=_stickyNotes[i];if(n.Enabled&&!string.IsNullOrWhiteSpace(n.Text))items.Add(new($"sticky:{i}",$"NOTE {i+1}",n.X,n.Y,.12,.12,n.Scale,.5,2.5,n.Opacity,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Sticky,n.Theme));}
-		if(NotifyEnabledCheck.IsChecked==true)items.Add(new("notifications","NOTIFICATION",NotifyXSlider.Value,NotifyYSlider.Value,.28,.12,NotifyScaleSlider.Value,NotifyScaleSlider.Minimum,NotifyScaleSlider.Maximum,NotifyOpacitySlider.Value,OverlayPreviewAnchor.BottomRight,OverlayPreviewStyle.Notification,Math.Max(0,NotifyThemeCombo.SelectedIndex)));
-		if(ObsIndicatorEnabledCheck.IsChecked==true)items.Add(new(string.Empty,"OBS RECORDING CUE",.5,.5,1,1,1,1,1,ObsIndicatorOpacitySlider.Value,OverlayPreviewAnchor.Edge,OverlayPreviewStyle.System));
-		if(IRacingLapPopupCheck.IsChecked==true||IRacingSpotterGlowCheck.IsChecked==true||IRacingFlagBorderCheck.IsChecked==true)items.Add(new(string.Empty,"RACING CUES",.5,.5,1,1,1,1,1,.7,OverlayPreviewAnchor.Edge,OverlayPreviewStyle.System));
-		MaskBeanEditor.SetOverlayPreviews(items);MaskBeanEditor.SetCrosshair(_crosshair,CrosshairEnabledCheck.IsChecked==true,CrosshairOffsetXSlider.Value,CrosshairOffsetYSlider.Value);
+		if(MaskBeanEditor==null)return;
+		MaskBeanEditor.SetOverlayPreviews(BuildOverlayPreviewItems());MaskBeanEditor.SetCrosshair(_crosshair,CrosshairEnabledCheck.IsChecked==true,CrosshairOffsetXSlider.Value,CrosshairOffsetYSlider.Value);
 	}
 
 	private void MaskBeanEditor_OverlayPreviewChanged(object? sender,OverlayPreviewChangedEventArgs e)
@@ -2154,6 +2404,32 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if (NotifyEnabledCheck.IsChecked == true || ObsIndicatorEnabledCheck.IsChecked==true || requestAccess)
 			_notificationBroker.Start(requestAccess);
 		if (NotifyStatusText != null) NotifyStatusText.Text = _notificationBroker.RefreshStatus();
+		if (ObsConnectionStatusText != null) ObsConnectionStatusText.Text = ObsIndicatorEnabledCheck.IsChecked == true ? "Connecting" : "Disconnected";
+	}
+
+	private void ObsHelp_Click(object sender, MouseButtonEventArgs e)
+	{
+		e.Handled = true;
+		BuiltInHelpWindow.Show(this, "OBS Recording Cue Setup", BuiltInHelpWindow.ObsRecordingSections);
+	}
+
+	private void LoadObsWebSocketEndpoint(string endpoint)
+	{
+		if (!Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri) || (uri.Scheme != "ws" && uri.Scheme != "wss"))
+			uri = new Uri("ws://localhost:4455");
+		ObsWebSocketHostBox.Text = uri.Host;
+		ObsWebSocketPortBox.Text = uri.Port.ToString(CultureInfo.InvariantCulture);
+	}
+
+	private string BuildObsWebSocketEndpoint()
+	{
+		string host = (ObsWebSocketHostBox.Text ?? string.Empty).Trim();
+		if (Uri.TryCreate(host, UriKind.Absolute, out Uri? supplied)) host = supplied.Host;
+		if (string.IsNullOrWhiteSpace(host)) host = "localhost";
+		if (!int.TryParse(ObsWebSocketPortBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int port) || port is < 1 or > 65535) port = 4455;
+		ObsWebSocketHostBox.Text = host; ObsWebSocketPortBox.Text = port.ToString(CultureInfo.InvariantCulture);
+		string endpointHost = host.Contains(':') && !host.StartsWith("[", StringComparison.Ordinal) ? $"[{host}]" : host;
+		return $"ws://{endpointHost}:{port}";
 	}
 
 	private static string Manifest32Path
@@ -2196,12 +2472,13 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", NotifyMaxKey, Math.Round(NotifyMaxSlider.Value).ToString("0", c), ConfigPath);
 		WritePrivateProfileString("Settings", NotifyPrivacyKey, Math.Max(0, NotifyPrivacyCombo.SelectedIndex).ToString("0", c), ConfigPath);
 		WritePrivateProfileString("Settings", NotifyThemeKey, Math.Max(0, NotifyThemeCombo.SelectedIndex).ToString("0", c), ConfigPath);
+		WritePrivateProfileString("Settings", NotifyPaletteKey, Math.Max(0, NotifyPaletteCombo.SelectedIndex).ToString("0", c), ConfigPath);
 		WritePrivateProfileString("Settings", NotifyShowIconKey, NotifyShowIconCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", NotifyShowImageKey, NotifyShowImageCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", NotifyAllowlistModeKey, NotifyAllowlistModeCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", NotifyFiltersKey, NotifyFiltersBox.Text ?? string.Empty, ConfigPath);
 		WritePrivateProfileString("Settings", MediaNotifyEnabledKey, MediaNotifyEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings",ObsIndicatorEnabledKey,ObsIndicatorEnabledCheck.IsChecked==true?"1":"0",ConfigPath);WritePrivateProfileString("Settings",ObsWebSocketUrlKey,ObsWebSocketUrlBox.Text?.Trim()??"ws://127.0.0.1:4455",ConfigPath);WritePrivateProfileString("Settings",ObsWebSocketPasswordKey,ObsWebSocketPasswordBox.Password??string.Empty,ConfigPath);
+		WritePrivateProfileString("Settings",ObsIndicatorEnabledKey,ObsIndicatorEnabledCheck.IsChecked==true?"1":"0",ConfigPath);WritePrivateProfileString("Settings",ObsWebSocketUrlKey,BuildObsWebSocketEndpoint(),ConfigPath);WritePrivateProfileString("Settings",ObsWebSocketPasswordKey,ObsWebSocketPasswordBox.Password??string.Empty,ConfigPath);
 		WritePrivateProfileString("Settings",ObsIndicatorOpacityKey,ObsIndicatorOpacitySlider.Value.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings",ObsIndicatorThicknessKey,ObsIndicatorThicknessSlider.Value.ToString("0.###",c),ConfigPath);
 	}
 
@@ -2237,6 +2514,29 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private void IRacingControlSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => IRacingControl_Changed(sender, e);
 
+	private void SyncIRacingSpotterColorControls(uint rgb)
+	{
+		bool wasSyncing = _syncingControls;
+		_syncingControls = true;
+		IRacingSpotterRedSlider.Value = (rgb >> 16) & 0xFF;
+		IRacingSpotterGreenSlider.Value = (rgb >> 8) & 0xFF;
+		IRacingSpotterBlueSlider.Value = rgb & 0xFF;
+		IRacingSpotterColorBox.Text = rgb.ToString("X6", CultureInfo.InvariantCulture);
+		IRacingSpotterColorPreview.Background = new SolidColorBrush(Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
+		_syncingControls = wasSyncing;
+	}
+
+	private void IRacingSpotterRgb_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (_loading || _syncingControls) return;
+		uint rgb = ((uint)Math.Round(IRacingSpotterRedSlider.Value) << 16)
+			| ((uint)Math.Round(IRacingSpotterGreenSlider.Value) << 8)
+			| (uint)Math.Round(IRacingSpotterBlueSlider.Value);
+		SyncIRacingSpotterColorControls(rgb);
+		WritePrivateProfileString("Settings", IRacingSpotterColorKey, rgb.ToString(CultureInfo.InvariantCulture), ConfigPath);
+		StatusText.Text = "Spotter glow colour saved; an active game picks it up at session start.";
+	}
+
 	private void IRacingSpotterColor_Apply(object sender, RoutedEventArgs e)
 	{
 		if (_loading) return;
@@ -2244,7 +2544,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if (hex.Length == 6 && uint.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint rgb))
 		{
 			WritePrivateProfileString("Settings", IRacingSpotterColorKey, rgb.ToString(CultureInfo.InvariantCulture), ConfigPath);
-			IRacingSpotterColorPreview.Background = new SolidColorBrush(Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
+			SyncIRacingSpotterColorControls(rgb);
 			StatusText.Text = "Spotter glow colour saved; an active game picks it up at session start.";
 		}
 		else StatusText.Text = "Enter a 6-digit hex colour, e.g. FF4500.";
@@ -2403,6 +2703,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			NotifyStatusText.Text = _notificationBroker.RefreshStatus();
 		if (IRacingStatusText != null && IRacingEnabledCheck.IsChecked == true)
 			IRacingStatusText.Text = _notificationBroker.RefreshIRacingStatus();
+		if (ObsConnectionStatusText != null)
+			ObsConnectionStatusText.Text = ObsIndicatorEnabledCheck.IsChecked == true ? _notificationBroker.RefreshObsStatus() : "Disconnected";
 		if (!_xrControl.Connected)
 		{
 			if (_xrControl.TryConnect())
@@ -2430,7 +2732,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void ApplySavedXrLaunchMode()
 	{
 		if (_xrLaunchModeApplied || !_xrControl.Connected) return;
-		bool gameplay = ReadBoolSetting("gameplay_mode", fallback: true);
+		bool gameplay = ReadRangeSetting("reshade_remote_xr_mode", 0, 0, 1) == 0;
 		var block = _xrControl.ReadBlock();
 		block.xr_mode = gameplay ? 0u : 1u;
 		_xrControl.WriteBlock(ref block);
@@ -2575,13 +2877,13 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 		if (valueOrDefault)
 		{
-			value = Math.Clamp(value2 + value3, 0.01, 1.0);
+			value = Math.Clamp((value2 + value3) * 0.5, 0.01, 1.0);
 		}
 		else
 		{
 			value = Math.Clamp(value, 0.01, 1.0);
-			value2 = value * 0.5;
-			value3 = value * 0.5;
+			value2 = value;
+			value3 = value;
 		}
 		value4 = Math.Clamp(value4, 0.01, 1.0);
 		bool valueOrDefault2 = _viewlabEnabled;
@@ -2591,8 +2893,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", "total_render_height", FormatStorageScale(value), ConfigPath);
 		WritePrivateProfileString("Settings", "total_share", null, ConfigPath);
 		WritePrivateProfileString("Settings", "vertical_tangent", null, ConfigPath);
-		WritePrivateProfileString("Settings", "top_tangent", FormatStorageScale(value2), ConfigPath);
-		WritePrivateProfileString("Settings", "bottom_tangent", FormatStorageScale(value3), ConfigPath);
+		WritePrivateProfileString("Settings", "top_tangent", FormatStorageScale(value2 * 0.5), ConfigPath);
+		WritePrivateProfileString("Settings", "bottom_tangent", FormatStorageScale(value3 * 0.5), ConfigPath);
 		WritePrivateProfileString("Settings", "horizontal_render_width", FormatStorageScale(value4), ConfigPath);
 		double maskV = TryReadTextBox(MaskVerticalBox, out var mv) ? Math.Clamp(mv, 0.01, 1.0) : 1.0;
 		double maskH = TryReadTextBox(MaskHorizontalBox, out var mh) ? Math.Clamp(mh, 0.01, 1.0) : 1.0;
@@ -2609,6 +2911,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", MaskNoseSpreadXKey, FormatStorageScale(MaskNoseSpreadXSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", PreviewCircleGuidesKey, PreviewCircleGuidesCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", PreviewPerEyeFramesKey, PreviewPerEyeFramesCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", PreviewOpticalCentreKey, PreviewOpticalCentreCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", PreviewIpdKey, CurrentPreviewIpd().ToString("0.0", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", MaskInnerBridgeWidthKey, FormatStorageScale(FixedInnerBridgeWidth), ConfigPath);
 		WritePrivateProfileString("Settings", MaskInnerBridgeRiseKey, FormatStorageScale(FixedInnerBridgeRise), ConfigPath);
@@ -2867,6 +3170,41 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 	}
 
+	private static string OverlayPlacementRegistryPrefix(string id) => "overlay_layout_" + id.Replace(':', '_');
+
+	private static Dictionary<string, OverlayPlacementOverride> ReadAppOverlayPlacements(RegistryKey appKey)
+	{
+		var result = new Dictionary<string, OverlayPlacementOverride>();
+		foreach (string id in OverlaySettingsCatalog.All.Keys.Concat(Enumerable.Range(0, StickyNoteLiveStateService.MaxNotes).Select(i => $"sticky:{i}")))
+		{
+			string prefix = OverlayPlacementRegistryPrefix(id);
+			object? xRaw = appKey.GetValue(prefix + "_x");
+			object? yRaw = appKey.GetValue(prefix + "_y");
+			object? scaleRaw = appKey.GetValue(prefix + "_scale");
+			if (xRaw == null || yRaw == null || scaleRaw == null) continue;
+			if (!double.TryParse(Convert.ToString(xRaw, CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture, out double x) ||
+				!double.TryParse(Convert.ToString(yRaw, CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture, out double y) ||
+				!double.TryParse(Convert.ToString(scaleRaw, CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture, out double scale)) continue;
+			result[id] = new OverlayPlacementOverride(x, y, scale);
+		}
+		return result;
+	}
+
+	private static OverlayProfileOverrides ReadAppOverlayOverrides(RegistryKey appKey)
+	{
+		var result = new OverlayProfileOverrides();
+		const string prefix = "overlay_override_";
+		foreach (string valueName in appKey.GetValueNames())
+		{
+			if (!valueName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+			string encoded = valueName[prefix.Length..];
+			int separator = encoded.IndexOf("__", StringComparison.Ordinal);
+			if (separator <= 0) continue;
+			result.Set(encoded[..separator], encoded[(separator + 2)..], Convert.ToString(appKey.GetValue(valueName), CultureInfo.InvariantCulture) ?? string.Empty);
+		}
+		return result;
+	}
+
 	private AppProfile ReadAppProfile(string keyName, RegistryKey appKey)
 	{
 		double num = ReadScaleSetting("total_render_height", ReadScaleSetting("total_share", ReadScaleSetting("vertical_tangent", 0.18)));
@@ -2923,6 +3261,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		double visorInnerBridgePeakX = FromPeakXMillis(appKey.GetValue("mask_inner_bridge_peak_x"), 0.5);
 		double visorInnerBridgeSteepness = FromSteepMillis(appKey.GetValue("mask_inner_bridge_steepness"), 0.5);
 		double visorNoseSpreadX = FromMillis(appKey.GetValue("mask_nose_spread_x"), ReadRangeSetting(MaskNoseSpreadXKey, 0.0, 0.0, 0.5));
+		double visorWidth = FromMillis(appKey.GetValue("visor_width"), ReadRangeSetting(MaskWidthKey, 1.0, 0.25, 2.0));
+		double visorHeight = FromMillis(appKey.GetValue("visor_height"), ReadRangeSetting(MaskHeightKey, 1.0, 0.25, 2.0));
 		return new AppProfile
 		{
 			Key = keyName,
@@ -2950,13 +3290,17 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			MaskTopCurve = maskTopCurve,
 			MaskBottomCurve = maskBottomCurve,
 			VisorSize = FromMillis(appKey.GetValue("visor_size"), 0.0),
+			VisorWidth = visorWidth,
+			VisorHeight = visorHeight,
 			VisorOuterApexY = visorOuterApexY,
 			VisorInnerLowerY = visorInnerLowerY,
 			VisorInnerBridgeWidth = visorInnerBridgeWidth,
 			VisorInnerBridgeRise = visorInnerBridgeRise,
 			VisorInnerBridgePeakX = visorInnerBridgePeakX,
 			VisorInnerBridgeSteepness = visorInnerBridgeSteepness,
-			VisorNoseSpreadX = visorNoseSpreadX
+			VisorNoseSpreadX = visorNoseSpreadX,
+			OverlayPlacements = ReadAppOverlayPlacements(appKey),
+			OverlayOverrides = ReadAppOverlayOverrides(appKey)
 		};
 	}
 
@@ -3120,7 +3464,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 	}
 
-	private (bool enabled, double vertical, double horizontal, bool rounded, double corner, double topBias, double bottomBias, double leftBias, double rightBias, double topCurve, double bottomCurve, double visorSize, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double visorInnerBridgeRise, double visorInnerBridgePeakX, double visorInnerBridgeSteepness, double visorNoseSpreadX) CurrentGlobalMaskValues()
+	private (bool enabled, double vertical, double horizontal, bool rounded, double corner, double topBias, double bottomBias, double leftBias, double rightBias, double topCurve, double bottomCurve, double visorSize, double visorWidth, double visorHeight, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double visorInnerBridgeRise, double visorInnerBridgePeakX, double visorInnerBridgeSteepness, double visorNoseSpreadX) CurrentGlobalMaskValues()
 	{
 		TryReadTextBox(MaskVerticalBox, out var maskVertical);
 		TryReadTextBox(MaskHorizontalBox, out var maskHorizontal);
@@ -3137,6 +3481,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			0.0,
 			0.0,
 			MaskSizeSlider?.Value ?? 1.0,
+			MaskWidthSlider?.Value ?? 1.0,
+			MaskHeightSlider?.Value ?? 1.0,
 			MaskApexYSlider?.Value ?? 0.0,
 			MaskInnerLowerSlider?.Value ?? 0.0,
 			FixedInnerBridgeWidth,
@@ -3161,6 +3507,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		appProfile.MaskTopCurve = global.topCurve;
 		appProfile.MaskBottomCurve = global.bottomCurve;
 		appProfile.VisorSize = 0;
+		appProfile.VisorWidth = global.visorWidth;
+		appProfile.VisorHeight = global.visorHeight;
 		appProfile.VisorOuterApexY = 0;
 		appProfile.VisorInnerLowerY = 0;
 		appProfile.VisorInnerBridgeWidth = 0;
@@ -3185,7 +3533,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 
 		var globalMask = CurrentGlobalMaskValues();
-		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, appProfile.VisorSize, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, appProfile.VisorNoseSpreadX, globalMask.visorSize, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness, globalMask.visorNoseSpreadX, PreviewCircleGuidesCheck.IsChecked == true, PreviewPerEyeFramesCheck.IsChecked == true, CurrentPreviewIpd(), true) // Stencil outer edges only is permanently enabled
+		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, appProfile.VisorSize, appProfile.VisorWidth, appProfile.VisorHeight, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, appProfile.VisorNoseSpreadX, globalMask.visorSize, globalMask.visorWidth, globalMask.visorHeight, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness, globalMask.visorNoseSpreadX, PreviewCircleGuidesCheck.IsChecked == true, PreviewPerEyeFramesCheck.IsChecked == true, PreviewOpticalCentreCheck.IsChecked == true, CurrentPreviewIpd(), true, BuildOverlayPreviewItems(includeDisabled: true, includeFeatureModules: false), appProfile.OverlayPlacements, BuildGlobalOverlaySettings(), appProfile.OverlayOverrides, _hudWidgets, _stickyNotes, _crosshair, CrosshairEnabledCheck.IsChecked == true, CrosshairOffsetXSlider.Value, CrosshairOffsetYSlider.Value) // Stencil outer edges only is permanently enabled
 		{
 			Owner = this
 		};
@@ -3211,7 +3559,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			else
 			{
 				double savedVisorSize = profileWindow.UseGlobalVisor ? 0.0 : profileWindow.VisorSizeValue;
-				WriteAppCustomProfile(appProfile, profileWindow.TopValue, profileWindow.BottomValue, profileWindow.HorizontalValue, profileWindow.RenderScaleValue, profileWindow.MaskEnabledValue, profileWindow.MaskVerticalValue, profileWindow.MaskHorizontalValue, profileWindow.MaskRoundedValue, profileWindow.MaskCornerValue, profileWindow.MaskTopBiasValue, profileWindow.MaskBottomBiasValue, profileWindow.MaskLeftBiasValue, profileWindow.MaskRightBiasValue, profileWindow.MaskTopCurveValue, profileWindow.MaskBottomCurveValue, savedVisorSize, profileWindow.VisorOuterApexYValue, profileWindow.VisorInnerLowerYValue, profileWindow.VisorInnerBridgeWidthValue, profileWindow.VisorInnerBridgeRiseValue, profileWindow.VisorInnerBridgePeakXValue, profileWindow.VisorInnerBridgeSteepnessValue, profileWindow.VisorNoseSpreadXValue, profileEnabled: true);
+				WriteAppCustomProfile(appProfile, profileWindow.TopValue, profileWindow.BottomValue, profileWindow.HorizontalValue, profileWindow.RenderScaleValue, profileWindow.MaskEnabledValue, profileWindow.MaskVerticalValue, profileWindow.MaskHorizontalValue, profileWindow.MaskRoundedValue, profileWindow.MaskCornerValue, profileWindow.MaskTopBiasValue, profileWindow.MaskBottomBiasValue, profileWindow.MaskLeftBiasValue, profileWindow.MaskRightBiasValue, profileWindow.MaskTopCurveValue, profileWindow.MaskBottomCurveValue, savedVisorSize, profileWindow.VisorWidthValue, profileWindow.VisorHeightValue, profileWindow.VisorOuterApexYValue, profileWindow.VisorInnerLowerYValue, profileWindow.VisorInnerBridgeWidthValue, profileWindow.VisorInnerBridgeRiseValue, profileWindow.VisorInnerBridgePeakXValue, profileWindow.VisorInnerBridgeSteepnessValue, profileWindow.VisorNoseSpreadXValue, profileWindow.OverlayPlacements, profileWindow.OverlayOverrides, profileEnabled: true);
 				appProfile.Top = profileWindow.TopValue;
 				appProfile.Bottom = profileWindow.BottomValue;
 				appProfile.Horizontal = profileWindow.HorizontalValue;
@@ -3228,6 +3576,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 				appProfile.MaskTopCurve = profileWindow.MaskTopCurveValue;
 				appProfile.MaskBottomCurve = profileWindow.MaskBottomCurveValue;
 				appProfile.VisorSize = savedVisorSize;
+				appProfile.VisorWidth = profileWindow.VisorWidthValue;
+				appProfile.VisorHeight = profileWindow.VisorHeightValue;
 
 				appProfile.VisorOuterApexY = profileWindow.VisorOuterApexYValue;
 				appProfile.VisorInnerLowerY = profileWindow.VisorInnerLowerYValue;
@@ -3236,6 +3586,10 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 				appProfile.VisorInnerBridgePeakX = profileWindow.VisorInnerBridgePeakXValue;
 				appProfile.VisorInnerBridgeSteepness = profileWindow.VisorInnerBridgeSteepnessValue;
 				appProfile.VisorNoseSpreadX = profileWindow.VisorNoseSpreadXValue;
+				appProfile.OverlayPlacements.Clear();
+				foreach ((string id, OverlayPlacementOverride placement) in profileWindow.OverlayPlacements) appProfile.OverlayPlacements[id] = placement;
+				appProfile.OverlayOverrides.Clear();
+				foreach ((string key, string value) in profileWindow.OverlayOverrides.Values) appProfile.OverlayOverrides.Values[key] = value;
 				appProfile.ProfileEnabled = true;
 			}
 			appProfile.RefreshSummary();
@@ -3264,7 +3618,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		registryKey.SetValue("custom_name", name, RegistryValueKind.String);
 	}
 
-	private static void WriteAppCustomProfile(AppProfile profile, double top, double bottom, double horizontal, double renderScale, bool maskEnabled, double maskVertical, double maskHorizontal, bool maskRounded, double maskCorner, double maskTopBias, double maskBottomBias, double maskLeftBias, double maskRightBias, double maskTopCurve, double maskBottomCurve, double visorSize, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double visorInnerBridgeRise, double visorInnerBridgePeakX, double visorInnerBridgeSteepness, double visorNoseSpreadX, bool profileEnabled)
+	private static void WriteAppCustomProfile(AppProfile profile, double top, double bottom, double horizontal, double renderScale, bool maskEnabled, double maskVertical, double maskHorizontal, bool maskRounded, double maskCorner, double maskTopBias, double maskBottomBias, double maskLeftBias, double maskRightBias, double maskTopCurve, double maskBottomCurve, double visorSize, double visorWidth, double visorHeight, double visorOuterApexY, double visorInnerLowerY, double visorInnerBridgeWidth, double visorInnerBridgeRise, double visorInnerBridgePeakX, double visorInnerBridgeSteepness, double visorNoseSpreadX, IReadOnlyDictionary<string, OverlayPlacementOverride> overlayPlacements, OverlayProfileOverrides overlayOverrides, bool profileEnabled)
 	{
 		using RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(AppRegistryRoot + "\\" + profile.Key, writable: true) ?? throw new InvalidOperationException("Could not write app profile.");
 		registryKey.SetValue("profile_enabled", profileEnabled ? 1 : 0, RegistryValueKind.DWord);
@@ -3276,11 +3630,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		registryKey.SetValue("bottom_tangent", ToMillis(bottom), RegistryValueKind.DWord);
 		registryKey.SetValue("horizontal_render_width", ToMillis(horizontal), RegistryValueKind.DWord);
 		registryKey.SetValue("render_scale", renderScale.ToString("0.###############", CultureInfo.InvariantCulture), RegistryValueKind.String);
-		registryKey.DeleteValue("mask_enabled", throwOnMissingValue: false);
 		registryKey.SetValue("mask_vertical", ToMillis(maskVertical), RegistryValueKind.DWord);
 		registryKey.SetValue("mask_horizontal", ToMillis(maskHorizontal), RegistryValueKind.DWord);
-		registryKey.SetValue("mask_rounded", maskRounded ? 1 : 0, RegistryValueKind.DWord);
-		registryKey.SetValue("mask_corner", ToMillis(maskCorner), RegistryValueKind.DWord);
 		registryKey.SetValue("mask_top_bias", ToSignedMillis(maskTopBias), RegistryValueKind.DWord);
 		registryKey.SetValue("mask_bottom_bias", ToSignedMillis(maskBottomBias), RegistryValueKind.DWord);
 		registryKey.SetValue("mask_left_bias", ToSignedMillis(maskLeftBias), RegistryValueKind.DWord);
@@ -3288,14 +3639,68 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		registryKey.SetValue("mask_top_curve", ToSignedMillis(maskTopCurve), RegistryValueKind.DWord);
 		registryKey.SetValue("mask_bottom_curve", ToSignedMillis(maskBottomCurve), RegistryValueKind.DWord);
 		registryKey.SetValue("visor_size", ToMillis(visorSize), RegistryValueKind.DWord);
+		if (visorSize > 0.0)
+		{
+			registryKey.SetValue("mask_enabled", maskEnabled ? 1 : 0, RegistryValueKind.DWord);
+			registryKey.SetValue("mask_rounded", maskRounded ? 1 : 0, RegistryValueKind.DWord);
+			registryKey.SetValue("mask_corner", ToMillis(maskCorner), RegistryValueKind.DWord);
+			registryKey.SetValue("visor_width", ToMillis(visorWidth), RegistryValueKind.DWord);
+			registryKey.SetValue("visor_height", ToMillis(visorHeight), RegistryValueKind.DWord);
+			registryKey.SetValue("mask_outer_apex_y", ToSignedMillis(visorOuterApexY), RegistryValueKind.DWord);
+			registryKey.SetValue("mask_inner_lower_y", ToMillis(visorInnerLowerY), RegistryValueKind.DWord);
+			registryKey.SetValue("mask_inner_bridge_width", ToMillis(visorInnerBridgeWidth), RegistryValueKind.DWord);
+			registryKey.SetValue("mask_inner_bridge_rise", ToRiseMillis(visorInnerBridgeRise), RegistryValueKind.DWord);
+			registryKey.SetValue("mask_inner_bridge_peak_x", ToPeakXMillis(visorInnerBridgePeakX), RegistryValueKind.DWord);
+			registryKey.SetValue("mask_inner_bridge_steepness", ToSteepMillis(visorInnerBridgeSteepness), RegistryValueKind.DWord);
+			registryKey.SetValue("mask_nose_spread_x", ToMillis(visorNoseSpreadX), RegistryValueKind.DWord);
+		}
+		else
+		{
+			registryKey.DeleteValue("mask_enabled", throwOnMissingValue: false);
+			registryKey.DeleteValue("mask_rounded", throwOnMissingValue: false);
+			registryKey.DeleteValue("mask_corner", throwOnMissingValue: false);
+			registryKey.DeleteValue("visor_width", throwOnMissingValue: false);
+			registryKey.DeleteValue("visor_height", throwOnMissingValue: false);
+			registryKey.DeleteValue("mask_outer_apex_y", throwOnMissingValue: false);
+			registryKey.DeleteValue("mask_inner_lower_y", throwOnMissingValue: false);
+			registryKey.DeleteValue("mask_inner_bridge_width", throwOnMissingValue: false);
+			registryKey.DeleteValue("mask_inner_bridge_rise", throwOnMissingValue: false);
+			registryKey.DeleteValue("mask_inner_bridge_peak_x", throwOnMissingValue: false);
+			registryKey.DeleteValue("mask_inner_bridge_steepness", throwOnMissingValue: false);
+			registryKey.DeleteValue("mask_nose_spread_x", throwOnMissingValue: false);
+		}
+		ClearAppOverlayPlacements(registryKey);
+		foreach ((string id, OverlayPlacementOverride placement) in overlayPlacements)
+		{
+			string prefix = OverlayPlacementRegistryPrefix(id);
+			registryKey.SetValue(prefix + "_x", placement.X.ToString("0.###############", CultureInfo.InvariantCulture), RegistryValueKind.String);
+			registryKey.SetValue(prefix + "_y", placement.Y.ToString("0.###############", CultureInfo.InvariantCulture), RegistryValueKind.String);
+			registryKey.SetValue(prefix + "_scale", placement.Scale.ToString("0.###############", CultureInfo.InvariantCulture), RegistryValueKind.String);
+		}
+		ClearAppOverlayOverrides(registryKey);
+		foreach ((string compositeKey, string value) in overlayOverrides.Values)
+		{
+			int separator = compositeKey.IndexOf(':');
+			if (separator <= 0) continue;
+			registryKey.SetValue("overlay_override_" + compositeKey[..separator] + "__" + compositeKey[(separator + 1)..], value, RegistryValueKind.String);
+		}
+	}
 
-		registryKey.SetValue("mask_outer_apex_y", ToSignedMillis(visorOuterApexY), RegistryValueKind.DWord);
-		registryKey.SetValue("mask_inner_lower_y", ToMillis(visorInnerLowerY), RegistryValueKind.DWord);
-		registryKey.SetValue("mask_inner_bridge_width", ToMillis(visorInnerBridgeWidth), RegistryValueKind.DWord);
-		registryKey.SetValue("mask_inner_bridge_rise", ToRiseMillis(visorInnerBridgeRise), RegistryValueKind.DWord);
-		registryKey.SetValue("mask_inner_bridge_peak_x", ToPeakXMillis(visorInnerBridgePeakX), RegistryValueKind.DWord);
-		registryKey.SetValue("mask_inner_bridge_steepness", ToSteepMillis(visorInnerBridgeSteepness), RegistryValueKind.DWord);
-		registryKey.SetValue("mask_nose_spread_x", ToMillis(visorNoseSpreadX), RegistryValueKind.DWord);
+	private static void ClearAppOverlayPlacements(RegistryKey registryKey)
+	{
+		foreach (string id in OverlaySettingsCatalog.All.Keys.Concat(Enumerable.Range(0, StickyNoteLiveStateService.MaxNotes).Select(i => $"sticky:{i}")))
+		{
+			string prefix = OverlayPlacementRegistryPrefix(id);
+			registryKey.DeleteValue(prefix + "_x", false);
+			registryKey.DeleteValue(prefix + "_y", false);
+			registryKey.DeleteValue(prefix + "_scale", false);
+		}
+	}
+
+	private static void ClearAppOverlayOverrides(RegistryKey registryKey)
+	{
+		foreach (string valueName in registryKey.GetValueNames().Where(name => name.StartsWith("overlay_override_", StringComparison.OrdinalIgnoreCase)))
+			registryKey.DeleteValue(valueName, false);
 	}
 
 	private static void ResetAppCustomProfile(AppProfile profile)
@@ -3333,5 +3738,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		registryKey.DeleteValue("mask_inner_bridge_peak_x", throwOnMissingValue: false);
 		registryKey.DeleteValue("mask_inner_bridge_steepness", throwOnMissingValue: false);
 		registryKey.DeleteValue("mask_nose_spread_x", throwOnMissingValue: false);
+		ClearAppOverlayPlacements(registryKey);
+		ClearAppOverlayOverrides(registryKey);
 	}
 }

@@ -525,7 +525,7 @@ public sealed class ReShadeRemoteWindow : Window
         else if (IsPayloadEnabled())
         {
             _status.Text = "[Installed and enabled]";
-            _status.Foreground = Amber;
+            _status.Foreground = Text;
         }
         else
         {

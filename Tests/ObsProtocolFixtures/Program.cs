@@ -6,4 +6,8 @@ if(auth!="zTM5ki6L2vVvBQiTG9ckH1Lh64AbnCf6XZ226UmnkIA=")throw new Exception("OBS
 using var active=JsonDocument.Parse("{\"op\":7,\"d\":{\"requestStatus\":{\"result\":true},\"responseData\":{\"outputActive\":true}}}");
 using var idle=JsonDocument.Parse("{\"op\":7,\"d\":{\"requestStatus\":{\"result\":true},\"responseData\":{\"outputActive\":false}}}");
 if(!ObsWebSocketProtocol.ParseRecordStatus(active.RootElement)||ObsWebSocketProtocol.ParseRecordStatus(idle.RootElement))throw new Exception("GetRecordStatus parsing changed");
+using var identified=JsonDocument.Parse("{\"op\":2,\"d\":{\"negotiatedRpcVersion\":1}}");
+if(!ObsWebSocketProtocol.IsIdentified(identified.RootElement))throw new Exception("OBS identified response validation changed");
+if(ObsWebSocketProtocol.StatusText(ObsConnectionState.Disconnected)!="Disconnected"||ObsWebSocketProtocol.StatusText(ObsConnectionState.Connecting)!="Connecting"||ObsWebSocketProtocol.StatusText(ObsConnectionState.Connected)!="Connected"||ObsWebSocketProtocol.StatusText(ObsConnectionState.AuthenticationFailed)!="Authentication failed")throw new Exception("OBS connection status labels changed");
+if(ObsWebSocketProtocol.IsRecording(ObsConnectionState.Disconnected)||ObsWebSocketProtocol.IsRecording(ObsConnectionState.Connecting)||ObsWebSocketProtocol.IsRecording(ObsConnectionState.AuthenticationFailed)||!ObsWebSocketProtocol.IsRecording(ObsConnectionState.Recording))throw new Exception("OBS failure state can falsely report recording");
 Console.WriteLine("PASS: OBS v5 authentication and real recording-state response parsing");

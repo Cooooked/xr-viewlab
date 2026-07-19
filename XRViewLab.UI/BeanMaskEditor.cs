@@ -25,9 +25,11 @@ public sealed class BeanMaskEditor : FrameworkElement
 	private bool _openInnerPreview;
 	private double _cropHorizontal = 1.0;
 	private double _cropVertical = 1.0;
-	private double _cropVerticalCentre = 0.5;
+	private double _cropTopScale = 1.0;
+	private double _cropBottomScale = 1.0;
 	private bool _useCircularEyeGuides = true;
 	private bool _usePerEyeFrameGuides;
+	private bool _useOpticalPreviewCentre;
 	private double _previewIpdMillimetres = Quest3PreviewGeometry.DefaultIpdMillimetres;
 	private bool _visorVisible;
 	private DragTarget _dragTarget = DragTarget.None;
@@ -49,6 +51,10 @@ public sealed class BeanMaskEditor : FrameworkElement
 	private double _overlayScaleStartDistance;
 	private Point _panStart;
 	private Vector _panOrigin;
+	private Point? _inspectorPoint;
+
+	// Measured desktop-preview-to-HMD vertical correction for widget replicas (full-lens fraction).
+	private const double WidgetPreviewShimY = 0.077;
 
 	// Inner-eye notch pins hidden: the notch looks right monocularly but turns translucent
 	// under binocular fusion, so its controls are not exposed in the current UI.
@@ -238,27 +244,24 @@ public sealed class BeanMaskEditor : FrameworkElement
 		set
 		{
 			double vertical = Math.Clamp(value, 0.01, 1.0);
-			SetCropVerticalState(vertical, 0.5);
+			SetCropVerticalState(vertical, vertical);
 		}
 	}
 
 	public void SetCropVertical(double top, double bottom)
 	{
-		top = Math.Clamp(top, 0.0, 0.5);
-		bottom = Math.Clamp(bottom, 0.0, 0.5);
-		double vertical = Math.Clamp(top + bottom, 0.01, 1.0);
-		double centre = vertical >= 1.0 - 0.000001 ? 0.5 : 0.5 + (bottom - top) * 0.5;
-		SetCropVerticalState(vertical, centre);
+		SetCropVerticalState(Math.Clamp(top, 0.0, 1.0), Math.Clamp(bottom, 0.0, 1.0));
 	}
 
-	private void SetCropVerticalState(double vertical, double centre)
+	private void SetCropVerticalState(double topScale, double bottomScale)
 	{
-		vertical = Math.Clamp(vertical, 0.01, 1.0);
-		double half = vertical * 0.5;
-		centre = Math.Clamp(centre, half, 1.0 - half);
-		if (Math.Abs(_cropVertical - vertical) < 0.0001 && Math.Abs(_cropVerticalCentre - centre) < 0.0001) return;
+		topScale = Math.Clamp(topScale, 0.0, 1.0);
+		bottomScale = Math.Clamp(bottomScale, 0.0, 1.0);
+		double vertical = Math.Clamp(topScale + bottomScale, 0.01, 2.0) * 0.5;
+		if (Math.Abs(_cropVertical - vertical) < 0.0001 && Math.Abs(_cropTopScale - topScale) < 0.0001 && Math.Abs(_cropBottomScale - bottomScale) < 0.0001) return;
 		_cropVertical = vertical;
-		_cropVerticalCentre = centre;
+		_cropTopScale = topScale;
+		_cropBottomScale = bottomScale;
 		InvalidateVisual();
 	}
 
@@ -311,6 +314,12 @@ public sealed class BeanMaskEditor : FrameworkElement
 			Quest3PreviewGeometry.MinimumIpdMillimetres, Quest3PreviewGeometry.MaximumIpdMillimetres);
 	}
 
+	public bool UseOpticalPreviewCentre
+	{
+		get => _useOpticalPreviewCentre;
+		set { if (_useOpticalPreviewCentre == value) return; _useOpticalPreviewCentre = value; InvalidateVisual(); }
+	}
+
 	protected override void OnRender(DrawingContext dc)
 	{
 		base.OnRender(dc);
@@ -318,7 +327,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 		Rect bounds = new(0.5, 0.5, Math.Max(0.0, ActualWidth - 1.0), Math.Max(0.0, ActualHeight - 1.0));
 		dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(8, 9, 10)), new Pen(new SolidColorBrush(Color.FromRgb(43, 45, 49)), 1), bounds);
 
-		Rect area = Quest3PreviewGeometry.FitArea(RenderSize);
+		Rect area = PreviewFullArea();
 		if (area.Width <= 4.0 || area.Height <= 4.0)
 		{
 			return;
@@ -363,7 +372,6 @@ public sealed class BeanMaskEditor : FrameworkElement
 				new Point(oval.Left + oval.Width * 0.5, oval.Top + oval.Height * 0.5),
 				oval.Width * 0.5, oval.Height * 0.5);
 		}
-
 		Rect leftEye = new(crop.Left, crop.Top, crop.Width * 0.5, crop.Height);
 		if(cropSupportsMaskGeometry)
 		{
@@ -382,8 +390,35 @@ public sealed class BeanMaskEditor : FrameworkElement
 		DrawCrosshair(dc, area);
 
 		if(cropSupportsMaskGeometry)DrawPins(dc, leftEye);
+		DrawCoordinateMarker(dc, area);
 		dc.Pop();
 		dc.Pop();
+		DrawCoordinateInspector(dc, area);
+	}
+
+	private void DrawCoordinateMarker(DrawingContext dc, Rect area)
+	{
+		if (_inspectorPoint is not Point point || !area.Contains(point)) return;
+		double radius = 4.0 / _viewZoom;
+		var pen = new Pen(new SolidColorBrush(Color.FromArgb(190, 255, 214, 72)), 1.0 / _viewZoom);
+		dc.DrawLine(pen, new Point(point.X - radius, point.Y), new Point(point.X + radius, point.Y));
+		dc.DrawLine(pen, new Point(point.X, point.Y - radius), new Point(point.X, point.Y + radius));
+	}
+
+	private void DrawCoordinateInspector(DrawingContext dc, Rect area)
+	{
+		if (_inspectorPoint is not Point point || !area.Contains(point)) return;
+		Point full = Quest3PreviewGeometry.InvertFullLens(area, point);
+		Rect crop = PreviewCropRect(area);
+		Point cropped = Quest3PreviewGeometry.InvertFullLens(crop, point);
+		string value = $"FULL  X {full.X:0.000}  Y {full.Y:0.000}    CROP  X {cropped.X:0.000}  Y {cropped.Y:0.000}";
+		var text = new FormattedText(value, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+			new Typeface("Consolas"), 10.0, new SolidColorBrush(Color.FromRgb(255, 222, 96)), 1.0);
+		double left = Math.Max(5.0, ActualWidth - text.Width - 13.0);
+		double top = Math.Max(5.0, ActualHeight - text.Height - 9.0);
+		dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(220, 12, 13, 15)),
+			new Pen(new SolidColorBrush(Color.FromArgb(180, 92, 84, 48)), 1.0), new Rect(left - 5.0, top - 3.0, text.Width + 10.0, text.Height + 6.0), 3.0, 3.0);
+		dc.DrawText(text, new Point(left, top));
 	}
 
 	private static void DrawEyeGuide(DrawingContext dc, Rect eye, Pen pen)
@@ -392,19 +427,24 @@ public sealed class BeanMaskEditor : FrameworkElement
 		dc.DrawEllipse(null, pen, new Point(eye.Left + radius, eye.Top + radius), radius, radius);
 	}
 
-	private void DrawCrosshair(DrawingContext dc, Rect eye)
+	private void DrawCrosshair(DrawingContext dc, Rect sizeReference)
 	{
 		if (_crosshair is null || !_crosshairVisible) return;
-		double unit=Math.Max(0.375,Quest3PreviewGeometry.ReferencePixelsToY(eye,_crosshair.VrScale)), arm=Math.Max(1,Math.Round(_crosshair.Size*unit));
-		double thick=Math.Max(1,Math.Round(_crosshair.Thickness*unit)), gap=Math.Round(_crosshair.Gap*unit), outline=_crosshair.Outline?Math.Max(1,Math.Round(_crosshair.OutlineThickness*unit)):0;
-		Point centre=Quest3PreviewGeometry.ResolveCentredOffset(eye,_crosshairOffsetX,_crosshairOffsetY);
-		double cx=Math.Floor(centre.X)+.5,cy=Math.Floor(centre.Y)+.5,half=thick/2,inner=gap+half;
-		var arms=new List<Rect>{new(cx-inner-arm,cy-half,arm,thick),new(cx+inner,cy-half,arm,thick),new(cx-half,cy+inner,thick,arm)};
-		if(!_crosshair.TStyle) arms.Add(new(cx-half,cy-inner-arm,thick,arm));
+		double unitX=Quest3PreviewGeometry.TangentReferencePixelsToX(sizeReference,2.0*_crosshair.VrScale);
+		double unitY=Quest3PreviewGeometry.TangentReferencePixelsToY(sizeReference,2.0*_crosshair.VrScale);
+		double armX=Math.Round(_crosshair.Size*unitX),armY=Math.Round(_crosshair.Size*unitY);
+		double thickX=Math.Max(1,Math.Round(_crosshair.Thickness*unitX)),thickY=Math.Max(1,Math.Round(_crosshair.Thickness*unitY));
+		double gapX=Math.Round(_crosshair.Gap*unitX),gapY=Math.Round(_crosshair.Gap*unitY);
+		double outlineX=_crosshair.Outline?Math.Max(1,Math.Round(_crosshair.OutlineThickness*unitX)):0;
+		double outlineY=_crosshair.Outline?Math.Max(1,Math.Round(_crosshair.OutlineThickness*unitY)):0;
+		Point centre=Quest3PreviewGeometry.ResolveCentredOffset(sizeReference,_crosshairOffsetX,_crosshairOffsetY);
+		double cx=Math.Floor(centre.X)+.5,cy=Math.Floor(centre.Y)+.5,halfX=thickX/2,halfY=thickY/2,innerX=gapX+halfX,innerY=gapY+halfY;
+		var arms=new List<Rect>{new(cx-innerX-armX,cy-halfY,armX,thickY),new(cx+innerX,cy-halfY,armX,thickY),new(cx-halfX,cy+innerY,thickX,armY)};
+		if(!_crosshair.TStyle) arms.Add(new(cx-halfX,cy-innerY-armY,thickX,armY));
 		byte a=(byte)Math.Round(Math.Clamp(_crosshair.Alpha,0,1)*255); var fg=new SolidColorBrush(Color.FromArgb(a,_crosshair.R,_crosshair.G,_crosshair.B)); var bg=new SolidColorBrush(Color.FromArgb(a,0,0,0));
-		if(outline>0) foreach(var r in arms) dc.DrawRectangle(bg,null,new Rect(r.X-outline,r.Y-outline,r.Width+2*outline,r.Height+2*outline));
+		if(outlineX>0||outlineY>0) foreach(var r in arms) dc.DrawRectangle(bg,null,new Rect(r.X-outlineX,r.Y-outlineY,r.Width+2*outlineX,r.Height+2*outlineY));
 		foreach(var r in arms) dc.DrawRectangle(fg,null,r);
-		if(_crosshair.Dot){if(outline>0)dc.DrawRectangle(bg,null,new Rect(cx-half-outline,cy-half-outline,thick+2*outline,thick+2*outline));dc.DrawRectangle(fg,null,new Rect(cx-half,cy-half,thick,thick));}
+		if(_crosshair.Dot){if(outlineX>0||outlineY>0)dc.DrawRectangle(bg,null,new Rect(cx-halfX-outlineX,cy-halfY-outlineY,thickX+2*outlineX,thickY+2*outlineY));dc.DrawRectangle(fg,null,new Rect(cx-halfX,cy-halfY,thickX,thickY));}
 	}
 
 	private void DrawOverlayPreviews(DrawingContext dc, Rect area)
@@ -415,7 +455,14 @@ public sealed class BeanMaskEditor : FrameworkElement
 			byte alpha=(byte)Math.Round(Math.Clamp(item.Opacity,.18,1)*210);
 			Color accent=item.Style switch { OverlayPreviewStyle.Hud=>Color.FromRgb(52,220,135),OverlayPreviewStyle.Trace=>Color.FromRgb(52,196,240),OverlayPreviewStyle.Clock=>Color.FromRgb(210,210,205),OverlayPreviewStyle.Notification=>Color.FromRgb(70,196,165),OverlayPreviewStyle.Sticky=>item.Theme switch{1=>Color.FromRgb(240,145,160),2=>Color.FromRgb(145,220,170),3=>Color.FromRgb(135,190,235),4=>Color.FromRgb(225,215,185),_=>Color.FromRgb(238,195,82)},_=>Color.FromRgb(235,82,82)};
 			Rect rect=geometry.Rect;
-			if(item.Anchor==OverlayPreviewAnchor.Edge){var pen=new Pen(new SolidColorBrush(Color.FromArgb(alpha,accent.R,accent.G,accent.B)),Math.Max(1,2/_viewZoom));dc.DrawRectangle(null,pen,rect);DrawPreviewLabel(dc,item.Label,new Point(rect.Left+7/_viewZoom,rect.Top+6/_viewZoom),accent,alpha);continue;}
+			if(item.Anchor is OverlayPreviewAnchor.Edge or OverlayPreviewAnchor.RenderEdge or OverlayPreviewAnchor.RecordingRenderEdge)
+			{
+				var pen=new Pen(new SolidColorBrush(Color.FromArgb(alpha,accent.R,accent.G,accent.B)),Math.Max(1,2/_viewZoom));dc.DrawRectangle(null,pen,rect);
+				Point labelOrigin=item.Anchor==OverlayPreviewAnchor.RecordingRenderEdge
+					?new Point(rect.Left+7/_viewZoom,rect.Bottom-15/_viewZoom)
+					:new Point(rect.Left+7/_viewZoom,rect.Top+6/_viewZoom);
+				DrawPreviewLabel(dc,item.Label,labelOrigin,accent,alpha);continue;
+			}
 			dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb((byte)Math.Min(150,(int)alpha),18,20,23)),new Pen(new SolidColorBrush(Color.FromArgb(alpha,accent.R,accent.G,accent.B)),Math.Max(1,1/_viewZoom)),rect,item.Style==OverlayPreviewStyle.Sticky?1:3,item.Style==OverlayPreviewStyle.Sticky?1:3);
 			DrawPreviewLabel(dc,item.Label,new Point(rect.Left+4/_viewZoom,rect.Top+Math.Max(1/_viewZoom,(rect.Height-10/_viewZoom)/2)),accent,alpha);
 			if(item.Editable)
@@ -434,18 +481,30 @@ public sealed class BeanMaskEditor : FrameworkElement
 
 	private IEnumerable<OverlayPreviewGeometry> OverlayPreviewGeometries(Rect area)
 	{
-		Rect shared = Quest3PreviewGeometry.SharedFullArea(area);
 		foreach(OverlayPreviewItem item in _overlayPreviews)
 		{
+			if(item.Anchor==OverlayPreviewAnchor.RecordingRenderEdge)
+			{
+				Rect crop=PreviewCropRect(area);
+				yield return new OverlayPreviewGeometry(item,crop,default,default);continue;
+			}
+			if(item.Anchor==OverlayPreviewAnchor.RenderEdge)
+			{
+				Rect crop=PreviewCropRect(area);
+				Rect edge=new(crop.Left+3,crop.Top+3,Math.Max(0,crop.Width-6),Math.Max(0,crop.Height-6));
+				yield return new OverlayPreviewGeometry(item,edge,default,default);continue;
+			}
 			if(item.Anchor==OverlayPreviewAnchor.Edge)
 			{
 				Rect edge=new(area.Left+3,area.Top+3,Math.Max(0,area.Width-6),Math.Max(0,area.Height-6));
 				yield return new OverlayPreviewGeometry(item,edge,default,default);continue;
 			}
 			Size footprint=OverlayPreviewReplicaLayout.ResolveSize(item,area);double w=footprint.Width,h=footprint.Height;
-			Point anchor=Quest3PreviewGeometry.ResolveFullLens(area,item.X,item.Y);double x=anchor.X,y=anchor.Y;
+			// Widget preview shim: draw all widgets one fixed full-lens fraction lower so their
+			// on-screen position matches the HMD. Drawing/pins/hit-testing all flow from this rect;
+			// dragging is delta-based so saved X/Y are never changed by the shim.
+			Point anchor=Quest3PreviewGeometry.ResolveFullLens(area,item.X,item.Y+WidgetPreviewShimY);double x=anchor.X,y=anchor.Y;
 			if(item.Anchor==OverlayPreviewAnchor.Centre){x-=w/2;y-=h/2;}else if(item.Anchor==OverlayPreviewAnchor.BottomRight){x-=w;y-=h;}
-			x=Math.Clamp(x,shared.Left,Math.Max(shared.Left,shared.Right-w));y=Math.Clamp(y,shared.Top,Math.Max(shared.Top,shared.Bottom-h));
 			Rect rect=new(x,y,w,h);
 			yield return new OverlayPreviewGeometry(item,rect,new Point(rect.Left+rect.Width*.5,rect.Top),rect.TopRight);
 		}
@@ -472,15 +531,22 @@ public sealed class BeanMaskEditor : FrameworkElement
 		return null;
 	}
 
+	// One complete preview area: every layer (frames, crop, visor, guides, crosshair, widgets,
+	// edge cues) is drawn in this single rect, so switching centres translates the whole headset
+	// scene together by exactly one fixed amount. Nothing is zoomed, resized or re-anchored, and
+	// the control chrome, pan, zoom and coordinate inspector never consume this rect. Widgets
+	// therefore share the exact same centred full-lens rectangle as crop and visor.
 	private Rect PreviewFullArea()
 	{
-		return Quest3PreviewGeometry.FitArea(RenderSize);
+		return _useOpticalPreviewCentre
+			? Quest3PreviewGeometry.FitAreaAtCentre(RenderSize, Quest3PreviewGeometry.OpticalPreviewCentreY)
+			: Quest3PreviewGeometry.FitArea(RenderSize);
 	}
 
-	// One-to-one reference: the canvas is the full uncropped binocular render, so the crop
-	// values map directly — Vertical 0.2 occupies 20% of the reference height. No zoom/fit.
+	// Reproduce native ApplyXRViewLabFov in normalized full-tangent space. The resulting crop,
+	// saved FullLens widget coordinates and drag inverse all use this same translated area.
 	private Rect PreviewCropRect(Rect area) =>
-		Quest3PreviewGeometry.CropRect(area, CropHorizontal, _cropVertical, _cropVerticalCentre);
+		Quest3PreviewGeometry.RuntimeCropRect(area, CropHorizontal, _cropTopScale, _cropBottomScale);
 
 	// Left-eye half of the crop rect — the coordinate space for pins and drags.
 	private Rect LeftEyeArea()
@@ -495,6 +561,27 @@ public sealed class BeanMaskEditor : FrameworkElement
 		Point centre = new(ActualWidth * 0.5, ActualHeight * 0.5);
 		return new Point((screen.X - _viewPan.X - centre.X) / _viewZoom + centre.X,
 			(screen.Y - _viewPan.Y - centre.Y) / _viewZoom + centre.Y);
+	}
+
+	private bool IsOverPreviewWidget(Point scenePoint)
+	{
+		foreach(OverlayPreviewGeometry geometry in OverlayPreviewGeometries(PreviewFullArea()))
+			if(geometry.Item.Editable&&geometry.Rect.Contains(scenePoint))return true;
+		return false;
+	}
+
+	private void ResetViewToStartupFit()
+	{
+		// Startup draws Quest3PreviewGeometry.FitArea at identity. Reset to that exact
+		// same path instead of calculating a second fitted rectangle here.
+		_viewZoom=1.0;_viewPan=new Vector();_panning=false;InvalidateVisual();
+	}
+
+	protected override void OnPreviewMouseRightButtonDown(MouseButtonEventArgs e)
+	{
+		base.OnPreviewMouseRightButtonDown(e);
+		if(IsOverPreviewWidget(ScenePoint(e.GetPosition(this))))return;
+		ResetViewToStartupFit();e.Handled=true;
 	}
 
 	protected override void OnMouseWheel(MouseWheelEventArgs e)
@@ -785,15 +872,16 @@ public sealed class BeanMaskEditor : FrameworkElement
 	protected override void OnPreviewMouseMove(MouseEventArgs e)
 	{
 		base.OnPreviewMouseMove(e);
+		Point inspectorPoint = ScenePoint(e.GetPosition(this));
+		if (_inspectorPoint != inspectorPoint) { _inspectorPoint = inspectorPoint; InvalidateVisual(); }
 		if(_overlayDragId!=null&&_overlayDragHandle!=OverlayPreviewHandle.None&&e.LeftButton==MouseButtonState.Pressed)
 		{
 			Point overlayMouse=ScenePoint(e.GetPosition(this));Rect overlayArea=PreviewFullArea();
 			if(_overlayDragHandle==OverlayPreviewHandle.Move)
 			{
-				Rect sharedArea=Quest3PreviewGeometry.SharedFullArea(overlayArea);
-				double x=Math.Clamp(_overlayDragStartItem.X+(overlayMouse.X-_overlayDragStartMouse.X)/Math.Max(1,sharedArea.Width),0,1);
-				double y=Math.Clamp(_overlayDragStartItem.Y+(overlayMouse.Y-_overlayDragStartMouse.Y)/Math.Max(1,sharedArea.Height),0,1);
-				OverlayPreviewChanged?.Invoke(this,new OverlayPreviewChangedEventArgs(_overlayDragId,OverlayPreviewEditKind.Position,x,y,_overlayDragStartItem.Scale));
+				Point normalized=Quest3PreviewGeometry.ApplyFullLensDrag(overlayArea,
+					new Point(_overlayDragStartItem.X,_overlayDragStartItem.Y),overlayMouse-_overlayDragStartMouse);
+				OverlayPreviewChanged?.Invoke(this,new OverlayPreviewChangedEventArgs(_overlayDragId,OverlayPreviewEditKind.Position,normalized.X,normalized.Y,_overlayDragStartItem.Scale));
 			}
 			else
 			{
@@ -905,11 +993,12 @@ public sealed class BeanMaskEditor : FrameworkElement
 	protected override void OnMouseLeave(MouseEventArgs e)
 	{
 		base.OnMouseLeave(e);
+		_inspectorPoint = null;
 		if (_dragTarget == DragTarget.None && (_hoverTarget != DragTarget.None||_overlayHoverHandle!=OverlayPreviewHandle.None))
 		{
 			_hoverTarget = DragTarget.None;_overlayHoverId=null;_overlayHoverHandle=OverlayPreviewHandle.None;Cursor=Cursors.Arrow;
-			InvalidateVisual();
 		}
+		InvalidateVisual();
 	}
 
 	private static double DistanceSquared(Point a, Point b)

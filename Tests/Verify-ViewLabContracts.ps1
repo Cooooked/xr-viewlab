@@ -35,9 +35,9 @@ function Assert-IniValue([string]$Key, [string]$Value) {
 }
 
 # ---- Default ini carries the visor shape keys -------------------------------------
-Assert-IniValue 'mask_enabled' '0'
-Assert-IniValue 'mask_size' '1.0'
-Assert-IniValue 'mask_corner' '0.5'
+Assert-IniValue 'mask_enabled' '1'
+Assert-IniValue 'mask_size' '0.93840937'
+Assert-IniValue 'mask_corner' '0.37291264'
 Assert-IniValue 'visor_hd' '0'
 Assert-IniValue 'visor_antialiasing' '0'
 Assert-IniValue 'visibility_mask_visor' '0'
@@ -56,15 +56,15 @@ Assert-IniValue 'calibration_checkerboards' '0'
 Assert-IniValue 'calibration_zone_plate' '0'
 Assert-IniValue 'calibration_clipping_steps' '0'
 Assert-IniValue 'calibration_motion_strip' '0'
-Assert-IniValue 'hud_enabled' '0'
-Assert-IniValue 'hud_anchor_x' '0.04'
-Assert-IniValue 'hud_anchor_y' '0.05'
+Assert-IniValue 'hud_enabled' '1'
+Assert-IniValue 'hud_anchor_x' '0.182'
+Assert-IniValue 'hud_anchor_y' '0.422'
 Assert-IniValue 'hud_update_ms' '100'
-Assert-IniValue 'hud_trace_sensitivity_ms' '2'
+Assert-IniValue 'hud_trace_sensitivity_ms' '8'
 Assert-IniValue 'hud_debug_values' '0'
-Assert-IniValue 'hud_safe_margin' '0.025'
-Assert-IniValue 'hud_clamp_to_visible' '1'
-Assert-IniValue 'mask_outer_apex_y' '0.0'
+Assert-IniValue 'hud_safe_margin' '0'
+Assert-IniValue 'hud_clamp_to_visible' '0'
+Assert-IniValue 'mask_outer_apex_y' '0'
 Assert-IniValue 'mask_inner_lower_y' '0.0'
 Assert-IniValue 'mask_inner_bridge_width' '0.5'
 Assert-IniValue 'mask_inner_bridge_rise' '0.0'
@@ -72,6 +72,15 @@ Assert-IniValue 'mask_inner_bridge_peak_x' '0.5'
 Assert-IniValue 'mask_inner_bridge_steepness' '0.5'
 Assert-IniValue 'visor_live_revision' '0'
 Assert-IniValue 'stencil_outer_edges_only' '1'
+Assert-IniValue 'horizontal_render_width' '0.9'
+Assert-IniValue 'total_render_height' '0.15'
+Assert-IniValue 'preview_per_eye_frames' '1'
+Assert-IniValue 'preview_circle_guides' '1'
+Assert-IniValue 'preview_ipd_mm' '67.0'
+Assert-Contains 'XRViewLab.UI\FactoryBaseline.cs' 'FactoryBaselineAppliedVersion' 'factory baseline migration has a versioned marker'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'foreach \(\(string key, string value\) in FactoryBaseline\.IniSettings\)' 'one-time migration writes only the canonical baseline keys'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'FactoryBaseline\.Resolve\(key, fallback\)' 'missing settings resolve through the canonical baseline'
+Assert-Contains 'config\factory-baseline-v4.1.255.json' '"migrationMarker": "FactoryBaselineAppliedVersion"' 'captured baseline remains machine-readable'
 
 # ---- Installer reset policy is explicit and complete -------------------------------
 Assert-NotContains 'Installer\Product.wxs' 'CleanupApiLayerRegistry' 'installer never enumerates or cleans the shared implicit OpenXR layer registry'
@@ -104,6 +113,7 @@ Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'Check\("Show desktop menu
 Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'Header\("IN-HMD MENU QUAD"\)[\s\S]*RedButton\("Reposition"[\s\S]*RedButton\("Transform"' 'complete in-HMD quad section remains present'
 Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'b\.revision != _lastAppliedRevision' 'Remote applies control state only after a real revision'
 Assert-Contains 'XRViewLab.UI\ReShadeControlService.cs' 'win_headless = 0' 'fresh desktop menu starts focusable'
+Assert-Contains 'XRViewLab.UI\ReShadeControlService.cs' 'reshade_remote_win_always_on_top' 'ReShade Remote preferences persist independently of payload state'
 Assert-Contains 'ReShadePayload\Docs\Add-Game.reference.ps1' 'KeyOverlay=36,0,0,0' 'Home remains the intended ReShade overlay key'
 $reShadePayload = Join-Path $Root 'ReShadePayload\ReShade64.dll'
 if (-not (Test-Path -LiteralPath $reShadePayload)) { throw 'Contract failed: ReShade payload is missing' }
@@ -133,6 +143,41 @@ Assert-Contains 'ProfileWindow.xaml' 'Name="VisorApexYSlider"[^>]*Minimum="-0\.5
 Assert-Contains 'ProfileWindow.xaml' 'Name="VisorInnerLowerSlider"[^>]*Minimum="0"[^>]*Maximum="0\.666"' 'profile Inner low slider range'
 Assert-Contains 'ProfileWindow.xaml' 'x:Key="ProfileScrollViewer"' 'PowerUp/profile window uses a ViewLab-themed scroll viewer'
 Assert-Contains 'ProfileWindow.xaml' 'Grid\.Column="1" Name="PART_VerticalScrollBar"' 'PowerUp/profile scrollbar has its own reserved layout column'
+Assert-Contains 'ProfileWindow.xaml' 'ProfileClockEnabled[\s\S]*ProfileHudEnabled[\s\S]*ProfileTraceEnabled[\s\S]*ProfileStickyEnabled[\s\S]*ProfileCrosshairEnabled[\s\S]*ProfileNotifyEnabled' 'profile uses the six configurable overlay rows'
+Assert-Contains 'ProfileWindow.xaml' 'Name="ProfileHudWidgetList"' 'profile HUD expansion reuses the complete widget catalogue'
+Assert-Contains 'ProfileWindow.xaml' 'Name="ProfileStickyNotesList"' 'profile Sticky Notes expansion exposes the bounded note collection'
+Assert-Contains 'ProfileWindow.xaml' 'Content="OBS Recording Cue"[\s\S]*Content="iRacing Telemetry"' 'feature modules remain simple profile checkboxes'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' '_overlayOverrides\.Clear\(\)' 'Use Global Values clears the complete profile overlay configuration'
+Assert-Contains 'dllmain.cpp' 'overlay_override_clock__clock_widget_enabled' 'native runtime resolves per-app overlay settings'
+Assert-Contains 'MainWindow.xaml' 'Content="Run Calibration Suite \(Experimental\)"' 'experimental calibration suite is explicitly labelled'
+Assert-Contains 'XRViewLab.UI\CalibrationSuite.cs' 'IOpenXrLeftEyeCaptureBackend' 'calibration suite has a native capture backend seam'
+Assert-Contains 'XRViewLab.UI\CalibrationSuite.cs' '"01-texture-grid"[\s\S]*"10-motion-strip"' 'calibration suite pins exactly ten named patterns'
+Assert-Contains 'XRViewLab.UI\CalibrationSuite.cs' 'finally[\s\S]*applyMaskAsync\(originalMask\)' 'calibration suite always restores the original state'
+Assert-Contains 'XRViewLab.UI\CalibrationSuite.cs' 'No images were generated' 'unavailable capture never creates fake images'
+Assert-Contains 'MainWindow.xaml' 'Content="Experimental: Draw in Void"' 'future Draw in Void flag is clearly experimental'
+Assert-Contains 'MainWindow.xaml' 'Name="DiagMonButton" Content="DiagMon [^\"]+"' 'DiagMon launcher uses the compact label and chevron'
+Assert-Contains 'ProfileWindow.xaml' 'Text="Nose" Visibility="Collapsed"' 'profile nose controls remain serialized but hidden'
+
+# ---- Overlays menu organisation ---------------------------------------------------
+Assert-Contains 'MainWindow.xaml' 'Name="ObsIndicatorEnabledCheck"[^>]*/><TextBlock Text="OBS Recording Cue"' 'OBS Recording Cue uses the shared checkbox and expandable-header pattern'
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingEnabledCheck"[^>]*/><TextBlock Text="iRacing Telemetry"' 'iRacing Telemetry uses the shared checkbox and expandable-header pattern'
+Assert-Contains 'MainWindow.xaml' 'Text="Lap Time Pop-up"[\s\S]*Text="Peripheral Spotter Glow"[\s\S]*Text="Flag State Border"[\s\S]*Text="Low Fuel Warning"' 'iRacing controls are grouped by their four user-facing features'
+foreach ($slider in @('IRacingLapDurationSlider','IRacingSpotterWidthSlider','IRacingSpotterStrengthSlider','IRacingSpotterOpacitySlider','IRacingSpotterFadeSlider','IRacingFlagWidthSlider','IRacingFlagOpacitySlider','IRacingFuelWarningThresholdSlider')) {
+	Assert-Contains 'MainWindow.xaml' ('<TextBlock Text="[^"]+"[^>]*/>\s*<Slider Name="{0}"' -f $slider) "$slider has its own immediately preceding label"
+}
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterRedSlider"[\s\S]*Name="IRacingSpotterGreenSlider"[\s\S]*Name="IRacingSpotterBlueSlider"' 'iRacing spotter exposes an RGB colour picker'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'IRacingSpotterRgb_Changed[\s\S]*IRacingSpotterColorKey' 'RGB picker persists through the existing telemetry colour key'
+Assert-Contains 'MainWindow.xaml' 'Presentation tests \(no live connection required\)[\s\S]*IRacingTestLeft_Click[\s\S]*IRacingTestBlue_Click' 'iRacing presentation tests remain available without a connection'
+Assert-Contains 'MainWindow.xaml' 'Text="Performance Trace"[\s\S]*</Expander>\s*<Separator Margin="0,8,0,7"[^>]*/>\s*<Expander IsExpanded="False">\s*<Expander.Header><DockPanel Width="275"><CheckBox Name="StickyNoteEnabledCheck"' 'Performance Trace and Sticky Notes retain the standard divider'
+Assert-Contains 'MainWindow.xaml' 'Text="Performance HUD"' 'HUD is presented as Performance HUD'
+Assert-Contains 'ProfileWindow.xaml' 'Text="Performance HUD"' 'per-app HUD uses the corrected name'
+$overlayMenu = Get-Content -LiteralPath (Join-Path $Root 'MainWindow.xaml') -Raw
+$drawInVoidOffset = $overlayMenu.IndexOf('Name="ExperimentalDrawInVoidCheck"', [StringComparison]::Ordinal)
+$obsMirrorOffset = $overlayMenu.IndexOf('Text="SHOW IN OBS MIRROR"', [StringComparison]::Ordinal)
+if ($drawInVoidOffset -lt 0 -or $obsMirrorOffset -le $drawInVoidOffset) { throw 'Contract failed: Show in OBS Mirror must be the final overlays section' }
+foreach ($check in @('ObsMirrorVisorCheck','ObsMirrorClockCheck','ObsMirrorNotificationsCheck','ObsMirrorHudCheck','ObsMirrorTraceCheck','ObsMirrorCrosshairCheck','ObsMirrorStickyCheck','ObsMirrorRecordingCueCheck','ObsMirrorRacingCheck','ObsMirrorBoundaryCheck')) {
+	if ($overlayMenu.IndexOf(('Name="{0}"' -f $check), $obsMirrorOffset, [StringComparison]::Ordinal) -lt 0) { throw "Contract failed: final mirror section is missing $check" }
+}
 
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'private const string MaskOuterApexYKey = "mask_outer_apex_y";' 'main window has Apex Y config key'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'private const string MaskInnerLowerYKey = "mask_inner_lower_y";' 'main window has Inner low config key'
@@ -173,7 +218,8 @@ Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'OnPreviewMouseLeftButtonDown' 
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'SetSliderValue\(MaskApexYSlider, MaskBeanEditor\.OuterApexY\);' 'main window syncs dragged editor apex back to sliders'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'MaskBeanEditor\.InnerBridgeWidth = FixedInnerBridgeWidth;' 'main preview uses the fixed supported notch shape'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'VisorApexYSlider\.Value = MaskBeanEditor\.OuterApexY;' 'profile window syncs dragged editor apex back to sliders'
-Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'VisorInnerBridgeSlider\.Value = MaskBeanEditor\.InnerBridgeWidth;' 'profile window syncs dragged bridge pin back to sliders'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'VisorWidthSlider\.Value = MaskBeanEditor\.WidthScale;' 'profile window syncs dragged width geometry back to the current slider model'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'VisorHeightSlider\.Value = MaskBeanEditor\.HeightScale;' 'profile window syncs dragged height geometry back to the current slider model'
 
 # ---- Native layer: config plumbing ------------------------------------------------
 Assert-Contains 'dllmain.cpp' 'visorOuterApexY = std::clamp\(ReadDoubleSetting\(L"mask_outer_apex_y", 0\.0\), -0\.5, 0\.5\);' 'native reads and clamps global Apex Y'
@@ -192,7 +238,9 @@ Assert-NotContains 'MainWindow.xaml' 'LiveVisorTuningCheck' 'obsolete live visor
 Assert-NotContains 'xr-viewlab.ini' 'live_visor_tuning' 'obsolete live visor tuning key is removed from defaults'
 Assert-Contains 'dllmain.cpp' 'g_liveStateNextConnectTick = now \+ 1000' 'closed settings app reconnects live-state shared memory at a bounded cadence'
 Assert-NotContains 'dllmain.cpp' 'VoidQuadState|EnsureVoidQuad|drawInVoidTest' 'Draw in the Void experiment is fully removed from the native layer'
-Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'DrawInVoidTestKey|DrawInVoidCheck' 'Draw in the Void experiment is removed from the settings UI'
+Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'DrawInVoidTestKey' 'obsolete Draw in the Void test route remains removed'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ExperimentalDrawInVoidKey = "experimental_draw_in_void"' 'future Draw in Void request is persisted without changing the renderer'
+Assert-Contains 'dllmain.cpp' 'experimentalDrawInVoid = ReadBoolSetting' 'native startup receives the future Draw in Void flag'
 Assert-Contains 'dllmain.cpp' 'forefront diag: VIEWLAB_LOADED' 'Forefront layer-entry diagnostic is logged when the process loads ViewLab'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", MaskInnerLowerYKey, FormatStorageScale\(MaskInnerLowerSlider\.Value\)' 'UI persists expanded Inner low to the live INI'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", MaskInnerBridgeRiseKey, FormatStorageScale\(FixedInnerBridgeRise\)' 'UI resets removed Rise tuning to the supported shape'
@@ -240,7 +288,8 @@ Assert-Contains 'dllmain.cpp' 'visibilityMaskVisor = false;' 'legacy visibility-
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.SetValue\("mask_inner_bridge_rise", ToRiseMillis\(visorInnerBridgeRise\)' 'UI writes extended per-app bridge rise'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.SetValue\("mask_inner_bridge_peak_x", ToPeakXMillis\(visorInnerBridgePeakX\)' 'UI writes extended per-app bridge peak x without breaking legacy profiles'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.SetValue\("mask_inner_bridge_steepness", ToSteepMillis\(visorInnerBridgeSteepness\)' 'UI writes extended per-app bridge steepness'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.DeleteValue\("mask_enabled", throwOnMissingValue: false\);' 'UI does not write unsupported per-app visor enable override'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.SetValue\("mask_enabled", maskEnabled \? 1 : 0, RegistryValueKind\.DWord\);' 'UI persists a custom per-app visor enable override'
+Assert-Contains 'dllmain.cpp' 'ReadProfileDword\(L"mask_enabled", profileMaskEnabled\);' 'native profile loader consumes the per-app visor enable override'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.DeleteValue\("mask_inner_bridge_rise"' 'UI reset deletes per-app bridge rise'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.DeleteValue\("mask_inner_bridge_peak_x"' 'UI reset deletes per-app bridge peak x'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'registryKey\.DeleteValue\("mask_inner_bridge_steepness"' 'UI reset deletes per-app bridge steepness'
@@ -254,17 +303,20 @@ Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'UseGlobalValues = true;' 'expli
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' '_initialized = true;' 'profile window enables event handlers after manual initialization'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'LoadCustomVisorValues\(\);' 'profile use-global toggle can restore original custom values'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'SyncMaskEditorFromSliders\(\);' 'profile use-global toggle updates preview'
-Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'VisorEnabledCheck\.IsEnabled = false;' 'profile editor disables unsupported per-app visor enable'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'VisorEnabledCheck\.IsEnabled = enabled;' 'profile editor enables visor state for custom profiles'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'MaskBeanEditor\.SetVisorVisible\(VisorEnabledCheck\?\.IsChecked == true\);' 'profile preview uses active red visor styling when enabled'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'MaskBeanEditor\.IsEnabled = enabled;' 'profile preview pins disable in use-global mode'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'FromMillis\(appKey\.GetValue\("mask_inner_bridge_width"\), 0\.5\)' 'missing per-app bridge width falls back to safe centered default'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'MaskRoundedCheck\.IsChecked = ReadBoolSetting\(MaskRoundedKey, fallback: true\);' 'main window loads mask_rounded instead of hardcoding it'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", MaskRoundedKey, MaskRoundedCheck\.IsChecked == true \? "1" : "0", ConfigPath\);' 'main window saves mask_rounded from the roundness checkbox'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'double fallbackMaskCorner = ReadScaleSetting\(MaskCornerKey, 0\.5\);' 'per-app profile fallback uses canonical mask_corner default'
 Assert-Contains 'XRViewLab.UI\AppProfile.cs' 'return \$"\{Top:0\.###\};\{Bottom:0\.###\};\{Horizontal:0\.###\};\{RenderScale \* 100\.0:0\.####\}%";' 'app summary does not claim unsupported per-app visor enable'
-Assert-Contains 'ProfileWindow.xaml' 'Name="VisorInnerBridgeRiseSlider"[^>]*Minimum="-0\.5"[^>]*Maximum="1"' 'profile extended bridge rise slider range'
 Assert-Contains 'ProfileWindow.xaml' 'Name="VisorSizeSlider"[^>]*Minimum="0\.1"[^>]*Maximum="1"' 'profile Size slider range'
-Assert-Contains 'ProfileWindow.xaml' 'Name="VisorInnerBridgePeakXSlider"[^>]*Minimum="-1"[^>]*Maximum="2"' 'profile extended bridge Peak X slider range'
-Assert-Contains 'ProfileWindow.xaml' 'Name="VisorInnerBridgeSteepnessSlider"[^>]*Minimum="-1"[^>]*Maximum="2"' 'profile extended bridge steepness slider range'
+Assert-Contains 'ProfileWindow.xaml' 'Name="VisorWidthSlider"[^>]*Minimum="0\.25"[^>]*Maximum="2"' 'profile Width slider matches main range'
+Assert-Contains 'ProfileWindow.xaml' 'Name="VisorHeightSlider"[^>]*Minimum="0\.25"[^>]*Maximum="2"' 'profile Height slider matches main range'
+Assert-Contains 'ProfileWindow.xaml' 'Text="Outer Dip"' 'profile exposes the current Outer Dip control'
+Assert-Contains 'ProfileWindow.xaml' 'Text="Nose"' 'profile exposes the current Nose control'
+Assert-NotContains 'ProfileWindow.xaml' 'Text="Apex Y"|Text="Inner low"|Name="VisorOffsetXSlider"|Name="VisorOffsetYSlider"' 'obsolete per-app visor controls are removed'
 
 # ---- Pass 4 robustness contracts ---------------------------------------------------
 Assert-Contains 'dllmain.cpp' 'CachedRtvFor\(const TrackedSwapchain& ts, uint32_t imageIndex, uint32_t arraySlice\)' 'RTVs are cached per swapchain image/slice'
@@ -357,9 +409,9 @@ foreach ($key in @('hud_trace_x', 'hud_trace_y', 'hud_trace_scale', 'hud_trace_w
 }
 Assert-Contains 'MainWindow.xaml' 'Name="HudSafeMarginSlider"' 'HUD safe-margin control exists'
 Assert-Contains 'dllmain.cpp' 'hudClampToVisible' 'HUD clamps complete bounds to the visible eye rectangle'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 264' 'live state carries OBS mirror controls'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 9u\)' 'live state contract is version 9'
-Assert-Contains 'dllmain.cpp' 'snapshot\.version != 9' 'DLL consumes live-state contract version 9'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 268' 'live state carries OBS mirror controls'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 10u\)' 'live state contract is version 10'
+Assert-Contains 'dllmain.cpp' 'snapshot\.version != 10' 'DLL consumes live-state contract version 10'
 Assert-NotContains 'MainWindow.xaml' 'TopmostVisorOverlaysCheck' 'ordinary UI does not expose backend implementation choice'
 Assert-Contains 'dllmain.cpp' '!ReadBoolSetting\(L"overlay_force_direct", false\)' 'automatic topmost is the normal session policy'
 Assert-Contains 'dllmain.cpp' 'maskEnabled && g_featurePresentationPlan\.drawDirectVisor' 'central policy gates the direct visor path'
@@ -404,6 +456,26 @@ Assert-Contains 'dllmain.cpp' 'g_boundaryReleaseTick = GetTickCount64' 'boundary
 Assert-Contains 'dllmain.cpp' 'BoundaryFlashActive' 'boundary flash gates its own draw'
 Assert-Contains 'MainWindow.xaml' 'Thumb.DragStarted="BoundaryDrag_Start"' 'HUD/trace layout sliders raise the boundary-flash drag signal'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' '_boundaryDragActive = true' 'UI sets the drag-active flag while dragging layout controls'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"iRACING TELEMETRY"[\s\S]*OverlayPreviewAnchor\.RenderEdge' 'iRacing preview uses the post-crop boundary rather than the full-lens guide'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'Anchor==OverlayPreviewAnchor\.RenderEdge[\s\S]*PreviewCropRect\(area\)' 'render-edge feature previews follow the current crop rectangle'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"OBS RECORDING CUE"[\s\S]*OverlayPreviewAnchor\.RecordingRenderEdge' 'main OBS preview follows the post-crop boundary'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' '"OBS RECORDING CUE"[\s\S]*OverlayPreviewAnchor\.RecordingRenderEdge' 'per-app OBS preview follows the post-crop boundary'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'Anchor==OverlayPreviewAnchor\.RecordingRenderEdge[\s\S]*OverlayPreviewGeometry\(item,crop' 'OBS preview uses exact crop bounds'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'RecordingRenderEdge[\s\S]*rect\.Bottom-15/_viewZoom' 'OBS preview label remains distinct at bottom-left'
+Assert-Contains 'XRViewLab.UI\Quest3PreviewGeometry.cs' 'ResolveFullLens\(Rect area[\s\S]*ApplyFullLensDrag\(Rect area' 'forward and inverse preview transforms share the full-lens rectangle'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'ResolveFullLens\(area,item\.X,item\.Y\+WidgetPreviewShimY\)[\s\S]*ApplyFullLensDrag\(overlayArea' 'ordinary widget placement applies the permanent widget shim while dragging stays delta-based'
+# Item 9: the measured desktop-preview/HMD widget correction is a single permanent 0.077 full-lens Y shim,
+# distinct from the optional optical-centre transform, and is never applied to saved coordinates.
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'WidgetPreviewShimY\s*=\s*0\.077' 'permanent widget preview shim pins the measured +0.077 full-lens Y correction'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'ApplyFullLensDrag\(overlayArea,[\s\S]*_overlayDragStartItem\.X,_overlayDragStartItem\.Y\),overlayMouse-_overlayDragStartMouse' 'widget dragging is delta-based so the shim never changes saved coordinates'
+Assert-Contains 'Tests\Verify-Quest3PreviewAndProfiles.ps1' 'crop clips that coordinate system; it does not redefine it' 'live HUD, Trace and Clock fixtures preserve full-lens coordinates'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, area\)[\s\S]*ResolveCentredOffset\(sizeReference,_crosshairOffsetX,_crosshairOffsetY\)' 'crosshair position uses the shared preview centre'
+Assert-Contains 'XRViewLab.UI\DiagMonDarkStyles.xaml' 'Style TargetType="ComboBoxItem"[\s\S]*Style TargetType="DataGridColumnHeader"[\s\S]*Style TargetType="DataGridCell"' 'DiagMon dropdowns and tables use explicit dark styles'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'OnPreviewMouseRightButtonDown[\s\S]*IsOverPreviewWidget[\s\S]*ResetViewToStartupFit' 'non-widget right-click resets shared preview navigation'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'ResetViewToStartupFit\(\)[\s\S]*_viewZoom=1\.0;_viewPan=new Vector\(\)' 'preview reset restores startup fit and clears pan'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'canonical feature settings win when both exist' 'profile preview matches native canonical-over-layout precedence'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'ReferenceWidth = Math\.Max\(1, _profileHudWidgets\.Count\(widget => widget\.Enabled\)\)' 'profile HUD footprint uses its effective enabled widget count'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' '_overlayOverrides\.Set\(e\.Id, definition\.XKey[\s\S]*_overlayOverrides\.Set\(e\.Id, definition\.YKey' 'profile drag synchronizes canonical runtime coordinates'
 
 # Feature 2: crosshair — flat colour+alpha at the stereo centre; legacy config + CS2 share-code import.
 Assert-Contains 'dllmain.cpp' 'crosshairEnabled&&OverlayFeatureVisible\(OverlayFeatureId::Crosshair\) && crosshairAlpha' 'crosshair draws only when enabled and visible'
@@ -422,7 +494,7 @@ Assert-Contains 'MainWindow.xaml' 'Name="CrosshairOverlayPreview"' 'Overlays men
 Assert-Contains 'MainWindow.xaml' 'Name="CrosshairOffsetXSlider"[^>]*MouseRightButtonUp="CrosshairOffset_ResetRightClick"' 'horizontal crosshair offset supports direct right-click reset'
 Assert-Contains 'MainWindow.xaml' 'Name="CrosshairOffsetYSlider"[^>]*MouseRightButtonUp="CrosshairOffset_ResetRightClick"' 'vertical crosshair offset supports direct right-click reset'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'CrosshairOffset_ResetRightClick[\s\S]*?CrosshairOffsetXSlider\.Value = 0[\s\S]*?CrosshairOffsetYSlider\.Value = 0' 'crosshair right-click handler resets either offset to zero'
-Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, area\)' 'visor preview keeps the fused crosshair in crop-independent full-binocular coordinates'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, area\)' 'visor preview keeps one crosshair on the shared visual centre'
 Assert-NotContains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, rightEye\)' 'visor preview does not expose raw per-eye crosshair duplication'
 Assert-Contains 'XRViewLab.UI\CrosshairPreview.cs' '1\.125\*VrScale' 'Overlays crosshair preview uses the calibrated half-size display scale'
 foreach ($key in @('crosshair_enabled','crosshair_size','crosshair_gap','crosshair_thickness','crosshair_alpha','crosshair_color','crosshair_tstyle')) {
@@ -433,6 +505,9 @@ foreach ($key in @('crosshair_enabled','crosshair_size','crosshair_gap','crossha
 # Feature 3: notifications — textured card path, separate content mapping, off-render-thread collection.
 Assert-Contains 'dllmain.cpp' 'kTexturedPS' 'notification cards use the textured pixel shader'
 Assert-Contains 'dllmain.cpp' 'Local\\\\XRViewLabNotifications' 'notification content bridge uses a dedicated mapping'
+Assert-Contains 'dllmain.cpp' 'Local\\\\XRViewLabActiveProfileV1' 'native layer publishes the active app key for out-of-process providers'
+Assert-Contains 'NotificationBroker\Program.cs' 'Local\\\\XRViewLabActiveProfileV1' 'notification broker follows the active native profile'
+Assert-Contains 'NotificationBroker\Program.cs' 'overlay_override_notifications__' 'notification broker resolves per-app notification options before global settings'
 Assert-Contains 'dllmain.cpp' 'EnsureNotifyCardTexture' 'notification card pixels upload only on content change'
 Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'UserNotificationListener' 'notification collection uses the WinRT UserNotificationListener'
 Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'RequestAccessAsync' 'notification service requests listener access'
@@ -609,12 +684,12 @@ foreach ($key in @('clock_widget_enabled','clock_widget_x','clock_widget_y','clo
     Assert-Contains 'XRViewLab.UI\OverlaySettingsModels.cs' $key "shared overlay catalogue persists $key"
     Assert-Contains 'dllmain.cpp' $key "native layer reads $key"
 }
-Assert-IniValue 'clock_widget_enabled' '0'
+Assert-IniValue 'clock_widget_enabled' '1'
 Assert-Contains 'dllmain.cpp' 'g_clockSessionStartTick\.store\(GetTickCount64\(\)' 'session timer starts at successful OpenXR session creation'
 Assert-Contains 'dllmain.cpp' 'g_clockSessionStartTick\.store\(0' 'session timer resets at OpenXR session destruction'
 Assert-Contains 'dllmain.cpp' 'clockWidgetEnabled&&OverlayFeatureVisible\(OverlayFeatureId::Clock\)' 'clock participates in the common direct/topmost overlay gate'
 Assert-Contains 'dllmain.cpp' 'viewlab::clock_widget::Format' 'native renderer uses the tested clock formatter'
-Assert-Contains 'MainWindow.xaml' 'CLOCK \+ SESSION' 'clock widget has dedicated ordinary settings UI'
+Assert-Contains 'MainWindow.xaml' 'Text="Clock"[\s\S]*ClockSessionTimerCheck' 'clock widget has dedicated expandable settings UI'
 if (Test-Path -LiteralPath (Join-Path $Root 'XRViewLab.UI\HistoryService.cs')) { throw 'Contract failed: removed technical-history service returned' }
 Assert-NotContains 'NotificationBroker\Program.cs' 'clear-history|HistoryService' 'broker no longer owns experimental generic history'
 
@@ -667,7 +742,15 @@ Assert-Contains 'XRViewLab.UI\ObsRecordingProvider.cs' 'GetRecordStatus' 'indica
 Assert-Contains 'XRViewLab.UI\ObsRecordingProvider.cs' 'Local\\\\XRViewLabObsRecordingState' 'OBS state uses a dedicated broker-to-native mapping'
 Assert-Contains 'dllmain.cpp' 'ObsRecordingActive' 'native renderer consumes OBS recording state'
 Assert-Contains 'dllmain.cpp' 'Capture exclusion is unclaimed' 'native source preserves capture-exclusion caveat'
-Assert-Contains 'MainWindow.xaml' 'Capture exclusion is unverified' 'UI does not make an untested exclusion claim'
+Assert-Contains 'MainWindow.xaml' 'Uses OBS WebSocket to detect when OBS is recording\.' 'OBS setup uses the approved concise description'
+Assert-Contains 'MainWindow.xaml' 'Text="Host / IP"[\s\S]*Text="Port"[\s\S]*Text="Password"' 'OBS setup labels supported endpoint fields clearly'
+Assert-Contains 'MainWindow.xaml' 'MouseLeftButtonUp="ObsHelp_Click"' 'OBS setup exposes built-in help'
+Assert-NotContains 'MainWindow.xaml' 'Capture exclusion is unverified' 'obsolete OBS capture-exclusion warning is removed from the setup panel'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings",ObsWebSocketUrlKey,BuildObsWebSocketEndpoint\(\)' 'OBS host and port persist through the existing endpoint key'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ObsWebSocketPasswordBox\.Password' 'OBS password persists through the existing password key'
+Assert-Contains 'XRViewLab.UI\NotificationBrokerClient.cs' 'RefreshObsStatus' 'OBS connection state is visible in the UI'
+Assert-Contains 'XRViewLab.UI\ObsRecordingProvider.cs' 'AuthenticationFailed' 'OBS provider distinguishes authentication failure'
+Assert-Contains 'XRViewLab.UI\ObsRecordingProvider.cs' 'active\?ObsConnectionState\.Recording:ObsConnectionState\.Connected' 'OBS recording start and stop publish exact cue states'
 Assert-IniValue 'obs_indicator_enabled' '0'
 
 Assert-Contains 'XRViewLab.UI\MediaSessionEventProvider.cs' 'GlobalSystemMediaTransportControlsSessionManager' 'music provider uses Windows Now Playing state'
@@ -675,7 +758,7 @@ Assert-Contains 'XRViewLab.UI\MediaSessionEventProvider.cs' '_manager\.CurrentSe
 Assert-Contains 'XRViewLab.UI\MediaSessionEventProvider.cs' '_manager\.CurrentSessionChanged -= OnCurrentSessionChanged' 'music provider unregisters the exact handler'
 Assert-Contains 'NotificationBroker\Program.cs' 'EnqueueMediaCard' 'track changes enter the brief notification card pipeline'
 Assert-NotContains 'XRViewLab.UI\MediaSessionEventProvider.cs' 'TryPlayAsync|TryPauseAsync|TrySkipNextAsync|TrySkipPreviousAsync' 'music feature has no transport controls'
-Assert-IniValue 'media_notify_enabled' '0'
+Assert-IniValue 'media_notify_enabled' '1'
 
 # DiagMon capture must survive target exit, own its collector output, and keep tests away from live data.
 Assert-Contains 'XRViewLab.UI\DiagMonCaptureService.cs' 'FinalizeWhenCaptureLoopEndsAsync' 'natural target exit and Trace timeout automatically finalise capture'
@@ -691,5 +774,58 @@ if (-not (Test-Path -LiteralPath $presentMonBinary)) { throw 'Contract failed: p
 $presentMonHash = (Get-FileHash -LiteralPath $presentMonBinary -Algorithm SHA256).Hash
 if ($presentMonHash -ne 'D74183E7AE630F72CD3690BE0373ECBFDC6CBB86578148AAB8FA2A7166068F34') { throw "Contract failed: pinned PresentMon hash changed: $presentMonHash" }
 Assert-Contains 'ThirdParty\PresentMon\LICENSE.txt' 'Permission is hereby granted' 'PresentMon MIT notice ships with the collector'
+
+# Calibration-suite left-eye capture: one shared control block, native heartbeat/serials,
+# real PNG output, no placeholder files.
+Assert-Contains 'dllmain.cpp' 'struct CalibrationCaptureBlock' 'native capture control block exists'
+Assert-Contains 'dllmain.cpp' 'XRViewLabCalibrationCapture' 'native capture opens the shared control block'
+Assert-Contains 'dllmain.cpp' 'ProcessCalibrationCaptureRequest\(\)' 'capture requests are processed at the submitted-frame capture point'
+Assert-Contains 'dllmain.cpp' 'GUID_ContainerFormatPng' 'capture writes a real PNG via WIC'
+Assert-Contains 'XRViewLab.UI\CalibrationCaptureBackend.cs' 'XRViewLabCalibrationCapture' 'UI backend shares the capture control block name'
+Assert-Contains 'XRViewLab.UI\CalibrationCaptureBackend.cs' 'private const int BlockSize = 16 \+ 8 \+ 8 \+ 96 \* 2 \+ 512 \* 2' 'UI capture block size matches native'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'CalibrationCaptureBackendFactory\.Create\(\)' 'calibration suite uses the native capture backend'
+Assert-Contains 'XRViewLab.UI\CalibrationSuite.cs' 'await applyMaskAsync\(originalMask\)' 'calibration suite always restores prior state'
+Assert-Contains 'XRViewLab.UI\CalibrationSuite.cs' 'WaitForSettledFramesAsync\(6, cancellationToken\)' 'calibration suite waits for six submitted frames rather than a wall-clock guess'
+Assert-Contains 'XRViewLab.UI\CalibrationCaptureBackend.cs' 'deadline = Environment\.TickCount64 \+ 10000[\s\S]*ThrowIfCancellationRequested' 'native capture wait has a bounded timeout and cancellation check'
+Assert-Contains 'XRViewLab.UI\CalibrationCaptureBackend.cs' 'catch \(OperationCanceledException\)[\s\S]*OffCancelledSerial, serial' 'UI cancellation is published to the native capture worker'
+Assert-Contains 'dllmain.cpp' 'CalibrationCaptureCancelled\(requested\)[\s\S]*filesystem::remove\(pngPath[\s\S]*filesystem::remove\(metadataPath' 'cancelled native work removes incomplete output'
+Assert-Contains 'dllmain.cpp' 'bool WriteCaptureMetadata[\s\S]*return meta\.good\(\)' 'metadata write success is verified'
+Assert-Contains 'dllmain.cpp' 'metadata write failed[\s\S]*filesystem::remove\(pngPath' 'metadata failure cannot report a successful incomplete capture'
+Assert-Contains 'Tests\CalibrationSuiteFixtures\Program.cs' 'CancellationRestores[\s\S]*ApplyFailureRestores' 'calibration orchestration fixtures cover cancellation and failure restoration'
+
+# OBS mirror routing: draws after xrBeginFrame has passed down the chain, never after xrEndFrame,
+# so the third-party mirror layer''s deferred compositor copy cannot overwrite ViewLab content.
+Assert-Contains 'dllmain.cpp' 'nextXrBeginFrame\(session, frameBeginInfo\);[\s\S]{0,600}DrawObsMirrorSurface\(\)' 'mirror drawing happens after xrBeginFrame returns'
+Assert-NotContains 'dllmain.cpp' 'nextXrEndFrame\(session, submittedTopmost \? &submittedInfo : frameEndInfo\);\r?\n\s*if \(XR_SUCCEEDED\(result\) && primaryProjection[^\r\n]*\r?\n\s*DrawObsMirrorSurface' 'mirror drawing no longer races the end-frame copy'
+
+# Clock/notification theme vs palette separation with legacy migration.
+Assert-Contains 'dllmain.cpp' 'clockWidgetPalette' 'native clock palette state exists'
+Assert-Contains 'dllmain.cpp' 'clock_widget_palette' 'native reads the clock palette key'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ClockPaletteKey="clock_widget_palette"' 'UI persists the clock palette key'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'NotifyPaletteKey="notify_palette"' 'UI persists the notification palette key'
+Assert-Contains 'NotificationBroker\Program.cs' 'notify_palette' 'broker reads the notification palette key'
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'public int Palette' 'notification settings separate palette from design'
+Assert-IniValue 'clock_widget_theme' '0'
+Assert-IniValue 'clock_widget_palette' '2'
+Assert-IniValue 'notify_palette' '0'
+Assert-Contains 'dllmain.cpp' 'if\(storedPalette<0\.0\)\{clockWidgetPalette=\(uint32_t\)storedTheme;clockWidgetTheme=0;\}' 'legacy clock themes migrate to palettes'
+Assert-Contains 'NotificationBroker\Program.cs' 'storedPalette < 0 \? \(int\)storedTheme : \(int\)storedPalette' 'legacy notification themes migrate to palettes'
+
+# ViewLab Mirror OBS plugin payload and per-user installer.
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'obs_module_load' 'ViewLab Mirror plugin implements the OBS module ABI'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab_mirror_contract.h' 'XRViewLabMirrorSurface' 'plugin frame-transfer contract is defined'
+Assert-Contains 'Installer\Product.wxs' 'viewlab-mirror\.dll' 'MSI carries the ViewLab Mirror plugin payload'
+Assert-Contains 'build.ps1' 'ViewLabMirrorPlugin.vcxproj' 'full build produces the ViewLab Mirror plugin'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'InstallViewLabMirrorPlugin_Click' 'UI installs the plugin'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'obs-studio", "plugins", "viewlab-mirror"' 'plugin installs to the per-user OBS location'
+Assert-Contains 'ViewLabMirrorPlugin\LICENSE' 'GNU General Public License' 'plugin licence is recorded'
+
+# The Quest 3 lens-outline preview feature was removed; assert no plumbing, geometry, UI or
+# rendering survives. An old saved preview_lens_outlines key is harmlessly ignored.
+Assert-NotContains 'XRViewLab.UI\Quest3PreviewGeometry.cs' 'Quest3LensOutlines' 'lens outline vector geometry is gone'
+Assert-NotContains 'XRViewLab.UI\Quest3PreviewGeometry.cs' 'LensNasalChordX' 'lens outline constants are gone'
+Assert-NotContains 'XRViewLab.UI\BeanMaskEditor.cs' 'ShowQuest3LensOutlines' 'lens outline rendering is gone'
+Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'preview_lens_outlines' 'lens outline persistence is gone'
+Assert-NotContains 'MainWindow.xaml' 'PreviewLensOutlinesCheck' 'lens outline toggle is gone'
 
 Write-Host 'ViewLab contract verification passed.'

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.IO.MemoryMappedFiles;
 using System.Text.Json;
 
 namespace XRViewLab.UI;
@@ -116,5 +117,20 @@ internal sealed class NotificationBrokerClient
             return $"{state} — {detail}";
         }
         catch (Exception ex) { return $"Provider status unavailable ({ex.GetType().Name})."; }
+    }
+
+    public string RefreshObsStatus()
+    {
+        try
+        {
+            using MemoryMappedFile map = MemoryMappedFile.OpenExisting("Local\\XRViewLabObsRecordingState", MemoryMappedFileRights.Read);
+            using MemoryMappedViewAccessor view = map.CreateViewAccessor(0, 16, MemoryMappedFileAccess.Read);
+            int magic = view.ReadInt32(0), version = view.ReadInt32(4), firstGeneration = view.ReadInt32(8);
+            int state = view.ReadInt32(12);
+            int stableGeneration = view.ReadInt32(8);
+            if (magic != 0x314F4C56 || version != 1 || firstGeneration != stableGeneration) return "Disconnected";
+            return state switch { 3 => "Connecting", 1 or 2 => "Connected", 4 => "Authentication failed", _ => "Disconnected" };
+        }
+        catch { return "Disconnected"; }
     }
 }

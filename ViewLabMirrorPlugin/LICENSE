@@ -1,0 +1,20 @@
+ViewLab Mirror OBS plugin
+Copyright (C) 2026 Cooooked
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <https://www.gnu.org/licenses/>.
+
+Notes:
+- libobs C ABI declarations in obs_abi.h are transcribed from obs-studio
+  (https://github.com/obsproject/obs-studio), GPL-2.0-or-later.
+- Reference implementation studied (not copied): Jabbah/OpenXR-Layer-OBSMirror (MIT).
