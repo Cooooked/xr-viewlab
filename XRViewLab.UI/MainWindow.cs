@@ -2286,6 +2286,12 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		if(MaskBeanEditor==null)return;
 		MaskBeanEditor.SetOverlayPreviews(BuildOverlayPreviewItems());MaskBeanEditor.SetCrosshair(_crosshair,CrosshairEnabledCheck.IsChecked==true,CrosshairOffsetXSlider.Value,CrosshairOffsetYSlider.Value);
+		// Representative "active" states so the user sees each cue's real shape when it is enabled.
+		int raceStart = IRacingRaceStartCheck.IsChecked==true ? 2 : 0;
+		double rearWidth = IRacingRearClosingCheck.IsChecked==true ? 0.6 : 0.0;
+		int gripDir = IRacingGripBarCheck.IsChecked==true ? 1 : 0;
+		double gripSev = IRacingGripBarCheck.IsChecked==true ? 0.6 : 0.0;
+		MaskBeanEditor.SetIRacingCuePreview(raceStart, rearWidth, gripDir, gripSev);
 	}
 
 	private void MaskBeanEditor_OverlayPreviewChanged(object? sender,OverlayPreviewChangedEventArgs e)

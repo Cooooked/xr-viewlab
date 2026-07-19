@@ -828,6 +828,14 @@ Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'new Rect\(0, 0, w, 24\)' 
 Assert-IniValue 'clock_widget_theme' '0'
 Assert-IniValue 'clock_widget_palette' '2'
 Assert-IniValue 'notify_palette' '0'
+# Items 4/5/6: the three new iRacing cues have real desktop previews whose geometry matches the native
+# renderer (not just a generic edge placeholder).
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'void DrawIRacingCuePreviews\(DrawingContext dc, Rect crop\)' 'iRacing cues have a real preview renderer'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'halfW=\(0\.10\+0\.30\*_rearClosingPreview\)\*w\*0\.5' 'rear-closing preview width uses the native 0.10+0.30 mapping'
+Assert-Contains 'dllmain.cpp' 'halfW = \(0\.10f \+ 0\.30f \* wd\) \* w \* 0\.5f' 'rear-closing native width uses the same 0.10+0.30 mapping'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'barW=\(0\.10\+0\.35\*sev\)\*w\*0\.5' 'grip preview bar width uses the native 0.10+0.35 mapping'
+Assert-Contains 'dllmain.cpp' 'barW = \(0\.10f \+ 0\.35f \* sev\)' 'grip native bar width uses the same 0.10+0.35 mapping'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'MaskBeanEditor\.SetIRacingCuePreview\(raceStart, rearWidth' 'main editor drives the real iRacing cue previews'
 # Item 5: Race-start border light wired end-to-end (provider -> racing state -> native render + settings).
 Assert-Contains 'XRViewLab.UI\ViewLabEvents.cs' 'RaceStart,' 'race-start event kind exists'
 Assert-Contains 'XRViewLab.UI\IRacingCues.cs' 'internal static class RaceStartFlags' 'race-start phase mapping is a shared testable helper'

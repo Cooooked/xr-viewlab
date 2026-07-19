@@ -40,6 +40,12 @@ public sealed class BeanMaskEditor : FrameworkElement
 	private CrosshairSettings? _crosshair;
 	private bool _crosshairVisible;
 	private double _crosshairOffsetX,_crosshairOffsetY;
+	// Real iRacing-cue desktop previews (drawn as the native runtime would, in the post-crop rect).
+	private int _raceStartPreview;      // 0 off, 1 waiting/red, 2 started/green
+	private double _rearClosingPreview; // 0 off, else glow width fraction 0..1 (intensity implied)
+	private int _gripPreview;           // 0 off, 1 mild-left..; direction encoded in sign, severity in magnitude
+	private int _gripPreviewDir;        // -1 left, +1 right
+	private double _gripPreviewSeverity;
 	private readonly List<OverlayPreviewItem> _overlayPreviews = new();
 	private string? _overlayDragId;
 	private OverlayPreviewHandle _overlayDragHandle;
@@ -96,6 +102,14 @@ public sealed class BeanMaskEditor : FrameworkElement
 	internal void SetOverlayPreviews(IEnumerable<OverlayPreviewItem> items)
 	{
 		_overlayPreviews.Clear(); _overlayPreviews.AddRange(items); InvalidateVisual();
+	}
+
+	// Drive the real iRacing-cue previews. raceStart: 0 off/1 red/2 green. rearWidth: 0 off else 0..1.
+	// gripDir: -1 left/0 off/+1 right; gripSeverity 0..1. Shared mapping with the native renderer.
+	internal void SetIRacingCuePreview(int raceStart, double rearWidth, int gripDir, double gripSeverity)
+	{
+		if(_raceStartPreview==raceStart&&Math.Abs(_rearClosingPreview-rearWidth)<1e-6&&_gripPreviewDir==gripDir&&Math.Abs(_gripPreviewSeverity-gripSeverity)<1e-6)return;
+		_raceStartPreview=raceStart;_rearClosingPreview=rearWidth;_gripPreviewDir=gripDir;_gripPreviewSeverity=Math.Clamp(gripSeverity,0,1);_gripPreview=gripDir==0?0:1;InvalidateVisual();
 	}
 
 	internal void SetVisorVisible(bool visible)
@@ -393,6 +407,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 		// not the full-lens box, so it fuses over the same point the visor frames. It follows the optical
 		// content shift because crop is derived from the shifted content area.
 		DrawCrosshair(dc, cropSupportsMaskGeometry ? crop : area);
+		if(cropSupportsMaskGeometry)DrawIRacingCuePreviews(dc, crop);
 
 		if(cropSupportsMaskGeometry)DrawPins(dc, leftEye);
 		DrawCoordinateMarker(dc, area);
@@ -430,6 +445,40 @@ public sealed class BeanMaskEditor : FrameworkElement
 	{
 		double radius = eye.Width * 0.5;
 		dc.DrawEllipse(null, pen, new Point(eye.Left + radius, eye.Top + radius), radius, radius);
+	}
+
+	// Real desktop previews of the three iRacing edge cues, drawn in the post-crop rect with the same
+	// geometry the native renderer uses (top-centre glow / red-green border / lower-left-right grip bar).
+	private void DrawIRacingCuePreviews(DrawingContext dc, Rect crop)
+	{
+		double w=crop.Width, minDim=Math.Min(crop.Width,crop.Height);
+		// Race-start border: red waiting, green started (native draws a restrained inner border).
+		if(_raceStartPreview!=0)
+		{
+			Color c=_raceStartPreview==2?Color.FromArgb(210,15,215,40):Color.FromArgb(210,215,25,25);
+			double th=Math.Max(3,minDim*0.02),inset=2;var b=new SolidColorBrush(c);
+			dc.DrawRectangle(b,null,new Rect(crop.Left+inset,crop.Top+inset,crop.Width-2*inset,th));
+			dc.DrawRectangle(b,null,new Rect(crop.Left+inset,crop.Bottom-inset-th,crop.Width-2*inset,th));
+			dc.DrawRectangle(b,null,new Rect(crop.Left+inset,crop.Top+inset,th,crop.Height-2*inset));
+			dc.DrawRectangle(b,null,new Rect(crop.Right-inset-th,crop.Top+inset,th,crop.Height-2*inset));
+		}
+		// Rear-closing glow: top-centre band, width grows with proximity.
+		if(_rearClosingPreview>0)
+		{
+			double halfW=(0.10+0.30*_rearClosingPreview)*w*0.5,cx=crop.Left+crop.Width*0.5,band=Math.Clamp(minDim*0.05,4,minDim*0.14);
+			for(int i=0;i<4;++i){double f=1-i/4.0;var b=new SolidColorBrush(Color.FromArgb((byte)(200*f),255,90,40));double hw=halfW*(0.7+0.3*f);
+				dc.DrawRectangle(b,null,new Rect(cx-hw,crop.Top+i*band*0.25,2*hw,band*0.25));}
+		}
+		// Grip-O-Bar: lower-left/right bar, colour by severity band.
+		if(_gripPreviewDir!=0)
+		{
+			double sev=_gripPreviewSeverity;Color c=sev<0.34?Color.FromRgb(255,217,25):sev<0.67?Color.FromRgb(255,128,12):Color.FromRgb(255,38,25);
+			double barW=(0.10+0.35*sev)*w*0.5,barH=Math.Clamp(minDim*0.06,6,minDim*0.16),y0=crop.Bottom-barH-2;
+			for(int i=0;i<4;++i){double f=1-i/4.0;var b=new SolidColorBrush(Color.FromArgb((byte)(((0.30+0.70*sev)*255)*f),c.R,c.G,c.B));
+				double yy=y0+barH*i/4.0,hh=barH/4.0;
+				if(_gripPreviewDir<0)dc.DrawRectangle(b,null,new Rect(crop.Left+2,yy,barW*f,hh));
+				else dc.DrawRectangle(b,null,new Rect(crop.Right-2-barW*f,yy,barW*f,hh));}
+		}
 	}
 
 	private void DrawCrosshair(DrawingContext dc, Rect sizeReference)
