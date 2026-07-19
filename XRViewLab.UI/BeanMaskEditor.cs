@@ -333,6 +333,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 			return;
 		}
 
+		Rect frame = FrameArea();
 		Rect crop = PreviewCropRect(area);
 		bool cropSupportsMaskGeometry=crop.Width>4.0&&crop.Height>4.0;
 		dc.PushClip(new RectangleGeometry(bounds));
@@ -344,30 +345,31 @@ public sealed class BeanMaskEditor : FrameworkElement
 		{
 			DashStyle=new DashStyle(new[]{2.5/_viewZoom,3.5/_viewZoom},0)
 		};
+		// Frame and periphery guides use the FIXED frame so the outer preview never pans.
 		if (UsePerEyeFrameGuides)
 		{
-			Quest3PreviewGeometry.EyeFrames frames = Quest3PreviewGeometry.FullEyeFrames(area, PreviewIpdMillimetres);
+			Quest3PreviewGeometry.EyeFrames frames = Quest3PreviewGeometry.FullEyeFrames(frame, PreviewIpdMillimetres);
 			dc.DrawRectangle(null, fullReferencePen, frames.Left);
 			dc.DrawRectangle(null, fullReferencePen, frames.Right);
 		}
 		else
 		{
-			dc.DrawRectangle(null,fullReferencePen,area);
+			dc.DrawRectangle(null,fullReferencePen,frame);
 		}
-		DrawPreviewLabel(dc,$"QUEST 3 {PreviewIpdMillimetres:0.0} mm  FULL BINOCULAR",new Point(area.Left+5/_viewZoom,area.Top+5/_viewZoom),Color.FromRgb(175,180,188),180);
+		DrawPreviewLabel(dc,$"QUEST 3 {PreviewIpdMillimetres:0.0} mm  FULL BINOCULAR",new Point(frame.Left+5/_viewZoom,frame.Top+5/_viewZoom),Color.FromRgb(175,180,188),180);
 		var eyeGuidePen=new Pen(new SolidColorBrush(Color.FromArgb(135,155,160,168)),1.1/_viewZoom)
 		{
 			DashStyle=new DashStyle(new[]{6/_viewZoom,4/_viewZoom},0)
 		};
 		if (UseCircularEyeGuides)
 		{
-			Quest3PreviewGeometry.EyeGuides fullEyes = Quest3PreviewGeometry.FullEyeGuides(area, PreviewIpdMillimetres);
+			Quest3PreviewGeometry.EyeGuides fullEyes = Quest3PreviewGeometry.FullEyeGuides(frame, PreviewIpdMillimetres);
 			DrawEyeGuide(dc, fullEyes.Left, eyeGuidePen);
 			DrawEyeGuide(dc, fullEyes.Right, eyeGuidePen);
 		}
 		else
 		{
-			Rect oval = Quest3PreviewGeometry.FullBinocularOval(area);
+			Rect oval = Quest3PreviewGeometry.FullBinocularOval(frame);
 			dc.DrawEllipse(null, eyeGuidePen,
 				new Point(oval.Left + oval.Width * 0.5, oval.Top + oval.Height * 0.5),
 				oval.Width * 0.5, oval.Height * 0.5);
@@ -387,7 +389,10 @@ public sealed class BeanMaskEditor : FrameworkElement
 			if(_visorVisible)dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)), 1.0 / _viewZoom), geometry);
 		}
 		DrawOverlayPreviews(dc, area);
-		DrawCrosshair(dc, area);
+		// The crosshair converges at the centre of the post-crop visible region (the crop/visor centre),
+		// not the full-lens box, so it fuses over the same point the visor frames. It follows the optical
+		// content shift because crop is derived from the shifted content area.
+		DrawCrosshair(dc, cropSupportsMaskGeometry ? crop : area);
 
 		if(cropSupportsMaskGeometry)DrawPins(dc, leftEye);
 		DrawCoordinateMarker(dc, area);
@@ -534,16 +539,25 @@ public sealed class BeanMaskEditor : FrameworkElement
 		return null;
 	}
 
-	// One complete preview area: every layer (frames, crop, visor, guides, crosshair, widgets,
-	// edge cues) is drawn in this single rect, so switching centres translates the whole headset
-	// scene together by exactly one fixed amount. Nothing is zoomed, resized or re-anchored, and
-	// the control chrome, pan, zoom and coordinate inspector never consume this rect. Widgets
-	// therefore share the exact same centred full-lens rectangle as crop and visor.
+	// Optional Optical-centred content transform: shift the HEADSET CONTENT (crop, visor, crosshair,
+	// widgets) upward by this normalized full-lens Y fraction. It is content-only — the outer preview
+	// frame, eye guides, labels, pan, zoom and inspector chrome never move (those use FrameArea()).
+	// This is deliberately NOT a viewport refit; it does not pan the whole preview.
+	private const double OpticalContentShiftY = 0.077;
+
+	// The FIXED preview viewport: the fitted 55:48 box that never moves. Frame, eye/periphery guides
+	// and labels are drawn against this so toggling Optical-centred cannot pan the preview.
+	private Rect FrameArea() => Quest3PreviewGeometry.FitArea(RenderSize);
+
+	// The CONTENT area that crop, visor, crosshair and widgets share. Equal to FrameArea(), plus the
+	// optional Optical-centred upward shim when the checkbox is on. Saved coordinates are unchanged;
+	// this only translates where headset content is drawn/hit-tested within the fixed viewport.
 	private Rect PreviewFullArea()
 	{
-		return _useOpticalPreviewCentre
-			? Quest3PreviewGeometry.FitAreaAtCentre(RenderSize, Quest3PreviewGeometry.OpticalPreviewCentreY)
-			: Quest3PreviewGeometry.FitArea(RenderSize);
+		Rect area = Quest3PreviewGeometry.FitArea(RenderSize);
+		if (_useOpticalPreviewCentre)
+			area = new Rect(area.Left, area.Top - OpticalContentShiftY * area.Height, area.Width, area.Height);
+		return area;
 	}
 
 	// Reproduce native ApplyXRViewLabFov in normalized full-tangent space. The resulting crop,

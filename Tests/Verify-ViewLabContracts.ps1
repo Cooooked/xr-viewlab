@@ -478,7 +478,10 @@ Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'ResolveFullLens\(area,item\.X,
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'WidgetPreviewShimY\s*=\s*0\.077' 'permanent widget preview shim pins the measured +0.077 full-lens Y correction'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'ApplyFullLensDrag\(overlayArea,[\s\S]*_overlayDragStartItem\.X,_overlayDragStartItem\.Y\),overlayMouse-_overlayDragStartMouse' 'widget dragging is delta-based so the shim never changes saved coordinates'
 Assert-Contains 'Tests\Verify-Quest3PreviewAndProfiles.ps1' 'crop clips that coordinate system; it does not redefine it' 'live HUD, Trace and Clock fixtures preserve full-lens coordinates'
-Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, area\)[\s\S]*ResolveCentredOffset\(sizeReference,_crosshairOffsetX,_crosshairOffsetY\)' 'crosshair position uses the shared preview centre'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, cropSupportsMaskGeometry \? crop : area\)[\s\S]*ResolveCentredOffset\(sizeReference,_crosshairOffsetX,_crosshairOffsetY\)' 'crosshair converges at the post-crop (crop/visor) centre'
+# Optical-centred is a content-only shim: the frame viewport is fixed, content shifts up by 0.077.
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'private Rect FrameArea\(\) => Quest3PreviewGeometry\.FitArea\(RenderSize\)' 'optical-centred keeps the preview frame viewport fixed'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'area\.Top - OpticalContentShiftY \* area\.Height' 'optical-centred shifts headset content up, not the viewport'
 # Item 18: crosshair preview must use ONE uniform reference-pixel factor for both axes (square, unstretched),
 # matching the native uniform scale x eyeHeight/1080 mapping; per-axis X/Y factors previously stretched it.
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'double unit=Quest3PreviewGeometry\.TangentReferencePixelsUniform\(sizeReference,2\.0\*_crosshair\.VrScale\)[\s\S]*armY=armX[\s\S]*thickY=thickX' 'crosshair preview geometry is uniform (square, unstretched)'
@@ -506,7 +509,7 @@ Assert-Contains 'MainWindow.xaml' 'Name="CrosshairOverlayPreview"' 'Overlays men
 Assert-Contains 'MainWindow.xaml' 'Name="CrosshairOffsetXSlider"[^>]*MouseRightButtonUp="CrosshairOffset_ResetRightClick"' 'horizontal crosshair offset supports direct right-click reset'
 Assert-Contains 'MainWindow.xaml' 'Name="CrosshairOffsetYSlider"[^>]*MouseRightButtonUp="CrosshairOffset_ResetRightClick"' 'vertical crosshair offset supports direct right-click reset'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'CrosshairOffset_ResetRightClick[\s\S]*?CrosshairOffsetXSlider\.Value = 0[\s\S]*?CrosshairOffsetYSlider\.Value = 0' 'crosshair right-click handler resets either offset to zero'
-Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, area\)' 'visor preview keeps one crosshair on the shared visual centre'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, cropSupportsMaskGeometry \? crop : area\)' 'visor preview keeps one crosshair converged at the post-crop centre'
 Assert-NotContains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, rightEye\)' 'visor preview does not expose raw per-eye crosshair duplication'
 Assert-Contains 'XRViewLab.UI\CrosshairPreview.cs' '1\.125\*VrScale' 'Overlays crosshair preview uses the calibrated half-size display scale'
 foreach ($key in @('crosshair_enabled','crosshair_size','crosshair_gap','crosshair_thickness','crosshair_alpha','crosshair_color','crosshair_tstyle')) {

@@ -4,16 +4,18 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-19
-**Current version:** 4.1.275 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.275.msi` (size 149,147,648 bytes; SHA-256
-`099DEC9A50907E4FF33AF1BC93091323102BB8FCF05D580105F8B7674414688A`). Adds per-app per-overlay Use-Global-Values
-inheritance, deterministic new-iRacing-cue logic (rear-closing, race-start, Grip-O-Bar), and the finalised OBS
-"ViewLab Mirror Capture" source identity, on top of 4.1.274's notification redesign, visor RGB colour (live-state v11)
-and calibration pack review. Full WPF/broker/signed-identity/x64+Win32 native/OBS-plugin/MSI build with 0
-warnings/errors; extracted-payload validation confirms fresh WPF/native/broker hashes, pinned PresentMon 2.4.1 + MIT
-notice, signed identity certificate and Overlays markers. All 24 deterministic scripts pass. Headset/OBS/iRacing live
-validation remains pending.
-**Prior version:** 4.1.274 — notification theme redesign, configurable RGB visor mask colour (live-state v11),
-calibration screenshot-pack review workflow (`dist/ViewLab-4.1.274.msi`).
+**Current version:** 4.1.276 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.276.msi` (size 149,151,744 bytes; SHA-256
+`B66D945C49A0589D48DA0C2CFF92DB8BF00E3BAC1C380AA2BAC70E7EEC2D0027`). Preview repairs: the crosshair now converges at
+the post-crop (crop/visor) centre rather than the full-lens box, and the Optical-centred checkbox is a content-only
+upward shim (crop, visor, crosshair and widgets shift up by 0.077 of frame height; the fixed 55:48 frame viewport,
+periphery guides and labels never move) instead of the old whole-viewport refit that read as a pan. The permanent
+`WidgetPreviewShimY = 0.077` widget correction remains a separate transform. Performance Trace's dedicated Reset
+Position button is removed (per-slider right-click reset remains). Full WPF/broker/signed-identity/x64+Win32
+native/OBS-plugin/MSI build 0/0; extracted-payload validation passes. 23 deterministic scripts pass; the
+`Invoke-RealNotificationFixture` integration test needs a live broker process and is environmental. Headset/OBS/iRacing
+live validation remains pending.
+**Prior version:** 4.1.275 — per-app per-overlay inheritance, deterministic new-iRacing-cue logic, OBS
+"ViewLab Mirror Capture" identity (`dist/ViewLab-4.1.275.msi`).
 **Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
 AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
 remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.

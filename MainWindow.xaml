@@ -674,7 +674,7 @@
                       <Slider Name="HudTraceScaleSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical size of the frame-pacing trace. Right-click to reset." />
                       <TextBlock Text="Graph opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceOpacitySlider" Minimum="0.1" Maximum="1" Value="0.7" Tag="0.7" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
-                      <Button Content="Reset position" Tag="trace" Click="OverlayResetPosition_Click" Padding="7,2" Margin="0,5,0,0" HorizontalAlignment="Left" />
+                      <TextBlock Text="Position, size and opacity sliders reset on right-click." Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" TextWrapping="Wrap" />
                       <TextBlock Text="Graph width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceWidthSlider" Minimum="0.1" Maximum="1" Value="0.42" Tag="0.42" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Width of the frame-pacing trace as a fraction of the visible view. Right-click to reset." />
                       <TextBlock Text="Graph history (samples)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />

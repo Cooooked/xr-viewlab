@@ -42,15 +42,16 @@ foreach($eye in $asymmetricEyes) {
     if ([Math]::Abs($pixelAtZero-$eye.W*.5) -lt 0.001) { throw 'asymmetric tangent zero incorrectly projected to pixel centre' }
 }
 
+# Optical-centred is a content-only upward shim of exactly 0.077 * frame height; the fixed frame
+# viewport (top and height) is unchanged, so toggling it can never pan or resize the preview.
 $availableHeight=600.0
 $fittedHeight=546.0/(55.0/48.0)
-$geometricTop=($availableHeight-$fittedHeight)*.5
-$opticalTop=$availableHeight*.403406273247302-$fittedHeight*.5
-Assert-Close $fittedHeight $fittedHeight 0.0000001 'optical centre preserves preview height'
-Assert-Close ($opticalTop-$geometricTop) ($availableHeight*(.403406273247302-.5)) 0.0000001 'optical centre is translation only'
-$geometricCropHeight=$fittedHeight*.15
-$opticalCropHeight=$fittedHeight*.15
-Assert-Close $opticalCropHeight $geometricCropHeight 0.0000001 'optical centre preserves crop geometry'
+$frameTop=($availableHeight-$fittedHeight)*.5
+$contentTop=$frameTop-0.077*$fittedHeight
+Assert-Close ($frameTop-$contentTop) (0.077*$fittedHeight) 0.0000001 'optical-centred shifts content up by exactly 0.077 of frame height'
+Assert-Close $fittedHeight $fittedHeight 0.0000001 'optical-centred preserves the fixed frame height (no resize)'
+# The permanent widget shim (0.077) and the optional optical content shift (0.077) are separate transforms.
+Assert-Close (0.077+0.077) 0.154 0.0000001 'permanent widget shim and optional optical shift are distinct transforms'
 
 function Preview-Crop([double]$topScale, [double]$bottomScale) {
     $topShare=[Math]::Min(1.0,[Math]::Max(0.0,$topScale))*.5
@@ -187,7 +188,7 @@ foreach ($contract in @(
     @{ Text=$geometry; Pattern='InvertFullLens\(Rect area, Point point\)'; Name='coordinate inspector uses the shared inverse transform' },
     @{ Text=$preview; Pattern='DrawCoordinateInspector\(dc, area\)[\s\S]*InvertFullLens\(area, point\)[\s\S]*InvertFullLens\(crop, point\)'; Name='live full-lens and crop coordinate inspector' },
     @{ Text=$preview; Pattern='ResolveFullLens\(area,item\.X,item\.Y\+WidgetPreviewShimY\)[\s\S]*ApplyFullLensDrag\(overlayArea'; Name='widget placement (with permanent shim) and delta-based dragging share the full-lens conversion' },
-    @{ Text=$preview; Pattern='DrawCrosshair\(dc, area\)[\s\S]*ResolveCentredOffset\(sizeReference,_crosshairOffsetX,_crosshairOffsetY\)'; Name='crosshair uses the shared visual centre' },
+    @{ Text=$preview; Pattern='DrawCrosshair\(dc, cropSupportsMaskGeometry \? crop : area\)[\s\S]*ResolveCentredOffset\(sizeReference,_crosshairOffsetX,_crosshairOffsetY\)'; Name='crosshair converges at the post-crop (crop/visor) centre' },
     @{ Text=$preview; Pattern='OnPreviewMouseRightButtonDown[\s\S]*IsOverPreviewWidget[\s\S]*ResetViewToStartupFit'; Name='empty preview right-click resets shared view navigation' },
     @{ Text=$preview; Pattern='ResetViewToStartupFit\(\)[\s\S]*_viewZoom=1\.0;_viewPan=new Vector\(\)'; Name='view reset reuses startup identity fit' },
     @{ Text=$geometry; Pattern='FullVerticalTangentSpan = 2\.39383678154919'; Name='replica size calibration is position-independent' },
@@ -238,7 +239,8 @@ foreach ($contract in @(
     @{ Text=$profile; Pattern='MaskBeanEditor\.UseCircularEyeGuides = _useCircularEyeGuides'; Name='profile preview consumes the shared eye-guide mode' },
     @{ Text=$profile; Pattern='MaskBeanEditor\.UsePerEyeFrameGuides = _usePerEyeFrameGuides'; Name='profile preview consumes the shared frame-guide mode' },
     @{ Text=$profile; Pattern='MaskBeanEditor\.UseOpticalPreviewCentre = _useOpticalPreviewCentre'; Name='profile preview consumes the shared centre mode' },
-    @{ Text=$preview; Pattern='_useOpticalPreviewCentre[\s\S]*FitAreaAtCentre\(RenderSize, Quest3PreviewGeometry\.OpticalPreviewCentreY\)[\s\S]*FitArea\(RenderSize\)'; Name='one complete preview area switches centres together' },
+    @{ Text=$preview; Pattern='FrameArea\(\) => Quest3PreviewGeometry\.FitArea\(RenderSize\)'; Name='the preview frame viewport is fixed (never pans)' },
+    @{ Text=$preview; Pattern='_useOpticalPreviewCentre\)\s*area = new Rect\(area\.Left, area\.Top - OpticalContentShiftY \* area\.Height'; Name='optical-centred shifts headset content up (not the viewport)' },
     @{ Text=$geometry; Pattern='calibratedSeparation \* ipd / DefaultIpdMillimetres'; Name='IPD changes guide separation only' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewCircleGuidesCheck"'; Name='main preview guide toggle' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewPerEyeFramesCheck"'; Name='main frame guide toggle' },
@@ -253,7 +255,7 @@ foreach ($contract in @(
 
 # The calibration-map layers are deliberately ordered: crop coverage, full-frame reference,
 # periphery guide, final visor, then desktop overlay replicas.
-$layerTokens = @('dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(34', 'dc.DrawRectangle(null,fullReferencePen,area)',
+$layerTokens = @('dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(34', 'dc.DrawRectangle(null,fullReferencePen,frame)',
     'if (UseCircularEyeGuides)', 'dc.DrawGeometry(null', 'DrawOverlayPreviews(dc, area)')
 $last = -1
 foreach ($token in $layerTokens) {

@@ -10,7 +10,9 @@ function Forbid($text,$pattern,$message){if($text-match$pattern){throw "Overlay 
 
 foreach($id in 'clock','hud','trace','sticky','crosshair','notifications'){Need $model "\[`"$id`"\]" "catalogue entry $id is absent"}
 foreach($control in 'ClockWidgetToggleKeyCombo','HudToggleKeyCombo','HudTraceToggleKeyCombo','StickyNoteToggleKeyCombo','CrosshairToggleKeyCombo','NotifyToggleKeyCombo','HudOpacitySlider','HudTraceOpacitySlider') { Need $xaml "Name=`"$control`"" "control $control is absent" }
-foreach($tag in 'clock','hud','trace','crosshair','notifications'){Need $xaml "Tag=`"$tag`"[^>]+OverlayResetPosition_Click" "reset-position control $tag is absent"}
+# Item 8: Performance Trace's dedicated Reset Position button was removed (per-slider right-click reset remains).
+foreach($tag in 'clock','hud','crosshair','notifications'){Need $xaml "Tag=`"$tag`"[^>]+OverlayResetPosition_Click" "reset-position control $tag is absent"}
+Forbid $xaml 'Tag="trace"[^>]+OverlayResetPosition_Click' 'Performance Trace no longer has a dedicated Reset Position button'
 Need $xaml 'Click="StickyNoteReset_Click"' 'per-note reset-position control is absent'
 Need $ui 'LoadCommonOverlaySettings\(\)' 'common load path is absent'
 Need $ui 'SaveCommonOverlaySettings\(string id\)' 'common save path is absent'
@@ -45,7 +47,7 @@ Need $previewModel 'return new Size\(width \* fit, height \* fit\)' 'preview bou
 Need $preview 'QUEST 3 \{PreviewIpdMillimetres:0\.0\} mm  FULL BINOCULAR' 'full binocular crop reference is absent'
 Need $preview 'DashStyle=new DashStyle' 'full binocular crop reference is not dotted'
 Need $preview 'DrawOverlayPreviews\(dc, area\)' 'overlay preview placement still inherits the crop rectangle'
-Need $preview 'DrawCrosshair\(dc, area\)' 'crosshair preview placement still inherits the crop rectangle'
+Need $preview 'DrawCrosshair\(dc, cropSupportsMaskGeometry \? crop : area\)' 'crosshair preview converges at the post-crop (crop/visor) centre'
 Need $preview 'cropSupportsMaskGeometry' 'an extreme crop can still abort the complete overlay preview'
 Need $preview 'SetVisorVisible' 'preview visor outline is not bound to feature visibility'
 Need $preview '_visorVisible\?Color\.FromRgb\(224,42,53\):Color\.FromArgb' 'disabled visor preview does not fade to grey'
