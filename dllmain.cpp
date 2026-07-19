@@ -320,6 +320,9 @@ bool iracingEnabled = false, iracingLapPopup = false, iracingSpotterGlow = false
 // Race-start border light (item 5). Enable + visual params read at session start like the other iRacing keys.
 bool iracingRaceStart = false;
 double iracingRaceStartRedOpacity = 0.8, iracingRaceStartGreenOpacity = 0.8, iracingRaceStartGreenMs = 3000.0, iracingRaceStartThickness = 0.02;
+// Rear-closing pressure cue (item 4): a top-centre glow driven by the packed reserved1 state.
+bool iracingRearClosing = false;
+double iracingRearClosingOpacity = 0.9;
 double iracingSpotterWidth = 0.12, iracingSpotterStrength = 1.0, iracingSpotterOpacity = 0.65, iracingSpotterFade = 1.8;
 double iracingFlagWidth = 0.018, iracingFlagOpacity = 0.60;
 uint32_t iracingSpotterColor = 0xFF4500;
@@ -343,7 +346,7 @@ inline bool AnyCalibrationPattern() {
 inline bool BoundaryFlashActive() { return g_boundaryDragActive || g_boundaryReleaseTick != 0; }
 inline bool TraceMarkerConfirmationActive() { return g_traceMarkerConfirmationUntil.load(std::memory_order_acquire)>GetTickCount64(); }
 inline bool AnyStickyNote(){for(size_t i=0;i<stickyNoteCount;++i)if(stickyNotes[i].enabled&&!stickyNotes[i].text.empty()&&stickyNotes[i].opacity>.001)return true;return false;}
-inline bool AnyViewLabOverlay() { return (clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock)) || obsIndicatorEnabled || (stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote()) || (crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair)) || (notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications)) || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder || iracingRaceStart)) || BoundaryFlashActive(); }
+inline bool AnyViewLabOverlay() { return (clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock)) || obsIndicatorEnabled || (stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote()) || (crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair)) || (notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications)) || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder || iracingRaceStart || iracingRearClosing)) || BoundaryFlashActive(); }
 inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || (hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace)) || AnyViewLabOverlay(); }
 
 uint64_t FileTimeToUint64(const FILETIME& time) {
@@ -3296,6 +3299,8 @@ void DrawViewLabOverlaysToTexture(
     const bool wantFlag = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
     // Race-start border light: reserved0 carries the latched phase (1 waiting/red, 2 started/green).
     const bool wantRaceStart = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingRaceStart) || (g_racingStable.presentationFlags & 8u)) && g_racingStable.reserved0 != 0;
+    // Rear-closing pressure cue: packed state in reserved1 (bit0 active, opacity<<8, width<<16, intensity<<24).
+    const bool wantRearClosing = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingRearClosing) || (g_racingStable.presentationFlags & 16u)) && (g_racingStable.reserved1 & 1u) != 0;
     bool wantNotify = false;
     const bool wantsNotificationCards = IncludesMirrorFeature(featureMask, MirrorNotifications) && notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications);
     const bool wantsRacingLap = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u));
@@ -3427,6 +3432,22 @@ void DrawViewLabOverlaysToTexture(
                 rectFill(l+inset, t+inset, l+inset+th, bb_-inset, rR, rG, rB, rsA); rectFill(rr_-inset-th, t+inset, rr_-inset, bb_-inset, rR, rG, rB, rsA);
                 flushFlat(rR, rG, rB, rsA);
             }
+        }
+    }
+
+    // Rear-closing pressure cue: a restrained top-centre glow. Width grows as the car behind gets
+    // closer; brightness grows with closing speed. No left/right is inferred; the spotter takes over on
+    // overlap (the provider stops publishing an active state once a side is reported).
+    if (wantRearClosing) {
+        const uint32_t rc = g_racingStable.reserved1;
+        const float op = ((rc >> 8) & 255) / 255.f, wd = ((rc >> 16) & 255) / 255.f, inten = ((rc >> 24) & 255) / 255.f;
+        const float alpha = op * (0.35f + 0.65f * inten) * (float)iracingRearClosingOpacity;
+        const float halfW = (0.10f + 0.30f * wd) * w * 0.5f;
+        const float cx = (l + rr_) * 0.5f, band = std::clamp(minDim * 0.05f, 4.f, minDim * 0.14f);
+        for (int i = 0; i < 4; ++i) {          // stacked bands fading downward from the top edge
+            const float f = 1.f - i / 4.f, a = alpha * f, hw = halfW * (0.7f + 0.3f * f);
+            rectFill(cx - hw, (float)t + i * band * 0.25f, cx + hw, (float)t + (i + 1) * band * 0.25f, 1.f, 0.35f, 0.15f, a);
+            flushFlat(1.f, 0.35f, 0.15f, a);
         }
     }
 
@@ -4974,6 +4995,8 @@ void LoadConfig() {
     iracingRaceStartGreenOpacity = std::clamp(ReadDoubleSetting(L"iracing_race_start_green_opacity", 0.8), 0.05, 1.0);
     iracingRaceStartGreenMs = std::clamp(ReadDoubleSetting(L"iracing_race_start_green_ms", 3000.0), 250.0, 15000.0);
     iracingRaceStartThickness = std::clamp(ReadDoubleSetting(L"iracing_race_start_thickness", 0.02), 0.005, 0.12);
+    iracingRearClosing = ReadBoolSetting(L"iracing_rear_closing", false);
+    iracingRearClosingOpacity = std::clamp(ReadDoubleSetting(L"iracing_rear_closing_opacity", 0.9), 0.05, 1.0);
     iracingSpotterWidth = std::clamp(ReadDoubleSetting(L"iracing_spotter_width", 0.12), 0.03, 0.35);
     iracingSpotterStrength = std::clamp(ReadDoubleSetting(L"iracing_spotter_strength", 1.0), 0.1, 2.0);
     iracingSpotterOpacity = std::clamp(ReadDoubleSetting(L"iracing_spotter_opacity", 0.65), 0.05, 1.0);

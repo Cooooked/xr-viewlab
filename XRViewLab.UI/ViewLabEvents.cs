@@ -26,6 +26,9 @@ internal enum ViewLabEventKind
     // green). Native owns the green hold+fade envelope. Latched per session and reset on session change,
     // so replay/garage/reconnect/tick-reset and joining-in-progress never flash a false green.
     RaceStart,
+    // Rear-closing pressure cue: Value carries a packed state (bit0 active, bits8-15 opacity,
+    // bits16-23 glow width, bits24-31 closing intensity, each 0-255). Native draws a top-centre glow.
+    RearClosing,
 }
 
 internal enum SpotterState

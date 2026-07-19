@@ -883,6 +883,11 @@
                           <TextBlock Text="Green opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingRaceStartGreenOpacitySlider" Minimum="0.05" Maximum="1" Value="0.8" Tag="0.8" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
 
+                          <TextBlock Text="Rear-Closing Pressure Cue" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
+                          <CheckBox Name="IRacingRearClosingCheck" Content="Enable rear-closing glow" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="A narrow top-centre glow that warns when the nearest car behind is rapidly gaining. Closer = wider, faster closing = brighter. Clears once a car draws alongside, when the left/right spotter takes over. No approach side is inferred." />
+                          <TextBlock Text="Glow opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingRearClosingOpacitySlider" Minimum="0.05" Maximum="1" Value="0.9" Tag="0.9" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+
                           <TextBlock Text="Low Fuel Warning" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
                           <CheckBox Name="IRacingFuelWarningCheck" Content="Enable low fuel warning card" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Fires once per crossing below the threshold, from the SDK's FuelLevelPct — absent on cars/tracks that don't report it." />
                           <TextBlock Text="Fuel threshold (%)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />

@@ -19,6 +19,7 @@ internal sealed class RacingStateService : IDisposable
     private uint _flagColor;
     private uint _presentationFlags;
     private uint _raceStartPhase; // 0 inactive, 1 waiting/red, 2 started/green (native owns hold+fade)
+    private uint _rearClosing;    // packed: bit0 active, opacity<<8, width<<16, intensity<<24
 
     public RacingStateService() : this(Name) { }
     internal RacingStateService(string name)
@@ -46,6 +47,10 @@ internal sealed class RacingStateService : IDisposable
                 _raceStartPhase = (uint)Math.Clamp((int)Math.Round(e.Value), 0, 2);
                 _presentationFlags = e.IsPresentationTest && _raceStartPhase != 0 ? _presentationFlags | 8u : _presentationFlags & ~8u;
                 PublishState(); break;
+            case ViewLabEventKind.RearClosing:
+                _rearClosing = (uint)e.Value;
+                _presentationFlags = e.IsPresentationTest && (_rearClosing & 1u) != 0 ? _presentationFlags | 16u : _presentationFlags & ~16u;
+                PublishState(); break;
             case ViewLabEventKind.LapTime:
                 _presentationFlags = e.IsPresentationTest ? _presentationFlags | 4u : _presentationFlags & ~4u;
                 uint flags = 1u | (e.IsValid ? 2u : 0u) | (e.IsPersonalBest ? 4u : 0u) |
@@ -61,7 +66,7 @@ internal sealed class RacingStateService : IDisposable
 
     public void Clear()
     {
-        _spotter = SpotterState.Clear; _flag = RacingFlagState.Clear; _flagColor = 0; _presentationFlags = 0; _raceStartPhase = 0;
+        _spotter = SpotterState.Clear; _flag = RacingFlagState.Clear; _flagColor = 0; _presentationFlags = 0; _raceStartPhase = 0; _rearClosing = 0;
         _view.Write(28, 0u); _view.Write(48, 0L); PublishState();
     }
 
@@ -69,6 +74,7 @@ internal sealed class RacingStateService : IDisposable
     {
         _view.Write(16, (uint)_spotter); _view.Write(20, (uint)_flag); _view.Write(24, _flagColor); _view.Write(56, _presentationFlags);
         _view.Write(44, _raceStartPhase); // reserved0: race-start phase (no version bump; old layers ignore it)
+        _view.Write(60, _rearClosing);    // reserved1: packed rear-closing state
         PublishGeneration();
     }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Text;
@@ -40,6 +41,12 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
     private bool _sawRaceWaiting;
     private bool _raceStartLatched;
     private int _raceStartPhase = -1;
+    private double _trackLengthMeters = 4000.0; // fallback until the session string is parsed
+    private long _sessionInfoParsedAt = -1;
+    private readonly RearClosingCue _rearCue = new();
+    private long _lastRearSampleTick;
+    private bool _rearActivePublished;
+    private uint _lastRearPacked;
 
     // Settable by the broker from its own settings poll; not part of the SDK layout. Clamped to a
     // sane range so a malformed ini value can't disable the warning (0) or fire it constantly (1).
@@ -193,6 +200,25 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         }
         foreach (string required in new[] { "CarLeftRight", "LapCompleted", "LapLastLapTime", "SessionFlags" })
             if (!_variables.ContainsKey(required)) throw new InvalidDataException($"Required SDK variable '{required}' is missing or invalid.");
+        TryUpdateTrackLength();
+    }
+
+    // Parse "TrackLength: 5.891 km" (or mi) from the session-info YAML string. iRadsdk header:
+    // sessionInfoLen @16, sessionInfoOffset @20. Falls back to the prior value on any problem.
+    private void TryUpdateTrackLength()
+    {
+        try
+        {
+            int len = _view!.ReadInt32(16), off = _view.ReadInt32(20), update = _view.ReadInt32(12);
+            if (update == _sessionInfoParsedAt || len <= 0 || off <= 0 || (long)off + len > _view.Capacity) return;
+            _sessionInfoParsedAt = update;
+            byte[] buf = new byte[Math.Min(len, 1 << 20)]; _view.ReadArray(off, buf, 0, buf.Length);
+            string yaml = Encoding.ASCII.GetString(buf);
+            var m = System.Text.RegularExpressions.Regex.Match(yaml, @"TrackLength:\s*([0-9.]+)\s*(km|mi)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) && v > 0.1)
+                _trackLengthMeters = Math.Clamp(v * (m.Groups[2].Value.Equals("mi", StringComparison.OrdinalIgnoreCase) ? 1609.344 : 1000.0), 200.0, 30000.0);
+        }
+        catch { /* keep the fallback length */ }
     }
 
     private (int Tick, int Offset) FindNewestBuffer()
@@ -219,6 +245,42 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
             2 => _view!.ReadInt32(p), 3 => _view!.ReadUInt32(p),
             4 => _view!.ReadSingle(p), 5 => _view!.ReadDouble(p), _ => double.NaN
         };
+    }
+
+    // Read one element of an array telemetry variable (e.g. CarIdxLapDistPct[idx]). NaN if absent/out of range.
+    private double ReadArrayValue(string name, int index, int buffer)
+    {
+        if (!_variables.TryGetValue(name, out Variable v) || index < 0 || index >= v.Count) return double.NaN;
+        int elementSize = v.Type switch { 0 or 1 => 1, 2 or 3 or 4 => 4, 5 => 8, _ => 0 };
+        long p = buffer + v.Offset + (long)index * elementSize;
+        return v.Type switch
+        {
+            0 => _view!.ReadByte(p), 1 => _view!.ReadByte(p) != 0 ? 1 : 0,
+            2 => _view!.ReadInt32(p), 3 => _view!.ReadUInt32(p),
+            4 => _view!.ReadSingle(p), 5 => _view!.ReadDouble(p), _ => double.NaN
+        };
+    }
+
+    // Nearest-car-behind distance in metres from the lap-distance-percent array, or NaN if unavailable.
+    // Wraps around the start/finish line and ignores cars not on track (pct < 0).
+    private double NearestCarBehindMeters(int buffer, out int carId)
+    {
+        carId = -1;
+        int playerIdx = (int)Math.Round(ReadValue("PlayerCarIdx", buffer));
+        if (playerIdx < 0 || !_variables.TryGetValue("CarIdxLapDistPct", out Variable arr)) return double.NaN;
+        double playerPct = ReadArrayValue("CarIdxLapDistPct", playerIdx, buffer);
+        if (double.IsNaN(playerPct) || playerPct < 0) return double.NaN;
+        double bestGap = double.MaxValue;
+        for (int i = 0; i < arr.Count; i++)
+        {
+            if (i == playerIdx) continue;
+            double pct = ReadArrayValue("CarIdxLapDistPct", i, buffer);
+            if (double.IsNaN(pct) || pct < 0) continue;               // not on track
+            double gap = playerPct - pct; if (gap < 0) gap += 1.0;    // wrap: car behind is smaller pct
+            if (gap > 0 && gap < bestGap) { bestGap = gap; carId = i; }
+        }
+        if (carId < 0 || bestGap > 0.5) return double.NaN;            // nobody meaningfully behind
+        return bestGap * _trackLengthMeters;
     }
 
     private void ProcessSample(int buffer)
@@ -259,6 +321,27 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
             Publish(new ViewLabEvent { Kind = ViewLabEventKind.RaceStart, Value = phase, SessionId = sessionId, TimestampUtc = DateTimeOffset.UtcNow });
         }
         _prevRawFlags = rawFlags;
+
+        // Rear-closing pressure cue: nearest car behind, closing speed drives intensity, distance drives
+        // width. Overlap (any spotter side) hands over to the existing spotter. Runs the shared state
+        // machine at telemetry cadence and publishes a quantized packed state only when it changes.
+        long nowTick = Environment.TickCount64;
+        double rearDt = _lastRearSampleTick == 0 ? 0.0 : (nowTick - _lastRearSampleTick) / 1000.0;
+        _lastRearSampleTick = nowTick;
+        double rearDist = NearestCarBehindMeters(buffer, out int rearCarId);
+        bool overlap = spotter != SpotterState.Clear;
+        _rearCue.Update(rearDist, rearCarId, overlap, !double.IsNaN(rearDist), rearDt);
+        uint packed = _rearCue.Active
+            ? 1u | ((uint)Math.Clamp((int)Math.Round(_rearCue.Opacity * 255), 0, 255) << 8)
+                 | ((uint)Math.Clamp((int)Math.Round(_rearCue.GlowWidth * 255), 0, 255) << 16)
+                 | ((uint)Math.Clamp((int)Math.Round(_rearCue.Intensity * 255), 0, 255) << 24)
+            : 0u;
+        if (packed != _lastRearPacked)
+        {
+            _lastRearPacked = packed;
+            _rearActivePublished = _rearCue.Active;
+            Publish(new ViewLabEvent { Kind = ViewLabEventKind.RearClosing, Value = packed, SessionId = sessionId, TimestampUtc = DateTimeOffset.UtcNow });
+        }
 
         if (_lastLap >= 0 && lap > _lastLap)
         {
@@ -367,6 +450,7 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         _spotter = (SpotterState)(-1); _flag = (RacingFlagState)(-1);
         _fuelWarningFired = false;
         _prevRawFlags = 0; _sawRaceWaiting = false; _raceStartLatched = false; _raceStartPhase = -1;
+        _rearCue.Reset(); _lastRearSampleTick = 0; _lastRearPacked = 0; _rearActivePublished = false;
     }
 
     private static string FormatLap(double seconds) => TimeSpan.FromSeconds(seconds).ToString(@"m\:ss\.fff");
