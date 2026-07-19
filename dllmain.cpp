@@ -323,6 +323,9 @@ double iracingRaceStartRedOpacity = 0.8, iracingRaceStartGreenOpacity = 0.8, ira
 // Rear-closing pressure cue (item 4): a top-centre glow driven by the packed reserved1 state.
 bool iracingRearClosing = false;
 double iracingRearClosingOpacity = 0.9;
+// Grip-O-Bar (item 6): lower-left/right peripheral whole-car grip-loss bar from the packed gripState.
+bool iracingGripBar = false;
+double iracingGripBarOpacity = 0.9;
 double iracingSpotterWidth = 0.12, iracingSpotterStrength = 1.0, iracingSpotterOpacity = 0.65, iracingSpotterFade = 1.8;
 double iracingFlagWidth = 0.018, iracingFlagOpacity = 0.60;
 uint32_t iracingSpotterColor = 0xFF4500;
@@ -346,7 +349,7 @@ inline bool AnyCalibrationPattern() {
 inline bool BoundaryFlashActive() { return g_boundaryDragActive || g_boundaryReleaseTick != 0; }
 inline bool TraceMarkerConfirmationActive() { return g_traceMarkerConfirmationUntil.load(std::memory_order_acquire)>GetTickCount64(); }
 inline bool AnyStickyNote(){for(size_t i=0;i<stickyNoteCount;++i)if(stickyNotes[i].enabled&&!stickyNotes[i].text.empty()&&stickyNotes[i].opacity>.001)return true;return false;}
-inline bool AnyViewLabOverlay() { return (clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock)) || obsIndicatorEnabled || (stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote()) || (crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair)) || (notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications)) || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder || iracingRaceStart || iracingRearClosing)) || BoundaryFlashActive(); }
+inline bool AnyViewLabOverlay() { return (clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock)) || obsIndicatorEnabled || (stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote()) || (crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair)) || (notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications)) || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder || iracingRaceStart || iracingRearClosing || iracingGripBar)) || BoundaryFlashActive(); }
 inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || (hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace)) || AnyViewLabOverlay(); }
 
 uint64_t FileTimeToUint64(const FILETIME& time) {
@@ -788,13 +791,14 @@ struct RacingStateBlock {
     uint32_t spotterState,flagState,flagColor,lapFlags;
     int32_t lapNumber; float lapSeconds,lapDeltaSeconds; uint32_t reserved0;
     int64_t lapExpiresTick; uint32_t presentationFlags,reserved1;
+    uint32_t gripState; // v2: packed Grip-O-Bar — bit0 active, bits1-2 dominance, bits3-4 direction, severity<<8
 };
 #pragma pack(pop)
-static_assert(sizeof(RacingStateBlock)==64,"Racing state contract size");
+static_assert(sizeof(RacingStateBlock)==68,"Racing state contract size");
 HANDLE g_racingMap=nullptr; const RacingStateBlock* g_racing=nullptr; RacingStateBlock g_racingStable{}; uint32_t g_racingGeneration=0; uint64_t g_racingNextConnectTick=0;
 void ConsumeRacingState(){
     if(!g_racing){const uint64_t now=GetTickCount64();if(now<g_racingNextConnectTick)return;g_racingNextConnectTick=now+1000;g_racingMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabRacingState");if(g_racingMap)g_racing=(const RacingStateBlock*)MapViewOfFile(g_racingMap,FILE_MAP_READ,0,0,sizeof(RacingStateBlock));}
-    if(!g_racing||g_racing->magic!=kRacingMagic||g_racing->version!=1||g_racing->size!=sizeof(RacingStateBlock)||g_racing->generation==g_racingGeneration)return;
+    if(!g_racing||g_racing->magic!=kRacingMagic||g_racing->version!=2||g_racing->size!=sizeof(RacingStateBlock)||g_racing->generation==g_racingGeneration)return;
     const RacingStateBlock snapshot=*g_racing;MemoryBarrier();if(snapshot.generation!=g_racing->generation)return;g_racingStable=snapshot;g_racingGeneration=snapshot.generation;
 }
 void DisconnectRacingState(){if(g_racing)UnmapViewOfFile(g_racing);if(g_racingMap)CloseHandle(g_racingMap);g_racing=nullptr;g_racingMap=nullptr;g_racingStable={};g_racingGeneration=0;g_racingNextConnectTick=0;}
@@ -3301,6 +3305,8 @@ void DrawViewLabOverlaysToTexture(
     const bool wantRaceStart = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingRaceStart) || (g_racingStable.presentationFlags & 8u)) && g_racingStable.reserved0 != 0;
     // Rear-closing pressure cue: packed state in reserved1 (bit0 active, opacity<<8, width<<16, intensity<<24).
     const bool wantRearClosing = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingRearClosing) || (g_racingStable.presentationFlags & 16u)) && (g_racingStable.reserved1 & 1u) != 0;
+    // Grip-O-Bar: packed gripState (bit0 active, dominance<<1, direction<<3 [1 left/2 right], severity<<8).
+    const bool wantGripBar = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingGripBar) || (g_racingStable.presentationFlags & 32u)) && (g_racingStable.gripState & 1u) != 0;
     bool wantNotify = false;
     const bool wantsNotificationCards = IncludesMirrorFeature(featureMask, MirrorNotifications) && notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications);
     const bool wantsRacingLap = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u));
@@ -3448,6 +3454,27 @@ void DrawViewLabOverlaysToTexture(
             const float f = 1.f - i / 4.f, a = alpha * f, hw = halfW * (0.7f + 0.3f * f);
             rectFill(cx - hw, (float)t + i * band * 0.25f, cx + hw, (float)t + (i + 1) * band * 0.25f, 1.f, 0.35f, 0.15f, a);
             flushFlat(1.f, 0.35f, 0.15f, a);
+        }
+    }
+
+    // Grip-O-Bar: a lower-left or lower-right peripheral bar for whole-car grip loss. Colour bands by
+    // severity (yellow -> orange -> red); coverage and intensity grow with severity. Never a permanent
+    // full-width bottom bar and never an individual-tyre claim — the provider reports whole-car direction.
+    if (wantGripBar) {
+        const uint32_t gp = g_racingStable.gripState;
+        const int dir = (gp >> 3) & 3; const float sev = ((gp >> 8) & 255) / 255.f;
+        float cr, cg, cb;
+        if (sev < 0.34f) { cr = 1.f; cg = 0.85f; cb = 0.10f; }        // yellow
+        else if (sev < 0.67f) { cr = 1.f; cg = 0.50f; cb = 0.05f; }   // orange
+        else { cr = 1.f; cg = 0.15f; cb = 0.10f; }                    // red
+        const float alpha = (0.30f + 0.70f * sev) * (float)iracingGripBarOpacity;
+        const float barW = (0.10f + 0.35f * sev) * w * 0.5f, barH = std::clamp(minDim * 0.06f, 6.f, minDim * 0.16f);
+        const float y0 = (float)bb_ - barH - 2.f;
+        for (int i = 0; i < 4; ++i) {          // stacked bands fading toward the inside edge
+            const float f = 1.f - i / 4.f, a = alpha * f;
+            const float yy0 = y0 + barH * i / 4.f, yy1 = y0 + barH * (i + 1) / 4.f;
+            if (dir == 1) { rectFill((float)l + 2.f, yy0, (float)l + 2.f + barW * f, yy1, cr, cg, cb, a); flushFlat(cr, cg, cb, a); }
+            else if (dir == 2) { rectFill((float)rr_ - 2.f - barW * f, yy0, (float)rr_ - 2.f, yy1, cr, cg, cb, a); flushFlat(cr, cg, cb, a); }
         }
     }
 
@@ -4997,6 +5024,8 @@ void LoadConfig() {
     iracingRaceStartThickness = std::clamp(ReadDoubleSetting(L"iracing_race_start_thickness", 0.02), 0.005, 0.12);
     iracingRearClosing = ReadBoolSetting(L"iracing_rear_closing", false);
     iracingRearClosingOpacity = std::clamp(ReadDoubleSetting(L"iracing_rear_closing_opacity", 0.9), 0.05, 1.0);
+    iracingGripBar = ReadBoolSetting(L"iracing_grip_bar", false);
+    iracingGripBarOpacity = std::clamp(ReadDoubleSetting(L"iracing_grip_bar_opacity", 0.9), 0.05, 1.0);
     iracingSpotterWidth = std::clamp(ReadDoubleSetting(L"iracing_spotter_width", 0.12), 0.03, 0.35);
     iracingSpotterStrength = std::clamp(ReadDoubleSetting(L"iracing_spotter_strength", 1.0), 0.1, 2.0);
     iracingSpotterOpacity = std::clamp(ReadDoubleSetting(L"iracing_spotter_opacity", 0.65), 0.05, 1.0);

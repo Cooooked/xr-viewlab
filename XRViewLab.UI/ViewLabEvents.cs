@@ -29,6 +29,9 @@ internal enum ViewLabEventKind
     // Rear-closing pressure cue: Value carries a packed state (bit0 active, bits8-15 opacity,
     // bits16-23 glow width, bits24-31 closing intensity, each 0-255). Native draws a top-centre glow.
     RearClosing,
+    // Grip-O-Bar: Value carries a packed state (bit0 active, bits1-2 dominance, bits3-4 direction
+    // [1 left, 2 right], bits8-15 severity 0-255). Native draws a lower-left/right peripheral bar.
+    GripOBar,
 }
 
 internal enum SpotterState

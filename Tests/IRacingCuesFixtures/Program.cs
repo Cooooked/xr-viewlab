@@ -153,5 +153,31 @@ const double dt = 1.0 / 60.0;
     Check(RaceStartFlags.Phase(ready, prev, ref saw, ref latched) == 1, "race phase: new session re-arms to waiting/red");
 }
 
+// ---- Grip calibration persistence (item 6) -----------------------------------------------------
+{
+    string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vl-grip-" + Guid.NewGuid().ToString("N") + ".json");
+    try
+    {
+        var store = new GripCalibrationStore(tmp);
+        var cal = store.ForCar("mx5");
+        for (int i = 0; i < 200; i++) GripOMeter.AccumulateCalibration(cal, 0.1, 40.0, 0.1 * 40.0 * 0.02, true);
+        Check(cal.IsCalibrated, "grip store: calibration accumulates for a car");
+        store.Save();
+
+        var reloaded = new GripCalibrationStore(tmp);
+        var cal2 = reloaded.ForCar("mx5");
+        Check(cal2.IsCalibrated && Math.Abs(cal2.YawGain - cal.YawGain) < 1e-6, "grip store: calibration persists and reloads per car");
+        Check(!reloaded.ForCar("other").IsCalibrated, "grip store: a different car starts uncalibrated");
+
+        reloaded.ResetCar("mx5");
+        Check(!new GripCalibrationStore(tmp).ForCar("mx5").IsCalibrated, "grip store: reset clears a car's calibration");
+
+        // Migration: a record with a foreign schema is dropped on load.
+        System.IO.File.WriteAllText(tmp, "{\"future\":{\"Schema\":999,\"CarId\":\"future\",\"YawGain\":0.02,\"Samples\":100}}");
+        Check(!new GripCalibrationStore(tmp).ForCar("future").IsCalibrated, "grip store: records with an unknown schema are dropped (migration-safe)");
+    }
+    finally { try { System.IO.File.Delete(tmp); } catch { } }
+}
+
 Console.WriteLine(failures == 0 ? "All iRacing cue fixtures passed." : $"{failures} fixture(s) failed.");
 return failures == 0 ? 0 : 1;

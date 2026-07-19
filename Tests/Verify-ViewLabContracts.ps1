@@ -847,6 +847,16 @@ Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(60, _rearClo
 Assert-Contains 'dllmain.cpp' 'const bool wantRearClosing = IncludesMirrorFeature' 'native gates the rear-closing glow on enable + mirror feature'
 Assert-Contains 'dllmain.cpp' 'iracingRearClosing = ReadBoolSetting\(L"iracing_rear_closing"' 'native reads the rear-closing enable at session start'
 Assert-Contains 'MainWindow.xaml' 'Name="IRacingRearClosingCheck"' 'rear-closing enable control is present'
+# Item 6: Grip-O-Bar wired end-to-end (telemetry -> per-car calibration -> racing state v2 -> native bar).
+Assert-Contains 'XRViewLab.UI\ViewLabEvents.cs' 'GripOBar,' 'grip-o-bar event kind exists'
+Assert-Contains 'XRViewLab.UI\GripCalibrationStore.cs' 'internal sealed class GripCalibrationStore' 'per-car grip calibration store exists'
+Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' '_grip\.Update\(cal, steering, speed, yawRate' 'provider runs the grip meter with per-car calibration'
+Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(64, _grip\)' 'racing state v2 publishes the packed grip state'
+Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(4, 2u\)' 'racing state contract is version 2'
+Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(RacingStateBlock\)==68' 'native racing state struct grew to v2 (68 bytes)'
+Assert-Contains 'dllmain.cpp' 'g_racing->version!=2' 'native consumes racing state version 2'
+Assert-Contains 'dllmain.cpp' 'const bool wantGripBar = IncludesMirrorFeature' 'native gates the grip bar on enable + mirror feature'
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingGripBarCheck"' 'grip-o-bar enable control is present'
 # Item 8: OBS ViewLab Mirror Capture identity is unique and does not collide with the third-party source.
 Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "viewlab_mirror_capture"' 'ViewLab OBS source uses a unique stable source id'
 Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'return "ViewLab Mirror Capture"' 'ViewLab OBS source display name is the final product name'

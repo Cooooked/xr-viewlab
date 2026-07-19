@@ -888,6 +888,12 @@
                           <TextBlock Text="Glow opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingRearClosingOpacitySlider" Minimum="0.05" Maximum="1" Value="0.9" Tag="0.9" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
 
+                          <TextBlock Text="Grip-O-Bar" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
+                          <CheckBox Name="IRacingGripBarCheck" Content="Enable Grip-O-Bar" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="A lower-left/right peripheral bar showing whole-car grip loss: it compares actual yaw with a per-car calibrated expected yaw plus lateral slip. Yellow/orange/red by severity. Needs per-car calibration (built up automatically while driving cleanly); it never claims an individual tyre." />
+                          <TextBlock Text="Bar opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingGripBarOpacitySlider" Minimum="0.05" Maximum="1" Value="0.9" Tag="0.9" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <Button Name="IRacingGripResetButton" Content="Reset grip calibration" Padding="8,2" Margin="0,4,0,0" HorizontalAlignment="Left" Click="IRacingGripReset_Click" ToolTip="Clears the accumulated per-car grip calibration so it re-learns from scratch." />
+
                           <TextBlock Text="Low Fuel Warning" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
                           <CheckBox Name="IRacingFuelWarningCheck" Content="Enable low fuel warning card" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Fires once per crossing below the threshold, from the SDK's FuelLevelPct — absent on cars/tracks that don't report it." />
                           <TextBlock Text="Fuel threshold (%)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />

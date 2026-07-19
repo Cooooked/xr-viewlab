@@ -9,6 +9,7 @@
     <Compile Include="..\..\XRViewLab.UI\ViewLabEvents.cs" Link="ViewLabEvents.cs" />
     <Compile Include="..\..\XRViewLab.UI\IRacingTelemetryProvider.cs" Link="IRacingTelemetryProvider.cs" />
     <Compile Include="..\..\XRViewLab.UI\IRacingCues.cs" Link="IRacingCues.cs" />
+    <Compile Include="..\..\XRViewLab.UI\GripCalibrationStore.cs" Link="GripCalibrationStore.cs" />
     <Compile Include="..\..\XRViewLab.UI\RacingStateService.cs" Link="RacingStateService.cs" />
   </ItemGroup>
 </Project>

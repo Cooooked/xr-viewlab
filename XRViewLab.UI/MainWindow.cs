@@ -1298,6 +1298,8 @@ public partial class MainWindow : Window
 		IRacingRaceStartGreenOpacitySlider.Value = ReadRangeSetting("iracing_race_start_green_opacity", 0.8, 0.05, 1.0);
 		IRacingRearClosingCheck.IsChecked = ReadBoolSetting("iracing_rear_closing", false);
 		IRacingRearClosingOpacitySlider.Value = ReadRangeSetting("iracing_rear_closing_opacity", 0.9, 0.05, 1.0);
+		IRacingGripBarCheck.IsChecked = ReadBoolSetting("iracing_grip_bar", false);
+		IRacingGripBarOpacitySlider.Value = ReadRangeSetting("iracing_grip_bar_opacity", 0.9, 0.05, 1.0);
 
 		// Gameplay/Tuning + menu/window controls now live in the ReShade Remote pop-out (ReShadeRemoteWindow).
 		SyncSlidersFromText();
@@ -2236,7 +2238,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if(includeDisabled||StickyNoteEnabledCheck.IsChecked==true)for(int i=0;i<_stickyNotes.Count;++i){var n=_stickyNotes[i];if(n.Enabled&&!string.IsNullOrWhiteSpace(n.Text))items.Add(new($"sticky:{i}",$"NOTE {i+1}",n.X,n.Y,.12,.12,n.Scale,.5,2.5,n.Opacity,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Sticky,n.Theme));}
 		if(includeDisabled||NotifyEnabledCheck.IsChecked==true)items.Add(new("notifications","NOTIFICATION",NotifyXSlider.Value,NotifyYSlider.Value,.28,.12,NotifyScaleSlider.Value,NotifyScaleSlider.Minimum,NotifyScaleSlider.Maximum,NotifyOpacitySlider.Value,OverlayPreviewAnchor.BottomRight,OverlayPreviewStyle.Notification,Math.Max(0,NotifyThemeCombo.SelectedIndex)));
 		if(includeFeatureModules&&ObsIndicatorEnabledCheck.IsChecked==true)items.Add(new(string.Empty,"OBS RECORDING CUE",.5,.5,1,1,1,1,1,ObsIndicatorOpacitySlider.Value,OverlayPreviewAnchor.RecordingRenderEdge,OverlayPreviewStyle.System));
-		if(includeFeatureModules&&(IRacingLapPopupCheck.IsChecked==true||IRacingSpotterGlowCheck.IsChecked==true||IRacingFlagBorderCheck.IsChecked==true||IRacingRaceStartCheck.IsChecked==true||IRacingRearClosingCheck.IsChecked==true))items.Add(new(string.Empty,"iRACING TELEMETRY",.5,.5,1,1,1,1,1,.7,OverlayPreviewAnchor.RenderEdge,OverlayPreviewStyle.System));
+		if(includeFeatureModules&&(IRacingLapPopupCheck.IsChecked==true||IRacingSpotterGlowCheck.IsChecked==true||IRacingFlagBorderCheck.IsChecked==true||IRacingRaceStartCheck.IsChecked==true||IRacingRearClosingCheck.IsChecked==true||IRacingGripBarCheck.IsChecked==true))items.Add(new(string.Empty,"iRACING TELEMETRY",.5,.5,1,1,1,1,1,.7,OverlayPreviewAnchor.RenderEdge,OverlayPreviewStyle.System));
 		return items;
 	}
 
@@ -2553,6 +2555,18 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		StatusText.Text = "Visor mask colour applied; default is black (0,0,0).";
 	}
 
+	private void IRacingGripReset_Click(object sender, RoutedEventArgs e)
+	{
+		// Clear the accumulated per-car grip calibration; the broker's provider re-learns from scratch.
+		try
+		{
+			string path = Path.Combine(ConfigDirectory, "grip-calibration.json");
+			if (File.Exists(path)) File.Delete(path);
+			StatusText.Text = "Grip calibration cleared; it re-learns while driving cleanly.";
+		}
+		catch (Exception ex) { StatusText.Text = "Could not clear grip calibration: " + ex.Message; }
+	}
+
 	// ---- iRacing integration UI ----------------------------------------------------------------
 	private void IRacingControl_Changed(object sender, RoutedEventArgs e)
 	{
@@ -2579,6 +2593,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", "iracing_race_start_green_opacity", IRacingRaceStartGreenOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", "iracing_rear_closing", IRacingRearClosingCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "iracing_rear_closing_opacity", IRacingRearClosingOpacitySlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_grip_bar", IRacingGripBarCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_grip_bar_opacity", IRacingGripBarOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		PublishLiveState();
 		EnsureIRacingProvider();
 		StatusText.Text = "iRacing telemetry settings applied.";

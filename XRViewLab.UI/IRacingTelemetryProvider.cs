@@ -47,6 +47,11 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
     private long _lastRearSampleTick;
     private bool _rearActivePublished;
     private uint _lastRearPacked;
+    private string _playerCarId = "default";
+    private readonly GripOMeter _grip = new();
+    private readonly GripCalibrationStore _gripStore = new();
+    private uint _lastGripPacked;
+    private int _gripSaveCounter;
 
     // Settable by the broker from its own settings poll; not part of the SDK layout. Clamped to a
     // sane range so a malformed ini value can't disable the warning (0) or fire it constantly (1).
@@ -217,6 +222,14 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
             var m = System.Text.RegularExpressions.Regex.Match(yaml, @"TrackLength:\s*([0-9.]+)\s*(km|mi)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) && v > 0.1)
                 _trackLengthMeters = Math.Clamp(v * (m.Groups[2].Value.Equals("mi", StringComparison.OrdinalIgnoreCase) ? 1609.344 : 1000.0), 200.0, 30000.0);
+            // Player car id for per-car grip calibration: DriverCarIdx -> that driver's CarPath.
+            var idxM = System.Text.RegularExpressions.Regex.Match(yaml, @"DriverCarIdx:\s*(\d+)");
+            if (idxM.Success)
+            {
+                var pathM = System.Text.RegularExpressions.Regex.Match(yaml,
+                    @"CarIdx:\s*" + idxM.Groups[1].Value + @"\b[\s\S]{0,600}?CarPath:\s*(\S+)");
+                if (pathM.Success) _playerCarId = pathM.Groups[1].Value.Trim();
+            }
         }
         catch { /* keep the fallback length */ }
     }
@@ -343,6 +356,36 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
             Publish(new ViewLabEvent { Kind = ViewLabEventKind.RearClosing, Value = packed, SessionId = sessionId, TimestampUtc = DateTimeOffset.UtcNow });
         }
 
+        // Grip-O-Bar: compare actual yaw with the per-car calibrated expected yaw plus lateral slip.
+        // Steering (rad), Speed (m/s), YawRate (rad/s), VelocityX/Y (car-frame m/s). Calibration only
+        // accumulates from clean, higher-speed, on-track samples and is persisted per car.
+        double steering = ReadValue("SteeringWheelAngle", buffer);
+        double speed = ReadValue("Speed", buffer);
+        double yawRate = ReadValue("YawRate", buffer);
+        double velX = ReadValue("VelocityX", buffer);   // forward
+        double velY = ReadValue("VelocityY", buffer);   // lateral
+        bool onTrack = ReadValue("IsOnTrack", buffer) is double ot && (double.IsNaN(ot) || ot != 0);
+        bool gripValid = double.IsFinite(steering) && double.IsFinite(speed) && double.IsFinite(yawRate)
+            && double.IsFinite(velX) && double.IsFinite(velY) && onTrack;
+        var cal = _gripStore.ForCar(_playerCarId);
+        if (gripValid)
+        {
+            bool cleanForCal = speed > 12.0 && Math.Abs(steering) > 0.03 && spotter == SpotterState.Clear;
+            GripOMeter.AccumulateCalibration(cal, steering, speed, yawRate, cleanForCal);
+            if (cleanForCal && (++_gripSaveCounter % 600) == 0) _gripStore.Save(); // periodic durable save (~10s at 60Hz)
+        }
+        _grip.Update(cal, steering, speed, yawRate, velY, velX, gripValid, rearDt);
+        int gdir = _grip.Direction == 0 ? 0 : _grip.Direction < 0 ? 1 : 2; // 1 left, 2 right
+        uint gripPacked = _grip.Direction != 0
+            ? 1u | ((uint)(int)_grip.Dominance << 1) | ((uint)gdir << 3)
+                 | ((uint)Math.Clamp((int)Math.Round(_grip.Severity * 255), 0, 255) << 8)
+            : 0u;
+        if (gripPacked != _lastGripPacked)
+        {
+            _lastGripPacked = gripPacked;
+            Publish(new ViewLabEvent { Kind = ViewLabEventKind.GripOBar, Value = gripPacked, SessionId = sessionId, TimestampUtc = DateTimeOffset.UtcNow });
+        }
+
         if (_lastLap >= 0 && lap > _lastLap)
         {
             bool valid = double.IsFinite(lastLapTime) && lastLapTime > 0;
@@ -451,6 +494,7 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         _fuelWarningFired = false;
         _prevRawFlags = 0; _sawRaceWaiting = false; _raceStartLatched = false; _raceStartPhase = -1;
         _rearCue.Reset(); _lastRearSampleTick = 0; _lastRearPacked = 0; _rearActivePublished = false;
+        _grip.Reset(); _lastGripPacked = 0; _gripSaveCounter = 0; _gripStore.Save();
     }
 
     private static string FormatLap(double seconds) => TimeSpan.FromSeconds(seconds).ToString(@"m\:ss\.fff");

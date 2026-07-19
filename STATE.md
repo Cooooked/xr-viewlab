@@ -4,12 +4,14 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-19
-**Current version:** 4.1.277 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.277.msi` (size 149,180,416 bytes; SHA-256
-`D9DDAE72EA56CCA0A2EFA94A84022638E85A082F30058EB699BB27FDBF22AA0E`). Adds the Race-Start Border Light wired
-end-to-end (SessionFlags -> shared racing state -> native red/green border with hold+fade -> settings/persistence
--> preview). Full WPF/broker/signed-identity/x64+Win32 native/OBS-plugin/MSI build 0/0; extracted-payload validation
-passes; all 24 deterministic scripts pass. Live iRacing/headset validation pending.
-**Prior version:** 4.1.276 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.276.msi` (size 149,151,744 bytes; SHA-256
+**Current version:** 4.1.278 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.278.msi` (size 149,184,512 bytes; SHA-256
+`72D0DDC8B2CAAB47F359041F1DB9C93E79CB43BB186405F314C37E7533346B19`). Adds the Rear-Closing Pressure Cue and the
+Grip-O-Bar wired end-to-end (provider telemetry + per-car calibration -> racing state contract v2 -> native glow/bar
+-> settings/persistence/preview), on top of 4.1.277's race-start light. Full WPF/broker/signed-identity/x64+Win32
+native/OBS-plugin/MSI build 0/0; extracted-payload validation passes; all 24 deterministic scripts pass. Live
+iRacing/headset validation pending.
+**Prior version:** 4.1.277 — Race-Start Border Light wired end-to-end (`dist/ViewLab-4.1.277.msi`).
+**Older:** 4.1.276 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.276.msi` (size 149,151,744 bytes; SHA-256
 `B66D945C49A0589D48DA0C2CFF92DB8BF00E3BAC1C380AA2BAC70E7EEC2D0027`). Preview repairs: the crosshair now converges at
 the post-crop (crop/visor) centre rather than the full-lens box, and the Optical-centred checkbox is a content-only
 upward shim (crop, visor, crosshair and widgets shift up by 0.077 of frame height; the fixed 55:48 frame viewport,
@@ -34,6 +36,34 @@ extracted-payload validation. Build 4.1.224 additionally passes the full determi
 WPF, broker, signed identity, x64/Win32 native, MSI extraction, pinned PresentMon hash/notice validation;
 its DiagMon real-game CSV and live Trace-cap checks remain mandatory before release.
 **Publish state:** 4.1.252 published at the user's direction (2026-07-18): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.252.
+
+## Rear-closing and Grip-O-Bar wired end-to-end (implemented; live iRacing/headset validation pending, 2026-07-19)
+
+Both remaining new iRacing cues are now connected through the whole product, not just calculation classes.
+
+**Rear-Closing Pressure Cue (item 4).** The provider derives the nearest-car-behind distance from the
+`CarIdxLapDistPct` array + `PlayerCarIdx`, converted to metres via `TrackLength` parsed from the session-info string
+(nominal fallback). It runs the shared `RearClosingCue` state machine at telemetry cadence (target-change protection,
+hysteresis, fades) and publishes a quantized packed state (active/opacity/width/intensity) only on change; any spotter
+side means overlap, so the cue clears and the existing spotter takes over. `RacingStateService` writes the packed word
+into `RacingStateBlock.reserved1` (offset 60). Native draws a restrained top-centre glow whose width grows with
+proximity and brightness with closing speed — no side inferred. Enable + glow opacity persist as `iracing_rear_closing*`.
+
+**Grip-O-Bar (item 6).** The provider reads Steering/Speed/YawRate/VelocityX/Y, resolves the player's car path from
+the session string, and keeps a versioned per-car calibration in `%LOCALAPPDATA%\XR ViewLab\grip-calibration.json`
+(`GripCalibrationStore`; foreign-schema records are dropped on load, periodic durable save, UI reset button). It
+accumulates the calibration only from clean higher-speed samples and runs `GripOMeter` (calibrated expected-vs-actual
+yaw + lateral slip → whole-car direction, severity band, understeer/oversteer/sideslip dominance; low-speed and
+uncalibrated suppression). The packed state (active/dominance/direction/severity) rides a **grown racing contract v2
+(68 bytes)** in the new `gripState` word at offset 64 — native and the C# service both moved to v2 and reject other
+versions. Native draws a lower-left or lower-right peripheral bar coloured yellow/orange/red by severity; it never
+claims an individual tyre. Enable + bar opacity persist as `iracing_grip_bar*`.
+
+Both cues gate under the existing racing-cues mirror feature and show the iRacing edge placeholder in the desktop
+preview when enabled. Fixtures cover the state machines, the race/rear phase logic and the calibration store's
+persistence/migration/reset; contracts pin each UI→provider→racing-state→native chain. Managed + broker + native
+x64/Win32 compile; all deterministic scripts pass. Live iRacing driving and in-headset appearance remain pending.
+The iRacing connection HUD icons (item 5 of the original list) and the OBS shared-frame producer remain not started.
 
 ## Race-start border light wired end-to-end (implemented; live iRacing/headset validation pending, 2026-07-19)
 
