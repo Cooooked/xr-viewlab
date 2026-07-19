@@ -4,13 +4,14 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-19
-**Current version:** 4.1.273 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.273.msi` (size 149,147,648 bytes; SHA-256
-`52A7388F9BCECF214406ABDF913B9359CE6D5290D5D8F9BFCBB5B778CDD69532`). Full WPF/broker/signed-identity/
-x64+Win32 native/OBS-plugin/MSI build with 0 warnings/errors; extracted-payload validation confirms fresh
-WPF/native/broker hashes, pinned PresentMon 2.4.1 + MIT notice, signed identity certificate and Overlays
-markers. All 21 deterministic scripts pass. Headset/OBS/iRacing live validation remains pending.
-**Prior version:** 4.1.272 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.272.msi` (permanent `WidgetPreviewShimY = 0.077`
-widget preview correction; calibration grey text; iRacing spotter RGB-slider right-click reset).
+**Current version:** 4.1.274 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.274.msi` (size 149,155,840 bytes; SHA-256
+`2AF0580109A0271ED91DF36D1C8B672F1B8C6C8B7EA31F9F8000C5FBD53E3710`). Adds redesigned notification themes,
+configurable RGB visor mask colour (live-state v11), and the calibration screenshot-pack review workflow. Full
+WPF/broker/signed-identity/x64+Win32 native/OBS-plugin/MSI build with 0 warnings/errors; extracted-payload
+validation confirms fresh WPF/native/broker hashes, pinned PresentMon 2.4.1 + MIT notice, signed identity certificate
+and Overlays markers. All 22 deterministic scripts pass. Headset/OBS/iRacing live validation remains pending.
+**Prior version:** 4.1.273 — HUD per-metric unit visibility, uniform crosshair preview, Performance Trace baseline
+line removal, iRacing control-plumbing audit (`dist/ViewLab-4.1.273.msi`).
 **Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
 AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
 remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
@@ -24,6 +25,43 @@ extracted-payload validation. Build 4.1.224 additionally passes the full determi
 WPF, broker, signed identity, x64/Win32 native, MSI extraction, pinned PresentMon hash/notice validation;
 its DiagMon real-game CSV and live Trace-cap checks remain mandatory before release.
 **Publish state:** 4.1.252 published at the user's direction (2026-07-18): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.252.
+
+## Notification redesign, visor RGB colour, calibration pack review (implemented; headset validation pending, 2026-07-19)
+
+**Notification theme redesign (item 15).** The four compositor designs (composited in `NotificationService.ComposeCard`)
+now have genuinely distinct footprints and structure: Classic 336x92 (10px round, leading accent bar, 44px icon,
+app-name caption above the title, two-line body), Compact Banner 336x44 (single dense row, 24px icon, bottom accent
+underline, no app name), Minimal 288x72 (square, text-only, hairline frame, left tick, tiny app-name label, airy
+hierarchy) and Bold 336x96 (16px round, tall filled top accent band carrying the app name, 56px icon, heavy 18px
+title). App-name placement, corner radius, accent position, icon treatment and typography scale all differ per design;
+because each card carries its own height the native layer stacks them at different densities. Theme/Palette separation,
+privacy modes, artwork/icon handling, queue/duration/opacity/max-visible are unchanged. Contract fixtures pin the
+four distinct footprints and the per-design app-name treatment.
+
+**Configurable visor mask colour (item 21).** The visor fill is no longer hard-coded black. `kVisorPS` reads a
+`VisorColor` constant buffer (register b0) and `DrawVisorBorderToTexture` binds a dedicated dynamic `visorColorCb`
+before every visor draw, so the colour flows through the one shared visor path into direct, ordered/topmost, OBS
+mirror and calibration-capture output alike. The colour is `0x00RRGGBB`, default 0 = black (existing behaviour
+unchanged). It is persisted as `mask_color`, resolved through the same profile/global INI as the other visor keys
+(so per-app custom visor profiles carry their own colour) and also published live: the live-state contract grew to
+**v11 / 272 bytes** with the colour in the new tail; the native `LiveStateBlock` matches (`static_assert ==272`) and
+rejects any block whose version/size is not exactly v11/272. The UI adds R/G/B 0-255 sliders with numeric readouts,
+a live swatch, right-click reset and Black/Magenta/Green/Cyan presets (true magenta is 255,0,255; whether a streaming
+environment-blend detects it is explicitly not assumed). Managed + x64 + Win32 all compile; contract fixtures pin the
+shader cbuffer, the draw-time binding, the grown struct and the UI. Only in-headset visual confirmation of the colour
+remains.
+
+**Calibration screenshot-pack review (item 22).** `CalibrationPackReview` (WPF-free, so it is deterministically
+testable) scans `%LOCALAPPDATA%\XR ViewLab\CalibrationCaptures`, clusters captures into packs by capture-run time
+proximity (a single run can straddle a second boundary, as the user's real pack did), matches each PNG with its JSON
+sidecar, parses PNG dimensions straight from the IHDR, cross-checks them against the metadata, computes SHA-256 and
+size, flags missing patterns / blank-or-suspicious captures (decode-free bytes-per-megapixel heuristic) / dimension
+mismatches / unexpected eye, records each pattern's diagnostic purpose, compares two packs and renders a concise
+report — never modifying the raw files. It states plainly that captures are the PC-side submitted left-eye image, not
+headset optics or encoded output. A `Review capture pack` button in the Calibration menu shows the report via the
+built-in help window. The user's real 10-pattern pack (Eleven Table Tennis, 2419x432) reviews as COMPLETE. A console
+fixture (`Invoke-CalibrationPackReviewFixtures`) asserts completeness, missing-pattern, blank, dimension-mismatch,
+wrong-eye and comparison detection; repository contracts pin the read-only workflow and its UI wiring.
 
 ## Per-metric HUD units, crosshair preview aspect, Trace baseline cleanup (implemented; headset validation pending, 2026-07-19)
 

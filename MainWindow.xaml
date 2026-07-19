@@ -462,6 +462,20 @@
                 <Slider Name="MaskVerticalSlider" Visibility="Collapsed" Minimum="0.01" Maximum="1" ValueChanged="MaskSlider_Changed" />
                 <Slider Name="MaskHorizontalSlider" Visibility="Collapsed" Minimum="0.01" Maximum="1" ValueChanged="MaskSlider_Changed" />
                 <CheckBox Name="MaskRoundedCheck" Visibility="Collapsed" />
+                <TextBlock Text="Visor mask colour (RGB 0-255)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,8,0,2" ToolTip="Default is black. You can experiment with matching a streaming environment-blend key colour (true magenta is 255, 0, 255). All combinations are selectable; whether a streamer detects it is not guaranteed." />
+                <Grid Margin="0,0,0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
+                  <TextBlock Text="R" VerticalAlignment="Center"/><Slider Name="VisorColorRedSlider" Grid.Column="1" Minimum="0" Maximum="255" TickFrequency="1" IsSnapToTickEnabled="True" Tag="0" ValueChanged="VisorColorRgb_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Red 0-255. Right-click to reset."/><TextBlock Grid.Column="2" Text="{Binding ElementName=VisorColorRedSlider, Path=Value, StringFormat={}{0:0}}" TextAlignment="Right" VerticalAlignment="Center"/></Grid>
+                <Grid Margin="0,0,0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
+                  <TextBlock Text="G" VerticalAlignment="Center"/><Slider Name="VisorColorGreenSlider" Grid.Column="1" Minimum="0" Maximum="255" TickFrequency="1" IsSnapToTickEnabled="True" Tag="0" ValueChanged="VisorColorRgb_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Green 0-255. Right-click to reset."/><TextBlock Grid.Column="2" Text="{Binding ElementName=VisorColorGreenSlider, Path=Value, StringFormat={}{0:0}}" TextAlignment="Right" VerticalAlignment="Center"/></Grid>
+                <Grid Margin="0,0,0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
+                  <TextBlock Text="B" VerticalAlignment="Center"/><Slider Name="VisorColorBlueSlider" Grid.Column="1" Minimum="0" Maximum="255" TickFrequency="1" IsSnapToTickEnabled="True" Tag="0" ValueChanged="VisorColorRgb_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Blue 0-255. Right-click to reset."/><TextBlock Grid.Column="2" Text="{Binding ElementName=VisorColorBlueSlider, Path=Value, StringFormat={}{0:0}}" TextAlignment="Right" VerticalAlignment="Center"/></Grid>
+                <WrapPanel Margin="0,2,0,0">
+                  <Border Name="VisorColorPreview" Width="20" Height="20" Background="#000000" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,0,8,0" />
+                  <Button Content="Black" Padding="7,2" Margin="0,0,4,0" Click="VisorColorPreset_Click" Tag="0,0,0" />
+                  <Button Content="Magenta" Padding="7,2" Margin="0,0,4,0" Click="VisorColorPreset_Click" Tag="255,0,255" />
+                  <Button Content="Green" Padding="7,2" Margin="0,0,4,0" Click="VisorColorPreset_Click" Tag="0,255,0" />
+                  <Button Content="Cyan" Padding="7,2" Click="VisorColorPreset_Click" Tag="0,255,255" />
+                </WrapPanel>
               </StackPanel>
             </Border>
             </StackPanel>
@@ -507,6 +521,7 @@
                       <CheckBox Name="CalMotionCheck" Content="Motion strip" Foreground="#A8A8A8" ToolTip="Reveals temporal smearing and reprojection artefacts." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
                       <Separator Margin="0,9,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <Button Name="RunCalibrationSuiteButton" Content="Run Calibration Suite (Experimental)" Style="{StaticResource RedButton}" Padding="9,4" Click="RunCalibrationSuite_Click" />
+                      <Button Name="ReviewCalibrationPackButton" Content="Review capture pack" Padding="9,4" Margin="0,5,0,0" HorizontalAlignment="Left" Click="ReviewCalibrationPack_Click" ToolTip="Read-only check of the captured PNG/JSON pairs: completeness, dimensions, hashes, blank/suspicious detection and each pattern's diagnostic purpose. Never modifies the raw files." />
                       <TextBlock Text="Captures each pattern from the real submitted left-eye image while a game is running. Images and metadata save under %LOCALAPPDATA%\XR ViewLab\CalibrationCaptures. Your previous calibration settings are restored afterwards." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" />
                     </StackPanel>
                   </ScrollViewer>

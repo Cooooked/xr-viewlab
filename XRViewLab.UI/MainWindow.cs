@@ -1146,6 +1146,7 @@ public partial class MainWindow : Window
 		MaskApexYSlider.Value = ReadRangeSetting(MaskOuterApexYKey, 0.0, -0.5, 0.5);
 		MaskInnerLowerSlider.Value = ReadRangeSetting(MaskInnerLowerYKey, 0.0, 0.0, 0.666);
 		MaskNoseSpreadXSlider.Value = ReadRangeSetting(MaskNoseSpreadXKey, 0.0, 0.0, 0.5);
+		SyncVisorColorControls((uint)ReadRangeSetting(VisorMaskColorKey, 0, 0, 0xFFFFFF));
 		PreviewCircleGuidesCheck.IsChecked = ReadBoolSetting(PreviewCircleGuidesKey, true);
 		PreviewPerEyeFramesCheck.IsChecked = ReadBoolSetting(PreviewPerEyeFramesKey, false);
 		PreviewOpticalCentreCheck.IsChecked = ReadBoolSetting(PreviewOpticalCentreKey, false);
@@ -2026,6 +2027,39 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		RefreshViewLabMirrorPluginStatus();
 	}
 
+	private void ReviewCalibrationPack_Click(object sender, RoutedEventArgs e)
+	{
+		string folder = Path.Combine(ConfigDirectory, "CalibrationCaptures");
+		var sections = new List<HelpSection>
+		{
+			new HelpSection("Scope of these captures",
+				"Every image is the ViewLab-submitted LEFT-EYE texture at xrEndFrame. It shows what ViewLab handed " +
+				"the runtime on the PC, not the headset lens optics, runtime post-processing, foveated encoding or the " +
+				"physical panel image. Do not infer lens or headset-output properties from this pack. This review is " +
+				"read-only and never modifies the raw files.")
+		};
+		try
+		{
+			var packs = CalibrationPackReview.ReviewFolder(folder);
+			if (packs.Count == 0)
+			{
+				sections.Add(new HelpSection("No packs found", $"No calibration captures were found under {folder}. Run the calibration suite while a game is active to produce a pack."));
+			}
+			else
+			{
+				foreach (var pack in packs)
+					sections.Add(new HelpSection($"Pack {pack.Stamp} — {(pack.IsComplete ? "complete" : "incomplete")}", CalibrationPackReview.RenderReport(pack)));
+				if (packs.Count == 2)
+					sections.Add(new HelpSection("Comparison (first two packs)", CalibrationPackReview.CompareReport(packs[0], packs[1])));
+			}
+		}
+		catch (Exception ex)
+		{
+			sections.Add(new HelpSection("Review failed", ex.Message));
+		}
+		BuiltInHelpWindow.Show(this, "Calibration capture pack review", sections);
+	}
+
 	private async void RunCalibrationSuite_Click(object sender, RoutedEventArgs e)
 	{
 		if (_calibrationSuiteCancellation != null) { _calibrationSuiteCancellation.Cancel(); return; }
@@ -2180,7 +2214,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			ClockWidgetEnabledCheck.IsChecked==true,ClockSessionTimerCheck.IsChecked==true,Clock24HourCheck.IsChecked==true,
 			ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,ClockWidgetScaleSlider.Value,ClockWidgetOpacitySlider.Value,(uint)Math.Max(0,ClockThemeCombo.SelectedIndex),(uint)Math.Max(0,ClockPaletteCombo.SelectedIndex),
 			new[]{OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudTraceToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(ClockWidgetToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(StickyNoteToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(CrosshairToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(NotifyToggleKeyCombo.SelectedIndex)},
-			CurrentObsMirrorVisibilityMask());
+			CurrentObsMirrorVisibilityMask(),
+			CurrentVisorMaskColor());
 		_stickyNoteLiveState.Publish(StickyNoteEnabledCheck.IsChecked==true,_stickyNotes);
 		RefreshMaskOverlayPreview();
 	}
@@ -2481,6 +2516,34 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", MediaNotifyEnabledKey, MediaNotifyEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings",ObsIndicatorEnabledKey,ObsIndicatorEnabledCheck.IsChecked==true?"1":"0",ConfigPath);WritePrivateProfileString("Settings",ObsWebSocketUrlKey,BuildObsWebSocketEndpoint(),ConfigPath);WritePrivateProfileString("Settings",ObsWebSocketPasswordKey,ObsWebSocketPasswordBox.Password??string.Empty,ConfigPath);
 		WritePrivateProfileString("Settings",ObsIndicatorOpacityKey,ObsIndicatorOpacitySlider.Value.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings",ObsIndicatorThicknessKey,ObsIndicatorThicknessSlider.Value.ToString("0.###",c),ConfigPath);
+	}
+
+	// ---- Visor mask colour (item 21) -----------------------------------------------------------
+	private const string VisorMaskColorKey = "mask_color";
+	private uint CurrentVisorMaskColor() =>
+		((uint)Math.Round(VisorColorRedSlider.Value) << 16) | ((uint)Math.Round(VisorColorGreenSlider.Value) << 8) | (uint)Math.Round(VisorColorBlueSlider.Value);
+	private void SyncVisorColorControls(uint rgb)
+	{
+		VisorColorRedSlider.Value = (rgb >> 16) & 0xFF; VisorColorGreenSlider.Value = (rgb >> 8) & 0xFF; VisorColorBlueSlider.Value = rgb & 0xFF;
+		VisorColorPreview.Background = new SolidColorBrush(Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
+	}
+	private void VisorColorPreset_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is not System.Windows.Controls.Button b || b.Tag is not string tag) return;
+		string[] parts = tag.Split(',');
+		if (parts.Length != 3) return;
+		VisorColorRedSlider.Value = double.Parse(parts[0], CultureInfo.InvariantCulture);
+		VisorColorGreenSlider.Value = double.Parse(parts[1], CultureInfo.InvariantCulture);
+		VisorColorBlueSlider.Value = double.Parse(parts[2], CultureInfo.InvariantCulture);
+	}
+	private void VisorColorRgb_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (_loading) return;
+		uint rgb = CurrentVisorMaskColor();
+		VisorColorPreview.Background = new SolidColorBrush(Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
+		WritePrivateProfileString("Settings", VisorMaskColorKey, rgb.ToString(CultureInfo.InvariantCulture), ConfigPath);
+		PublishLiveState();
+		StatusText.Text = "Visor mask colour applied; default is black (0,0,0).";
 	}
 
 	// ---- iRacing integration UI ----------------------------------------------------------------

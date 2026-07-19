@@ -24,7 +24,7 @@ Need $xaml 'IsChecked="\{Binding UseSymbol' 'per-widget symbol selection is abse
 Need $ui 'hud_widget_\{widget.Id\}_symbol' 'per-widget symbol persistence is absent'
 Need $native 'hudWidgetSymbolMask=stable.flags' 'per-widget symbol mode is not live'
 Need $native 'clockSessionTimerEnabled=\(stable.clockFlags' 'clock timer lane is not live'
-Need $native 'snapshot.version != 10' 'live-state v10 is not consumed'
+Need $native 'snapshot.version != 11' 'live-state v11 is not consumed'
 Need $ui 'StickyNoteLiveStateService' 'sticky collection live publisher is absent'
 Need $native 'Local\\\\XRViewLabStickyNotes' 'native sticky collection consumer is absent'
 Need $ini '(?m)^notify_theme=0\r?$' 'notification theme default is absent'

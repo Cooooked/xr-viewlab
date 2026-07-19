@@ -57,6 +57,7 @@ double visorOffsetY = 0.0;
 // Visor shape controls. Formula-identical to the UI preview (BeanMaskEditor.cs) — any
 // change here must be mirrored there. Values are authored in the UI's coordinate
 // convention (y grows DOWN); the UI-to-NDC flip happens ONLY in ApexYFromConfigNdc.
+float g_visorColor[3] = {0.f, 0.f, 0.f}; // item 21: visor fill colour (default black); live-state carries 0xRRGGBB
 double visorOuterApexY = 0.0;          // mask_outer_apex_y: -0.5..0.5, outer-curve apex offset
 double visorInnerLowerY = 0.0;         // mask_inner_lower_y: 0..0.666, nose-divot band height (0 = off)
 double visorInnerBridgeWidth = 0.5;    // mask_inner_bridge_width: 0..1, bezier handle width
@@ -685,9 +686,10 @@ struct LiveStateBlock {
     uint32_t overlayToggleKeys[6]; // v8
     uint32_t obsMirrorVisibilityMask; // v9
     uint32_t clockPalette; // v10: clockTheme is now the layout design; palette is colours only
+    uint32_t visorColor;   // v11: 0x00RRGGBB visor fill colour (0 = black, unchanged default)
 };
 #pragma pack(pop)
-static_assert(sizeof(LiveStateBlock)==268,"live state v10 contract size");
+static_assert(sizeof(LiveStateBlock)==272,"live state v11 contract size");
 constexpr uint32_t kLiveStateMagic = 0x534C4C56; // VLLS
 HANDLE g_liveStateMap = nullptr;
 const LiveStateBlock* g_liveState = nullptr;
@@ -813,7 +815,7 @@ void ConsumeLiveState() {
     ConsumeStickyNoteState();
     if (!g_liveState) { ConnectLiveState(); if (!g_liveState) return; }
     const LiveStateBlock snapshot = *g_liveState;
-    if (snapshot.magic != kLiveStateMagic || snapshot.version != 10 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
+    if (snapshot.magic != kLiveStateMagic || snapshot.version != 11 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
     MemoryBarrier();
     const LiveStateBlock stable = *g_liveState;
     if (stable.generation != snapshot.generation) return;
@@ -860,6 +862,10 @@ void ConsumeLiveState() {
         visorInnerBridgeWidth = std::clamp((double)stable.bridgeWidth, 0.0, 1.0); visorInnerBridgeRise = std::clamp((double)stable.bridgeRise, -0.5, 1.0);
         visorInnerBridgePeakX = std::clamp((double)stable.bridgePeakX, -1.0, 2.0); visorInnerBridgeSteepness = std::clamp((double)stable.bridgeSteepness, -1.0, 2.0);
         visorNoseSpreadX = std::clamp((double)stable.visorNoseSpreadX, 0.0, 0.5);
+        // Item 21: visor fill colour, 0x00RRGGBB. Default 0 = black, so existing behaviour is unchanged.
+        g_visorColor[0] = ((stable.visorColor >> 16) & 0xFF) / 255.f;
+        g_visorColor[1] = ((stable.visorColor >> 8) & 0xFF) / 255.f;
+        g_visorColor[2] = (stable.visorColor & 0xFF) / 255.f;
     }
 }
 bool uevrLikeProcess = false;
@@ -1098,6 +1104,7 @@ struct D3D11MaskState {
     ID3D11PixelShader* ps = nullptr;
     ID3D11PixelShader* calibrationPs = nullptr;
     ID3D11Buffer* calibrationColorCb = nullptr;
+    ID3D11Buffer* visorColorCb = nullptr;
     ID3D11PixelShader* overlayPs = nullptr;
     // Textured path — used only for pre-composited notification cards. Samples a per-slot RGBA
     // texture and multiplies by a straight-alpha tint (for the animated fade).
@@ -1755,6 +1762,7 @@ void ReleaseD3D11MaskRenderer() {
     if (g_d3d11Mask.calibrationRs) { g_d3d11Mask.calibrationRs->Release(); g_d3d11Mask.calibrationRs = nullptr; }
     if (g_d3d11Mask.layout)  { g_d3d11Mask.layout->Release();  g_d3d11Mask.layout = nullptr; }
     if (g_d3d11Mask.calibrationColorCb) { g_d3d11Mask.calibrationColorCb->Release(); g_d3d11Mask.calibrationColorCb = nullptr; }
+    if (g_d3d11Mask.visorColorCb) { g_d3d11Mask.visorColorCb->Release(); g_d3d11Mask.visorColorCb = nullptr; }
     if (g_d3d11Mask.calibrationPs) { g_d3d11Mask.calibrationPs->Release(); g_d3d11Mask.calibrationPs = nullptr; }
     if (g_d3d11Mask.overlayPs) { g_d3d11Mask.overlayPs->Release(); g_d3d11Mask.overlayPs = nullptr; }
     for (uint32_t i = 0; i < kNotifyMaxCards; ++i) {
@@ -1822,9 +1830,12 @@ static const char kVisorVS[] =
     " return output; }";
 
 static const char kVisorPS[] =
-    // AA is intentionally disabled product-wide. Emit a guaranteed opaque black pixel instead of
-    // relying on an interpolated alpha semantic on a transparent compositor-owned target.
-    "float4 main(float alpha : ALPHA, float3 color : TEXCOORD0) : SV_TARGET { return float4(0.0f, 0.0f, 0.0f, 1.0f); }";
+    // AA is intentionally disabled product-wide. Emit a guaranteed opaque pixel of the configured
+    // visor colour (default black) via a constant buffer, instead of relying on an interpolated
+    // alpha semantic on a transparent compositor-owned target. Item 21: the colour is user-tunable
+    // so the mask can be matched to a streaming environment-blend key colour if desired.
+    "cbuffer VisorColor : register(b0) { float4 visorColor; };"
+    "float4 main(float alpha : ALPHA, float3 color : TEXCOORD0) : SV_TARGET { return float4(visorColor.rgb, 1.0f); }";
 
 // Diagnostics deliberately do not rely on a vertex colour interpolant.  VDXR accepted the
 // geometry but delivered that interpolant as black, so each opaque calibration colour is bound
@@ -2004,6 +2015,11 @@ bool InitD3D11MaskRenderer() {
     cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     if (FAILED(g_d3d11Mask.device->CreateBuffer(&cbd, nullptr, &g_d3d11Mask.calibrationColorCb))) {
         Log("d3d11 mask: calibration colour buffer create failed\n");
+        g_d3d11Mask.failed = true;
+        return false;
+    }
+    if (FAILED(g_d3d11Mask.device->CreateBuffer(&cbd, nullptr, &g_d3d11Mask.visorColorCb))) {
+        Log("d3d11 mask: visor colour buffer create failed\n");
         g_d3d11Mask.failed = true;
         return false;
     }
@@ -2617,6 +2633,16 @@ void DrawVisorBorderToTexture(
     g_d3d11Mask.context->IASetInputLayout(g_d3d11Mask.layout);
     g_d3d11Mask.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     g_d3d11Mask.context->IASetVertexBuffers(0, 1, &g_d3d11Mask.vb, &stride, &offset);
+    // Item 21: bind the configured visor colour (default black) for kVisorPS at register b0.
+    if (g_d3d11Mask.visorColorCb) {
+        D3D11_MAPPED_SUBRESOURCE vcm{};
+        if (SUCCEEDED(g_d3d11Mask.context->Map(g_d3d11Mask.visorColorCb, 0, D3D11_MAP_WRITE_DISCARD, 0, &vcm))) {
+            const float vc[4] = { g_visorColor[0], g_visorColor[1], g_visorColor[2], 1.f };
+            memcpy(vcm.pData, vc, sizeof(vc));
+            g_d3d11Mask.context->Unmap(g_d3d11Mask.visorColorCb, 0);
+        }
+        g_d3d11Mask.context->PSSetConstantBuffers(0, 1, &g_d3d11Mask.visorColorCb);
+    }
     g_d3d11Mask.context->Draw(vertCount, 0);
 
     if (!g_diagDrawOk.exchange(true))
@@ -4955,6 +4981,14 @@ void LoadConfig() {
     visorInnerBridgePeakX = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_peak_x", 0.5), -1.0, 2.0);
     visorInnerBridgeSteepness = std::clamp(ReadDoubleSetting(L"mask_inner_bridge_steepness", 0.5), -1.0, 2.0);
     visorNoseSpreadX = std::clamp(ReadDoubleSetting(L"mask_nose_spread_x", 0.0), 0.0, 0.5);
+    // Item 21: visor fill colour 0xRRGGBB (default 0 = black). Resolved through the same profile/global
+    // INI as the other visor keys, so per-app custom visor profiles carry their own colour.
+    {
+        uint32_t mc = static_cast<uint32_t>(ReadDoubleSetting(L"mask_color", 0.0)) & 0xFFFFFFu;
+        g_visorColor[0] = ((mc >> 16) & 0xFF) / 255.f;
+        g_visorColor[1] = ((mc >> 8) & 0xFF) / 255.f;
+        g_visorColor[2] = (mc & 0xFF) / 255.f;
+    }
 
     if (splitMode) {
         topTangent = std::clamp(

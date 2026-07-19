@@ -411,9 +411,16 @@ foreach ($key in @('hud_trace_x', 'hud_trace_y', 'hud_trace_scale', 'hud_trace_w
 }
 Assert-Contains 'MainWindow.xaml' 'Name="HudSafeMarginSlider"' 'HUD safe-margin control exists'
 Assert-Contains 'dllmain.cpp' 'hudClampToVisible' 'HUD clamps complete bounds to the visible eye rectangle'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 268' 'live state carries OBS mirror controls'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 10u\)' 'live state contract is version 10'
-Assert-Contains 'dllmain.cpp' 'snapshot\.version != 10' 'DLL consumes live-state contract version 10'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 272' 'live state carries OBS mirror controls and the visor colour'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 11u\)' 'live state contract is version 11'
+Assert-Contains 'dllmain.cpp' 'snapshot\.version != 11' 'DLL consumes live-state contract version 11'
+# Item 21: versioned visor colour field (0x00RRGGBB) at the grown tail; default 0 = black.
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(268, visorColor & 0xFFFFFFu\)' 'live state publishes the visor colour at the v11 tail'
+Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(LiveStateBlock\)==272' 'native live-state struct grew to the v11 size'
+Assert-Contains 'dllmain.cpp' 'cbuffer VisorColor : register\(b0\)' 'visor pixel shader reads the colour constant buffer'
+Assert-Contains 'dllmain.cpp' 'PSSetConstantBuffers\(0, 1, &g_d3d11Mask.visorColorCb\)' 'visor draw binds the visor colour buffer'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'VisorMaskColorKey = "mask_color"' 'UI persists the visor colour key'
+Assert-Contains 'MainWindow.xaml' 'Name="VisorColorRedSlider"' 'visor RGB sliders are present'
 Assert-NotContains 'MainWindow.xaml' 'TopmostVisorOverlaysCheck' 'ordinary UI does not expose backend implementation choice'
 Assert-Contains 'dllmain.cpp' '!ReadBoolSetting\(L"overlay_force_direct", false\)' 'automatic topmost is the normal session policy'
 Assert-Contains 'dllmain.cpp' 'maskEnabled && g_featurePresentationPlan\.drawDirectVisor' 'central policy gates the direct visor path'
@@ -593,7 +600,7 @@ Assert-Contains 'dllmain.cpp' 'g_featurePresentationPlan\.drawDirectVisor=false;
 Assert-Contains 'dllmain.cpp' 'if\(maskEnabled\)[\s\S]{0,160}DrawVisorBorderToTexture' 'topmost backend also draws the visor mask'
 Assert-Contains 'dllmain.cpp' 'maskEnabled && g_featurePresentationPlan\.drawDirectVisor' 'central bridge plan controls the direct visor path'
 Assert-Contains 'dllmain.cpp' 'if\(drewVisor\) g_releaseDrewVisorThisFrame' 'direct diagnostics cannot claim a visor draw when the backend gate skipped it'
-Assert-Contains 'dllmain.cpp' 'return float4\(0\.0f, 0\.0f, 0\.0f, 1\.0f\)' 'visor emits compositor-visible opaque black on the shared ordered target'
+Assert-Contains 'dllmain.cpp' 'return float4\(visorColor\.rgb, 1\.0f\)' 'visor emits a compositor-visible fully opaque pixel (configurable colour, default black) on the shared ordered target'
 
 # Stable display cadence straddles the theoretical interval slightly; these displayed values must
 # remain below the rolling amber entry band at their full-precision ratios.
@@ -810,9 +817,20 @@ Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ClockPaletteKey="clock_widget_pale
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'NotifyPaletteKey="notify_palette"' 'UI persists the notification palette key'
 Assert-Contains 'NotificationBroker\Program.cs' 'notify_palette' 'broker reads the notification palette key'
 Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'public int Palette' 'notification settings separate palette from design'
+# Item 15: the four notification designs have genuinely distinct footprints and app-name placement.
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'design switch \{ 1 => \(CardW, 44\), 2 => \(288, 72\), 3 => \(CardW, CardH\), _ => \(CardW, 92\) \}' 'the four notification designs use distinct card footprints'
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'Classic[\s\S]*Shorten\(appName, 40\)\.ToUpperInvariant\(\)' 'Classic design shows an app-name caption above the title'
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'Minimal[\s\S]*Shorten\(appName, 34\)\.ToUpperInvariant\(\)' 'Minimal design shows a small app-name label'
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'new Rect\(0, 0, w, 24\)' 'Bold design uses a tall filled top accent band'
 Assert-IniValue 'clock_widget_theme' '0'
 Assert-IniValue 'clock_widget_palette' '2'
 Assert-IniValue 'notify_palette' '0'
+# Item 22: calibration pack review is a read-only integrated workflow, not just documentation.
+Assert-Contains 'XRViewLab.UI\CalibrationPackReview.cs' 'internal static IReadOnlyList<PackReview> ReviewFolder\(string folder\)' 'calibration pack review exposes a folder review entry point'
+Assert-Contains 'XRViewLab.UI\CalibrationPackReview.cs' 'submitted LEFT-EYE texture at xrEndFrame' 'pack review states the PC-side left-eye scope limitation'
+Assert-Contains 'XRViewLab.UI\CalibrationPackReview.cs' 'blank or near-uniform' 'pack review detects blank/suspicious captures'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'void ReviewCalibrationPack_Click' 'pack review is wired to a UI action'
+Assert-Contains 'MainWindow.xaml' 'Name="ReviewCalibrationPackButton"' 'pack review button is present in the calibration menu'
 Assert-Contains 'dllmain.cpp' 'if\(storedPalette<0\.0\)\{clockWidgetPalette=\(uint32_t\)storedTheme;clockWidgetTheme=0;\}' 'legacy clock themes migrate to palettes'
 Assert-Contains 'NotificationBroker\Program.cs' 'storedPalette < 0 \? \(int\)storedTheme : \(int\)storedPalette' 'legacy notification themes migrate to palettes'
 

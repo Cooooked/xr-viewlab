@@ -360,7 +360,10 @@ internal sealed class NotificationService : IDisposable
             _ => (Color.FromArgb(238,20,21,25),Color.FromRgb(60,190,170),Color.FromRgb(244,246,249),Color.FromRgb(142,150,162),Color.FromArgb(28,255,255,255))
         };
         int design = Math.Clamp(s.Theme, 0, 3);
-        (int w, int h) = design switch { 1 => (CardW, 48), 2 => (300, 64), _ => (CardW, CardH) };
+        // Each design has a deliberately distinct footprint so cards read differently at a glance and
+        // stack at different densities (the native layer packs by each card's own height):
+        //   Classic 336x92 · Compact banner 336x44 · Minimal 288x72 (square, text-only) · Bold 336x96.
+        (int w, int h) = design switch { 1 => (CardW, 44), 2 => (288, 72), 3 => (CardW, CardH), _ => (CardW, 92) };
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
@@ -404,57 +407,69 @@ internal sealed class NotificationService : IDisposable
             }
             else if (design == 2)
             {
-                // Minimal: square corners, no icon, no filled accent bar — a hairline frame
-                // with a short accent tick, lighter type and tighter spacing.
+                // Minimal: narrow square-cornered, text-only card (no icon, no filled accent). A
+                // hairline frame, a short accent tick, a tiny accent app-name label above a light
+                // title and a two-line body. Its narrow square footprint and absent icon set it apart.
                 dc.DrawRectangle(new SolidColorBrush(palette.Item1), null, panel);
                 dc.DrawRectangle(null, new Pen(new SolidColorBrush(palette.Item5), 1), new Rect(0.5, 0.5, w - 1, h - 1));
-                dc.DrawRectangle(new SolidColorBrush(palette.Item2), null, new Rect(0, 10, 2, 16));
+                dc.DrawRectangle(new SolidColorBrush(palette.Item2), null, new Rect(0, 12, 2, 14));
+                double my = 11;
+                if (!string.IsNullOrEmpty(appName))
+                {
+                    var lbl = new FormattedText(Shorten(appName, 34).ToUpperInvariant(), culture, FlowDirection.LeftToRight,
+                        bodyType, 8.5, new SolidColorBrush(palette.Item2), 1.0) { MaxTextWidth = w - 24, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
+                    dc.DrawText(lbl, new Point(14, my));
+                    my += 13;
+                }
                 var minTitle = new FormattedText(Shorten(title, 40), culture, FlowDirection.LeftToRight,
-                    bodyType, 13, titleBrush, 1.0) { MaxTextWidth = w - 26, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
-                dc.DrawText(minTitle, new Point(14, 10));
+                    bodyType, 13, titleBrush, 1.0) { MaxTextWidth = w - 24, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
+                dc.DrawText(minTitle, new Point(14, my));
+                my += 19;
                 if (!string.IsNullOrEmpty(body))
                 {
                     var minBody = new FormattedText(Shorten(body, 90), culture, FlowDirection.LeftToRight,
-                        bodyType, 11, bodyBrush, 1.0) { MaxTextWidth = w - 26, MaxLineCount = 2, Trimming = System.Windows.TextTrimming.CharacterEllipsis, LineHeight = 13.5 };
-                    dc.DrawText(minBody, new Point(14, 30));
+                        bodyType, 11, bodyBrush, 1.0) { MaxTextWidth = w - 24, MaxLineCount = 2, Trimming = System.Windows.TextTrimming.CharacterEllipsis, LineHeight = 13.5 };
+                    dc.DrawText(minBody, new Point(14, my));
                 }
             }
             else if (design == 3)
             {
-                // Bold: strong top accent band with the app name inside it, large icon, bold
-                // title, single body line and generous padding.
-                dc.PushClip(new RectangleGeometry(panel, 14, 14));
+                // Bold: the largest, heaviest card — a tall filled top accent band carrying the
+                // app name in the panel colour, a large 56px icon, a heavy 18px title and one body
+                // line, inside a generous 16px-rounded frame. Big band + big icon set it apart.
+                dc.PushClip(new RectangleGeometry(panel, 16, 16));
                 dc.DrawRectangle(new SolidColorBrush(palette.Item1), null, panel);
-                dc.DrawRectangle(new SolidColorBrush(palette.Item2), null, new Rect(0, 0, w, 20));
+                dc.DrawRectangle(new SolidColorBrush(palette.Item2), null, new Rect(0, 0, w, 24));
                 dc.Pop();
-                dc.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(palette.Item5), 1), new Rect(0.5, 0.5, w - 1, h - 1), 14, 14);
+                dc.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(palette.Item5), 1), new Rect(0.5, 0.5, w - 1, h - 1), 16, 16);
                 var band = new FormattedText(Shorten(appName, 32).ToUpperInvariant(), culture, FlowDirection.LeftToRight,
-                    boldType, 10.5, new SolidColorBrush(palette.Item1), 1.0) { MaxTextWidth = w - 32, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
-                dc.DrawText(band, new Point(16, 4));
+                    boldType, 11, new SolidColorBrush(palette.Item1), 1.0) { MaxTextWidth = w - 32, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
+                dc.DrawText(band, new Point(16, 5));
                 double x = 16;
                 if (icon != null)
                 {
-                    const double iconSize = 52;
-                    double iconY = 20 + (h - 20 - iconSize) / 2;
-                    dc.PushClip(new RectangleGeometry(new Rect(x, iconY, iconSize, iconSize), 8, 8));
+                    const double iconSize = 56;
+                    double iconY = 24 + (h - 24 - iconSize) / 2;
+                    dc.PushClip(new RectangleGeometry(new Rect(x, iconY, iconSize, iconSize), 10, 10));
                     dc.DrawImage(icon, new Rect(x, iconY, iconSize, iconSize));
                     dc.Pop();
                     x += iconSize + 14;
                 }
                 var boldTitle = new FormattedText(Shorten(title, 34), culture, FlowDirection.LeftToRight,
-                    boldType, 17, titleBrush, 1.0) { MaxTextWidth = w - x - 16, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
-                dc.DrawText(boldTitle, new Point(x, 32));
+                    boldType, 18, titleBrush, 1.0) { MaxTextWidth = w - x - 16, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
+                dc.DrawText(boldTitle, new Point(x, 36));
                 if (!string.IsNullOrEmpty(body))
                 {
                     var boldBody = new FormattedText(Shorten(body, 70), culture, FlowDirection.LeftToRight,
                         bodyType, 12.5, bodyBrush, 1.0) { MaxTextWidth = w - x - 16, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
-                    dc.DrawText(boldBody, new Point(x, 60));
+                    dc.DrawText(boldBody, new Point(x, 64));
                 }
             }
             else
             {
-                // Classic: dim neutral panel, slim leading accent, icon plus stacked
-                // title/body — unchanged from the historical card.
+                // Classic: dim neutral 10px-rounded panel, slim leading accent bar, icon plus a
+                // three-line hierarchy — a small accent-coloured app-name caption above the title
+                // and a two-line body. The caption is what distinguishes it from Bold at the same width.
                 dc.PushClip(new RectangleGeometry(panel, 10, 10));
                 dc.DrawRectangle(new SolidColorBrush(palette.Item1), null, panel);
                 dc.DrawRectangle(new SolidColorBrush(palette.Item2), null, new Rect(0, 0, 3, h));
@@ -472,15 +487,24 @@ internal sealed class NotificationService : IDisposable
                     x += iconSize + 12;
                 }
 
+                double ty = 14;
+                if (!string.IsNullOrEmpty(appName))
+                {
+                    var cap = new FormattedText(Shorten(appName, 40).ToUpperInvariant(), culture,
+                        FlowDirection.LeftToRight, boldType, 9.5, new SolidColorBrush(palette.Item2), 1.0) { MaxTextWidth = w - x - 14, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
+                    dc.DrawText(cap, new Point(x, ty));
+                    ty += 15;
+                }
                 var t = new FormattedText(Shorten(title, 42), culture,
                     FlowDirection.LeftToRight, typeface, 15.5, titleBrush, 1.0) { MaxTextWidth = w - x - 14, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
-                dc.DrawText(t, new Point(x, 22));
+                dc.DrawText(t, new Point(x, ty));
+                ty += 22;
 
                 if (!string.IsNullOrEmpty(body))
                 {
                     var b = new FormattedText(Shorten(body, 120), culture,
                         FlowDirection.LeftToRight, bodyType, 12, bodyBrush, 1.0) { MaxTextWidth = w - x - 14, MaxLineCount = 2, Trimming = System.Windows.TextTrimming.CharacterEllipsis, LineHeight = 15 };
-                    dc.DrawText(b, new Point(x, 46));
+                    dc.DrawText(b, new Point(x, ty));
                 }
             }
         }
