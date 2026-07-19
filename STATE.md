@@ -4,23 +4,13 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-19
-**Current version:** 4.1.272 — source at `Properties/AssemblyInfo.cs`; MSI not yet rebuilt for this version. The 4.1.272
-working tree adds the permanent measured desktop-preview/HMD widget correction (`WidgetPreviewShimY = 0.077`
-full-lens Y in `BeanMaskEditor.OverlayPreviewGeometries`, applied to the forward draw only; dragging stays
-delta-based so saved coordinates are untouched — item 9). The two preview contracts that still expected the
-pre-shim `ResolveFullLens(area,item.X,item.Y)` form were reconciled to the shim'd form plus a numerical pin on
-the 0.077 constant and the delta-drag invariant (`Verify-ViewLabContracts.ps1`, `Verify-Quest3PreviewAndProfiles.ps1`).
-Also: calibration menu capture-info text moved from amber `#C08A2A` to `MutedBrush` grey (item 11), and the
-iRacing spotter R/G/B sliders gained right-click-reset to their default (255,69,0) (item 20 polish). WPF Release
-builds clean (0/0); the four preview/overlay/HUD/baseline verifiers pass. Native/MSI rebuild and headset/OBS/iRacing
-live validation for this version remain pending.
-**Build-environment note (2026-07-19):** the WPF/broker managed projects build cleanly with dotnet 8.0.422.
-The native `XRViewLabLayer.vcxproj`/`ViewLabBridge.vcxproj` target Platform Toolset **v145**, which is NOT installed
-on this machine's VS 2022 BuildTools — MSBuild fails with MSB8020. Native x64/Win32 layers, the OBS plugin DLL and a
-complete MSI therefore cannot be produced or validated in the current agent environment; managed-only changes are the
-verifiable surface. Do not retarget the toolset casually to force a build (it changes binary behaviour that cannot be
-headset-validated here).
-**Prior version:** 4.1.271 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.271.msi` (removes the Quest 3 lens-outline preview feature; all 20 deterministic scripts pass; headset validation pending)
+**Current version:** 4.1.273 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.273.msi` (size 149,147,648 bytes; SHA-256
+`52A7388F9BCECF214406ABDF913B9359CE6D5290D5D8F9BFCBB5B778CDD69532`). Full WPF/broker/signed-identity/
+x64+Win32 native/OBS-plugin/MSI build with 0 warnings/errors; extracted-payload validation confirms fresh
+WPF/native/broker hashes, pinned PresentMon 2.4.1 + MIT notice, signed identity certificate and Overlays
+markers. All 21 deterministic scripts pass. Headset/OBS/iRacing live validation remains pending.
+**Prior version:** 4.1.272 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.272.msi` (permanent `WidgetPreviewShimY = 0.077`
+widget preview correction; calibration grey text; iRacing spotter RGB-slider right-click reset).
 **Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
 AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
 remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
@@ -34,6 +24,44 @@ extracted-payload validation. Build 4.1.224 additionally passes the full determi
 WPF, broker, signed identity, x64/Win32 native, MSI extraction, pinned PresentMon hash/notice validation;
 its DiagMon real-game CSV and live Trace-cap checks remain mandatory before release.
 **Publish state:** 4.1.252 published at the user's direction (2026-07-18): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.252.
+
+## Per-metric HUD units, crosshair preview aspect, Trace baseline cleanup (implemented; headset validation pending, 2026-07-19)
+
+**Per-HUD-icon unit visibility (item 16).** Every Performance HUD metric now has an independent unit checkbox
+beside its Symbol checkbox. Unchecking hides only the unit suffix (`%`, `ms`, `FPS`, `MHz`, `GB`, …); the value
+stays visible. Persisted globally as `hud_widget_<id>_unit` (default true, so existing configs are unchanged) and
+carried through per-app overlay overrides. Metrics whose `Unit` is empty (e.g. the NetworkStatus state label)
+expose `HasUnit=false` and their checkbox is disabled — the unit-suffix path is never forced onto them. The
+`TelemetryConfigV1` extension mapping publishes a `unitHiddenMask` in its reserved tail (offset 56, bit set =
+hide) with NO version bump: a zero/legacy value means all units shown, so an older native layer harmlessly
+ignores it. The native renderer reads `reserved[0]` and omits the suffix (and its space) for masked metrics; the
+ring layout is fixed per widget and `drawText` centres, so no blank gap appears. Model/XAML/persistence/live-state
+/native and HUD+contract fixtures are wired and pass; in-headset legibility remains to confirm.
+
+**Crosshair preview aspect (item 18).** The desktop crosshair preview was stretched because it derived separate
+X/Y reference-pixel factors from the 55:48 preview area. It now uses one uniform factor
+(`Quest3PreviewGeometry.TangentReferencePixelsUniform`) for arm length, thickness, gap and outline in both axes,
+matching the native uniform `scale × eyeHeight/1080` mapping, so the preview crosshair is square and centred.
+Position still uses the shared centred offset; native rendering is unchanged. Contract fixture pins the uniform
+geometry.
+
+**Performance Trace baseline cleanup (item 17).** The dark base/centre reference line (drawn at `traceBottom`
+in absolute modes and `traceCentre` in deviation mode) is removed in every trace mode — this was the user-reported
+"black line at the base / through the centre". The coloured data channels, budget-relative auto-scaling and cyan
+numbered event markers are unaffected. A contract asserts the line no longer exists. Performance Trace already
+shares the standard overlay controls (position/scale/opacity sliders with right-click reset, and the shared
+`OverlayResetPosition_Click` button) with the Performance HUD, so no control realignment was required; its genuinely
+Trace-specific controls (Width, History, Sensitivity, Mode, alarm-only visibility) are retained.
+
+**iRacing control plumbing audit (item 19, partial).** Every persisted iRacing key was traced UI→INI→consumer.
+The spotter (glow/width/strength/opacity/fade/color) and flag (border/width/opacity) keys are read by the native
+layer at session start (`dllmain.cpp` ~4910-4916); the fuel (`iracing_fuel_warning`,
+`iracing_fuel_warning_threshold_pct`) and lap (`iracing_lap_duration_ms`) keys are read by the notification broker
+and iRacing provider (`NotificationBroker/Program.cs` ~81-83, 124-126). No orphaned "saves but ignored" key was
+found in these groups. The one real UX caveat is that spotter/flag tuning is applied at session start rather than
+live, matching the UI's "an active game picks it up at session start" status text; making it live would require
+adding those fields to the live-state contract. A full sweep of any remaining lap-card/position/delta controls and
+their preview/runtime parity is still open.
 
 ## Calibration capture, preview centre repair, OBS mirror routing, ViewLab Mirror plugin, themes/palettes (implemented; runtime validation pending, 2026-07-19)
 

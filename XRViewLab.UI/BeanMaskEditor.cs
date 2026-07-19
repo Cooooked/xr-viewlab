@@ -430,13 +430,16 @@ public sealed class BeanMaskEditor : FrameworkElement
 	private void DrawCrosshair(DrawingContext dc, Rect sizeReference)
 	{
 		if (_crosshair is null || !_crosshairVisible) return;
-		double unitX=Quest3PreviewGeometry.TangentReferencePixelsToX(sizeReference,2.0*_crosshair.VrScale);
-		double unitY=Quest3PreviewGeometry.TangentReferencePixelsToY(sizeReference,2.0*_crosshair.VrScale);
-		double armX=Math.Round(_crosshair.Size*unitX),armY=Math.Round(_crosshair.Size*unitY);
-		double thickX=Math.Max(1,Math.Round(_crosshair.Thickness*unitX)),thickY=Math.Max(1,Math.Round(_crosshair.Thickness*unitY));
-		double gapX=Math.Round(_crosshair.Gap*unitX),gapY=Math.Round(_crosshair.Gap*unitY);
-		double outlineX=_crosshair.Outline?Math.Max(1,Math.Round(_crosshair.OutlineThickness*unitX)):0;
-		double outlineY=_crosshair.Outline?Math.Max(1,Math.Round(_crosshair.OutlineThickness*unitY)):0;
+		// One uniform reference-pixel-to-screen factor for BOTH axes so the preview crosshair stays
+		// square and centred, matching the native renderer's uniform scale x eyeHeight/1080 mapping.
+		// Separate X/Y factors previously stretched it because the 55:48 preview area aspect differs
+		// from the eye tangent aspect. Position still uses the shared centred offset.
+		double unit=Quest3PreviewGeometry.TangentReferencePixelsUniform(sizeReference,2.0*_crosshair.VrScale);
+		double armX=Math.Round(_crosshair.Size*unit),armY=armX;
+		double thickX=Math.Max(1,Math.Round(_crosshair.Thickness*unit)),thickY=thickX;
+		double gapX=Math.Round(_crosshair.Gap*unit),gapY=gapX;
+		double outlineX=_crosshair.Outline?Math.Max(1,Math.Round(_crosshair.OutlineThickness*unit)):0;
+		double outlineY=outlineX;
 		Point centre=Quest3PreviewGeometry.ResolveCentredOffset(sizeReference,_crosshairOffsetX,_crosshairOffsetY);
 		double cx=Math.Floor(centre.X)+.5,cy=Math.Floor(centre.Y)+.5,halfX=thickX/2,halfY=thickY/2,innerX=gapX+halfX,innerY=gapY+halfY;
 		var arms=new List<Rect>{new(cx-innerX-armX,cy-halfY,armX,thickY),new(cx+innerX,cy-halfY,armX,thickY),new(cx-halfX,cy+innerY,thickX,armY)};

@@ -1195,6 +1195,7 @@ public partial class MainWindow : Window
 		{
 			widget.Enabled = ReadBoolSetting($"hud_widget_{widget.Id}_enabled", widget.Id is "cpu" or "gpu" or "sys" or "vr");
 			widget.UseSymbol = ReadBoolSetting($"hud_widget_{widget.Id}_symbol", false);
+			widget.ShowUnit = ReadBoolSetting($"hud_widget_{widget.Id}_unit", true);
 			double warningFallback = widget.Id switch
 			{
 				"sys" => ReadRangeSetting("hud_sys_warning", widget.DefaultWarning, 0, 1000000),
@@ -2215,7 +2216,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		for (int index = 0; index < _hudWidgets.Count; index++)
 		{
 			HudWidgetOption widget = _hudWidgets[index]; string prefix = $"hud_widget_{widget.Id}_";
-			result.Set("hud", prefix + "enabled", widget.Enabled ? "1" : "0"); result.Set("hud", prefix + "symbol", widget.UseSymbol ? "1" : "0");
+			result.Set("hud", prefix + "enabled", widget.Enabled ? "1" : "0"); result.Set("hud", prefix + "symbol", widget.UseSymbol ? "1" : "0"); result.Set("hud", prefix + "unit", widget.ShowUnit ? "1" : "0");
 			result.Set("hud", prefix + "order", index.ToString(CultureInfo.InvariantCulture)); result.Set("hud", prefix + "warning", widget.Warning.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("hud", prefix + "critical", widget.Critical.ToString("0.###", CultureInfo.InvariantCulture));
 		}
 		result.Set("sticky", "sticky_note_count", _stickyNotes.Count.ToString(CultureInfo.InvariantCulture));
@@ -2595,6 +2596,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			HudWidgetOption widget = _hudWidgets[order];
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_enabled", widget.Enabled ? "1" : "0", ConfigPath);
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_symbol", widget.UseSymbol ? "1" : "0", ConfigPath);
+			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_unit", widget.ShowUnit ? "1" : "0", ConfigPath);
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_order", order.ToString(CultureInfo.InvariantCulture), ConfigPath);
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_warning", widget.Warning.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_critical", widget.Critical.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);

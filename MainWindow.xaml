@@ -594,7 +594,10 @@
                                   <TextBlock Text="{Binding Label}" FontSize="10" Foreground="#B8B8B8" />
                                   <TextBlock FontSize="8" Foreground="#777"><Run Text="{Binding Provider}"/><Run Text=" · "/><Run Text="{Binding Unit}"/><Run Text=" · "/><Run Text="{Binding Availability}"/></TextBlock>
                                 </StackPanel>
-                              <CheckBox Grid.Row="0" Grid.Column="2" Content="Symbol" IsChecked="{Binding UseSymbol, Mode=TwoWay}" Checked="HudWidgetToggle_Changed" Unchecked="HudWidgetToggle_Changed" FontSize="9" ToolTip="Use this widget's compact symbol; unchecked shows its literal label."/>
+                              <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Vertical">
+                                <CheckBox Content="Symbol" IsChecked="{Binding UseSymbol, Mode=TwoWay}" Checked="HudWidgetToggle_Changed" Unchecked="HudWidgetToggle_Changed" FontSize="9" ToolTip="Use this widget's compact symbol; unchecked shows its literal label."/>
+                                <CheckBox Content="Unit" IsChecked="{Binding ShowUnit, Mode=TwoWay}" IsEnabled="{Binding HasUnit}" Checked="HudWidgetToggle_Changed" Unchecked="HudWidgetToggle_Changed" FontSize="9" ToolTip="Show this metric's unit suffix (e.g. %, ms, FPS). The value stays visible when off. Metrics without a unit are unaffected."/>
+                              </StackPanel>
                               <Button Grid.Row="0" Grid.Column="3" Content="↑" CommandParameter="{Binding Id}" Click="HudWidgetUp_Click" Padding="5,1" Margin="1,0" ToolTip="Move earlier" />
                               <Button Grid.Row="0" Grid.Column="4" Content="↓" CommandParameter="{Binding Id}" Click="HudWidgetDown_Click" Padding="5,1" Margin="1,0" ToolTip="Move later" />
                               <Expander Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" Header="⚙ Warning thresholds" Foreground="#999" FontSize="9" Margin="5,2,0,3">

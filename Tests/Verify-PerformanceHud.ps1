@@ -42,7 +42,14 @@ Require $ui 'Text="\{Binding Critical' 'per-widget critical field is absent'
 Forbid $ui 'HudSysWarningSlider|HudSysCriticalSlider' 'obsolete System-only threshold controls remain'
 Require $native 'hud_widget_%s_warning' 'native per-widget warning persistence is absent'
 Require $native 'ClassifyHudMetric' 'central per-widget threshold classifier is absent'
-Require $native 'snprintf\(text, sizeof\(text\), "%d %s"' 'HUD values do not carry explicit units'
+Require $native 'snprintf\(text, sizeof\(text\), showUnit\?"%d %s":"%d%s"' 'HUD values do not carry explicit units with a per-metric unit toggle'
+# Item 16: per-metric unit visibility. Bit set in the reserved[0] mask hides that metric's unit suffix;
+# default (unset) shows it, so existing configs are unchanged. Value stays visible; no blank gap (drawText centres).
+Require $telemetryLive '_view\.Write\(56,unitHiddenMask\)' 'per-metric unit-hidden mask is not published to native'
+Require $native 'hudWidgetUnitHiddenMask=stable\.reserved\[0\]' 'native does not read the per-metric unit-hidden mask'
+Require $native 'hudWidgetUnitHiddenMask&\(1u<<item\)' 'native does not apply the per-metric unit-hidden mask when composing text'
+Require $ui 'IsChecked="\{Binding ShowUnit, Mode=TwoWay\}"' 'per-widget unit checkbox is absent'
+Require $ui 'IsEnabled="\{Binding HasUnit\}"' 'unit checkbox is not gated on the metric actually having a unit'
 Require $ui 'Name="NetworkProbeTargetBox"' 'network probe target is not configurable'
 Forbid $ui 'HudMaxPerRowCombo' 'obsolete maximum-per-row control remains despite the single-row contract'
 $fixtures=Get-Content (Join-Path $Root 'Tests\RenderPolicyFixtures.cpp') -Raw

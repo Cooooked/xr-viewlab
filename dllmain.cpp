@@ -154,6 +154,7 @@ constexpr std::array<HudWidgetDescriptor,kHudWidgetCount> kHudWidgetRegistry{{
 }};
 uint64_t hudWidgetMask = (1ull<<0)|(1ull<<1)|(1ull<<3)|(1ull<<9);
 uint32_t hudWidgetSymbolMask = 0;
+uint32_t hudWidgetUnitHiddenMask = 0; // bit set = hide that metric's unit suffix (item 16)
 uint32_t hudWidgetOrderPacked = 0x03020100u; // four widget IDs, low byte first
 std::array<uint8_t,kHudWidgetCount> hudWidgetOrder{{0,1,9,3,2,4,5,6,7,8,10,11,12,13,14,15}};
 uint32_t hudMaxPerRow=static_cast<uint32_t>(kHudWidgetCount); // legacy mapping field; renderer is deliberately one row
@@ -715,7 +716,7 @@ void ConsumeTelemetryConfig() {
     if(!g_telemetryConfig){g_telemetryConfigMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabTelemetryConfigV1");if(g_telemetryConfigMap)g_telemetryConfig=(const TelemetryConfigBlock*)MapViewOfFile(g_telemetryConfigMap,FILE_MAP_READ,0,0,sizeof(TelemetryConfigBlock));}
     if(!g_telemetryConfig||g_telemetryConfig->magic!=0x31435456u||g_telemetryConfig->version!=1||g_telemetryConfig->size!=64||g_telemetryConfig->generation==g_telemetryConfigGeneration)return;
     const TelemetryConfigBlock stable=*g_telemetryConfig;if(stable.generation!=g_telemetryConfig->generation)return;
-    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Hud))==0){hudWidgetMask=stable.widgetMask&((1ull<<kHudWidgetCount)-1);hudWidgetSymbolMask=stable.flags&0xFFFFu;hudMaxPerRow=std::clamp(stable.maxPerRow,1u,16u);hudSysWarningThreshold=std::clamp((double)stable.sysWarning,10.0,60.0);hudSysCriticalThreshold=std::clamp((double)stable.sysCritical,0.0,hudSysWarningThreshold);
+    if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Hud))==0){hudWidgetMask=stable.widgetMask&((1ull<<kHudWidgetCount)-1);hudWidgetSymbolMask=stable.flags&0xFFFFu;hudWidgetUnitHiddenMask=stable.reserved[0];hudMaxPerRow=std::clamp(stable.maxPerRow,1u,16u);hudSysWarningThreshold=std::clamp((double)stable.sysWarning,10.0,60.0);hudSysCriticalThreshold=std::clamp((double)stable.sysCritical,0.0,hudSysWarningThreshold);
     viewlab::telemetry::SetNetworkProbeEnabled((hudWidgetMask & (0xFull<<12)) != 0);
     std::array<bool,kHudWidgetCount> seen{};size_t n=0;for(uint8_t id:stable.order)if(id<kHudWidgetCount&&!seen[id]){hudWidgetOrder[n++]=id;seen[id]=true;}for(uint8_t id=0;id<kHudWidgetCount;++id)if(!seen[id])hudWidgetOrder[n++]=id;}
     g_telemetryConfigGeneration=stable.generation;
@@ -3122,8 +3123,9 @@ void DrawCalibrationOverlayToTexture(
             char text[24];
             if (!metric.available) { text[0]='-'; text[1]='-'; text[2]='\0'; }
             else if(item==(int)HudWidgetId::NetworkStatus) {const char* status=metric.value>=2?"OFF":metric.value>=1?"BAD":"OK";strcpy_s(text,status);}
-            else if (widget.decimals == 1) snprintf(text, sizeof(text), "%.1f %s", metric.value, widget.unit);
-            else snprintf(text, sizeof(text), "%d %s", std::clamp(static_cast<int>(std::round(metric.value)),0,9999), widget.unit);
+            else { const bool showUnit=(hudWidgetUnitHiddenMask&(1u<<item))==0; const char* u=showUnit?widget.unit:"";
+                if (widget.decimals == 1) snprintf(text, sizeof(text), showUnit?"%.1f %s":"%.1f%s", metric.value, u);
+                else snprintf(text, sizeof(text), showUnit?"%d %s":"%d%s", std::clamp(static_cast<int>(std::round(metric.value)),0,9999), u); }
             for(char* p=text;*p;++p) if(*p>='a'&&*p<='z') *p=(char)(*p-'a'+'A');
             drawText(cx, cy + radius + numberGap, text, rr, gg, bb);
         }
@@ -3145,7 +3147,9 @@ void DrawCalibrationOverlayToTexture(
         }
         const float traceRight = traceLeft + traceW, traceBottom=traceTop+traceH, traceCentre = traceTop + traceH * .5f;
         const bool deviationMode=snap.graphMode==HudGraphMode::Deviation;
-        line(traceLeft,deviationMode?traceCentre:traceBottom,traceRight,deviationMode?traceCentre:traceBottom,(std::max)(1.f,unit*.012f),.20f*traceIntensity,.25f*traceIntensity,.30f*traceIntensity);
+        // Item 17: the dark base/centre reference line is removed in every mode (user-reported clutter).
+        // The coloured data channels, budget-relative scaling and cyan event markers below are unaffected.
+        (void)traceCentre;
         const size_t visible = (std::min)(snap.sampleCount, historyN);
         if (visible > 1) {
             const float sensitivity=(float)(std::max)(0.25,hudTraceSensitivityMs), dx=traceW/(float)(historyN-1);
