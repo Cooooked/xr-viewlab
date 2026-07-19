@@ -825,6 +825,18 @@ Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'new Rect\(0, 0, w, 24\)' 
 Assert-IniValue 'clock_widget_theme' '0'
 Assert-IniValue 'clock_widget_palette' '2'
 Assert-IniValue 'notify_palette' '0'
+# Item 8: OBS ViewLab Mirror Capture identity is unique and does not collide with the third-party source.
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "viewlab_mirror_capture"' 'ViewLab OBS source uses a unique stable source id'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'return "ViewLab Mirror Capture"' 'ViewLab OBS source display name is the final product name'
+Assert-NotContains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "openxr' 'ViewLab OBS source does not reuse the OpenXR Mirror Capture id'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' "add the 'ViewLab Mirror Capture' source" 'UI instructs the user to add the correctly-named source'
+# Item 24: per-overlay "Use Global Values" inheritance in the per-app editor.
+Assert-Contains 'XRViewLab.UI\OverlaySettingsModels.cs' 'public void ClearFeature\(string id\)' 'override model can clear a single overlay for inheritance'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'void OverlayInherit_Changed' 'per-app editor handles per-overlay inheritance toggles'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' '_overlayOverrides.ClearFeature\(feature\)' 'ticking inheritance clears only that overlay override keys'
+Assert-Contains 'ProfileWindow.xaml' 'Tag="inherit:hud"' 'per-app HUD section has a Use Global Values checkbox'
+Assert-Contains 'ProfileWindow.xaml' 'Tag="inherit:crosshair"' 'per-app crosshair section has a Use Global Values checkbox'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'prefix \+ "unit", widget.ShowUnit' 'per-app HUD overrides persist the per-metric unit setting'
 # Item 22: calibration pack review is a read-only integrated workflow, not just documentation.
 Assert-Contains 'XRViewLab.UI\CalibrationPackReview.cs' 'internal static IReadOnlyList<PackReview> ReviewFolder\(string folder\)' 'calibration pack review exposes a folder review entry point'
 Assert-Contains 'XRViewLab.UI\CalibrationPackReview.cs' 'submitted LEFT-EYE texture at xrEndFrame' 'pack review states the PC-side left-eye scope limitation'

@@ -2014,7 +2014,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			string? license = Path.Combine(Path.GetDirectoryName(bundled)!, "LICENSE.txt");
 			if (File.Exists(license))
 				File.Copy(license, Path.Combine(ViewLabMirrorPluginTargetDirectory, "LICENSE.txt"), overwrite: true);
-			StatusText.Text = "ViewLab Mirror plugin installed. Restart OBS, then add the 'ViewLab Mirror' source.";
+			StatusText.Text = "ViewLab Mirror plugin installed. Restart OBS, then add the 'ViewLab Mirror Capture' source (not 'OpenXR Mirror Capture').";
 		}
 		catch (IOException ex)
 		{

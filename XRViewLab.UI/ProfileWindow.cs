@@ -208,6 +208,7 @@ public partial class ProfileWindow : Window
 		SetVisorSlidersEnabled(!useGlobal);
 		SyncMaskEditorFromSliders();
 		LoadOverlayControls();
+		InitInheritCheckboxes();
 		ApplyOverlayPreviewState();
 		UpdateHideShowButton();
 		UpdateHints();
@@ -397,6 +398,7 @@ public partial class ProfileWindow : Window
 		LowerIsWorse = source.LowerIsWorse, Availability = source.Availability, ToolTip = source.ToolTip,
 		Enabled = OverlayBool("hud", $"hud_widget_{source.Id}_enabled", source.Enabled),
 		UseSymbol = OverlayBool("hud", $"hud_widget_{source.Id}_symbol", source.UseSymbol),
+		ShowUnit = OverlayBool("hud", $"hud_widget_{source.Id}_unit", source.ShowUnit),
 		Warning = OverlayDouble("hud", $"hud_widget_{source.Id}_warning", source.Warning),
 		Critical = OverlayDouble("hud", $"hud_widget_{source.Id}_critical", source.Critical)
 	};
@@ -414,7 +416,9 @@ public partial class ProfileWindow : Window
 	{
 		foreach (FrameworkElement element in FindVisualChildren<FrameworkElement>(this).Where(e => e.Tag is string tag && tag.Contains(':')))
 		{
-			string[] parts = ((string)element.Tag).Split(':', 2); string value = OverlayValue(parts[0], parts[1]);
+			string[] parts = ((string)element.Tag).Split(':', 2);
+			if (parts[0] == "inherit") continue; // inheritance toggles are handled separately
+			string value = OverlayValue(parts[0], parts[1]);
 			switch (element)
 			{
 				case CheckBox check: check.IsChecked = value is "1" or "true" or "yes" or "on"; break;
@@ -423,6 +427,86 @@ public partial class ProfileWindow : Window
 				case TextBox text: text.Text = value; break;
 			}
 		}
+	}
+
+	// ---- Per-overlay "Use Global Values" inheritance (item 24) ----------------------------------
+	// A per-app overlay inherits the global configuration exactly when it has no override keys.
+	// Ticking the box clears that overlay's override keys (it then follows future global changes);
+	// unticking seeds override keys from the current effective values. Other overlays are untouched.
+	private static readonly string[] InheritFeatures = { "clock", "hud", "trace", "notifications", "crosshair", "sticky", "obs", "iracing" };
+
+	private CheckBox? InheritCheckboxFor(string feature) =>
+		FindVisualChildren<CheckBox>(this).FirstOrDefault(c => c.Tag is string t && t == "inherit:" + feature);
+
+	private void SetInheritCheckbox(string feature, bool inherit)
+	{
+		CheckBox? box = InheritCheckboxFor(feature);
+		if (box == null || box.IsChecked == inherit) return;
+		bool previous = _syncingControls; _syncingControls = true;
+		box.IsChecked = inherit;
+		_syncingControls = previous;
+		SetFeatureControlsEnabled(feature, !inherit);
+	}
+
+	private void SetFeatureControlsEnabled(string feature, bool enabled)
+	{
+		foreach (FrameworkElement element in FindVisualChildren<FrameworkElement>(this)
+			.Where(e => e.Tag is string tag && tag.StartsWith(feature + ":", StringComparison.Ordinal)))
+			element.IsEnabled = enabled;
+		if (feature == "hud" && ProfileHudWidgetList != null) ProfileHudWidgetList.IsEnabled = enabled;
+		if (feature == "sticky" && ProfileStickyNotesList != null) ProfileStickyNotesList.IsEnabled = enabled;
+	}
+
+	private void InitInheritCheckboxes()
+	{
+		foreach (string feature in InheritFeatures)
+		{
+			CheckBox? box = InheritCheckboxFor(feature);
+			if (box == null) continue;
+			bool inherit = !_overlayOverrides.HasFeature(feature);
+			bool previous = _syncingControls; _syncingControls = true;
+			box.IsChecked = inherit;
+			_syncingControls = previous;
+			SetFeatureControlsEnabled(feature, !inherit);
+		}
+	}
+
+	private void OverlayInherit_Changed(object sender, RoutedEventArgs e)
+	{
+		if (!_initialized || _syncingControls || sender is not CheckBox box || box.Tag is not string tag || !tag.StartsWith("inherit:", StringComparison.Ordinal)) return;
+		string feature = tag.Substring("inherit:".Length);
+		bool inherit = box.IsChecked == true;
+		if (inherit) _overlayOverrides.ClearFeature(feature);
+		else EnsureFeatureCustom(feature);
+		// Reflect the now-effective values in the controls without re-recording them as overrides.
+		bool previous = _syncingControls; _syncingControls = true;
+		if (feature == "hud") RebuildHudWidgetsFromEffective();
+		if (feature == "sticky") RebuildStickyNotesFromEffective();
+		LoadOverlayControls();
+		_syncingControls = previous;
+		SetFeatureControlsEnabled(feature, !inherit);
+		ApplyOverlayPreviewState();
+	}
+
+	private void RebuildHudWidgetsFromEffective()
+	{
+		var snapshot = _profileHudWidgets.Select(w => new HudWidgetOption
+		{
+			MetricId = w.MetricId, Id = w.Id, Label = w.Label, Provider = w.Provider, Unit = w.Unit,
+			ThresholdUnit = w.ThresholdUnit, DefaultWarning = w.DefaultWarning, DefaultCritical = w.DefaultCritical,
+			LowerIsWorse = w.LowerIsWorse, Availability = w.Availability, ToolTip = w.ToolTip
+		}).ToList();
+		var ordered = snapshot.Select((w, i) => (w, i)).OrderBy(p => OverlayDouble("hud", $"hud_widget_{p.w.Id}_order", p.i)).Select(p => p.w).ToList();
+		_profileHudWidgets.Clear();
+		foreach (var w in ordered) _profileHudWidgets.Add(CloneHudWidget(w));
+	}
+
+	private void RebuildStickyNotesFromEffective()
+	{
+		var numbers = _profileStickyNotes.Select(n => n.Number).ToList();
+		_profileStickyNotes.Clear();
+		int desired = Math.Clamp((int)OverlayDouble("sticky", "sticky_note_count", numbers.Count), 0, StickyNoteLiveStateService.MaxNotes);
+		for (int i = 0; i < desired; i++) _profileStickyNotes.Add(CloneStickyNote(new StickyNoteOption { Number = i + 1 }));
 	}
 
 	private void ConfigureProfileHotkeys()
@@ -445,10 +529,13 @@ public partial class ProfileWindow : Window
 
 	private void RecordOverlaySetting(FrameworkElement element, string value)
 	{
-		if (!_initialized || element.Tag is not string tag || !tag.Contains(':')) return;
+		if (!_initialized || _syncingControls || element.Tag is not string tag || !tag.Contains(':')) return;
 		string[] parts = tag.Split(':', 2);
+		if (parts[0] == "inherit") return; // inheritance toggles are not per-key overrides
 		EnsureFeatureCustom(parts[0]);
 		_overlayOverrides.Set(parts[0], parts[1], value);
+		// Editing any control implies this overlay is now customised, so its inheritance box unticks.
+		SetInheritCheckbox(parts[0], false);
 		ApplyOverlayPreviewState();
 	}
 
@@ -491,12 +578,13 @@ public partial class ProfileWindow : Window
 
 	private void RecordHudWidgets()
 	{
-		if (!_initialized) return; EnsureFeatureCustom("hud");
+		if (!_initialized || _syncingControls) return; EnsureFeatureCustom("hud"); SetInheritCheckbox("hud", false);
 		for (int index = 0; index < _profileHudWidgets.Count; index++)
 		{
 			HudWidgetOption widget = _profileHudWidgets[index]; string prefix = $"hud_widget_{widget.Id}_";
 			_overlayOverrides.Set("hud", prefix + "enabled", widget.Enabled ? "1" : "0");
 			_overlayOverrides.Set("hud", prefix + "symbol", widget.UseSymbol ? "1" : "0");
+			_overlayOverrides.Set("hud", prefix + "unit", widget.ShowUnit ? "1" : "0");
 			_overlayOverrides.Set("hud", prefix + "warning", widget.Warning.ToString("0.###", CultureInfo.InvariantCulture));
 			_overlayOverrides.Set("hud", prefix + "critical", widget.Critical.ToString("0.###", CultureInfo.InvariantCulture));
 			_overlayOverrides.Set("hud", prefix + "order", index.ToString(CultureInfo.InvariantCulture));
@@ -516,7 +604,7 @@ public partial class ProfileWindow : Window
 
 	private void RecordStickyNotes()
 	{
-		if (!_initialized) return; EnsureFeatureCustom("sticky");
+		if (!_initialized || _syncingControls) return; EnsureFeatureCustom("sticky"); SetInheritCheckbox("sticky", false);
 		_overlayOverrides.Set("sticky", "sticky_note_count", _profileStickyNotes.Count.ToString(CultureInfo.InvariantCulture));
 		for (int index = 0; index < _profileStickyNotes.Count; index++)
 		{

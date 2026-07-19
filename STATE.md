@@ -4,14 +4,16 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-19
-**Current version:** 4.1.274 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.274.msi` (size 149,155,840 bytes; SHA-256
-`2AF0580109A0271ED91DF36D1C8B672F1B8C6C8B7EA31F9F8000C5FBD53E3710`). Adds redesigned notification themes,
-configurable RGB visor mask colour (live-state v11), and the calibration screenshot-pack review workflow. Full
-WPF/broker/signed-identity/x64+Win32 native/OBS-plugin/MSI build with 0 warnings/errors; extracted-payload
-validation confirms fresh WPF/native/broker hashes, pinned PresentMon 2.4.1 + MIT notice, signed identity certificate
-and Overlays markers. All 22 deterministic scripts pass. Headset/OBS/iRacing live validation remains pending.
-**Prior version:** 4.1.273 — HUD per-metric unit visibility, uniform crosshair preview, Performance Trace baseline
-line removal, iRacing control-plumbing audit (`dist/ViewLab-4.1.273.msi`).
+**Current version:** 4.1.275 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.275.msi` (size 149,147,648 bytes; SHA-256
+`099DEC9A50907E4FF33AF1BC93091323102BB8FCF05D580105F8B7674414688A`). Adds per-app per-overlay Use-Global-Values
+inheritance, deterministic new-iRacing-cue logic (rear-closing, race-start, Grip-O-Bar), and the finalised OBS
+"ViewLab Mirror Capture" source identity, on top of 4.1.274's notification redesign, visor RGB colour (live-state v11)
+and calibration pack review. Full WPF/broker/signed-identity/x64+Win32 native/OBS-plugin/MSI build with 0
+warnings/errors; extracted-payload validation confirms fresh WPF/native/broker hashes, pinned PresentMon 2.4.1 + MIT
+notice, signed identity certificate and Overlays markers. All 24 deterministic scripts pass. Headset/OBS/iRacing live
+validation remains pending.
+**Prior version:** 4.1.274 — notification theme redesign, configurable RGB visor mask colour (live-state v11),
+calibration screenshot-pack review workflow (`dist/ViewLab-4.1.274.msi`).
 **Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
 AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
 remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
@@ -25,6 +27,40 @@ extracted-payload validation. Build 4.1.224 additionally passes the full determi
 WPF, broker, signed identity, x64/Win32 native, MSI extraction, pinned PresentMon hash/notice validation;
 its DiagMon real-game CSV and live Trace-cap checks remain mandatory before release.
 **Publish state:** 4.1.252 published at the user's direction (2026-07-18): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.252.
+
+## Per-app inheritance, new iRacing cue logic, OBS identity (implemented; headset/live validation pending, 2026-07-19)
+
+**Per-app editor parity + per-overlay inheritance (items 23, 24).** The per-app editor reuses the global overlay
+catalogue and the tag-based `feature:key` override system (no second settings architecture). It now also carries the
+per-metric HUD `unit` override (item 16 parity). Each overlay section (Clock, Performance HUD, Performance Trace,
+Sticky Notes, Crosshair, Notifications) has a **Use Global Values** checkbox. An overlay inherits exactly when it has
+no override keys: ticking the box calls `OverlayProfileOverrides.ClearFeature(feature)` (removing only that overlay's
+keys, so it follows future global changes) and disables its local controls; unticking seeds that overlay's keys from
+the current effective values (`EnsureFeatureCustom`) and enables editing. Editing any control auto-unticks its box.
+The existing whole-profile `Use Global Values` bulk action and the separate visor inheritance are preserved. A WPF-free
+console fixture proves override creation/deletion, global propagation while inherited, local stability after inheritance
+is disabled, per-overlay isolation and existing-profile migration; repository contracts pin the model and UI wiring.
+
+**New iRacing cue logic (items 4, 6, 7).** Implemented as shared, deterministic, WPF-free state machines in
+`IRacingCues.cs` (no drawing, no wall-clock — callers pass dt), so the same logic drives preview and runtime and is
+fully simulated. `RearClosingCue`: tracks the nearest valid car behind, derives smoothed closing speed from distance
+change, protects against target-identity changes (no false spike), activates/deactivates with hysteresis and minimum
+persistence, maps distance->glow width and closing speed->intensity, and clears on side overlap so the existing spotter
+takes over (never infers a side). `RaceStartLight`: red while officially waiting, one latched green at the official
+start, configurable hold then fade, re-arm on session change; replay/garage/disconnect/tick-reset never trigger green.
+`GripOMeter` + versioned `GripCarCalibration`: compares actual yaw with a calibrated expected yaw (per-car yaw gain
+accumulated from clean higher-speed samples, bounded) plus lateral-vs-forward slip, reports whole-car direction
+(lower-left/right) and severity (yellow/orange/red via a shared `SeverityBand`), classifies understeer/oversteer/
+sideslip dominance, suppresses at low speed and when uncalibrated — never claims an individual tyre. A 27-assertion
+simulation fixture covers every listed state. Native rendering, persistence, UI and live provider wiring are the
+documented next step; the calculation logic and mappings are complete and validated.
+
+**OBS ViewLab Mirror Capture identity (item 8).** The plugin registers the unique stable source id
+`viewlab_mirror_capture` with display name "ViewLab Mirror Capture"; the module name is now also "ViewLab Mirror
+Capture" (the last legacy "ViewLab Mirror" string is gone). It never reuses the third-party "OpenXR Mirror Capture"
+id/name, so both sources coexist. The ViewLab UI now tells the user to add the "ViewLab Mirror Capture" source (not
+"OpenXR Mirror Capture"). Contracts assert the unique id, the final display name and the absence of a copied id. The
+layer-side shared-frame producer (item 9) remains the next step; live OBS visual confirmation is pending.
 
 ## Notification redesign, visor RGB colour, calibration pack review (implemented; headset validation pending, 2026-07-19)
 

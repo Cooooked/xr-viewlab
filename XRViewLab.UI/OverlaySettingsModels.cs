@@ -59,6 +59,13 @@ public sealed class OverlayProfileOverrides
     }
 
     public bool HasFeature(string id) => Values.Keys.Any(key => key.StartsWith(id + ":", System.StringComparison.OrdinalIgnoreCase));
+    // Remove every override key belonging to one feature/overlay, so it falls back to the global value
+    // (per-overlay "Use Global Values" inheritance). Other overlays are untouched.
+    public void ClearFeature(string id)
+    {
+        foreach (string key in Values.Keys.Where(k => k.StartsWith(id + ":", System.StringComparison.OrdinalIgnoreCase)).ToList())
+            Values.Remove(key);
+    }
     public string? Get(string feature, string key) => Values.TryGetValue(feature + ":" + key, out string? value) ? value : null;
     public void Set(string feature, string key, string value) => Values[feature + ":" + key] = value;
     public void Clear() => Values.Clear();

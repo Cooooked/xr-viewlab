@@ -295,7 +295,7 @@ __declspec(dllexport) void obs_module_unload(void)
 
 __declspec(dllexport) const char *obs_module_name(void)
 {
-    return "ViewLab Mirror";
+    return "ViewLab Mirror Capture";
 }
 
 __declspec(dllexport) const char *obs_module_description(void)
