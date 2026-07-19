@@ -36,6 +36,10 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
     private string? _sessionId;
     private bool _fuelWarningFired;
     private double _fuelWarningThresholdPct = 0.10;
+    private uint _prevRawFlags;
+    private bool _sawRaceWaiting;
+    private bool _raceStartLatched;
+    private int _raceStartPhase = -1;
 
     // Settable by the broker from its own settings poll; not part of the SDK layout. Clamped to a
     // sane range so a malformed ini value can't disable the warning (0) or fire it constantly (1).
@@ -243,6 +247,19 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         RacingFlagState flag = NormalizeFlag(rawFlags);
         if (flag != _flag) { _flag = flag; PublishFlag(flag); }
 
+        // Race-start border light. iRacing SessionFlags start bits: startReady 0x20000000,
+        // startSet 0x40000000, startGo 0x80000000; green 0x00000004. Waiting = ready/set (not go);
+        // the authoritative start is the rising edge of startGo (standing) or of green once we have
+        // actually observed the waiting phase (rolling). Joining a race already in green never fires
+        // because there is no waiting phase and no rising edge from a fresh connection.
+        int phase = RaceStartFlags.Phase(rawFlags, _prevRawFlags, ref _sawRaceWaiting, ref _raceStartLatched);
+        if (phase != _raceStartPhase)
+        {
+            _raceStartPhase = phase;
+            Publish(new ViewLabEvent { Kind = ViewLabEventKind.RaceStart, Value = phase, SessionId = sessionId, TimestampUtc = DateTimeOffset.UtcNow });
+        }
+        _prevRawFlags = rawFlags;
+
         if (_lastLap >= 0 && lap > _lastLap)
         {
             bool valid = double.IsFinite(lastLapTime) && lastLapTime > 0;
@@ -349,6 +366,7 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         _lastLap = -1; _personalBest = double.NaN; _sessionId = null;
         _spotter = (SpotterState)(-1); _flag = (RacingFlagState)(-1);
         _fuelWarningFired = false;
+        _prevRawFlags = 0; _sawRaceWaiting = false; _raceStartLatched = false; _raceStartPhase = -1;
     }
 
     private static string FormatLap(double seconds) => TimeSpan.FromSeconds(seconds).ToString(@"m\:ss\.fff");

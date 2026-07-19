@@ -872,6 +872,17 @@
                           <TextBlock Text="Border opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingFlagOpacitySlider" Minimum="0.05" Maximum="1" Value="0.6" Tag="0.6" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
 
+                          <TextBlock Text="Race Start Light" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
+                          <CheckBox Name="IRacingRaceStartCheck" Content="Enable race-start border light" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Red while officially waiting for the start, one green when the race officially begins (standing startGo or rolling green after a waiting phase), then fades. Never triggers from movement, replay, garage, reconnect, tick reset or joining a race already in progress." />
+                          <TextBlock Text="Green hold (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingRaceStartGreenMsSlider" Minimum="250" Maximum="15000" Value="3000" Tag="3000" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="How long green is held before fading. Right-click to reset." />
+                          <TextBlock Text="Border thickness" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingRaceStartThicknessSlider" Minimum="0.005" Maximum="0.12" Value="0.02" Tag="0.02" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <TextBlock Text="Red opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingRaceStartRedOpacitySlider" Minimum="0.05" Maximum="1" Value="0.8" Tag="0.8" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <TextBlock Text="Green opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingRaceStartGreenOpacitySlider" Minimum="0.05" Maximum="1" Value="0.8" Tag="0.8" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+
                           <TextBlock Text="Low Fuel Warning" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
                           <CheckBox Name="IRacingFuelWarningCheck" Content="Enable low fuel warning card" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Fires once per crossing below the threshold, from the SDK's FuelLevelPct — absent on cars/tracks that don't report it." />
                           <TextBlock Text="Fuel threshold (%)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />

@@ -4,7 +4,12 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-19
-**Current version:** 4.1.276 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.276.msi` (size 149,151,744 bytes; SHA-256
+**Current version:** 4.1.277 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.277.msi` (size 149,180,416 bytes; SHA-256
+`D9DDAE72EA56CCA0A2EFA94A84022638E85A082F30058EB699BB27FDBF22AA0E`). Adds the Race-Start Border Light wired
+end-to-end (SessionFlags -> shared racing state -> native red/green border with hold+fade -> settings/persistence
+-> preview). Full WPF/broker/signed-identity/x64+Win32 native/OBS-plugin/MSI build 0/0; extracted-payload validation
+passes; all 24 deterministic scripts pass. Live iRacing/headset validation pending.
+**Prior version:** 4.1.276 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.276.msi` (size 149,151,744 bytes; SHA-256
 `B66D945C49A0589D48DA0C2CFF92DB8BF00E3BAC1C380AA2BAC70E7EEC2D0027`). Preview repairs: the crosshair now converges at
 the post-crop (crop/visor) centre rather than the full-lens box, and the Optical-centred checkbox is a content-only
 upward shim (crop, visor, crosshair and widgets shift up by 0.077 of frame height; the fixed 55:48 frame viewport,
@@ -29,6 +34,23 @@ extracted-payload validation. Build 4.1.224 additionally passes the full determi
 WPF, broker, signed identity, x64/Win32 native, MSI extraction, pinned PresentMon hash/notice validation;
 its DiagMon real-game CSV and live Trace-cap checks remain mandatory before release.
 **Publish state:** 4.1.252 published at the user's direction (2026-07-18): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.252.
+
+## Race-start border light wired end-to-end (implemented; live iRacing/headset validation pending, 2026-07-19)
+
+The Race-Start Border Light (item 5) is now connected through the whole product, not just a state machine.
+`RaceStartFlags.Phase` (a shared, deterministically-tested helper in `IRacingCues.cs`) maps iRacing
+`SessionFlags` (startReady/startSet/startGo, green) to a latched phase — 0 inactive, 1 waiting/red, 2 started/green.
+The provider computes it per sample, publishes a `ViewLabEventKind.RaceStart` on change, and resets the latch on
+session change; joining a race already green (no waiting phase, no rising edge) never flashes green, and replay/
+garage/reconnect/tick-reset cannot trigger it. The broker forwards the event to `RacingStateService`, which writes
+the phase into the `RacingStateBlock` `reserved0` slot (offset 44, no contract version bump — old layers ignore it).
+Native reads `reserved0` and draws a restrained inner border: red while waiting, green when started, with a
+native-owned hold+fade envelope (so telemetry ticks cannot replay it). Enable plus green-hold ms, border thickness
+and red/green opacity persist as `iracing_race_start*` keys, resolved through the profile/global INI (so per-app
+profiles carry them); the desktop preview shows the iRacing edge placeholder when enabled. Managed + broker + native
+x64/Win32 compile; the cue-logic fixture adds standing/rolling/join-in-progress/re-arm phase assertions and contracts
+pin the full UI->provider->racing-state->native chain. Live iRacing driving and in-headset appearance remain pending.
+The Rear-Closing cue and Grip-O-Bar retain complete calculation logic + simulations but are NOT yet rendered natively.
 
 ## Per-app inheritance, new iRacing cue logic, OBS identity (implemented; headset/live validation pending, 2026-07-19)
 

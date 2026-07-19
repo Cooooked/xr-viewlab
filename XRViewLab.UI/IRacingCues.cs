@@ -251,3 +251,24 @@ internal sealed class GripOMeter
     // Shared severity -> colour band used by BOTH preview and runtime. 0=yellow,1=orange,2=red.
     public static int SeverityBand(double severity) => severity < 0.34 ? 0 : severity < 0.67 ? 1 : 2;
 }
+
+// Pure, testable mapping from iRacing SessionFlags to the latched race-start phase (item 5). Extracted
+// from the provider so the standing/rolling/join-in-progress guards are deterministically verifiable.
+// Returns 0 inactive, 1 waiting/red, 2 started/green. `sawWaiting` and `latched` are per-session state
+// the caller threads through samples and resets on session change.
+internal static class RaceStartFlags
+{
+    public const uint StartReady = 0x20000000u, StartSet = 0x40000000u, StartGo = 0x80000000u, Green = 0x00000004u;
+
+    public static int Phase(uint rawFlags, uint prevRawFlags, ref bool sawWaiting, ref bool latched)
+    {
+        bool waiting = (rawFlags & (StartReady | StartSet)) != 0 && (rawFlags & StartGo) == 0;
+        if (waiting) sawWaiting = true;
+        bool goRising = (rawFlags & StartGo) != 0 && (prevRawFlags & StartGo) == 0;
+        bool greenRising = (rawFlags & Green) != 0 && (prevRawFlags & Green) == 0;
+        // Authoritative start = rising edge of startGo (standing) or of green once a waiting phase was
+        // observed (rolling). Joining a race already green has no edge and no waiting, so it never fires.
+        if (!latched && (goRising || (greenRising && sawWaiting))) latched = true;
+        return latched ? 2 : waiting ? 1 : 0;
+    }
+}

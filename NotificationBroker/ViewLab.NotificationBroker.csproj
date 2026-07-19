@@ -18,6 +18,7 @@
     <Compile Include="..\XRViewLab.UI\NotificationService.cs" Link="NotificationService.cs" />
     <Compile Include="..\XRViewLab.UI\ViewLabEvents.cs" Link="ViewLabEvents.cs" />
     <Compile Include="..\XRViewLab.UI\IRacingTelemetryProvider.cs" Link="IRacingTelemetryProvider.cs" />
+    <Compile Include="..\XRViewLab.UI\IRacingCues.cs" Link="IRacingCues.cs" />
     <Compile Include="..\XRViewLab.UI\RacingStateService.cs" Link="RacingStateService.cs" />
     <Compile Include="..\XRViewLab.UI\MediaSessionEventProvider.cs" Link="MediaSessionEventProvider.cs" />
     <Compile Include="..\XRViewLab.UI\ObsRecordingProvider.cs" Link="ObsRecordingProvider.cs" />

@@ -18,6 +18,7 @@ internal sealed class RacingStateService : IDisposable
     private RacingFlagState _flag;
     private uint _flagColor;
     private uint _presentationFlags;
+    private uint _raceStartPhase; // 0 inactive, 1 waiting/red, 2 started/green (native owns hold+fade)
 
     public RacingStateService() : this(Name) { }
     internal RacingStateService(string name)
@@ -41,6 +42,10 @@ internal sealed class RacingStateService : IDisposable
                 _flag = e.Flag; _flagColor = e.Color;
                 _presentationFlags = e.IsPresentationTest && e.Flag != RacingFlagState.Clear ? _presentationFlags | 2u : _presentationFlags & ~2u;
                 PublishState(); break;
+            case ViewLabEventKind.RaceStart:
+                _raceStartPhase = (uint)Math.Clamp((int)Math.Round(e.Value), 0, 2);
+                _presentationFlags = e.IsPresentationTest && _raceStartPhase != 0 ? _presentationFlags | 8u : _presentationFlags & ~8u;
+                PublishState(); break;
             case ViewLabEventKind.LapTime:
                 _presentationFlags = e.IsPresentationTest ? _presentationFlags | 4u : _presentationFlags & ~4u;
                 uint flags = 1u | (e.IsValid ? 2u : 0u) | (e.IsPersonalBest ? 4u : 0u) |
@@ -56,13 +61,14 @@ internal sealed class RacingStateService : IDisposable
 
     public void Clear()
     {
-        _spotter = SpotterState.Clear; _flag = RacingFlagState.Clear; _flagColor = 0; _presentationFlags = 0;
+        _spotter = SpotterState.Clear; _flag = RacingFlagState.Clear; _flagColor = 0; _presentationFlags = 0; _raceStartPhase = 0;
         _view.Write(28, 0u); _view.Write(48, 0L); PublishState();
     }
 
     private void PublishState()
     {
         _view.Write(16, (uint)_spotter); _view.Write(20, (uint)_flag); _view.Write(24, _flagColor); _view.Write(56, _presentationFlags);
+        _view.Write(44, _raceStartPhase); // reserved0: race-start phase (no version bump; old layers ignore it)
         PublishGeneration();
     }
 

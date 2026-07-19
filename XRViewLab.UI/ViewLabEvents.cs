@@ -22,6 +22,10 @@ internal enum ViewLabEventKind
     // Low-fuel warning card: a transient card (Title = "Low fuel", Body = "8% remaining"). Fires
     // once per threshold crossing, not every sample — Value carries the fuel fraction (0..1).
     FuelWarning,
+    // Race-start border light: Value carries a latched phase (0 inactive, 1 waiting/red, 2 started/
+    // green). Native owns the green hold+fade envelope. Latched per session and reset on session change,
+    // so replay/garage/reconnect/tick-reset and joining-in-progress never flash a false green.
+    RaceStart,
 }
 
 internal enum SpotterState

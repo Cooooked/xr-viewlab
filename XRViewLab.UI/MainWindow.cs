@@ -1291,6 +1291,11 @@ public partial class MainWindow : Window
 		IRacingFlagWidthSlider.Value = ReadRangeSetting(IRacingFlagWidthKey, 0.018, 0.003, 0.12);
 		IRacingFlagOpacitySlider.Value = ReadRangeSetting(IRacingFlagOpacityKey, 0.60, 0.05, 1.0);
 		IRacingLapDurationSlider.Value = ReadRangeSetting(IRacingLapDurationKey, 4500, 1000, 15000);
+		IRacingRaceStartCheck.IsChecked = ReadBoolSetting("iracing_race_start", false);
+		IRacingRaceStartGreenMsSlider.Value = ReadRangeSetting("iracing_race_start_green_ms", 3000, 250, 15000);
+		IRacingRaceStartThicknessSlider.Value = ReadRangeSetting("iracing_race_start_thickness", 0.02, 0.005, 0.12);
+		IRacingRaceStartRedOpacitySlider.Value = ReadRangeSetting("iracing_race_start_red_opacity", 0.8, 0.05, 1.0);
+		IRacingRaceStartGreenOpacitySlider.Value = ReadRangeSetting("iracing_race_start_green_opacity", 0.8, 0.05, 1.0);
 
 		// Gameplay/Tuning + menu/window controls now live in the ReShade Remote pop-out (ReShadeRemoteWindow).
 		SyncSlidersFromText();
@@ -2229,7 +2234,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if(includeDisabled||StickyNoteEnabledCheck.IsChecked==true)for(int i=0;i<_stickyNotes.Count;++i){var n=_stickyNotes[i];if(n.Enabled&&!string.IsNullOrWhiteSpace(n.Text))items.Add(new($"sticky:{i}",$"NOTE {i+1}",n.X,n.Y,.12,.12,n.Scale,.5,2.5,n.Opacity,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Sticky,n.Theme));}
 		if(includeDisabled||NotifyEnabledCheck.IsChecked==true)items.Add(new("notifications","NOTIFICATION",NotifyXSlider.Value,NotifyYSlider.Value,.28,.12,NotifyScaleSlider.Value,NotifyScaleSlider.Minimum,NotifyScaleSlider.Maximum,NotifyOpacitySlider.Value,OverlayPreviewAnchor.BottomRight,OverlayPreviewStyle.Notification,Math.Max(0,NotifyThemeCombo.SelectedIndex)));
 		if(includeFeatureModules&&ObsIndicatorEnabledCheck.IsChecked==true)items.Add(new(string.Empty,"OBS RECORDING CUE",.5,.5,1,1,1,1,1,ObsIndicatorOpacitySlider.Value,OverlayPreviewAnchor.RecordingRenderEdge,OverlayPreviewStyle.System));
-		if(includeFeatureModules&&(IRacingLapPopupCheck.IsChecked==true||IRacingSpotterGlowCheck.IsChecked==true||IRacingFlagBorderCheck.IsChecked==true))items.Add(new(string.Empty,"iRACING TELEMETRY",.5,.5,1,1,1,1,1,.7,OverlayPreviewAnchor.RenderEdge,OverlayPreviewStyle.System));
+		if(includeFeatureModules&&(IRacingLapPopupCheck.IsChecked==true||IRacingSpotterGlowCheck.IsChecked==true||IRacingFlagBorderCheck.IsChecked==true||IRacingRaceStartCheck.IsChecked==true))items.Add(new(string.Empty,"iRACING TELEMETRY",.5,.5,1,1,1,1,1,.7,OverlayPreviewAnchor.RenderEdge,OverlayPreviewStyle.System));
 		return items;
 	}
 
@@ -2565,6 +2570,11 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", IRacingFlagWidthKey, IRacingFlagWidthSlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", IRacingFlagOpacityKey, IRacingFlagOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", IRacingLapDurationKey, IRacingLapDurationSlider.Value.ToString("0", c), ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_race_start", IRacingRaceStartCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_race_start_green_ms", IRacingRaceStartGreenMsSlider.Value.ToString("0", c), ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_race_start_thickness", IRacingRaceStartThicknessSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_race_start_red_opacity", IRacingRaceStartRedOpacitySlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_race_start_green_opacity", IRacingRaceStartGreenOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		PublishLiveState();
 		EnsureIRacingProvider();
 		StatusText.Text = "iRacing telemetry settings applied.";

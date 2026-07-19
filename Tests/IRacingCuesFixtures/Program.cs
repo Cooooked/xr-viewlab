@@ -124,5 +124,34 @@ const double dt = 1.0 / 60.0;
         "grip: severity->band mapping is yellow/orange/red");
 }
 
+// ---- Race-start phase mapping from SessionFlags (item 5, provider logic) -----------------------
+{
+    const uint ready = RaceStartFlags.StartReady, set = RaceStartFlags.StartSet, go = RaceStartFlags.StartGo, green = RaceStartFlags.Green;
+
+    // Standing start: ready/set (red) -> go (green, latched).
+    bool saw = false, latched = false; uint prev = 0;
+    Check(RaceStartFlags.Phase(ready, prev, ref saw, ref latched) == 1, "race phase: startReady -> waiting/red"); prev = ready;
+    Check(RaceStartFlags.Phase(set, prev, ref saw, ref latched) == 1, "race phase: startSet -> waiting/red"); prev = set;
+    Check(RaceStartFlags.Phase(go, prev, ref saw, ref latched) == 2, "race phase: startGo -> started/green"); prev = go;
+    Check(RaceStartFlags.Phase(green, prev, ref saw, ref latched) == 2, "race phase: green stays latched after start"); prev = green;
+
+    // Rolling start: waiting then a green rising edge triggers green.
+    saw = false; latched = false; prev = 0;
+    Check(RaceStartFlags.Phase(set, prev, ref saw, ref latched) == 1, "race phase (rolling): waiting/red"); prev = set;
+    Check(RaceStartFlags.Phase(green, prev, ref saw, ref latched) == 2, "race phase (rolling): green after waiting -> started"); prev = green;
+
+    // Join-in-progress: first sample already green, never saw waiting -> no false green.
+    saw = false; latched = false; prev = green; // previous already green (no rising edge)
+    Check(RaceStartFlags.Phase(green, prev, ref saw, ref latched) == 0, "race phase: joining a race already green does not flash green");
+
+    // Green with no prior waiting and no rising edge from zero: only a genuine rising edge after waiting fires.
+    saw = false; latched = false; prev = 0;
+    Check(RaceStartFlags.Phase(green, prev, ref saw, ref latched) == 0, "race phase: green rising without a waiting phase does not trigger");
+
+    // Session reset clears latch (caller resets saw/latched); a new grid can arm again.
+    saw = false; latched = false; prev = 0;
+    Check(RaceStartFlags.Phase(ready, prev, ref saw, ref latched) == 1, "race phase: new session re-arms to waiting/red");
+}
+
 Console.WriteLine(failures == 0 ? "All iRacing cue fixtures passed." : $"{failures} fixture(s) failed.");
 return failures == 0 ? 0 : 1;

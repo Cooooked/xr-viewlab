@@ -317,6 +317,9 @@ inline bool IncludesMirrorFeature(uint32_t mask, MirrorFeature feature) {
 
 // ---- Generic racing presentation (iRacing is one broker-side producer) ----
 bool iracingEnabled = false, iracingLapPopup = false, iracingSpotterGlow = false, iracingFlagBorder = false;
+// Race-start border light (item 5). Enable + visual params read at session start like the other iRacing keys.
+bool iracingRaceStart = false;
+double iracingRaceStartRedOpacity = 0.8, iracingRaceStartGreenOpacity = 0.8, iracingRaceStartGreenMs = 3000.0, iracingRaceStartThickness = 0.02;
 double iracingSpotterWidth = 0.12, iracingSpotterStrength = 1.0, iracingSpotterOpacity = 0.65, iracingSpotterFade = 1.8;
 double iracingFlagWidth = 0.018, iracingFlagOpacity = 0.60;
 uint32_t iracingSpotterColor = 0xFF4500;
@@ -340,7 +343,7 @@ inline bool AnyCalibrationPattern() {
 inline bool BoundaryFlashActive() { return g_boundaryDragActive || g_boundaryReleaseTick != 0; }
 inline bool TraceMarkerConfirmationActive() { return g_traceMarkerConfirmationUntil.load(std::memory_order_acquire)>GetTickCount64(); }
 inline bool AnyStickyNote(){for(size_t i=0;i<stickyNoteCount;++i)if(stickyNotes[i].enabled&&!stickyNotes[i].text.empty()&&stickyNotes[i].opacity>.001)return true;return false;}
-inline bool AnyViewLabOverlay() { return (clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock)) || obsIndicatorEnabled || (stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote()) || (crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair)) || (notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications)) || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder)) || BoundaryFlashActive(); }
+inline bool AnyViewLabOverlay() { return (clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock)) || obsIndicatorEnabled || (stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote()) || (crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair)) || (notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications)) || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder || iracingRaceStart)) || BoundaryFlashActive(); }
 inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || (hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace)) || AnyViewLabOverlay(); }
 
 uint64_t FileTimeToUint64(const FILETIME& time) {
@@ -3291,6 +3294,8 @@ void DrawViewLabOverlaysToTexture(
     ConsumeRacingState();
     const bool wantSpotter = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingSpotterGlow) || (g_racingStable.presentationFlags & 1u)) && g_racingStable.spotterState != 0;
     const bool wantFlag = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
+    // Race-start border light: reserved0 carries the latched phase (1 waiting/red, 2 started/green).
+    const bool wantRaceStart = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingRaceStart) || (g_racingStable.presentationFlags & 8u)) && g_racingStable.reserved0 != 0;
     bool wantNotify = false;
     const bool wantsNotificationCards = IncludesMirrorFeature(featureMask, MirrorNotifications) && notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications);
     const bool wantsRacingLap = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u));
@@ -3394,6 +3399,35 @@ void DrawViewLabOverlaysToTexture(
         rectFill(l+inset,t+inset,rr_-inset,t+inset+th,cr,cg,cb,a); rectFill(l+inset,bb_-inset-th,rr_-inset,bb_-inset,cr,cg,cb,a);
         rectFill(l+inset,t+inset,l+inset+th,bb_-inset,cr,cg,cb,a); rectFill(rr_-inset-th,t+inset,rr_-inset,bb_-inset,cr,cg,cb,a);
         flushFlat(cr,cg,cb,a);
+    }
+
+    // Race-start border light. The provider latches a phase into reserved0; native owns ONLY the
+    // green hold+fade envelope so telemetry ticks cannot replay it. Phase 1 = waiting (red), phase 2 =
+    // started (green, held then faded once). The green-seen tick is derived from the raw latched phase
+    // so enabling/disabling mid-start does not restart the envelope arbitrarily.
+    {
+        static uint32_t s_prevRacePhase = 0; static uint64_t s_raceGreenTick = 0;
+        const uint32_t rawPhase = g_racingStable.reserved0;
+        if (rawPhase != 2) s_raceGreenTick = 0;
+        else if (s_prevRacePhase != 2) s_raceGreenTick = GetTickCount64();
+        s_prevRacePhase = rawPhase;
+        if (wantRaceStart) {
+            const uint32_t phase = rawPhase;
+            float rsA = 0.f, rR = 0.f, rG = 0.f, rB = 0.f;
+            if (phase == 1) { rsA = (float)std::clamp(iracingRaceStartRedOpacity, 0.05, 1.0); rR = 0.85f; rG = 0.05f; rB = 0.05f; }
+            else if (phase == 2) {
+                const double held = (double)(GetTickCount64() - s_raceGreenTick);
+                const double holdMs = std::clamp(iracingRaceStartGreenMs, 250.0, 15000.0), fadeMs = 600.0;
+                const float env = held <= holdMs ? 1.f : held >= holdMs + fadeMs ? 0.f : (float)(1.0 - (held - holdMs) / fadeMs);
+                rsA = (float)std::clamp(iracingRaceStartGreenOpacity, 0.05, 1.0) * env; rR = 0.05f; rG = 0.85f; rB = 0.10f;
+            }
+            if (rsA > 0.001f) {
+                const float th = std::clamp((float)iracingRaceStartThickness * minDim, 3.f, minDim * .12f), inset = 2.f;
+                rectFill(l+inset, t+inset, rr_-inset, t+inset+th, rR, rG, rB, rsA); rectFill(l+inset, bb_-inset-th, rr_-inset, bb_-inset, rR, rG, rB, rsA);
+                rectFill(l+inset, t+inset, l+inset+th, bb_-inset, rR, rG, rB, rsA); rectFill(rr_-inset-th, t+inset, rr_-inset, bb_-inset, rR, rG, rB, rsA);
+                flushFlat(rR, rG, rB, rsA);
+            }
+        }
     }
 
     // Spotter is spatial rather than textual: maximum intensity at the relevant peripheral edge,
@@ -4935,6 +4969,11 @@ void LoadConfig() {
     iracingLapPopup = ReadBoolSetting(L"iracing_lap_popup", false);
     iracingSpotterGlow = ReadBoolSetting(L"iracing_spotter_glow", false);
     iracingFlagBorder = ReadBoolSetting(L"iracing_flag_border", false);
+    iracingRaceStart = ReadBoolSetting(L"iracing_race_start", false);
+    iracingRaceStartRedOpacity = std::clamp(ReadDoubleSetting(L"iracing_race_start_red_opacity", 0.8), 0.05, 1.0);
+    iracingRaceStartGreenOpacity = std::clamp(ReadDoubleSetting(L"iracing_race_start_green_opacity", 0.8), 0.05, 1.0);
+    iracingRaceStartGreenMs = std::clamp(ReadDoubleSetting(L"iracing_race_start_green_ms", 3000.0), 250.0, 15000.0);
+    iracingRaceStartThickness = std::clamp(ReadDoubleSetting(L"iracing_race_start_thickness", 0.02), 0.005, 0.12);
     iracingSpotterWidth = std::clamp(ReadDoubleSetting(L"iracing_spotter_width", 0.12), 0.03, 0.35);
     iracingSpotterStrength = std::clamp(ReadDoubleSetting(L"iracing_spotter_strength", 1.0), 0.1, 2.0);
     iracingSpotterOpacity = std::clamp(ReadDoubleSetting(L"iracing_spotter_opacity", 0.65), 0.05, 1.0);
