@@ -27,12 +27,15 @@ Finite game/hardware matrices are regression evidence, not proof of universal co
 
 ## Git workflow
 
-`master` is the stable, validated integration branch. `dev` is the single active branch for ordinary
-AI-assisted work. Start and finish routine changes on `dev`, then integrate them into `master` only after
-the required contracts, build and user-directed validation are complete. Create experiment or feature
-branches only when the user explicitly requests one. Never use `main`; the remote branch with that name is
-an obsolete disconnected history. Never force-push, rewrite history or delete branches without explicit
-user approval.
+`dev` is the single active branch for ordinary AI-assisted work; `main` is the integration branch and is
+updated regularly from `dev`. Start and finish routine changes on `dev` (or a task-specific worktree branch),
+then integrate them into `main` once the required contracts, build and user-directed validation are complete.
+Fast-forward when `main` has not moved; otherwise merge. After integrating into `main`, fast-forward `dev` back
+up to `main` so it never drifts stale — but ONLY when `dev`'s worktree is clean; if another agent has uncommitted
+work there, let them commit first and never overwrite it. Create experiment or feature branches only when the
+user explicitly requests one, and delete a merged task branch once its work is on `main`. Never push to the
+GitHub remote without the user confirming an in-headset test passed. Never force-push, rewrite history, or
+delete unmerged branches without explicit user approval.
 
 ## Operating rules (non-negotiable)
 
