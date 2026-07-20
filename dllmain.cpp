@@ -4494,8 +4494,8 @@ void ProcessCalibrationCaptureRequest() {
     }).detach();
 }
 
-void DrawCapturedProjectionTextures(bool drawVisor, const char* tag) {
-    if (!drawVisor || !g_d3d11Mask.initialized || !g_d3d11Mask.context) return;
+void DrawCapturedProjectionTextures(bool drawVisor, bool drawOverlays, const char* tag) {
+    if ((!drawVisor && !drawOverlays) || !g_d3d11Mask.initialized || !g_d3d11Mask.context) return;
 
     struct PendingDraw {
         ID3D11Texture2D* tex = nullptr;
@@ -4540,10 +4540,10 @@ void DrawCapturedProjectionTextures(bool drawVisor, const char* tag) {
         if (p.tex == nullptr) continue;
         for (size_t i = 0; i < p.targets.size(); ++i) {
             const EyeView& ev = p.targets[i];
-            if (drawVisor) {
-                DrawVisorBorderToTexture(p.tex, p.arrSize, p.format, ev, p.projectionViews,
-                    i < p.rtvs.size() ? p.rtvs[i] : nullptr);
-            }
+            ID3D11RenderTargetView* rtv = i < p.rtvs.size() ? p.rtvs[i] : nullptr;
+            // Visor first, overlays second: overlays inside the visor mask stay visible.
+            if (drawVisor) DrawVisorBorderToTexture(p.tex, p.arrSize, p.format, ev, p.projectionViews, rtv);
+            if (drawOverlays) DrawCalibrationPatternsToTexture(p.tex, p.arrSize, p.format, ev, p.projectionViews, rtv, true, true);
             ++eyeCount;
         }
         for (ID3D11RenderTargetView* rtv : p.rtvs) {
@@ -4732,7 +4732,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrWaitSwapchainImage(
 std::atomic<bool> g_diagReleaseSeen{false};
 std::atomic<bool> g_diagReleaseNoLayout{false};
 std::atomic<uint32_t> g_releaseDrawLogCount{0};
-std::atomic<bool> g_releaseDrewVisorThisFrame{false};
+std::atomic<bool> g_releaseDrewViewLabBatchThisFrame{false};
 
 XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
     XrSwapchain swapchain, const XrSwapchainImageReleaseInfo* info) {
@@ -4806,18 +4806,19 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
             } else {
                 const bool directCommon=g_featurePresentationPlan.drawDirectCommonFeatures||
                     g_topmostLayerBlocked.load(std::memory_order_acquire);
-                bool drewVisor=false;
+                bool drewVisor=false, drewBatch=false;
                 for (size_t i = 0; i < targetViews.size(); ++i) {
                     if (maskEnabled && g_featurePresentationPlan.drawDirectVisor) {
                         DrawVisorBorderToTexture(tex, arrSize, scFormat, targetViews[i], projectionViews,
                             i < rtvs.size() ? rtvs[i] : nullptr);
-                        drewVisor=true;
+                        drewVisor=true; drewBatch=true;
                     }
                     // Literal-pixel calibration always measures the submitted game texture. It is
                     // never silently redefined as pixels of ViewLab's separate Topmost target.
                     if (AnyCalibrationPattern() || (directCommon && ((hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace)) || AnyViewLabOverlay()))) {
                         DrawCalibrationPatternsToTexture(tex, arrSize, scFormat, targetViews[i], projectionViews,
                             i < rtvs.size() ? rtvs[i] : nullptr,true,directCommon);
+                        drewBatch=true;
                     }
                 }
                 for (ID3D11RenderTargetView* rtv : rtvs) {
@@ -4827,7 +4828,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                 if (drewVisor && n == 0)
                     Log("visor: draw executed (%zu target view(s), %zu projection view(s))\n",
                         targetViews.size(), projectionViews.size());
-                if(drewVisor) g_releaseDrewVisorThisFrame.store(true);
+                if(drewBatch) g_releaseDrewViewLabBatchThisFrame.store(true);
             }
         } else {
             for (ID3D11RenderTargetView* rtv : rtvs) {
@@ -6022,9 +6023,12 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
 
     if (enabled && g_d3d11Mask.initialized && !g_rendererDeviceLost.load(std::memory_order_acquire) &&
         session == g_d3d11Mask.session) {
-        const bool releaseDrewVisor = g_releaseDrewVisorThisFrame.exchange(false);
-        if (maskEnabled && (!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked.load(std::memory_order_acquire)) && !releaseDrewVisor) {
-            DrawCapturedProjectionTextures(true, "visor");
+        const bool releaseDrewBatch = g_releaseDrewViewLabBatchThisFrame.exchange(false);
+        if (maskEnabled && (!topmostVisorOverlays || !g_topmostLayer.ready || g_topmostLayerBlocked.load(std::memory_order_acquire)) && !releaseDrewBatch) {
+            // Late direct fallback: draw the full ViewLab batch (visor then overlays) so
+            // overlays positioned inside the visor mask remain visible even when the
+            // ordered/topmost carrier is unavailable.
+            DrawCapturedProjectionTextures(true, true, "direct-fallback");
         }
         // The submitted textures now contain the frame's complete direct-drawn content, so
         // this is the calibration suite's capture point for the final left-eye image.

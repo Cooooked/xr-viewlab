@@ -111,6 +111,8 @@ int main() {
     Check(SelectOverlayBackend(plain)==OverlayBackend::DirectEyeTexture,
         "plain projection keeps direct eye-texture presentation");
     auto featurePlan=SelectFeaturePresentationPlan(plain);
+    Check(featurePlan.drawDirectVisor==featurePlan.drawDirectCommonFeatures,
+        "direct visor and direct common-feature flags are always paired");
     Check(featurePlan.drawDirectVisor&&featurePlan.drawDirectCommonFeatures&&
         featurePlan.orderedBackend==OverlayBackend::FeatureDisabled,
         "plain frame preserves the proven direct ViewLab path");
@@ -119,16 +121,22 @@ int main() {
     Check(SelectOverlayBackend(plain)==OverlayBackend::SeparateProjection,
         "a distinct compositor layer preserves the proven stereo projection backend");
     featurePlan=SelectFeaturePresentationPlan(plain);
+    Check(featurePlan.drawDirectVisor==featurePlan.drawDirectCommonFeatures,
+        "direct visor and direct common-feature flags stay paired during allocation transition");
     Check(featurePlan.drawDirectVisor&&featurePlan.drawDirectCommonFeatures&&
         featurePlan.orderedBackend==OverlayBackend::SeparateProjection,
         "allocation transition keeps the working renderer until ordered presentation is ready");
     plain.orderedPresentationReady=true;
     featurePlan=SelectFeaturePresentationPlan(plain);
+    Check(featurePlan.drawDirectVisor==featurePlan.drawDirectCommonFeatures,
+        "direct visor and direct common-feature flags stay paired when ordered is ready");
     Check(!featurePlan.drawDirectVisor&&!featurePlan.drawDirectCommonFeatures&&
         featurePlan.orderedBackend==OverlayBackend::SeparateProjection,
         "ready ordered presentation disables the obsolete duplicate renderer for every feature");
     RuntimeCapabilities menu{GraphicsApi::D3D11,false,true,true,false,false,false};
     featurePlan=SelectFeaturePresentationPlan(menu);
+    Check(featurePlan.drawDirectVisor==featurePlan.drawDirectCommonFeatures,
+        "direct visor and direct common-feature flags stay paired for composition-only frames");
     Check(!featurePlan.drawDirectVisor&&!featurePlan.drawDirectCommonFeatures&&
         featurePlan.orderedBackend==OverlayBackend::FeatureDisabled,
         "composition-only frame does not claim an unproven visible carrier");
@@ -136,11 +144,15 @@ int main() {
     menu.canWriteEyeTexture=true;
     menu.supportsAdditionalProjectionLayers=true;
     featurePlan=SelectFeaturePresentationPlan(menu);
+    Check(featurePlan.drawDirectVisor==featurePlan.drawDirectCommonFeatures,
+        "direct visor and direct common-feature flags stay paired when projection returns");
     Check(featurePlan.drawDirectVisor&&featurePlan.drawDirectCommonFeatures&&
         featurePlan.orderedBackend==OverlayBackend::SeparateProjection,
         "the next observed projection restores direct and ordered common-feature presentation");
     menu.orderedPresentationReady=true;
     featurePlan=SelectFeaturePresentationPlan(menu);
+    Check(featurePlan.drawDirectVisor==featurePlan.drawDirectCommonFeatures,
+        "direct visor and direct common-feature flags stay paired for ready ordered carrier");
     Check(!featurePlan.drawDirectVisor&&!featurePlan.drawDirectCommonFeatures&&
         featurePlan.orderedBackend==OverlayBackend::SeparateProjection,
         "a ready ordered carrier is the sole normal-feature presentation path");

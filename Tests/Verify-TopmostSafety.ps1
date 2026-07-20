@@ -45,7 +45,7 @@ Require 'RendererDeviceHealthy\("xrEndFrame"\)' 'end-frame drawing checks device
 Require 'all ViewLab rendering disabled for this session' 'device-loss log states the containment action'
 Require 'no automatic retry' 'Topmost failure log states retry policy'
 Require 'rd\.Format=topmostDesc\.Format' 'topmost RTV preserves the runtime resource format contract'
-Require 'if\(drewVisor\) g_releaseDrewVisorThisFrame' 'skipped direct draws cannot masquerade as successful presentation'
+Require 'if\(drewBatch\) g_releaseDrewViewLabBatchThisFrame' 'skipped direct draws cannot masquerade as successful presentation'
 Forbid 'XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT' 'premultiplied target must not be multiplied again by the compositor'
 Forbid 'RenderTopmostLayer\([\s\S]{0,500}\)\)\s*\{[\s\S]{0,800}\}\s*else\s+DestroyTopmostLayer' 'render failure must not be followed by an unlatching teardown/retry branch'
 Forbid 'else if \(!topmostVisorOverlays\)[^\r\n]*g_topmostLayerBlocked=false' 'checkbox cycling must not re-arm a failed session'

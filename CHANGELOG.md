@@ -1,5 +1,40 @@
 # Changelog
 
+## 4.1.285 - 2026-07-20
+
+- Fix the late `xrEndFrame` direct fallback drawing only the visor. Every normal
+  rendering path (release-time direct, topmost/ordered, OBS mirror, calibration
+  capture) draws game → visor → all ViewLab overlays, but the late fallback that
+  runs when the release path drew nothing only drew the visor, so overlays could
+  go missing or the late visor could land over them. `DrawCapturedProjectionTextures`
+  now takes a `drawOverlays` flag and the fallback draws the full visor→overlays
+  batch (`DrawCapturedProjectionTextures(true, true, "direct-fallback")`).
+- Track the whole ViewLab direct batch, not just the visor: the release-path guard
+  flag is renamed `g_releaseDrewViewLabBatchThisFrame` (set when visor **or**
+  overlays drew) so the late fallback fires only when the release path produced
+  nothing, preventing any double-draw. The fallback remains gated on the ordered
+  carrier being unavailable, so overlays that belong on the topmost carrier are
+  never duplicated onto the direct target.
+- Add the Now Playing media-session detection path (Tidal, browser YouTube Music,
+  Spotify and any SMTC-reporting player). `MediaSessionEventProvider` now watches
+  **all** OS media sessions and prefers the actually-playing one; track-change
+  detection and dedup live in the WPF/WinRT-free `NowPlayingLogic` so pause/seek/
+  volume updates and same-track session switches never repeat the card. Cards route
+  through the same corrected notification renderer/queue as Test Presentation, and
+  the feature stays gated by the `media_notify_enabled` checkbox in the broker.
+- Contracts now pin visor-before-overlays in all four paths (release-time direct,
+  topmost, OBS mirror, calibration capture) plus the late fallback, and pin the
+  opaque configured-RGB visor pixel shader and its blend-disabled draw.
+- Add `Tests/NowPlayingFixtures` (`Invoke-NowPlayingFixtures.ps1`): track changes,
+  duplicate metadata, session switching, preferred-session selection, reconnect and
+  disabled-state behaviour. Update `Verify-TopmostSafety.ps1` and the
+  `MediaSessionFixtures` project for the renamed batch flag and shared `NowPlayingLogic`.
+- Visor boundary: the visor pixel shader provably emits `float4(visorColor.rgb, 1.0)`
+  (opaque, configured colour) with anti-aliasing disabled by default, so ViewLab
+  introduces no edge blending. The Virtual Desktop magenta/pink chroma-key fringe is
+  **not** proven fixed — it needs an in-headset captured-pixel test — and the visor
+  geometry was deliberately not resized as a workaround.
+
 ## 4.1.284 - 2026-07-20
 
 - Fix crosshair preview scaling. The desktop preview was rendering at the real

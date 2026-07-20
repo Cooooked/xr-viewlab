@@ -1,5 +1,32 @@
 # Regression memory
 
+## R48 — Late xrEndFrame direct fallback drew the visor without overlays
+
+**Symptom:** In frames where the swapchain-release path drew nothing, the late `xrEndFrame`
+fallback restored only the visor, so ViewLab overlays (HUD, trace, notifications, crosshair,
+sticky notes, clock) positioned inside the visor mask could be missing, or the late visor could
+paint over them.
+
+**Cause:** `DrawCapturedProjectionTextures(bool drawVisor, ...)` only ever drew the visor, and the
+fallback in `XRViewLab_xrEndFrame` called it as `DrawCapturedProjectionTextures(true, "visor")`.
+The frame guard `g_releaseDrewVisorThisFrame` tracked only the visor, so a frame that legitimately
+drew overlays but no visor could still trigger a visor-only late pass.
+
+**Contract:** Every rendering path draws game → visor → all ViewLab overlays.
+`DrawCapturedProjectionTextures(bool drawVisor, bool drawOverlays, const char* tag)` draws the visor
+first and overlays second; the late fallback uses `DrawCapturedProjectionTextures(true, true,
+"direct-fallback")`. The release-path guard is `g_releaseDrewViewLabBatchThisFrame`, set when the
+visor **or** overlays drew, so the late fallback fires only when the release path produced nothing —
+no double-draw. The fallback stays gated on the ordered/topmost carrier being unavailable, so
+overlays owned by the topmost carrier are never duplicated onto the direct target. Contracts pin
+visor-before-overlays in the release-time direct, topmost, OBS-mirror and calibration-capture paths
+and in the late fallback (`Verify-ViewLabContracts.ps1`, `Verify-TopmostSafety.ps1`).
+
+**Not fixed here:** the Virtual Desktop magenta/pink chroma-key edge fringe. The visor pixel shader
+provably emits `float4(visorColor.rgb, 1.0)` (opaque, configured colour, AA disabled by default), so
+ViewLab adds no edge blending, but proving the fringe's origin requires an in-headset captured-pixel
+test. Do not resize the visor geometry as a fringe workaround.
+
 ## R47 — Crosshair preview rendered at real headset scale
 
 **Symptom:** The desktop crosshair preview appeared as a tiny black pixel and was not useful for

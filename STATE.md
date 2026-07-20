@@ -4,7 +4,28 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-20
-**Current version:** 4.1.284 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.284.msi` (size 149,188,608 bytes; SHA-256
+**Current version:** 4.1.285 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.285.msi` (size 149,184,512 bytes; SHA-256
+`54D9CCDC6870F9AED0D5529B90A7A3773DAEB7AEE2576BA1708F68A824489016`). Two fixes plus the Now Playing media path. (1) **Fallback ordering (R48):** the late
+`xrEndFrame` direct fallback drew only the visor, so overlays inside the visor mask could go missing or the late
+visor could land over them. `DrawCapturedProjectionTextures` gained a `drawOverlays` flag and the fallback now draws
+the full visor→overlays batch (`DrawCapturedProjectionTextures(true, true, "direct-fallback")`); the release-path
+guard is renamed `g_releaseDrewViewLabBatchThisFrame` (set when visor **or** overlays drew) so the fallback fires
+only when the release path drew nothing — no double-draw — and stays gated on the ordered carrier being unavailable
+so topmost-owned overlays are never duplicated. Contracts pin visor-before-overlays in all four paths plus the
+fallback. (2) **Now Playing:** `MediaSessionEventProvider` now watches all OS media sessions and prefers the
+actually-playing one; track-change/dedup logic lives in the WPF/WinRT-free `NowPlayingLogic`, so pause/seek/volume
+and same-track session switches never repeat the card. Cards route through the same corrected renderer/queue as Test
+Presentation and stay gated by `media_notify_enabled`. Works with Tidal, browser YouTube Music, Spotify and any
+SMTC-reporting player (not toast-dependent). New `Tests/NowPlayingFixtures` covers track change, duplicate metadata,
+session switching, preferred-session selection, reconnect and disabled-state; `Verify-TopmostSafety.ps1` and
+`MediaSessionFixtures` updated for the renamed flag and shared `NowPlayingLogic`. **Visor boundary:** the visor
+pixel shader provably emits `float4(visorColor.rgb, 1.0)` (opaque, configured colour, AA disabled by default) — no
+ViewLab-side edge blend. The Virtual Desktop magenta/pink chroma-key fringe is **NOT** proven fixed (needs an
+in-headset captured-pixel test) and the visor geometry was deliberately not resized as a workaround. Full
+x64/Win32/broker/OBS/MSI build 0/0; payload validated; 26/27 deterministic scripts pass (env live-broker fixture
+`Invoke-RealNotificationFixture` excluded). Headset validation of overlay-over-visor presence and the pink fringe
+remains pending.
+**Prior version:** 4.1.284 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.284.msi` (size 149,188,608 bytes; SHA-256
 `6DD56150F8BB1983A19651B0666C18DB7108273BDC71FCBFC0C4C7D1F8F1C868`). Fix crosshair preview scaling: the desktop
 preview was rendering at the real headset reference-pixel scale, making small crosshairs a tiny black pixel.
 `CrosshairPreview` now exposes a shared preview-only `PreviewDisplayScale` multiplier and a centralised `Measure`
