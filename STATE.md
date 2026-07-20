@@ -3,9 +3,18 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-07-19
-**Current version:** 4.1.282 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.282.msi` (size 149,196,800 bytes; SHA-256
-`56A7A806741579B91661D053653A913883844178AFC8E4D4AF14B5BCD798C49B`). Per-app overlay editor consistency: (1) the
+**Updated:** 2026-07-20
+**Current version:** 4.1.283 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.283.msi` (size 149,188,608 bytes; SHA-256
+`7D23D35C160FD0171B1448E9A8EBBEE7DF43724B53F4A96E9F7607AFFD290CD1`). Fix notification rendering regression after
+theme/palette redesign: `NotificationService.ComposeCard` now pads every design footprint to the fixed 336×96
+shared-memory slot via `NotificationCardLayout.PadToSlot`; previously non-Bold themes produced a tightly-packed bitmap
+that `WriteBlock` silently skipped because the byte count did not match `CardPixels`, so the native layer received no
+valid pixel data. Completed the broker project file wiring (`NotificationCardLayout`, `NowPlayingLogic`) and
+main-UI excludes so `ViewLab.NotificationBroker.exe` builds again. Added deterministic
+`Tests/NotificationCardFixtures` covering the four theme footprints and `PadToSlot` correctness; updated the contract
+script to verify the centralized `DesignFootprint`. Full x64/Win32/broker/OBS/MSI build 0/0; payload validated; contract
+tests and new fixture pass.
+**Prior version:** 4.1.282 — Per-app overlay editor consistency: (1) the
 Performance Trace "Use global values" checkbox now loads checked/inherited when there is no override — the
 ProfileTraceEnabled special-case no longer writes a spurious "trace" override during hydration (guarded by
 `_initialized && !_syncingControls`); (2) every overlay section (Clock, HUD, Trace, Sticky, Crosshair, Notifications)

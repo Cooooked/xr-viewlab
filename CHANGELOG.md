@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.1.283 - 2026-07-20
+
+- Fix notification rendering after the theme/palette redesign. `NotificationService.ComposeCard`
+  now pads every card design (Classic, Compact Banner, Minimal, Bold) to the fixed 336×96
+  shared-memory slot via `NotificationCardLayout.PadToSlot`. Previously only the Bold design
+  matched the slot size, so `WriteBlock` silently skipped uploading pixel data for the other
+  themes and the native layer rendered an empty/transparent card.
+- Centralise notification slot and footprint definitions in `NotificationCardLayout.cs`, shared
+  by the broker and the new deterministic fixture.
+- Complete the broker project wiring (`NotificationCardLayout.cs`, `NowPlayingLogic.cs`) and
+  main-UI compile excludes so `ViewLab.NotificationBroker.exe` builds from a clean worktree again.
+- Add `Tests/NotificationCardFixtures` and an `Invoke-NotificationCardFixtures.ps1` runner. The
+  fixture asserts each theme's footprint, validates that composed cards have visible pixels, and
+  verifies `PadToSlot` preserves content and leaves padding transparent.
+- Update `Tests\Verify-ViewLabContracts.ps1` to check the centralized `DesignFootprint` rather than
+  the removed inline switch.
+
 ## Unreleased - 2026-07-19 (calibration capture, mirror routing, ViewLab Mirror plugin, themes/palettes)
 
 - Implement the native calibration-suite capture backend: `Run Calibration Suite (Experimental)` now captures

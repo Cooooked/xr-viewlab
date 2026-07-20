@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 using Windows.Media.Control;
@@ -9,16 +11,25 @@ namespace XRViewLab.UI;
 
 internal readonly record struct MediaTrackInfo(string Title, string Artist, BitmapSource? Artwork);
 
-// Watches the OS-wide "Now Playing" session (Windows System Media Transport Controls — the same
-// source Windows itself uses for the volume-flyout media card) and raises TrackChanged only when
-// the title/artist actually changes, so pause/seek/volume events on an unchanged track don't
-// repeat the visor card. A machine with no SMTC-reporting player simply never raises the event —
-// there is no polling fallback and no error surfaced to the user for that case.
+// Watches ALL OS media sessions (Windows System Media Transport Controls — the same source
+// Windows itself uses for the volume-flyout media card) and raises TrackChanged only when the
+// title/artist of the preferred session actually changes. Track changes are metadata updates on
+// these sessions, not Windows toast notifications — players like Tidal, Spotify or a browser
+// YouTube Music tab never need to raise a toast for this card to work.
+//
+// Why all sessions rather than GetCurrentSession() alone: Windows' "current" session is often a
+// paused tab or the last-focused app while a different app is audibly playing. Selection and
+// dedup live in NowPlayingTracker (WPF/WinRT-free, deterministically tested): prefer the playing
+// session, and emit only on a genuine title/artist change — pause/seek/volume updates and
+// switching sessions on an identical track never repeat the visor card. A machine with no
+// SMTC-reporting player simply never raises the event; there is no polling fallback.
 internal sealed class MediaSessionEventProvider : IDisposable
 {
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
-    private GlobalSystemMediaTransportControlsSession? _session;
-    private string? _lastKey;
+    private readonly List<GlobalSystemMediaTransportControlsSession> _attached = new();
+    private readonly NowPlayingTracker _tracker = new();
+    private int _refreshActive;
+    private bool _refreshQueued;
     private bool _started;
     private bool _disposed;
 
@@ -32,9 +43,11 @@ internal sealed class MediaSessionEventProvider : IDisposable
         try
         {
             _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+            _manager.SessionsChanged += OnSessionsChanged;
             _manager.CurrentSessionChanged += OnCurrentSessionChanged;
-            AttachCurrentSession();
+            AttachSessions();
             Status = "Media session watcher active.";
+            _ = RefreshAsync();
         }
         catch (Exception ex)
         {
@@ -45,51 +58,105 @@ internal sealed class MediaSessionEventProvider : IDisposable
 
     public void Stop()
     {
-        if (_session != null) { _session.MediaPropertiesChanged -= OnPropertiesChanged; _session = null; }
-        if (_manager != null) _manager.CurrentSessionChanged -= OnCurrentSessionChanged;
+        DetachSessions();
+        if (_manager != null)
+        {
+            _manager.SessionsChanged -= OnSessionsChanged;
+            _manager.CurrentSessionChanged -= OnCurrentSessionChanged;
+        }
         _manager = null;
-        _lastKey = null;
+        _tracker.Reset();
         _started = false;
         Status = "Media session watcher idle.";
     }
 
-    private void AttachCurrentSession()
-    {
-        if (_session != null) _session.MediaPropertiesChanged -= OnPropertiesChanged;
-        _session = _manager?.GetCurrentSession();
-        if (_session != null)
-        {
-            _session.MediaPropertiesChanged += OnPropertiesChanged;
-            _ = RefreshAsync();
-        }
-    }
-
-    private void OnCurrentSessionChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args) => AttachCurrentSession();
-
+    private void OnSessionsChanged(GlobalSystemMediaTransportControlsSessionManager sender, SessionsChangedEventArgs args) { AttachSessions(); _ = RefreshAsync(); }
+    private void OnCurrentSessionChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args) => _ = RefreshAsync();
     private void OnPropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args) => _ = RefreshAsync();
+    private void OnPlaybackChanged(GlobalSystemMediaTransportControlsSession sender, PlaybackInfoChangedEventArgs args) => _ = RefreshAsync();
 
-    private async Task RefreshAsync()
+    // (Re)subscribe to every live session. Sessions come and go as apps open/close media; a
+    // closed session's handlers are dropped with it and the next change re-enumerates cleanly.
+    private void AttachSessions()
     {
-        var session = _session;
-        if (session == null) return;
+        DetachSessions();
+        var manager = _manager;
+        if (manager == null) return;
         try
         {
-            var props = await session.TryGetMediaPropertiesAsync();
-            string title = props.Title ?? string.Empty;
-            string artist = props.Artist ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(title)) return; // nothing playing, or the app reports no metadata
-            string key = TrackKey(title, artist);
-            if (key == _lastKey) return;
-            _lastKey = key;
+            foreach (var session in manager.GetSessions())
+            {
+                session.MediaPropertiesChanged += OnPropertiesChanged;
+                session.PlaybackInfoChanged += OnPlaybackChanged;
+                _attached.Add(session);
+            }
+        }
+        catch { /* a session list torn mid-enumeration re-attaches on the next SessionsChanged */ }
+    }
 
-            BitmapSource? artwork = props.Thumbnail != null ? await TryLoadThumbnailAsync(props.Thumbnail) : null;
-            TrackChanged?.Invoke(new MediaTrackInfo(title, artist, artwork));
+    private void DetachSessions()
+    {
+        foreach (var session in _attached)
+        {
+            try { session.MediaPropertiesChanged -= OnPropertiesChanged; session.PlaybackInfoChanged -= OnPlaybackChanged; } catch { }
+        }
+        _attached.Clear();
+    }
+
+    // Coalescing refresh: overlapping SMTC events run one snapshot pass and queue at most one more,
+    // so the final state is always evaluated without unbounded re-entrancy.
+    private async Task RefreshAsync()
+    {
+        if (Interlocked.Exchange(ref _refreshActive, 1) != 0) { _refreshQueued = true; return; }
+        try
+        {
+            do
+            {
+                _refreshQueued = false;
+                await RefreshOnceAsync();
+            } while (_refreshQueued);
+        }
+        finally { Interlocked.Exchange(ref _refreshActive, 0); }
+    }
+
+    private async Task RefreshOnceAsync()
+    {
+        var manager = _manager;
+        if (manager == null) return;
+        try
+        {
+            IReadOnlyList<GlobalSystemMediaTransportControlsSession> sessions = manager.GetSessions();
+            if (sessions.Count == 0) return; // all sessions closed: keep the last key so a reconnect of the same track stays quiet
+            string? currentId = null;
+            try { currentId = manager.GetCurrentSession()?.SourceAppUserModelId; } catch { }
+
+            var snapshots = new List<MediaSessionSnapshot>(sessions.Count);
+            var props = new List<GlobalSystemMediaTransportControlsSessionMediaProperties?>(sessions.Count);
+            int currentIndex = -1;
+            for (int i = 0; i < sessions.Count; i++)
+            {
+                var s = sessions[i];
+                string id = Safe(() => s.SourceAppUserModelId) ?? string.Empty;
+                if (currentIndex < 0 && currentId != null && id == currentId) currentIndex = i;
+                bool playing = Safe(() => s.GetPlaybackInfo()?.PlaybackStatus) == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+                GlobalSystemMediaTransportControlsSessionMediaProperties? p = null;
+                try { p = await s.TryGetMediaPropertiesAsync(); } catch { }
+                props.Add(p);
+                snapshots.Add(new MediaSessionSnapshot(id, playing, p?.Title ?? string.Empty, p?.Artist ?? string.Empty));
+            }
+
+            int pick = NowPlayingTracker.SelectSessionIndex(snapshots, currentIndex);
+            if (pick < 0) return;
+            var chosen = snapshots[pick];
+            if (!_tracker.ShouldEmit(chosen.Title, chosen.Artist)) return;
+
+            BitmapSource? artwork = props[pick]?.Thumbnail != null ? await TryLoadThumbnailAsync(props[pick]!.Thumbnail) : null;
+            TrackChanged?.Invoke(new MediaTrackInfo(chosen.Title, chosen.Artist, artwork));
         }
         catch { /* a transient SMTC read failure just skips this update; the next change retries */ }
     }
 
-    // Exposed for fixture testing of the dedup rule without a live SMTC session.
-    internal static string TrackKey(string title, string artist) => title.Trim() + "␟" + artist.Trim();
+    private static T? Safe<T>(Func<T?> f) { try { return f(); } catch { return default; } }
 
     private static async Task<BitmapSource?> TryLoadThumbnailAsync(IRandomAccessStreamReference reference)
     {

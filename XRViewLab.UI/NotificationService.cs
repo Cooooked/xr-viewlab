@@ -46,8 +46,8 @@ internal sealed class NotificationService : IDisposable
     private const string MapName = "Local\\XRViewLabNotifications";
     private const uint Magic = 0x314E4C56; // "VLN1"
     private const int MaxCards = 6;
-    private const int CardW = 336;
-    private const int CardH = 96;
+    private const int CardW = NotificationCardLayout.SlotW;
+    private const int CardH = NotificationCardLayout.SlotH;
     private const int CardPixels = CardW * CardH * 4;
     private const int CardMetaBytes = 32; // active,id,width,height,enterTick,leaveTick,stackIndex,contentSerial
     private const int CardStride = CardMetaBytes + CardPixels;
@@ -363,7 +363,7 @@ internal sealed class NotificationService : IDisposable
         // Each design has a deliberately distinct footprint so cards read differently at a glance and
         // stack at different densities (the native layer packs by each card's own height):
         //   Classic 336x92 · Compact banner 336x44 · Minimal 288x72 (square, text-only) · Bold 336x96.
-        (int w, int h) = design switch { 1 => (CardW, 44), 2 => (288, 72), 3 => (CardW, CardH), _ => (CardW, 92) };
+        (int w, int h) = NotificationCardLayout.DesignFootprint(design);
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
@@ -527,7 +527,7 @@ internal sealed class NotificationService : IDisposable
             }
             rgba[i * 4 + 0] = re; rgba[i * 4 + 1] = gr; rgba[i * 4 + 2] = bl; rgba[i * 4 + 3] = al;
         }
-        return (rgba, w, h);
+        return (NotificationCardLayout.PadToSlot(rgba, w, h), w, h);
     }
 
     private static string Shorten(string s, int max)
@@ -589,6 +589,14 @@ internal sealed class NotificationService : IDisposable
         foreach (var c in visible.OrderByDescending(c => c.BornTick)) // newest at bottom (stackIndex 0)
         {
             if (slot >= MaxCards) break;
+            // ComposeCard pads every design to the fixed slot layout; a wrong byte count here is a
+            // contract break that must be loud (and never publish an invisible active card).
+            if (c.Rgba.Length != CardPixels)
+            {
+                SetStatus(ServiceState.InternalRendererFailure,
+                    $"Card {c.Width}x{c.Height} produced {c.Rgba.Length} bytes; the shared-memory slot requires {CardPixels}.");
+                continue;
+            }
             int baseOff = HeaderBytes + (int)slot * CardStride;
             _view.Write(baseOff + 0, 1u);
             _view.Write(baseOff + 4, c.Id);
@@ -598,7 +606,7 @@ internal sealed class NotificationService : IDisposable
             _view.Write(baseOff + 20, unchecked((uint)c.LeaveTick));
             _view.Write(baseOff + 24, slot); // stackIndex
             _view.Write(baseOff + 28, c.ContentSerial);
-            if (c.PixelsDirty && c.Rgba.Length == CardPixels)
+            if (c.PixelsDirty)
             {
                 _view.WriteArray(baseOff + CardMetaBytes, c.Rgba, 0, CardPixels);
                 c.PixelsDirty = false;

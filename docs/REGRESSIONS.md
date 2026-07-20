@@ -1,5 +1,24 @@
 # Regression memory
 
+## R46 — Notification card pixel data not uploaded for non-Bold themes
+
+**Symptom:** Notifications stopped rendering in the headset after the theme/palette redesign. Test
+Presentation and real Windows/music notifications were invisible for all themes except Bold.
+
+**Cause:** The redesigned themes introduced distinct footprints (Classic 336×92, Compact Banner
+336×44, Minimal 288×72, Bold 336×96). `NotificationService.ComposeCard` returned a tightly-packed
+`w×h` RGBA bitmap, but the shared-memory contract and `WriteBlock` expected every card to fill the
+fixed 336×96 slot (`CardPixels = CardW * CardH * 4`). `WriteBlock` silently skipped uploading pixel
+data whenever `c.Rgba.Length != CardPixels`, so only the Bold design (which exactly matches the slot)
+rendered. The native layer received metadata and a stale/empty texture for the other three designs.
+
+**Contract:** `NotificationCardLayout` owns the fixed slot size (`SlotW`, `SlotH`) and the per-design
+`DesignFootprint`. `ComposeCard` always returns `PadToSlot(rgba, w, h)`, which pads smaller footprints
+to the slot stride. `WriteBlock` treats a length mismatch as a fatal contract error instead of
+silently skipping pixels. The `Tests/NotificationCardFixtures` project asserts every theme's footprint,
+verifies composed cards have visible pixels, and checks that `PadToSlot` preserves content and leaves
+padding transparent.
+
 ## R45 — OBS Recording Cue preview used the full-lens frame
 
 **Symptom:** The OBS Recording Cue preview border stayed on the dotted outer frame instead of moving and resizing
