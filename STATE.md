@@ -4,7 +4,60 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-20
-**Current version:** 4.1.286 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.286.msi` (size 149,184,512 bytes; SHA-256
+**Current version:** 4.1.289 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.289.msi` (size 149,413,888 bytes; SHA-256
+`0039CC18E0F27D889C63D981AF818C2C8D24F9EFE45B2355A04D78F8EFB1B990`). Renamed to **ViewLab Enhancer** and the
+stabilizer made substantially more capable. **Rename:** user-facing product/OBS source is now "ViewLab Enhancer"
+(OBS id `viewlab_enhancer`); the on-disk project dir/DLL keep the historical `ViewLabStabilizerFilter` /
+`viewlab-stabilizer.dll` names for build stability (invisible to users). **Stabilization upgrade:** replaced the
+single global translation block-match with a grid of **texture-gated feature blocks** (flat/black regions such as the
+visor are ignored via a variance gate; border-pinned matches rejected) fed into a least-squares **similarity fit**
+(`stab_fit_similarity`: translation + rotation + uniform scale, one outlier-rejection refit; <3 inliers falls back to
+mean translation) — so it now corrects head **roll** and **dolly/zoom**, not just pan. Rotation and zoom correction
+are independently toggleable (`Correct rotation` / `Correct zoom`). Each path parameter is low-passed CAUSALLY with
+**anti-windup** (`stab_track`) so it stays low-latency and never sticks at the crop limit; the output is re-framed via
+a centre rotate/scale/translate shader bounded by the crop budget (sampler CLAMP ⇒ worst case edge smear, never
+black). The image-enhancement pass (sharpness/saturation/vibrance/contrast/brightness/gamma) and the zero-cost
+passthrough are unchanged. Full WPF/broker/signed-identity/x64+Win32 native/mirror+enhancer OBS plugin/MSI build 0/0;
+MSI payload validated; contract suite passes. **Pending live validation:** in-OBS confirmation that the correction
+DIRECTION (translation/rotation/scale signs) matches LiveVisionKit — any inverted axis is a one-line sign flip in
+`stab_video_render`/`stab_track` usage.
+**Prior version:** 4.1.288 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.288.msi` (size 149,393,408 bytes; SHA-256
+`A0D37933E3923936AD9EFF274428672CB20AB5D32CC33BBAB5C84D2BFD81073E`). **ViewLab Stabilizer** expanded into a full
+VR image-enhancement filter + an Uninstall path. (1) **Image enhancement.** The filter's single output shader pass now
+also applies Sharpness (unsharp, GPU-branched out at 0), Saturation, Vibrance (boosts muted colours, protects vivid
+ones), Contrast, Brightness and Gamma on top of the low-latency stabilization re-framing — everything a VR streamer
+would grade over their mirror feed. All are OBS-side filter properties (NOT ViewLab ini keys). Neutral defaults, and
+`stab_image_active` makes the filter a true zero-cost passthrough (`obs_source_skip_video_filter`) when stabilization
+is off AND every adjustment is neutral. Stabilization stays deliberately low-latency: the path low-pass is CAUSAL
+(no buffered frame delay) and defaults were softened (smoothing 40, crop 8%) for a light touch. (2) **Uninstall.** The
+Overlays menu now shows an **Uninstall** button beside Install whenever the DLL is present at OBS's scanned path,
+backed by a new generic elevated `--remove-obs-plugin` App.cs handler (deletes the target DLL; OBS never launched or
+controlled). Full WPF/broker/signed-identity/x64+Win32 native/mirror+stabilizer OBS plugin/MSI build 0/0; MSI payload
+validated; contract suite passes. **Pending live validation:** in-OBS confirmation that the re-framing direction and
+feel match the LiveVisionKit stabilizer (sign flip in `stab_video_render` is the one-line fix if it amplifies), and a
+visual check of the enhancement controls. Investigation confirmed no pre-built OBS image-filter code existed to reuse
+(the saturation/sharpen hits in the tree are all inside the separate bundled ReShade in-headset framework).
+**Prior version:** 4.1.287 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.287.msi` (size 149,393,408 bytes; SHA-256
+`E33F4CA864DAC3FAD8C9352CEBC5BE82A738E8181E841F4F804A60CFFE0DFB68`). New **ViewLab Stabilizer** OBS filter.
+A standalone, dependency-free OBS video-filter plugin (`ViewLabStabilizerFilter/`, registered as
+`OBS_SOURCE_TYPE_FILTER` id `viewlab_stabilizer`, distinct DLL from `viewlab_mirror_capture`) that smooths shaky VR
+head-motion so a mirrored view is watchable. It applies to ANY source — the ViewLab Mirror Capture source or the
+third-party OpenXR Mirror Capture source — via a source's Filters menu. Modelled on the LiveVisionKit (LVK)
+Video-Stabilization filter. Pipeline: each frame renders the target into a small offscreen luma buffer read back to
+the CPU (`gs_texrender`→`gs_stagesurface`), a full-search block match (`stab_estimate`) finds the dominant
+translation (VR yaw/pitch reads as translation), the motion integrates into a cumulative path that a causal
+exponential low-pass tracks, and the residual jitter is cancelled by re-framing the output through a zoom+UV shader
+(`STAB_EFFECT`) bounded by the crop budget so borders never expose black; disabled = pass-through. Controls
+(Stabilization enabled / Smoothing 0–100 / Max crop 0–50%) are **OBS-side filter properties, NOT ViewLab ini keys**.
+Dependency-free like the Mirror plugin — every libobs entry point is runtime-resolved from `obs.dll` (MSVC-only, no
+OpenCV, no OBS SDK). `build.ps1` builds `viewlab-stabilizer.dll` into `dist\…\ObsPlugin\`, the MSI's `ObsPluginFiles`
+component packages it, and the Overlays menu's **Install ViewLab Stabilizer** button installs it per user into OBS's
+scanned `obs-plugins\64bit` folder via the existing generic elevated `--install-obs-plugin` flow (OBS never launched
+or controlled). Full WPF/broker/signed-identity/x64+Win32 native/mirror+stabilizer OBS plugin/MSI build 0/0; MSI
+payload validated (fresh hashes + Overlays markers match); contract suite passes. **Pending live validation:** in-OBS
+confirmation that the re-framing DIRECTION and feel match the LiveVisionKit stabilizer (if it ever amplifies shake
+instead of cancelling it, the correction sign in `stab_video_render` is a one-line flip).
+**Prior version:** 4.1.286 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.286.msi` (size 149,184,512 bytes; SHA-256
 `CE5C62F64FDA97E1E284574D8A4E02488A934A8CE6082F5C146B8814BD40CBF4`). Three connected rendering fixes (R49). (1) **Notification render quality:** cards were a fixed
 336×96 bitmap that got stretched (blurry, worse when scaled). `NotificationCardLayout` now separates the logical
 footprint from raster dimensions and `ComposeCard` SUPERSAMPLES at `logical × RasterFactor(scale)` (RasterQuality

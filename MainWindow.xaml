@@ -934,6 +934,14 @@
                       <TextBlock Text="ViewLab's own OBS source plugin (early skeleton). Installs per user into %APPDATA%\obs-studio\plugins; no OBS process is launched or controlled." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
                       <Button Name="InstallViewLabMirrorPluginButton" Content="Install ViewLab Mirror Plugin" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabMirrorPlugin_Click" />
                       <TextBlock Name="ViewLabMirrorPluginStatusText" Text="" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" />
+                      <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
+                      <TextBlock Text="VIEWLAB ENHANCER OBS FILTER" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <TextBlock Text="Stabilizes (shake, roll and zoom) and colour-grades a mirrored VR view for a watchable capture. Add it via a source's Filters menu (works on the ViewLab Mirror Capture or OpenXR Mirror Capture source). Installs per user; no OBS process is launched or controlled." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
+                      <StackPanel Orientation="Horizontal">
+                        <Button Name="InstallViewLabStabilizerPluginButton" Content="Install ViewLab Enhancer" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabStabilizerPlugin_Click" />
+                        <Button Name="UninstallViewLabStabilizerPluginButton" Content="Uninstall" Padding="9,4" Margin="6,0,0,0" HorizontalAlignment="Left" Visibility="Collapsed" Click="UninstallViewLabStabilizerPlugin_Click" />
+                      </StackPanel>
+                      <TextBlock Name="ViewLabStabilizerPluginStatusText" Text="" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" />
                       </StackPanel>
                     </StackPanel>
                   </ScrollViewer>

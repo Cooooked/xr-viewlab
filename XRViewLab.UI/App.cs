@@ -50,6 +50,18 @@ public class App : Application
 				catch { Environment.Exit(1); }
 			}
 
+			// Elevated OBS-plugin uninstall: delete the DLL from OBS's obs-plugins/64bit folder.
+			// Exit code 0 = removed or already absent, 1 = failure (e.g. OBS still locks the file).
+			if (args.Length >= 2 && args[0].Equals("--remove-obs-plugin", StringComparison.OrdinalIgnoreCase))
+			{
+				try
+				{
+					if (File.Exists(args[1])) File.Delete(args[1]);
+					Environment.Exit(0);
+				}
+				catch { Environment.Exit(1); }
+			}
+
 		using Mutex mutex = new Mutex(true, MutexName, out bool createdNew);
 		if (!createdNew)
 		{

@@ -1,5 +1,63 @@
 # Changelog
 
+## 4.1.289 - 2026-07-20
+
+Renamed to **ViewLab Enhancer** and made the stabilizer much more capable.
+
+- **Renamed** to **ViewLab Enhancer** (OBS source and ViewLab UI). The plugin file on disk keeps
+  its old `viewlab-stabilizer.dll` name so installs/updates stay stable — it's invisible in use.
+- **Smarter stabilization.** Instead of tracking one global up/down/left/right motion, it now
+  matches a grid of **texture-gated feature blocks** (flat areas and the black visor are ignored)
+  and fits a **similarity model** to them, so it corrects **head roll (rotation)** and
+  **dolly/zoom** as well as pan. Rotation and zoom correction each have their own on/off toggle.
+- **Still low-latency.** Every motion channel is smoothed causally (no frame delay) with
+  anti-windup so it never locks up at the crop edge, and re-framing stays within the crop budget.
+- Image enhancement (sharpness, saturation, vibrance, contrast, brightness, gamma) and the
+  zero-cost passthrough are unchanged.
+
+## 4.1.288 - 2026-07-20
+
+**ViewLab Stabilizer** expanded into a full VR image-enhancement filter, plus an Uninstall button.
+
+- **Image enhancement.** The filter now also grades the feed in its single output pass:
+  **Sharpness** (unsharp; branched out on the GPU at 0), **Saturation**, **Vibrance**
+  (boosts muted colours while protecting already-vivid ones), **Contrast**, **Brightness**
+  and **Gamma** — the things a VR streamer wants over a mirror capture. All are OBS-side
+  filter properties (not ViewLab ini keys), all neutral by default.
+- **Low overhead / low latency.** Stabilization smoothing is causal (no buffered frame
+  delay = no added latency) and now light by default (smoothing 40, crop 8%). When
+  stabilization is off and every adjustment is neutral, the filter is a true zero-cost
+  passthrough.
+- **Uninstall.** An **Uninstall** button now appears next to Install (in the Overlays menu)
+  whenever the filter is installed, backed by a generic elevated `--remove-obs-plugin`
+  handler. OBS is never launched or controlled.
+
+## 4.1.287 - 2026-07-20
+
+New **ViewLab Stabilizer** OBS filter.
+
+- **What it is.** A standalone, dependency-free OBS video-filter plugin that smooths
+  shaky VR head-motion so a mirrored VR view is comfortable to watch on a stream or
+  recording. Add it via any source's Filters menu — it works on the ViewLab Mirror
+  Capture source **or** the third-party OpenXR Mirror Capture source. Modelled on the
+  LiveVisionKit (LVK) Video-Stabilization filter.
+- **How it works.** Each frame the filter renders its target into a small offscreen luma
+  buffer and reads it back to the CPU (`gs_texrender` → `gs_stagesurface`); a full-search
+  block match estimates the dominant translation (VR yaw/pitch shows up as translation);
+  the motion integrates into a cumulative path that a causal exponential low-pass tracks;
+  the residual jitter is cancelled by re-framing the output within a crop budget, so
+  intentional pans are followed but shake is removed and borders never expose black.
+- **Controls (OBS-side filter properties, not ViewLab ini keys):** Stabilization enabled,
+  Smoothing (0–100), Max crop (0–50%).
+- **Build & install.** Dependency-free like the ViewLab Mirror plugin — every libobs entry
+  point is resolved at runtime from `obs.dll` (MSVC-only, no OpenCV, no OBS SDK).
+  `build.ps1` builds `viewlab-stabilizer.dll` and ships it in `dist\…\ObsPlugin\`; the MSI
+  packages it; the Overlays menu's **Install ViewLab Stabilizer** button installs it per
+  user into OBS's scanned plugin folder via the existing elevated `--install-obs-plugin`
+  flow. OBS is never launched or controlled.
+- **Pending live validation:** in-OBS confirmation that the re-framing direction and feel
+  match the LiveVisionKit stabilizer.
+
 ## 4.1.286 - 2026-07-20
 
 Three connected rendering fixes.
