@@ -4,15 +4,15 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-19
-**Current version:** 4.1.279 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.279.msi` (size 149,196,800 bytes; SHA-256
-`F9F1A371237724012660DFED71A879C554962A3B53DBD55B29D784CEC86E9563`). Adds real desktop previews for the three new
-iRacing cues (race-start border, rear-closing glow, Grip-O-Bar bar — same geometry as native), a single-source
-`RacingCueGeometry.h` shared by the native renderer and the deterministic fixture with a behavioral audit proving
-spotter/flag/rear/grip controls change computed geometry (item 19), and live iRacing cue tuning (live-state v12: the
-spotter/flag/race-start/rear/grip visual params are now applied live instead of only at session restart). Full
-WPF/broker/signed-identity/x64+Win32 native/OBS-plugin/MSI build 0/0; extracted-payload validation passes; all 24
-deterministic scripts pass. Live iRacing/headset validation pending.
-**Prior version:** 4.1.278 — Rear-Closing Pressure Cue + Grip-O-Bar wired end-to-end (`dist/ViewLab-4.1.278.msi`).
+**Current version:** 4.1.280 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.280.msi` (size 149,196,800 bytes; SHA-256
+`1635FB439163337F00B25D2F08E117096CB7EB84B7F76383AFD9EAAF3D67E2DD`). Fixes per-app overlay inherited-settings
+hydration: the profile editor now discovers its tag-based overlay controls via the logical tree (not the visual
+tree), so overlays set to "Use global values" immediately show the effective global settings on open instead of
+loading blank until a section is toggled. Full x64/Win32/broker/OBS/MSI build 0/0; payload validated; 23/24
+deterministic scripts pass (the one failure is the environmental live-broker notification fixture).
+**Prior version:** 4.1.279 — real desktop previews for the three new iRacing cues, single-source `RacingCueGeometry.h`
++ behavioral audit (item 19), live iRacing cue tuning via live-state v12 (`dist/ViewLab-4.1.279.msi`).
+**Older:** 4.1.278 — Rear-Closing Pressure Cue + Grip-O-Bar wired end-to-end (`dist/ViewLab-4.1.278.msi`).
 **Older:** 4.1.277 race-start light; 4.1.276 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.276.msi` (size 149,151,744 bytes; SHA-256
 `B66D945C49A0589D48DA0C2CFF92DB8BF00E3BAC1C380AA2BAC70E7EEC2D0027`). Preview repairs: the crosshair now converges at
 the post-crop (crop/visor) centre rather than the full-lens box, and the Optical-centred checkbox is a content-only
