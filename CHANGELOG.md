@@ -1,5 +1,50 @@
 # Changelog
 
+## 4.1.286 - 2026-07-20
+
+Three connected rendering fixes.
+
+- **Notification render quality + Minimal redesign.** Notification cards were
+  rasterised to a fixed 336×96 bitmap and stretched, so text looked low-resolution
+  and got blurrier when scaled. Cards are now SUPERSAMPLED: the shared
+  `NotificationCardLayout` separates the LOGICAL footprint (physical layout) from the
+  RASTER dimensions (source pixels). `ComposeCard` rasterises at
+  `logical × RasterFactor(scale)` where `RasterFactor = clamp(scale × 2.0, 1, 3)`
+  (RasterQuality 2.0 targets ~200% native Quest 3 linear raster density), so enlarging
+  a card allocates more source pixels instead of stretching. Physical/displayed size is
+  unchanged (native still derives it from `notify_scale`). The shared-memory slot grew
+  to 1008×288 (logical max × supersample cap) and the notify contract is bumped to v3
+  (native `g_notify->version == 3`). Notifications are the only rasterised overlay —
+  clock/HUD/trace/crosshair/sticky notes already draw native vector geometry at
+  eye-buffer resolution.
+- Notification **Minimal** now matches the Clock Minimal design language: no card
+  surface, no frame, transparent background, Clock-style drop-shadow text floating over
+  the scene (app-name label, title, two-line body, a single accent tick). Classic,
+  Compact Banner and Bold keep their distinct boxed layouts; all palettes still work.
+- **Magenta edge audit (item 2).** ViewLab-side path proven: the card sampler is CLAMP
+  (no edge wrap), fully transparent card texels are stored with zeroed RGB (no colour in
+  the transparent padding to bleed), the visor pixel shader emits opaque configured RGB,
+  and intermediate carriers clear to transparent black. Added a deterministic
+  compositing-model fixture (`OverlayCompositeModel.h`) proving transparent overlay
+  padding over the magenta visor stays exactly magenta, opaque overlay content fully
+  covers it, and an AA edge only shows magenta equal to the uncovered coverage fraction
+  (1−alpha) — i.e. ViewLab adds no magenta contamination. Any residual peripheral fringe
+  is introduced after submission by Virtual Desktop's chroma keying / distortion filter;
+  the visor geometry was deliberately not resized.
+- **OBS OpenXR Mirror Capture (item 3).** The overlay-compositing path
+  (`DrawObsMirrorSurface`, run from `xrBeginFrame` after the chain returns) already draws
+  visor→overlays with per-overlay `Show in OBS mirror` filtering, including notifications.
+  Added a truthful diagnostic: when the shared `OpenXROBSMirrorSurface` texture is not
+  render-targetable (`D3D11_BIND_RENDER_TARGET` absent — the common reason the source shows
+  the game but no ViewLab overlays), the layer now logs the exact cause once instead of a
+  silent no-op. Root cause and remaining live-OBS validation are documented in
+  REGRESSIONS R49.
+- Tests: rewrote `NotificationCardFixtures` for supersampling (raster grows with scale,
+  logical footprint fixed regardless of quality, Minimal transparent background, padding
+  zeroed, album-art within bounds, all themes×palettes render, Now Playing shares the
+  pipeline); added the compositing-model pixel tests to `RenderPolicyFixtures`; extended
+  `Verify-ViewLabContracts`. All 26 deterministic scripts pass.
+
 ## 4.1.285 - 2026-07-20
 
 - Fix the late `xrEndFrame` direct fallback drawing only the visor. Every normal

@@ -749,8 +749,12 @@ void DisconnectTelemetryConfig(){if(g_telemetryConfig)UnmapViewOfFile(g_telemetr
 // polls Windows, or rewrites pixels per frame.
 constexpr uint32_t kNotifyMagic = 0x314E4C56; // "VLN1"
 constexpr uint32_t kNotifyMaxCards = 6;
-constexpr uint32_t kNotifyCardW = 336;
-constexpr uint32_t kNotifyCardH = 96;
+// Supersampled slot: logical footprint max (336x96) x supersample cap (3) = 1008x288. The UI
+// composites each card at raster dimensions (physical scale x quality) into this slot; the layer
+// samples only the used card.width x card.height sub-rectangle. Keep in sync with
+// NotificationCardLayout (SlotW/SlotH) and the notify block version.
+constexpr uint32_t kNotifyCardW = 1008;
+constexpr uint32_t kNotifyCardH = 288;
 #pragma pack(push, 4)
 struct NotifyCardBlock {
     uint32_t active;        // 1 = slot carries a live card this generation
@@ -3329,7 +3333,7 @@ void DrawViewLabOverlaysToTexture(
     bool wantNotify = false;
     const bool wantsNotificationCards = IncludesMirrorFeature(featureMask, MirrorNotifications) && notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications);
     const bool wantsRacingLap = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u));
-    if ((wantsNotificationCards || wantsRacingLap) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 2) wantNotify = true; }
+    if ((wantsNotificationCards || wantsRacingLap) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 3) wantNotify = true; }
     if (!wantBoundary && !wantClock && !wantSticky && !wantObs && !wantTraceMarker && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
 
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
@@ -4023,6 +4027,15 @@ bool EnsureObsMirrorSurfaceTexture() {
     D3D11_TEXTURE2D_DESC desc{}; texture->GetDesc(&desc);
     if (desc.Width == 0 || desc.Height == 0 || desc.ArraySize != 1 ||
         (desc.BindFlags & D3D11_BIND_RENDER_TARGET) == 0) {
+        // Truthful diagnostic: the game frame still reaches OBS (the mirror layer copies it), but
+        // ViewLab cannot draw overlays onto a shared surface that is not render-targetable. This is
+        // the usual reason "OpenXR Mirror Capture shows the game but no ViewLab overlays". Logged
+        // once so the cause is visible rather than a silent no-op.
+        static std::atomic<bool> loggedNonRt{false};
+        if ((desc.BindFlags & D3D11_BIND_RENDER_TARGET) == 0 && !loggedNonRt.exchange(true))
+            Log("OBS mirror route: shared surface %ux%u is not render-targetable (bindFlags=0x%X); "
+                "ViewLab overlays cannot be composited into OpenXR Mirror Capture until the mirror "
+                "surface exposes D3D11_BIND_RENDER_TARGET\n", desc.Width, desc.Height, desc.BindFlags);
         texture->Release(); return false;
     }
     g_obsMirrorTexture = texture; g_obsMirrorTextureHandle = snapshot.sharedHandle[0];

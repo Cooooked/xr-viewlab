@@ -4,6 +4,7 @@
 #include "../ClockWidget.h"
 #include "../NetworkProbe.h"
 #include "../StickyNote.h"
+#include "../OverlayCompositeModel.h"
 #include "../ViewLabBridge/BridgeCore.h"
 #include <cmath>
 #include <cstdlib>
@@ -188,5 +189,42 @@ int main() {
         "grip: severity maps to yellow/orange/red bands");
     Check(FlagBorderThickness(0.10, 1000.f) > FlagBorderThickness(0.02, 1000.f), "flag: increasing width thickens the border");
     Check(FlagBorderThickness(1.0, 1000.f) <= 1000.f * 0.12f + 0.01f, "flag: border thickness is clamped");
+
+    // ---- Magenta-edge compositing model (item 2). Proves ViewLab adds no magenta contamination. --
+    using namespace viewlab::composite;
+    const Rgba magentaVisor{1.f, 0.f, 1.f, 1.f}; // configured pure-magenta visor, opaque
+    // A fully transparent overlay texel (its padding is 0,0,0,0) leaves the visor EXACTLY magenta.
+    {
+        const Rgba out = OverStraight(Rgba{0.f, 0.f, 0.f, 0.f}, magentaVisor);
+        Check(out.r == 1.f && out.g == 0.f && out.b == 1.f && out.a == 1.f,
+            "transparent overlay padding over the magenta visor stays exactly magenta (no bleed)");
+    }
+    // A fully opaque overlay texel fully replaces the visor magenta (visor covered, no magenta left).
+    {
+        const Rgba white{1.f, 1.f, 1.f, 1.f};
+        const Rgba out = OverStraight(white, magentaVisor);
+        Check(out.r == 1.f && out.g == 1.f && out.b == 1.f,
+            "opaque overlay content fully covers the magenta visor (no residual magenta)");
+    }
+    // A half-covered anti-aliased edge shows the visor through exactly the uncovered fraction — this
+    // is legitimate coverage, not colour leaking out of the overlay. Green content -> the red/blue
+    // (magenta) seen equals (1 - alpha), never more.
+    {
+        const Rgba green{0.f, 1.f, 0.f, 0.5f};
+        const Rgba out = OverStraight(green, magentaVisor);
+        Check(std::abs(out.r - 0.5f) < 1e-6f && std::abs(out.b - 0.5f) < 1e-6f && std::abs(out.g - 0.5f) < 1e-6f,
+            "AA edge magenta equals the uncovered coverage fraction (1-alpha), never contamination");
+    }
+    // The UI's transparent-pixel rule zeroes RGB so padding carries no magenta or stale colour.
+    {
+        uint8_t r = 255, g = 0, b = 255; // a stale magenta value in a would-be-transparent texel
+        UnpremultiplyToStraight(r, g, b, 0);
+        Check(r == 0 && g == 0 && b == 0, "fully transparent texels are stored as zeroed RGB (no magenta in padding)");
+    }
+    // A partially transparent premultiplied texel round-trips to a sane straight colour (<=255).
+    {
+        uint8_t r = 64, g = 0, b = 64; UnpremultiplyToStraight(r, g, b, 128);
+        Check(r <= 255 && b <= 255 && g == 0, "partial-alpha premultiplied texel un-premultiplies within range");
+    }
     return 0;
 }

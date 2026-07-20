@@ -451,6 +451,25 @@ Assert-Contains 'dllmain.cpp' 'if \(maskEnabled && g_featurePresentationPlan\.dr
 Assert-Contains 'dllmain.cpp' 'g_releaseDrewViewLabBatchThisFrame' 'release path tracks whether the whole direct ViewLab batch was drawn'
 Assert-Contains 'dllmain.cpp' 'DrawCapturedProjectionTextures\(true, true, "direct-fallback"\)' 'late xrEndFrame fallback redraws the full batch with visor before overlays'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'VisorMaskColorKey = "mask_color"' 'visor colour is persisted through a single key'
+
+# ---- Notification render quality + magenta-edge + OBS mirror (three-part rendering fix) --------
+# Supersampled notification slot: raster density decoupled from physical footprint, version bumped.
+Assert-Contains 'dllmain.cpp' 'constexpr uint32_t kNotifyCardW = 1008' 'native notify slot is supersampled (1008 wide)'
+Assert-Contains 'dllmain.cpp' 'constexpr uint32_t kNotifyCardH = 288' 'native notify slot is supersampled (288 tall)'
+Assert-Contains 'dllmain.cpp' "g_notify->version == 3" 'native consumes notify contract version 3 (supersampled slot)'
+Assert-Contains 'XRViewLab.UI\NotificationCardLayout.cs' 'SlotW = \(int\)\(LogicalMaxW \* SupersampleCap\)' 'UI notify slot is the logical max scaled by the supersample cap'
+Assert-Contains 'XRViewLab.UI\NotificationCardLayout.cs' 'RasterFactor\(double displayScale\)' 'shared raster-density policy scales source pixels by displayed size and quality'
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'private const uint Version = 3' 'UI publishes notify contract version 3'
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'RasterDimensions\(w, h, s\.Scale\)' 'card is rasterised at supersampled dimensions from the physical scale'
+# Minimal notification matches Clock Minimal: transparent, surfaceless, drop-shadow text.
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'DrawShadowedText' 'notification Minimal uses Clock-Minimal-style drop-shadow text'
+Assert-NotContains 'XRViewLab.UI\NotificationService.cs' 'Minimal: narrow square-cornered' 'the old boxed Minimal card design is gone'
+# Magenta edge: fully transparent texels are stored with zeroed RGB (no colour to bleed).
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'else \{ re = gr = bl = 0; \}' 'transparent card texels store zeroed RGB so padding carries no magenta (item 2)'
+Assert-Contains 'dllmain.cpp' 'smpd\.AddressU = smpd\.AddressV = smpd\.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP' 'card sampler clamps so edges never wrap foreign texels'
+# OBS OpenXR Mirror Capture: truthful diagnostic when the shared surface is not render-targetable.
+Assert-Contains 'dllmain.cpp' 'is not render-targetable' 'OBS mirror logs why overlays cannot be composited when the surface is read-only'
+Assert-Contains 'dllmain.cpp' 'DrawObsMirrorSurface\(\)' 'OBS mirror composite runs from xrBeginFrame after the chain returns'
 Assert-Contains 'dllmain.cpp' 'ci\.faceCount=1; ci\.arraySize=2' 'ordered compatibility presentation owns one runtime array slice per eye'
 Assert-Contains 'dllmain.cpp' 'out\.layer\.space=source->space' 'ordered compatibility presentation follows the current projection space'
 Assert-Contains 'dllmain.cpp' 'struct LocateViewsEvidence' 'renderer diagnostics retain locate display time space poses and FOV together'
@@ -844,7 +863,7 @@ Assert-Contains 'NotificationBroker\Program.cs' 'notify_palette' 'broker reads t
 Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'public int Palette' 'notification settings separate palette from design'
 # Item 15: the four notification designs have genuinely distinct footprints and app-name placement.
 Assert-Contains 'XRViewLab.UI\NotificationCardLayout.cs' 'DesignFootprint\(int design\)' 'notification card slot contract exposes design footprints'
-Assert-Contains 'XRViewLab.UI\NotificationCardLayout.cs' '1 => \(SlotW, 44\), 2 => \(288, 72\), 3 => \(SlotW, SlotH\), _ => \(SlotW, 92\)' 'the four notification designs use distinct card footprints'
+Assert-Contains 'XRViewLab.UI\NotificationCardLayout.cs' '1 => \(LogicalMaxW, 44\), 2 => \(288, 72\), 3 => \(LogicalMaxW, LogicalMaxH\), _ => \(LogicalMaxW, 92\)' 'the four notification designs use distinct LOGICAL card footprints'
 Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'Classic[\s\S]*Shorten\(appName, 40\)\.ToUpperInvariant\(\)' 'Classic design shows an app-name caption above the title'
 Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'Minimal[\s\S]*Shorten\(appName, 34\)\.ToUpperInvariant\(\)' 'Minimal design shows a small app-name label'
 Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'new Rect\(0, 0, w, 24\)' 'Bold design uses a tall filled top accent band'

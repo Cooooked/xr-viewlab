@@ -4,7 +4,28 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-20
-**Current version:** 4.1.285 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.285.msi` (size 149,184,512 bytes; SHA-256
+**Current version:** 4.1.286 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.286.msi` (size 149,184,512 bytes; SHA-256
+`CE5C62F64FDA97E1E284574D8A4E02488A934A8CE6082F5C146B8814BD40CBF4`). Three connected rendering fixes (R49). (1) **Notification render quality:** cards were a fixed
+336×96 bitmap that got stretched (blurry, worse when scaled). `NotificationCardLayout` now separates the logical
+footprint from raster dimensions and `ComposeCard` SUPERSAMPLES at `logical × RasterFactor(scale)` (RasterQuality
+2.0 ≈ 200% native Quest 3 linear density, cap 3×); the shared slot grew to 1008×288 and the notify contract is v3
+(native `g_notify->version == 3`). Physical size is unchanged (native derives it from `notify_scale`); enlarging a
+card now allocates source pixels instead of stretching. Notifications are the only rasterised overlay — clock/HUD/
+trace/crosshair/sticky draw native vector at eye resolution. **Minimal** was reworked to the Clock Minimal language:
+transparent, surfaceless, drop-shadow text (`DrawShadowedText`); Classic/Compact Banner/Bold keep their boxed
+layouts; all palettes still work. (2) **Magenta edge:** full ViewLab-side audit — sampler CLAMP, transparent card
+texels stored with zeroed RGB, opaque visor shader, transparent-black clears. New `OverlayCompositeModel.h` +
+`RenderPolicyFixtures` prove transparent padding over magenta stays exactly magenta, opaque content fully covers it,
+and AA edges show magenta only as the uncovered coverage fraction — **ViewLab adds no contamination**; any residual
+fringe is introduced post-submission by Virtual Desktop chroma keying/distortion. Visor geometry deliberately not
+resized. (3) **OBS OpenXR Mirror Capture:** the compositing path (`DrawObsMirrorSurface` from `xrBeginFrame`) already
+draws visor→overlays with per-overlay `Show in OBS mirror` filtering incl. notifications; added a truthful
+diagnostic logging when the shared `OpenXROBSMirrorSurface` texture is not render-targetable (the usual reason
+overlays are absent while the game frame shows). Full x64/Win32/broker/OBS/MSI build 0/0; payload validated; 26/27
+deterministic scripts pass (env live-broker fixture excluded). **Pending live validation:** in-headset notification
+sharpness/Minimal appearance, the magenta-fringe post-submission origin (captured-pixel), and OBS overlays
+(requires a render-targetable mirror surface).
+**Prior version:** 4.1.285 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.285.msi` (size 149,184,512 bytes; SHA-256
 `54D9CCDC6870F9AED0D5529B90A7A3773DAEB7AEE2576BA1708F68A824489016`). Two fixes plus the Now Playing media path. (1) **Fallback ordering (R48):** the late
 `xrEndFrame` direct fallback drew only the visor, so overlays inside the visor mask could go missing or the late
 visor could land over them. `DrawCapturedProjectionTextures` gained a `drawOverlays` flag and the fallback now draws

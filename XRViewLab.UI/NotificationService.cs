@@ -45,6 +45,7 @@ internal sealed class NotificationService : IDisposable
     // Must match dllmain.cpp NotifyBlock / NotifyCardBlock.
     private const string MapName = "Local\\XRViewLabNotifications";
     private const uint Magic = 0x314E4C56; // "VLN1"
+    private const uint Version = 3; // v3: supersampled card slot (raster density decoupled from footprint)
     private const int MaxCards = 6;
     private const int CardW = NotificationCardLayout.SlotW;
     private const int CardH = NotificationCardLayout.SlotH;
@@ -108,7 +109,7 @@ internal sealed class NotificationService : IDisposable
         {
             _map = MemoryMappedFile.CreateOrOpen(MapName, BlockSize, MemoryMappedFileAccess.ReadWrite);
             _view = _map.CreateViewAccessor(0, BlockSize, MemoryMappedFileAccess.ReadWrite);
-            _view.Write(0, Magic); _view.Write(4, 2u); // version 2: native evaluates animation from timestamps
+            _view.Write(0, Magic); _view.Write(4, Version); // v3: supersampled slot; native evaluates animation from timestamps
         }
         catch (Exception ex) { SetStatus(ServiceState.InternalRendererFailure, ex.GetType().Name + ": " + ex.Message); }
     }
@@ -360,9 +361,9 @@ internal sealed class NotificationService : IDisposable
             _ => (Color.FromArgb(238,20,21,25),Color.FromRgb(60,190,170),Color.FromRgb(244,246,249),Color.FromRgb(142,150,162),Color.FromArgb(28,255,255,255))
         };
         int design = Math.Clamp(s.Theme, 0, 3);
-        // Each design has a deliberately distinct footprint so cards read differently at a glance and
-        // stack at different densities (the native layer packs by each card's own height):
-        //   Classic 336x92 · Compact banner 336x44 · Minimal 288x72 (square, text-only) · Bold 336x96.
+        // Each design has a deliberately distinct LOGICAL footprint so cards read differently at a
+        // glance and stack at different densities (native packs by each card's own height):
+        //   Classic 336x92 · Compact banner 336x44 · Minimal 288x72 (transparent, text-only) · Bold 336x96.
         (int w, int h) = NotificationCardLayout.DesignFootprint(design);
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
@@ -407,30 +408,23 @@ internal sealed class NotificationService : IDisposable
             }
             else if (design == 2)
             {
-                // Minimal: narrow square-cornered, text-only card (no icon, no filled accent). A
-                // hairline frame, a short accent tick, a tiny accent app-name label above a light
-                // title and a two-line body. Its narrow square footprint and absent icon set it apart.
-                dc.DrawRectangle(new SolidColorBrush(palette.Item1), null, panel);
-                dc.DrawRectangle(null, new Pen(new SolidColorBrush(palette.Item5), 1), new Rect(0.5, 0.5, w - 1, h - 1));
-                dc.DrawRectangle(new SolidColorBrush(palette.Item2), null, new Rect(0, 12, 2, 14));
+                // Minimal: matches the Clock "Minimal" design language — NO card surface, NO frame,
+                // NO icon. Text floats directly over the scene with a soft drop shadow for legibility
+                // (the same treatment the native Clock Minimal uses). A tiny accent app-name label sits
+                // above a light title and a two-line body; a short accent tick is the only non-text mark.
+                // The background stays fully transparent so nothing boxes the notification.
+                dc.DrawRectangle(new SolidColorBrush(palette.Item2), null, new Rect(0, 12, 2, 14)); // accent tick only
                 double my = 11;
                 if (!string.IsNullOrEmpty(appName))
                 {
-                    var lbl = new FormattedText(Shorten(appName, 34).ToUpperInvariant(), culture, FlowDirection.LeftToRight,
-                        bodyType, 8.5, new SolidColorBrush(palette.Item2), 1.0) { MaxTextWidth = w - 24, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
-                    dc.DrawText(lbl, new Point(14, my));
+                    DrawShadowedText(dc, Shorten(appName, 34).ToUpperInvariant(), bodyType, 8.5, palette.Item2,
+                        new Point(14, my), w - 24, 1, culture);
                     my += 13;
                 }
-                var minTitle = new FormattedText(Shorten(title, 40), culture, FlowDirection.LeftToRight,
-                    bodyType, 13, titleBrush, 1.0) { MaxTextWidth = w - 24, MaxLineCount = 1, Trimming = System.Windows.TextTrimming.CharacterEllipsis };
-                dc.DrawText(minTitle, new Point(14, my));
+                DrawShadowedText(dc, Shorten(title, 40), bodyType, 13, palette.Item3, new Point(14, my), w - 24, 1, culture);
                 my += 19;
                 if (!string.IsNullOrEmpty(body))
-                {
-                    var minBody = new FormattedText(Shorten(body, 90), culture, FlowDirection.LeftToRight,
-                        bodyType, 11, bodyBrush, 1.0) { MaxTextWidth = w - 24, MaxLineCount = 2, Trimming = System.Windows.TextTrimming.CharacterEllipsis, LineHeight = 13.5 };
-                    dc.DrawText(minBody, new Point(14, my));
-                }
+                    DrawShadowedText(dc, Shorten(body, 90), bodyType, 11, palette.Item4, new Point(14, my), w - 24, 2, culture, 13.5);
             }
             else if (design == 3)
             {
@@ -509,14 +503,20 @@ internal sealed class NotificationService : IDisposable
             }
         }
 
-        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+        // Supersample: rasterise the logical layout at raster dimensions (physical scale x quality),
+        // so enlarging the card allocates more source pixels instead of stretching a small bitmap.
+        // Physical/displayed size is decoupled and unchanged (native derives it from notify_scale).
+        (int rw, int rh) = NotificationCardLayout.RasterDimensions(w, h, s.Scale);
+        var rtb = new RenderTargetBitmap(rw, rh, 96.0 * rw / w, 96.0 * rh / h, PixelFormats.Pbgra32);
         rtb.Render(dv);
-        var pbgra = new byte[w * h * 4];
-        rtb.CopyPixels(pbgra, w * 4, 0);
+        var pbgra = new byte[rw * rh * 4];
+        rtb.CopyPixels(pbgra, rw * 4, 0);
 
-        // Convert premultiplied BGRA -> straight RGBA for the textured pixel shader.
-        var rgba = new byte[w * h * 4];
-        for (int i = 0; i < w * h; i++)
+        // Convert premultiplied BGRA -> straight RGBA for the textured pixel shader. Fully
+        // transparent pixels are emitted as (0,0,0,0): straight RGB is left zeroed so the
+        // transparent padding/edges carry no colour that bilinear filtering could bleed as a fringe.
+        var rgba = new byte[rw * rh * 4];
+        for (int i = 0; i < rw * rh; i++)
         {
             byte bl = pbgra[i * 4 + 0], gr = pbgra[i * 4 + 1], re = pbgra[i * 4 + 2], al = pbgra[i * 4 + 3];
             if (al > 0)
@@ -525,9 +525,30 @@ internal sealed class NotificationService : IDisposable
                 gr = (byte)Math.Min(255, gr * 255 / al);
                 bl = (byte)Math.Min(255, bl * 255 / al);
             }
+            else { re = gr = bl = 0; }
             rgba[i * 4 + 0] = re; rgba[i * 4 + 1] = gr; rgba[i * 4 + 2] = bl; rgba[i * 4 + 3] = al;
         }
-        return (NotificationCardLayout.PadToSlot(rgba, w, h), w, h);
+        // Returned (w,h) are the RASTER dimensions actually stored in the slot; native samples that
+        // sub-rectangle and derives displayed size from notify_scale, keeping physical size stable.
+        return (NotificationCardLayout.PadToSlot(rgba, rw, rh), rw, rh);
+    }
+
+    // Clock-Minimal-style text: a soft black drop shadow under the coloured glyphs so text reads
+    // over any scene without a background panel. Kept vector (FormattedText) so it supersamples
+    // sharply with the card's raster factor.
+    private static void DrawShadowedText(DrawingContext dc, string text, Typeface face, double size, Color colour,
+        Point at, double maxWidth, int maxLines, System.Globalization.CultureInfo culture, double lineHeight = 0)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        FormattedText Make(Color c) => new(text, culture, FlowDirection.LeftToRight, face, size, new SolidColorBrush(c), 1.0)
+        {
+            MaxTextWidth = Math.Max(1, maxWidth), MaxLineCount = maxLines,
+            Trimming = System.Windows.TextTrimming.CharacterEllipsis,
+            LineHeight = lineHeight > 0 ? lineHeight : double.NaN
+        };
+        var shadow = Make(Color.FromArgb(190, 0, 0, 0));
+        dc.DrawText(shadow, new Point(at.X + 1, at.Y + 1));
+        dc.DrawText(Make(colour), at);
     }
 
     private static string Shorten(string s, int max)

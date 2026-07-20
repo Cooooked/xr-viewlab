@@ -1,5 +1,55 @@
 # Regression memory
 
+## R49 — Notification cards low-resolution; Minimal boxed; magenta edge; OBS mirror overlays
+
+**Symptom (quality):** Notification text/graphics looked low-resolution in-headset and got
+blurrier when the notification scale was increased. The Minimal theme looked like a boxed
+low-quality panel instead of the clean transparent Clock Minimal.
+
+**Cause (quality):** Notifications are the only ViewLab overlay rasterised to a bitmap and then
+sampled onto a quad. `ComposeCard` rendered at the fixed logical footprint (≤336×96) and the native
+layer stretched that small bitmap to the displayed size, so enlarging the card magnified a
+low-resolution source. Minimal also drew an opaque panel + hairline frame.
+
+**Contract (quality):** `NotificationCardLayout` separates LOGICAL footprint (physical layout,
+`DesignFootprint`) from RASTER dimensions (`RasterDimensions` = logical × `RasterFactor(scale)`,
+`RasterFactor = clamp(scale × RasterQuality, 1, SupersampleCap)`, RasterQuality 2.0, cap 3). The
+card is rasterised at raster dims via `RenderTargetBitmap` at `96×factor` DPI; physical size is
+unchanged (native derives it from `notify_scale`). The shared-memory slot is `LogicalMax ×
+SupersampleCap` = 1008×288 and the notify contract is v3 (`Version = 3` in the UI,
+`g_notify->version == 3` natively). Minimal is transparent and surfaceless with Clock-Minimal
+drop-shadow text (`DrawShadowedText`); Classic/Compact Banner/Bold keep their boxed layouts.
+Changing render quality never changes the stored physical footprint. Only notifications are
+rasterised; every other overlay already draws native vector geometry at eye-buffer resolution.
+
+**Symptom (magenta edge):** A thin peripheral magenta line around the visor boundary and around
+overlay transparent/content boundaries, varying with Virtual Desktop passthrough sensitivity.
+
+**Cause / evidence (magenta edge):** Audited the full ViewLab path. The card sampler is CLAMP
+(`D3D11_TEXTURE_ADDRESS_CLAMP`, no edge wrap); fully transparent card texels are stored with zeroed
+RGB (`else { re = gr = bl = 0; }`) so the transparent padding carries no colour; the visor shader
+emits `float4(visorColor.rgb, 1.0)` (opaque); intermediate carriers clear to transparent black.
+`OverlayCompositeModel.h` + `RenderPolicyFixtures` prove: transparent overlay padding over the
+magenta visor stays exactly magenta, opaque overlay content fully covers it, and an AA edge shows
+magenta only equal to the uncovered coverage fraction (1−alpha). **ViewLab introduces no magenta
+contamination.** A residual peripheral fringe is therefore introduced after ViewLab submission by
+Virtual Desktop's chroma keying / lens distortion filter (keying an opaque magenta backdrop is
+inherently edge-sensitive). Do NOT resize the visor geometry to hide it. Live in-headset
+captured-pixel confirmation of the post-submission origin remains pending.
+
+**Symptom (OBS mirror):** The existing "OpenXR Mirror Capture" OBS source shows the OpenXR game
+image but no ViewLab overlays even with `Show in OBS mirror` enabled.
+
+**Cause / status (OBS mirror):** ViewLab's overlay-compositing path (`DrawObsMirrorSurface`, run from
+`xrBeginFrame` after the chain returns) already draws visor→overlays into the shared
+`OpenXROBSMirrorSurface` texture with per-overlay feature-mask filtering (including notifications).
+It requires that shared texture to expose `D3D11_BIND_RENDER_TARGET`; when the third-party mirror
+publishes a read-only (shader-resource-only) surface, ViewLab cannot draw onto it — the game frame
+still reaches OBS (the mirror layer copies it) but overlays cannot be composited. The layer now logs
+this exact cause once instead of silently no-oping. Fully enabling overlays in OBS requires the
+mirror surface to be render-targetable; live OBS validation is pending. The ViewLab-owned
+compositing order and feature filtering are pinned by contract.
+
 ## R48 — Late xrEndFrame direct fallback drew the visor without overlays
 
 **Symptom:** In frames where the swapchain-release path drew nothing, the late `xrEndFrame`
