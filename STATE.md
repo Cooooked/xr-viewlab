@@ -4,7 +4,46 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-20
-**Current version:** 4.1.286 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.286.msi` (size 149,184,512 bytes; SHA-256
+**Current version:** 4.1.288 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.288.msi` (size 149,200,896 bytes; SHA-256
+`AA2EB98D7978993C968F247A1E8556B3C2B02E6AE418DAE3C2967F06788A0562`). VLMC fidelity/overhead controls + uninstall.
+(1) **OXRMC-equivalent passthrough:** VLMC compositing now honours the SAME "Show in OBS mirror" mask as the OXRMC
+route (`obsMirrorVisibilityMask`); when the mask is 0 (overlay link off) the producer does a pure game-eye copy with
+**zero extra draw passes** — a maximum-fidelity / minimum-overhead direct-mirror fallback in case the composited path
+underperforms. (2) **No overhead without a live consumer:** contract v2 `reserved`→`consumerHeartbeatTick`; the OBS
+source stamps it every `video_render`, and the producer publishes ring geometry/handles every frame (so the source can
+still connect) but **skips the per-frame copy/composite/Flush entirely** unless a source is actively rendering (stale
+>2 s ⇒ idle). No bootstrap deadlock: geometry is published independent of the consumer, the heavy GPU work is what's
+gated. (3) **Uninstall:** the Overlays menu now has an Uninstall button beside Install (enabled only when the plugin is
+present in OBS's `obs-plugins\64bit`), backed by an elevated `--uninstall-obs-plugin` helper that deletes the DLL +
+bundled LICENSE/README — lets the user revert to plain direct capture if VLMC is bad. Full x64/Win32/broker/OBS/MSI
+build 0/0; payload validated; contract suite passes (adds passthrough, consumer-gate, heartbeat and uninstall
+assertions). **Pending live validation unchanged:** no VR+OBS run yet — capture frame, per-eye switching, passthrough
+fidelity, the consumer-gate cadence and the media-filter effect all still need a real headset+OBS test.
+**Prior version:** 4.1.287 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.287.msi` (size 149,204,992 bytes; SHA-256
+`47BA11441802EC4DAAC8CC96331B447F5AD81616CA786418422293501B9AEEF9`). **ViewLab Media Capture (VLMC).** The OBS
+plugin is no longer a skeleton that captures nothing — the layer-side producer now feeds it. (1) **Producer
+(`dllmain.cpp`):** `ProduceViewLabMirrorFrame()` runs at the xrEndFrame capture point (same point the calibration
+suite uses, right after `ProcessCalibrationCaptureRequest`) and publishes the submitted eye(s) — game pixels PLUS
+every ViewLab feature — into a ViewLab-owned triple-buffered ring of shared D3D11 textures (`MISC_SHARED`) plus a
+control block at `Local\XRViewLabMirrorSurface`. Because ViewLab owns the whole path, nothing overwrites its drawing
+(the exact defect that makes the third-party OpenXR Mirror Capture route drop overlays). Overlays are composited onto
+the ring copy only when the direct plan didn't already draw them into the submitted eye (mirrors `CaptureLeftEyePixels`
+compositing conditions); `displayIndex`/`frameNumber`/`heartbeatTick` published after `Flush` so the consumer never
+samples a torn frame; ring + mapping torn down on session/device loss via `DisconnectViewLabMirror()`. (2) **Per-eye
+mode (contract v2, 72 bytes):** the consumer writes `requestedEyeMode` into the shared block (mapping opened
+read/write) and the producer publishes left / right / side-by-side accordingly via `AcquireSubmittedEye(viewIndex)`,
+double-wide ring for SbS, falling back to left on mono titles. (3) **Rename to ViewLab Media Capture:** OBS source id
+`viewlab_mirror_capture`→`viewlab_media_capture`, display/module names and UI install button/help text now say "ViewLab
+Media Capture"; physical DLL/folder/IPC-surface names deliberately unchanged for MSI/install stability. (4) **ViewLab
+Media Filter (`viewlab_media_filter`):** a new GPU effect-based OBS video filter registered by the same module —
+white balance, brightness, contrast, saturation, gamma and one sharpen(+)/smooth(−) control, effect compiled from an
+embedded string (single DLL, no data file). Intended to replace the LVK Video Stabilizer's colour/smoothing role;
+**temporal smoothing + true stabilization are NOT implemented** (deferred phase). The OXRMC (third-party) mirror path
+in `dllmain.cpp` was intentionally left vanilla. Full x64/Win32/broker/OBS/MSI build 0/0; payload validated; contract
+suite passes (adds VLMC source/filter identity + v2 eye-mode/72-byte-struct assertions). **Pending live validation:**
+no VR+OBS run yet — shared-handle open, on-screen frame, per-eye switching and the media filter's effect compile /
+visual result all need a real headset+OBS test.
+**Prior version:** 4.1.286 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.286.msi` (size 149,184,512 bytes; SHA-256
 `CE5C62F64FDA97E1E284574D8A4E02488A934A8CE6082F5C146B8814BD40CBF4`). Three connected rendering fixes (R49). (1) **Notification render quality:** cards were a fixed
 336×96 bitmap that got stretched (blurry, worse when scaled). `NotificationCardLayout` now separates the logical
 footprint from raster dimensions and `ComposeCard` SUPERSAMPLES at `logical × RasterFactor(scale)` (RasterQuality

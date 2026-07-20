@@ -4507,6 +4507,242 @@ void ProcessCalibrationCaptureRequest() {
     }).detach();
 }
 
+// ---- ViewLab Media Capture (VLMC) producer ------------------------------------------------
+// Publishes the final submitted eye (game pixels PLUS every ViewLab feature) into a shared,
+// triple-buffered ring of D3D11 textures plus a control block that the VLMC OBS source
+// (ViewLabMirrorPlugin, id "viewlab_mirror_capture") opens read-only. Because ViewLab owns
+// the producer, nothing overwrites its drawing — the defect that makes the third-party
+// OpenXR-OBSMirror route drop ViewLab overlays cannot occur here. Contract mirrors
+// ViewLabMirrorPlugin/viewlab_mirror_contract.h exactly (same name, magic, layout).
+#pragma pack(push, 4)
+struct ViewLabMirrorSurface {
+    uint32_t magic;           // 'VLMS'
+    uint32_t version;         // 1
+    uint32_t frameNumber;     // incremented after each completed ring copy
+    uint32_t displayIndex;    // 0..2: index of the last completed ring texture
+    uint32_t width, height;   // dimensions of every ring texture
+    uint32_t format;          // DXGI_FORMAT of the ring textures
+    uint32_t eyeMode;         // mode actually published this frame (0 left, 1 right, 2 SbS)
+    uint64_t heartbeatTick;   // GetTickCount64 stamped every produced frame
+    uint64_t sharedHandle[3]; // legacy D3D11 shared handles of the ring textures
+    uint32_t requestedEyeMode;     // v2: consumer writes the eye mode the user selected
+    uint32_t consumerHeartbeatTick;// v2: low32 GetTickCount64 the OBS source stamps each render
+};
+#pragma pack(pop)
+static_assert(sizeof(ViewLabMirrorSurface) == 72, "VLMC mirror surface contract size (v2)");
+
+static const wchar_t* kViewLabMirrorSurfaceName = L"Local\\XRViewLabMirrorSurface";
+static const uint32_t kViewLabMirrorMagic = 0x534D4C56u; // 'VLMS'
+static const uint32_t kViewLabMirrorVersion = 2u;
+
+HANDLE g_vlmcMap = nullptr;
+ViewLabMirrorSurface* g_vlmcSurface = nullptr;
+ID3D11Texture2D* g_vlmcRing[3] = {};
+uint64_t g_vlmcRingHandle[3] = {};
+uint32_t g_vlmcRingW = 0, g_vlmcRingH = 0;
+DXGI_FORMAT g_vlmcRingFmt = DXGI_FORMAT_UNKNOWN;
+uint32_t g_vlmcFrameNumber = 0;
+std::atomic<bool> g_vlmcConnectedLogged{false};
+
+void ReleaseViewLabMirrorRing() {
+    for (int i = 0; i < 3; ++i) {
+        if (g_vlmcRing[i]) g_vlmcRing[i]->Release();
+        g_vlmcRing[i] = nullptr; g_vlmcRingHandle[i] = 0;
+    }
+    g_vlmcRingW = g_vlmcRingH = 0; g_vlmcRingFmt = DXGI_FORMAT_UNKNOWN;
+}
+
+void DisconnectViewLabMirror() {
+    ReleaseViewLabMirrorRing();
+    if (g_vlmcSurface) UnmapViewOfFile(g_vlmcSurface);
+    if (g_vlmcMap) CloseHandle(g_vlmcMap);
+    g_vlmcSurface = nullptr; g_vlmcMap = nullptr;
+    g_vlmcFrameNumber = 0; g_vlmcConnectedLogged.store(false);
+}
+
+// Create (once) the shared control block. The producer owns it, so it is created read/write.
+bool EnsureViewLabMirrorSurface() {
+    if (g_vlmcSurface) return true;
+    g_vlmcMap = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
+        sizeof(ViewLabMirrorSurface), kViewLabMirrorSurfaceName);
+    if (!g_vlmcMap) return false;
+    g_vlmcSurface = static_cast<ViewLabMirrorSurface*>(MapViewOfFile(
+        g_vlmcMap, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(ViewLabMirrorSurface)));
+    if (!g_vlmcSurface) { CloseHandle(g_vlmcMap); g_vlmcMap = nullptr; return false; }
+    std::memset(g_vlmcSurface, 0, sizeof(ViewLabMirrorSurface));
+    g_vlmcSurface->magic = kViewLabMirrorMagic;
+    g_vlmcSurface->version = kViewLabMirrorVersion;
+    return true;
+}
+
+// (Re)create the triple-buffered ring of shared textures when the output size/format changes,
+// and publish the new dimensions/handles into the control block. Legacy MISC_SHARED handles so
+// the OBS source can open them with gs_texture_open_shared on its own D3D11 device.
+bool EnsureViewLabMirrorRing(uint32_t width, uint32_t height, DXGI_FORMAT fmt) {
+    if (g_vlmcRing[0] && g_vlmcRingW == width && g_vlmcRingH == height && g_vlmcRingFmt == fmt)
+        return true;
+    ReleaseViewLabMirrorRing();
+    for (int i = 0; i < 3; ++i) {
+        D3D11_TEXTURE2D_DESC d{};
+        d.Width = width; d.Height = height; d.MipLevels = 1; d.ArraySize = 1;
+        d.Format = fmt; d.SampleDesc.Count = 1; d.Usage = D3D11_USAGE_DEFAULT;
+        d.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        d.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+        if (FAILED(g_d3d11Mask.device->CreateTexture2D(&d, nullptr, &g_vlmcRing[i])) || !g_vlmcRing[i]) {
+            ReleaseViewLabMirrorRing(); return false;
+        }
+        IDXGIResource* dxgi = nullptr;
+        HANDLE shared = nullptr;
+        if (SUCCEEDED(g_vlmcRing[i]->QueryInterface(__uuidof(IDXGIResource), reinterpret_cast<void**>(&dxgi))) && dxgi) {
+            dxgi->GetSharedHandle(&shared);
+            dxgi->Release();
+        }
+        if (!shared) { ReleaseViewLabMirrorRing(); return false; }
+        g_vlmcRingHandle[i] = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(shared));
+    }
+    g_vlmcRingW = width; g_vlmcRingH = height; g_vlmcRingFmt = fmt;
+    // Publish geometry + handles before any displayIndex references them.
+    g_vlmcSurface->width = width; g_vlmcSurface->height = height;
+    g_vlmcSurface->format = static_cast<uint32_t>(fmt);
+    g_vlmcSurface->eyeMode = 0;
+    for (int i = 0; i < 3; ++i) g_vlmcSurface->sharedHandle[i] = g_vlmcRingHandle[i];
+    MemoryBarrier();
+    return true;
+}
+
+// Finds the submitted texture for a projection view index (0 left, 1 right) and AddRefs it into
+// *outTex. Returns false if that eye is not currently submitted (mono titles submit view 0 only).
+// Caller holds no lock; this takes g_swapchainMutex.
+static bool AcquireSubmittedEye(uint32_t viewIndex, ID3D11Texture2D** outTex, EyeView* outEye,
+                                int64_t* outFmt, std::vector<EyeView>* outAllViews) {
+    std::lock_guard<std::mutex> lk(g_swapchainMutex);
+    if (!g_primaryProjectionContext.ValidFor(g_d3d11Mask.session)) return false;
+    if (outAllViews) *outAllViews = g_primaryProjectionContext.topology.AllViews();
+    for (const auto& kv : g_swapchains) {
+        const TrackedSwapchain& ts = kv.second;
+        if (ts.session != g_d3d11Mask.session || ts.lastAcquiredIndex >= ts.textures.size()) continue;
+        for (const EyeView& ev : g_primaryProjectionContext.topology.TargetsFor(kv.first)) {
+            if (ev.viewIndex != viewIndex) continue;
+            ID3D11Texture2D* tex = ts.textures[ts.lastAcquiredIndex];
+            if (!tex) return false;
+            tex->AddRef();
+            *outTex = tex; *outEye = ev; *outFmt = ts.format;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Copies one submitted eye's sub-rect into the ring texture at horizontal offset dstX.
+static void VlmcCopyEye(ID3D11Texture2D* dst, uint32_t dstX, ID3D11Texture2D* src,
+                        const EyeView& eye, uint32_t mipLevels, uint32_t w, uint32_t h) {
+    D3D11_BOX box{};
+    box.left = static_cast<UINT>((std::max)(0, eye.rect.offset.x));
+    box.top = static_cast<UINT>((std::max)(0, eye.rect.offset.y));
+    box.right = box.left + w; box.bottom = box.top + h;
+    box.front = 0; box.back = 1;
+    const UINT sub = D3D11CalcSubresource(0, eye.arraySlice, mipLevels);
+    g_d3d11Mask.context->CopySubresourceRegion(dst, 0, dstX, 0, 0, src, sub, &box);
+}
+
+// Composites the checkbox-selected ViewLab features onto one eye's region of the ring, honouring
+// the SAME "Show in OBS mirror" mask as the OXRMC route (obsMirrorVisibilityMask). When the direct
+// plan already drew a feature into the submitted eye, the copied pixels already carry it. Callers
+// skip this entirely when the mask is 0, giving a pure game-frame mirror (OXRMC-equivalent) with
+// no extra draw passes.
+static void VlmcComposeEye(ID3D11Texture2D* dst, DXGI_FORMAT ringFormat, const EyeView& eye,
+                           uint32_t dstX, uint32_t w, uint32_t h, const std::vector<EyeView>& allViews) {
+    EyeView copyEye = eye;
+    copyEye.rect = { {static_cast<int32_t>(dstX), 0}, {static_cast<int32_t>(w), static_cast<int32_t>(h)} };
+    copyEye.arraySlice = 0;
+    if (maskEnabled && !g_featurePresentationPlan.drawDirectVisor &&
+        IncludesMirrorFeature(obsMirrorVisibilityMask, MirrorVisor))
+        DrawVisorBorderToTexture(dst, 1, static_cast<int64_t>(ringFormat), copyEye, allViews, nullptr);
+    if (!g_featurePresentationPlan.drawDirectCommonFeatures)
+        DrawCalibrationPatternsToTexture(dst, 1, static_cast<int64_t>(ringFormat), copyEye, allViews,
+            nullptr, false, true, obsMirrorVisibilityMask);
+}
+
+// Called at xrEndFrame after the submitted textures hold the frame's complete direct-drawn
+// content (same capture point the calibration suite uses). Publishes the eye(s) the consumer
+// requested (0 left, 1 right, 2 side-by-side) into the next ring slot, compositing overlays and
+// falling back to left when the requested eye is unavailable.
+void ProduceViewLabMirrorFrame() {
+    if (!g_d3d11Mask.initialized || !g_d3d11Mask.device || !g_d3d11Mask.context ||
+        g_rendererDeviceLost.load(std::memory_order_acquire)) return;
+    if (!EnsureViewLabMirrorSurface()) return;
+
+    uint32_t requested = g_vlmcSurface->requestedEyeMode;
+    if (requested > 2) requested = 0;
+
+    // Primary eye: right for mode 1, otherwise left.
+    ID3D11Texture2D* tex0 = nullptr; EyeView eye0{}; int64_t fmt0 = 0;
+    std::vector<EyeView> allViews;
+    const uint32_t primaryView = (requested == 1) ? 1u : 0u;
+    if (!AcquireSubmittedEye(primaryView, &tex0, &eye0, &fmt0, &allViews)) {
+        if (primaryView == 1 && AcquireSubmittedEye(0, &tex0, &eye0, &fmt0, &allViews)) requested = 0;
+        else return;
+    }
+    // Second eye only for side-by-side; degrade to single left if the right eye is absent.
+    ID3D11Texture2D* tex1 = nullptr; EyeView eye1{}; int64_t fmt1 = 0;
+    if (requested == 2 && !AcquireSubmittedEye(1, &tex1, &eye1, &fmt1, nullptr)) requested = 0;
+
+    const uint32_t w0 = static_cast<uint32_t>((std::max)(0, eye0.rect.extent.width));
+    const uint32_t h0 = static_cast<uint32_t>((std::max)(0, eye0.rect.extent.height));
+    if (w0 == 0 || h0 == 0) { tex0->Release(); if (tex1) tex1->Release(); return; }
+    D3D11_TEXTURE2D_DESC d0{}; tex0->GetDesc(&d0);
+    const DXGI_FORMAT ringFormat = ResolveCaptureReadFormat(fmt0, d0.Format);
+
+    uint32_t outW = w0, outH = h0, w1 = 0, h1 = 0;
+    if (requested == 2 && tex1) {
+        w1 = static_cast<uint32_t>((std::max)(0, eye1.rect.extent.width));
+        h1 = static_cast<uint32_t>((std::max)(0, eye1.rect.extent.height));
+        if (w1 == 0 || h1 == 0) { requested = 0; tex1->Release(); tex1 = nullptr; }
+        else { outW = w0 + w1; outH = (std::max)(h0, h1); }
+    }
+
+    // EnsureViewLabMirrorRing publishes the geometry + shared handles so the OBS source can
+    // connect even before it starts rendering. Only the expensive per-frame GPU work below is
+    // gated on a live consumer: the source stamps consumerHeartbeatTick each render, so when no
+    // source is capturing we skip the copy/composite/Flush entirely (no game-thread GPU cost).
+    if (!EnsureViewLabMirrorRing(outW, outH, ringFormat)) { tex0->Release(); if (tex1) tex1->Release(); return; }
+    const uint32_t nowTick = static_cast<uint32_t>(GetTickCount64());
+    const uint32_t consumerTick = g_vlmcSurface->consumerHeartbeatTick;
+    if (consumerTick == 0 || (nowTick - consumerTick) > 2000u) {
+        tex0->Release(); if (tex1) tex1->Release();
+        g_vlmcConnectedLogged.store(false);
+        return;
+    }
+    const uint32_t nextIndex = (g_vlmcFrameNumber + 1) % 3;
+    ID3D11Texture2D* dst = g_vlmcRing[nextIndex];
+
+    // Overlay link off (no features selected) → pure game-frame mirror: copy only, no draw
+    // passes. This is the OXRMC-equivalent fallback for maximum fidelity / minimum overhead.
+    const bool composite = (obsMirrorVisibilityMask != 0);
+    VlmcCopyEye(dst, 0, tex0, eye0, d0.MipLevels, w0, h0);
+    if (composite) VlmcComposeEye(dst, ringFormat, eye0, 0, w0, h0, allViews);
+    tex0->Release();
+    if (requested == 2 && tex1) {
+        D3D11_TEXTURE2D_DESC d1{}; tex1->GetDesc(&d1);
+        VlmcCopyEye(dst, w0, tex1, eye1, d1.MipLevels, w1, h1);
+        if (composite) VlmcComposeEye(dst, ringFormat, eye1, w0, w1, h1, allViews);
+        tex1->Release();
+    }
+    g_d3d11Mask.context->Flush();
+
+    // Publish the completed slot: eyeMode/displayIndex only after Flush so the consumer never
+    // samples a torn frame, then advance frameNumber and stamp the heartbeat.
+    g_vlmcSurface->eyeMode = requested;
+    g_vlmcSurface->displayIndex = nextIndex;
+    MemoryBarrier();
+    g_vlmcFrameNumber = (g_vlmcFrameNumber + 1) & 0x7fffffffu;
+    g_vlmcSurface->frameNumber = g_vlmcFrameNumber;
+    g_vlmcSurface->heartbeatTick = GetTickCount64();
+    if (!g_vlmcConnectedLogged.exchange(true))
+        Log("VLMC producer: publishing %ux%u mode=%u format=%d to %ls\n",
+            outW, outH, requested, static_cast<int>(ringFormat), kViewLabMirrorSurfaceName);
+}
+
 void DrawCapturedProjectionTextures(bool drawVisor, bool drawOverlays, const char* tag) {
     if ((!drawVisor && !drawOverlays) || !g_d3d11Mask.initialized || !g_d3d11Mask.context) return;
 
@@ -5738,6 +5974,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrDestroySession(XrSession session) {
         ReleaseD3D11MaskRenderer();
         DisconnectLiveState();
         DisconnectObsMirrorSurface();
+        DisconnectViewLabMirror();
         DisconnectTelemetryConfig();
         DisconnectStickyNoteState();
         DisconnectNotify();
@@ -6046,6 +6283,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
         // The submitted textures now contain the frame's complete direct-drawn content, so
         // this is the calibration suite's capture point for the final left-eye image.
         ProcessCalibrationCaptureRequest();
+        // Same capture point feeds the VLMC OBS source: publish the composited eye into the
+        // ViewLab-owned shared ring so "ViewLab Mirror Capture" shows game frame + overlays.
+        ProduceViewLabMirrorFrame();
     }
 
     XrFrameEndInfo submittedInfo=*frameEndInfo;

@@ -19,7 +19,7 @@
 
 #define VIEWLAB_MIRROR_SURFACE_NAME L"Local\\XRViewLabMirrorSurface"
 #define VIEWLAB_MIRROR_MAGIC 0x534D4C56u /* 'VLMS' */
-#define VIEWLAB_MIRROR_VERSION 1u
+#define VIEWLAB_MIRROR_VERSION 2u
 
 #pragma pack(push, 4)
 typedef struct ViewLabMirrorSurface {
@@ -29,8 +29,14 @@ typedef struct ViewLabMirrorSurface {
     uint32_t displayIndex;    /* index (0..2) of the last completed ring texture */
     uint32_t width, height;   /* dimensions of every ring texture */
     uint32_t format;          /* DXGI_FORMAT of the ring textures */
-    uint32_t eyeMode;         /* 0 left eye, 1 right eye, 2 side-by-side stereo */
+    uint32_t eyeMode;         /* mode the producer ACTUALLY published this frame (0/1/2) */
     uint64_t heartbeatTick;   /* producer GetTickCount64 while a session submits frames */
     uint64_t sharedHandle[3]; /* legacy D3D11 shared handles of the ring textures */
+    /* v2: consumer→producer channel. */
+    uint32_t requestedEyeMode;      /* eye the user selected: 0 left, 1 right, 2 side-by-side */
+    uint32_t consumerHeartbeatTick; /* low 32 bits of the OBS source's GetTickCount64, stamped
+                                     * every video_render. The producer only does per-frame work
+                                     * while this is fresh, so nothing is captured/copied when no
+                                     * OBS source is actually rendering (no added overhead). */
 } ViewLabMirrorSurface;
 #pragma pack(pop)

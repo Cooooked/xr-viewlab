@@ -2015,6 +2015,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void RefreshViewLabMirrorPluginStatus()
 	{
 		if (ViewLabMirrorPluginStatusText == null || InstallViewLabMirrorPluginButton == null) return;
+		// Uninstall is offered only when the plugin is actually present in the folder OBS scans.
+		if (UninstallViewLabMirrorPluginButton != null) UninstallViewLabMirrorPluginButton.IsEnabled = false;
 		string? bundled = ViewLabMirrorPluginBundledPath;
 		if (bundled == null)
 		{
@@ -2027,7 +2029,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		{
 			// No OBS install found: never claim the plugin is installed.
 			InstallViewLabMirrorPluginButton.IsEnabled = false;
-			InstallViewLabMirrorPluginButton.Content = "Install ViewLab Mirror Plugin";
+			InstallViewLabMirrorPluginButton.Content = "Install ViewLab Media Capture Plugin";
 			ViewLabMirrorPluginStatusText.Text = "OBS Studio was not found. Install OBS first, then reopen this to install the plugin.";
 			return;
 		}
@@ -2035,16 +2037,57 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		// Truthful detection: status reflects the file OBS actually loads, not an ignored copy elsewhere.
 		if (!File.Exists(target))
 		{
-			InstallViewLabMirrorPluginButton.Content = "Install ViewLab Mirror Plugin";
+			InstallViewLabMirrorPluginButton.Content = "Install ViewLab Media Capture Plugin";
 			ViewLabMirrorPluginStatusText.Text = "Not installed (OBS will not show the source until you install it here).";
 			return;
 		}
+		// Installed: enable uninstall so the user can revert to plain direct capture if they prefer.
+		if (UninstallViewLabMirrorPluginButton != null) UninstallViewLabMirrorPluginButton.IsEnabled = true;
 		bool upToDate = TryFileSha256(bundled) is string bundledHash &&
 			TryFileSha256(target) == bundledHash;
-		InstallViewLabMirrorPluginButton.Content = upToDate ? "Reinstall ViewLab Mirror Plugin" : "Update ViewLab Mirror Plugin";
+		InstallViewLabMirrorPluginButton.Content = upToDate ? "Reinstall ViewLab Media Capture Plugin" : "Update ViewLab Media Capture Plugin";
 		ViewLabMirrorPluginStatusText.Text = upToDate
 			? "Installed and up to date: " + target
 			: "Installed but OUTDATED — click to update, then restart OBS.";
+	}
+
+	private void UninstallViewLabMirrorPlugin_Click(object sender, RoutedEventArgs e)
+	{
+		string? target = ViewLabMirrorPluginTargetPath;
+		if (target == null)
+		{
+			StatusText.Text = "OBS Studio was not found; nothing to uninstall.";
+			return;
+		}
+		if (!File.Exists(target))
+		{
+			StatusText.Text = "ViewLab Media Capture plugin is not installed.";
+			RefreshViewLabMirrorPluginStatus();
+			return;
+		}
+		try
+		{
+			// Program Files needs admin: relaunch ourselves elevated to delete the DLL from OBS.
+			string exe = Environment.ProcessPath ?? throw new InvalidOperationException("ViewLab executable path is unavailable.");
+			using Process? helper = Process.Start(new ProcessStartInfo
+			{
+				FileName = exe,
+				Arguments = $"--uninstall-obs-plugin \"{target}\"",
+				UseShellExecute = true,
+				Verb = "runas",
+				WorkingDirectory = ProcessDirectory
+			});
+			helper?.WaitForExit();
+			bool ok = helper is { ExitCode: 0 } && !File.Exists(target);
+			StatusText.Text = ok
+				? "ViewLab Media Capture plugin removed from OBS. Restart OBS to unload it."
+				: "Plugin uninstall did not complete — administrator approval is required, and OBS must be closed if it locks the file.";
+		}
+		catch (Exception ex)
+		{
+			StatusText.Text = "Plugin uninstall failed: " + ex.Message;
+		}
+		RefreshViewLabMirrorPluginStatus();
 	}
 
 	private void InstallViewLabMirrorPlugin_Click(object sender, RoutedEventArgs e)
@@ -2052,7 +2095,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		string? bundled = ViewLabMirrorPluginBundledPath;
 		if (bundled == null)
 		{
-			StatusText.Text = "ViewLab Mirror plugin payload is missing from this installation.";
+			StatusText.Text = "ViewLab Media Capture plugin payload is missing from this installation.";
 			return;
 		}
 		string? target = ViewLabMirrorPluginTargetPath;
@@ -2076,7 +2119,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			helper?.WaitForExit();
 			bool ok = helper is { ExitCode: 0 } && TryFileSha256(bundled) is string h && TryFileSha256(target) == h;
 			StatusText.Text = ok
-				? "ViewLab Mirror plugin installed into OBS. Restart OBS, then add the 'ViewLab Mirror Capture' source (not 'OpenXR Mirror Capture')."
+				? "ViewLab Media Capture plugin installed into OBS. Restart OBS, then add the 'ViewLab Media Capture' source (not 'OpenXR Mirror Capture')."
 				: "Plugin install did not complete — administrator approval is required, and OBS must be closed if it locks the file.";
 		}
 		catch (Exception ex)

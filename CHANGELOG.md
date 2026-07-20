@@ -1,5 +1,47 @@
 # Changelog
 
+## 4.1.288 - 2026-07-20
+
+VLMC fidelity/overhead controls and an uninstall path.
+
+- **OXRMC-equivalent passthrough.** VLMC compositing now honours the same "Show in OBS mirror"
+  mask as the OXRMC route. When the mask is empty (overlay link off), the producer copies the
+  game eye with no extra draw passes — a maximum-fidelity / minimum-overhead direct mirror
+  fallback in case the composited path underperforms.
+- **No overhead without a live consumer.** The OBS source stamps a heartbeat each render; the
+  producer publishes ring geometry every frame (so the source can connect) but skips the
+  per-frame copy/composite/Flush entirely unless a source is actively rendering. Contract v2's
+  spare field became `consumerHeartbeatTick`.
+- **Uninstall.** The Overlays menu now has an Uninstall button beside Install (enabled only when
+  the plugin is present), backed by an elevated `--uninstall-obs-plugin` helper that removes the
+  DLL + bundled LICENSE/README, so you can revert to plain direct capture.
+- Live VR+OBS validation still pending.
+
+## 4.1.287 - 2026-07-20
+
+ViewLab Media Capture (VLMC): the OBS plugin now actually captures, plus a media filter.
+
+- **VLMC producer (`dllmain.cpp`).** `ProduceViewLabMirrorFrame()` runs at the xrEndFrame
+  capture point and publishes the submitted eye(s) — game pixels plus every selected ViewLab
+  feature — into a ViewLab-owned triple-buffered ring of shared D3D11 textures + a control block
+  at `Local\XRViewLabMirrorSurface`. ViewLab owns the whole path, so nothing overwrites its
+  drawing (unlike the third-party OpenXR Mirror Capture route). Overlays are composited onto the
+  ring only when the direct plan didn't already draw them; `displayIndex`/`frameNumber`/
+  `heartbeatTick` published after `Flush`; torn down on session/device loss.
+- **Per-eye mode (shared contract v2, 72 bytes).** The OBS source writes `requestedEyeMode`
+  into the shared block; the producer publishes left / right / side-by-side accordingly (double-
+  wide ring for SbS), falling back to left on mono titles.
+- **Renamed to ViewLab Media Capture.** OBS source id `viewlab_mirror_capture` →
+  `viewlab_media_capture`; display/module names and the UI install button/help text now read
+  "ViewLab Media Capture". Physical DLL/folder/IPC-surface names left unchanged for installer
+  stability.
+- **ViewLab Media Filter (`viewlab_media_filter`).** New GPU effect-based OBS video filter from
+  the same module: white balance, brightness, contrast, saturation, gamma and one sharpen/smooth
+  control (effect compiled from an embedded string, single DLL). Replaces the colour/smoothing
+  role of the LVK Video Stabilizer. Temporal smoothing and true stabilization are deferred.
+- The third-party OXRMC mirror path in `dllmain.cpp` was intentionally left vanilla.
+- Live VR+OBS validation still pending.
+
 ## 4.1.286 - 2026-07-20
 
 Three connected rendering fixes.

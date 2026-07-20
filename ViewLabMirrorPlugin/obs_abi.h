@@ -25,12 +25,23 @@ typedef struct obs_source obs_source_t;
 typedef struct obs_properties obs_properties_t;
 typedef struct obs_property obs_property_t;
 typedef struct gs_effect gs_effect_t;
+typedef struct gs_effect_param gs_eparam_t;
 typedef struct gs_texture gs_texture_t;
 typedef struct obs_module obs_module_t;
 typedef struct obs_missing_files obs_missing_files_t;
 typedef void (*obs_source_enum_proc_t)(obs_source_t *parent, obs_source_t *child, void *param);
 
-enum obs_source_type { OBS_SOURCE_TYPE_INPUT = 0 };
+/* Small graphics vectors (libobs graphics/vec*.h layouts). vec3/vec4 are 16-byte aligned
+ * in libobs (union with a __m128); we only read/write the scalar members, and always pass a
+ * pointer, so a plain-float layout with a trailing pad is ABI-safe for our set calls. */
+struct vec2 { float x, y; };
+struct vec3 { float x, y, z, w_pad; };
+
+enum obs_source_type { OBS_SOURCE_TYPE_INPUT = 0, OBS_SOURCE_TYPE_FILTER = 1 };
+
+/* gs_color_format prefix (libobs graphics/graphics.h). We only ever pass GS_RGBA. */
+enum gs_color_format { GS_CF_UNKNOWN = 0, GS_A8 = 1, GS_R8 = 2, GS_RGBA = 3, GS_BGRX = 4, GS_BGRA = 5 };
+enum obs_allow_direct_render { OBS_NO_DIRECT_RENDERING = 0, OBS_ALLOW_DIRECT_RENDERING = 1 };
 enum obs_icon_type { OBS_ICON_TYPE_UNKNOWN = 0, OBS_ICON_TYPE_DESKTOP_CAPTURE = 8 };
 enum obs_combo_type { OBS_COMBO_TYPE_INVALID = 0, OBS_COMBO_TYPE_EDITABLE = 1, OBS_COMBO_TYPE_LIST = 2 };
 enum obs_combo_format { OBS_COMBO_FORMAT_INVALID = 0, OBS_COMBO_FORMAT_INT = 1 };
@@ -123,6 +134,33 @@ typedef obs_property_t *(*fn_obs_properties_add_text_like)(obs_properties_t *pro
     const char *description, int type);
 typedef long long (*fn_obs_data_get_int)(obs_data_t *data, const char *name);
 typedef void (*fn_obs_data_set_default_int)(obs_data_t *data, const char *name, long long val);
+
+/* ---- effect-based video filter surface (libobs obs-source.h / graphics.h) ------------- */
+typedef bool (*fn_obs_source_process_filter_begin)(obs_source_t *filter,
+    enum gs_color_format format, enum obs_allow_direct_render allow_direct);
+typedef void (*fn_obs_source_process_filter_end)(obs_source_t *filter, gs_effect_t *effect,
+    uint32_t width, uint32_t height);
+typedef void (*fn_obs_source_skip_video_filter)(obs_source_t *filter);
+typedef obs_source_t *(*fn_obs_filter_get_target)(obs_source_t *filter);
+typedef obs_source_t *(*fn_obs_filter_get_parent)(obs_source_t *filter);
+typedef uint32_t (*fn_obs_source_get_base_width)(obs_source_t *source);
+typedef uint32_t (*fn_obs_source_get_base_height)(obs_source_t *source);
+typedef gs_effect_t *(*fn_gs_effect_create)(const char *effect_string, const char *filename,
+    char **error_string);
+typedef void (*fn_gs_effect_destroy)(gs_effect_t *effect);
+typedef gs_eparam_t *(*fn_gs_effect_get_param_by_name)(gs_effect_t *effect, const char *name);
+typedef void (*fn_gs_effect_set_float)(gs_eparam_t *param, float val);
+typedef void (*fn_gs_effect_set_vec2)(gs_eparam_t *param, const struct vec2 *val);
+typedef void (*fn_gs_effect_set_vec3)(gs_eparam_t *param, const struct vec3 *val);
+typedef void (*fn_bfree)(void *ptr);
+typedef double (*fn_obs_data_get_double)(obs_data_t *data, const char *name);
+typedef void (*fn_obs_data_set_default_double)(obs_data_t *data, const char *name, double val);
+typedef bool (*fn_obs_data_get_bool)(obs_data_t *data, const char *name);
+typedef void (*fn_obs_data_set_default_bool)(obs_data_t *data, const char *name, bool val);
+typedef obs_property_t *(*fn_obs_properties_add_float_slider)(obs_properties_t *props,
+    const char *name, const char *description, double min, double max, double step);
+typedef obs_property_t *(*fn_obs_properties_add_bool)(obs_properties_t *props, const char *name,
+    const char *description);
 
 #ifdef __cplusplus
 }

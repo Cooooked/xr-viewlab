@@ -1,9 +1,9 @@
 /*
- * ViewLab Mirror Capture — OBS Studio source plugin.
+ * ViewLab Media Capture (VLMC) — OBS Studio source plugin.
  *
  * Purpose: give ViewLab its own OBS capture route, fully separate from the unrelated
  * third-party "OpenXR Mirror Capture" source. This source has a unique OBS source id
- * ("viewlab_mirror_capture") and display name ("ViewLab Mirror Capture") so both plugins
+ * ("viewlab_media_capture") and display name ("ViewLab Media Capture") so both plugins
  * load and appear independently in the Add Source menu. The producer side of the
  * frame-transfer route is the ViewLab OpenXR layer; see viewlab_mirror_contract.h for the
  * versioned shared-surface contract and the per-frame copy pipeline.
@@ -77,9 +77,9 @@ static bool resolve_libobs(void)
 /* ---- source state --------------------------------------------------------------------- */
 struct viewlab_mirror_source {
     obs_source_t *source;
-    long long requested_eye_mode; /* user setting; forwarded once the producer supports it */
+    long long requested_eye_mode; /* user setting; written into the shared block for the producer */
     HANDLE surface_map;
-    const ViewLabMirrorSurface *surface;
+    ViewLabMirrorSurface *surface; /* mapped read/write so we can publish requestedEyeMode */
     gs_texture_t *textures[3];
     uint64_t opened_handles[3];
     uint32_t width, height;
@@ -110,11 +110,13 @@ static void viewlab_mirror_disconnect(struct viewlab_mirror_source *ctx)
 static bool viewlab_mirror_try_connect(struct viewlab_mirror_source *ctx)
 {
     if (!ctx->surface) {
-        ctx->surface_map = OpenFileMappingW(FILE_MAP_READ, FALSE, VIEWLAB_MIRROR_SURFACE_NAME);
+        /* Read/write: the producer owns the block, but the consumer publishes its selected
+         * eye mode into it (requestedEyeMode), so we need write access. */
+        ctx->surface_map = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, VIEWLAB_MIRROR_SURFACE_NAME);
         if (!ctx->surface_map)
             return false;
-        ctx->surface = (const ViewLabMirrorSurface *)MapViewOfFile(
-            ctx->surface_map, FILE_MAP_READ, 0, 0, sizeof(ViewLabMirrorSurface));
+        ctx->surface = (ViewLabMirrorSurface *)MapViewOfFile(
+            ctx->surface_map, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(ViewLabMirrorSurface));
         if (!ctx->surface) {
             CloseHandle(ctx->surface_map);
             ctx->surface_map = NULL;
@@ -125,6 +127,8 @@ static bool viewlab_mirror_try_connect(struct viewlab_mirror_source *ctx)
     if (snapshot.magic != VIEWLAB_MIRROR_MAGIC || snapshot.version != VIEWLAB_MIRROR_VERSION ||
         snapshot.width == 0 || snapshot.height == 0)
         return false;
+    /* Publish the user's selected eye mode for the producer to honour next frame. */
+    ctx->surface->requestedEyeMode = (uint32_t)ctx->requested_eye_mode;
     ctx->width = snapshot.width;
     ctx->height = snapshot.height;
     for (int i = 0; i < 3; ++i) {
@@ -151,7 +155,7 @@ static bool viewlab_mirror_try_connect(struct viewlab_mirror_source *ctx)
 static const char *viewlab_mirror_get_name(void *type_data)
 {
     (void)type_data;
-    return "ViewLab Mirror Capture";
+    return "ViewLab Media Capture";
 }
 
 static void *viewlab_mirror_create(obs_data_t *settings, obs_source_t *source)
@@ -178,6 +182,10 @@ static void viewlab_mirror_update(void *data, obs_data_t *settings)
 {
     struct viewlab_mirror_source *ctx = data;
     ctx->requested_eye_mode = p_obs_data_get_int(settings, "eye_mode");
+    /* Propagate immediately when connected so the producer switches eyes without waiting for
+     * the next reconnect tick. */
+    if (ctx->surface)
+        ctx->surface->requestedEyeMode = (uint32_t)ctx->requested_eye_mode;
 }
 
 static void viewlab_mirror_get_defaults(obs_data_t *settings)
@@ -217,6 +225,8 @@ static void viewlab_mirror_video_render(void *data, gs_effect_t *effect)
     struct viewlab_mirror_source *ctx = data;
     if (!ctx->surface || ctx->width == 0)
         return;
+    /* Tell the producer we are actively rendering, so it only captures while a source is live. */
+    ctx->surface->consumerHeartbeatTick = (uint32_t)GetTickCount64();
     ViewLabMirrorSurface snapshot = *ctx->surface;
     /* A stale heartbeat means no VR session is submitting; render nothing (no fake frame). */
     if (snapshot.heartbeatTick == 0 ||
@@ -241,6 +251,10 @@ static uint32_t viewlab_mirror_get_height(void *data)
     struct viewlab_mirror_source *ctx = data;
     return ctx->height;
 }
+
+/* Implemented in viewlab_media_filter.c: registers the "ViewLab Media Filter" video filter.
+ * Resolves its own libobs entry points; returns false only if libobs is missing symbols. */
+extern bool viewlab_media_filter_register(void);
 
 /* ---- module entry points (stable OBS module ABI) -------------------------------------- */
 static obs_module_t *g_module;
@@ -270,7 +284,7 @@ __declspec(dllexport) bool obs_module_load(void)
         return false;
     static struct obs_source_info info;
     memset(&info, 0, sizeof(info));
-    info.id = "viewlab_mirror_capture";
+    info.id = "viewlab_media_capture";
     info.type = OBS_SOURCE_TYPE_INPUT;
     info.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW | OBS_SOURCE_DO_NOT_DUPLICATE;
     info.get_name = viewlab_mirror_get_name;
@@ -285,7 +299,11 @@ __declspec(dllexport) bool obs_module_load(void)
     info.get_height = viewlab_mirror_get_height;
     info.icon_type = OBS_ICON_TYPE_DESKTOP_CAPTURE;
     p_obs_register_source_s(&info, sizeof(info));
-    p_blog(LOG_INFO, "[viewlab-mirror] module loaded (ViewLab Mirror Capture source registered, id=viewlab_mirror_capture)");
+    p_blog(LOG_INFO, "[viewlab-mirror] module loaded (ViewLab Media Capture source registered, id=viewlab_media_capture)");
+    /* Register the ViewLab Media Filter too (independent of the capture source; a failure
+     * here must not unload the whole module, so the source stays available regardless). */
+    if (!viewlab_media_filter_register())
+        p_blog(LOG_WARNING, "[viewlab-mirror] ViewLab Media Filter not registered (libobs symbols unavailable)");
     return true;
 }
 
@@ -295,10 +313,10 @@ __declspec(dllexport) void obs_module_unload(void)
 
 __declspec(dllexport) const char *obs_module_name(void)
 {
-    return "ViewLab Mirror Capture";
+    return "ViewLab Media Capture";
 }
 
 __declspec(dllexport) const char *obs_module_description(void)
 {
-    return "Mirrors the ViewLab-composited VR view (game frame plus selected ViewLab overlays) into OBS.";
+    return "ViewLab Media Capture: brings the ViewLab-composited VR view (game frame plus selected ViewLab overlays) into OBS, with a companion colour/smoothing filter.";
 }

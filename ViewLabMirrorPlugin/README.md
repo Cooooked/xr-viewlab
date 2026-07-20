@@ -1,30 +1,34 @@
-# ViewLab Mirror — OBS Studio source plugin
+# ViewLab Media Capture (VLMC) — OBS Studio plugin
 
-Initial buildable skeleton for ViewLab's own OBS capture route. It fills the same basic
-role as the third-party `OpenXR Mirror Capture` source while giving ViewLab control over
-future ViewLab-specific capture features (feature-selective mirroring, both-eye modes,
-capture-safe overlays).
+ViewLab's own OBS module. It provides two things, both registered by the same DLL:
+
+1. **ViewLab Media Capture** source (`viewlab_media_capture`) — brings the ViewLab-composited
+   VR view (game frame plus the selected ViewLab overlays) into OBS. It fills the same role as
+   the third-party `OpenXR Mirror Capture` source but is driven by a ViewLab-owned producer, so
+   ViewLab's own drawing can never be overwritten (the defect the third-party route suffers).
+2. **ViewLab Media Filter** (`viewlab_media_filter`) — a GPU effect video filter you can add to
+   any source: white balance, brightness, contrast, saturation, gamma and a single
+   sharpen/smooth control. Intended to replace a stack of separate colour + denoise filters.
+   (Temporal smoothing and true stabilization are a later VLMC phase.)
 
 ## Architecture
 
-- `viewlab-mirror.c` — the OBS module. Registers one video source, `ViewLab Mirror`
-  (`viewlab_mirror_source`), with a basic configuration UI (eye-mode selector). Every
-  libobs function is resolved at runtime from the `obs.dll` already loaded in the OBS
-  process, so the plugin builds with MSVC alone — no OBS SDK checkout, no import library,
-  no version-pinned link dependency.
-- `obs_abi.h` — minimal transcription of the libobs C ABI used (declarations and the
-  `obs_source_info` layout from obs-studio's `libobs/obs-source.h`, GPL-2.0-or-later).
-  `obs_register_source_s` receives our struct size and libobs copies the compatible
-  prefix, which keeps the layout safe across OBS releases. `obs_module_ver` reports the
-  host's own `obs_get_version()` so the loader accepts the module.
+- `viewlab-mirror.c` — the OBS module: registers the capture source and (via
+  `viewlab_media_filter.c`) the media filter. Every libobs function is resolved at runtime from
+  the `obs.dll` already loaded in the OBS process, so the plugin builds with MSVC alone — no OBS
+  SDK checkout, no import library, no version-pinned link dependency.
+- `viewlab_media_filter.c` — the effect-based video filter. Its OBS effect is compiled from an
+  embedded string at create time, so no external `.effect` data file ships.
+- `obs_abi.h` — minimal transcription of the libobs C ABI used (the `obs_source_info` layout
+  plus the source/filter/effect entry points), from obs-studio (GPL-2.0-or-later).
+  `obs_register_source_s` receives our struct size and libobs copies the compatible prefix.
 - `viewlab_mirror_contract.h` — the versioned shared frame-transfer contract
-  (`Local\XRViewLabMirrorSurface`): a control block plus a triple-buffered ring of D3D11
-  shared textures. The ViewLab OpenXR layer is the producer; it will copy the submitted
-  eye image plus every checkbox-selected ViewLab feature once per frame at the proven
-  post-`xrBeginFrame` capture point, then publish `displayIndex`/`frameNumber`. Because
-  ViewLab owns the producer, its own drawing can never be overwritten by the capture copy
-  (the defect of the third-party route). Until the producer ships, the source renders
-  nothing — no placeholder frames are fabricated.
+  (`Local\XRViewLabMirrorSurface`, **v2**): a control block plus a triple-buffered ring of D3D11
+  shared textures. The ViewLab OpenXR layer is the producer; it copies the submitted eye(s) plus
+  every selected ViewLab feature once per frame at the post-`xrBeginFrame`/`xrEndFrame` capture
+  point, then publishes `displayIndex`/`frameNumber`/`heartbeatTick`. **v2** adds
+  `requestedEyeMode`: the OBS source writes the user's selected eye (left / right /
+  side-by-side) and the producer publishes that eye, falling back to left on mono titles.
 
 ## Build
 
@@ -33,14 +37,9 @@ MSBuild x64 Release: `msbuild ViewLabMirrorPlugin.vcxproj /p:Configuration=Relea
 
 ## Installation
 
-ViewLab's `Install ViewLab Mirror Plugin` button copies the bundled DLL to OBS's
-per-user plugin location (no elevation, supported by OBS 28+):
-
-```
-%APPDATA%\obs-studio\plugins\viewlab-mirror\bin\64bit\viewlab-mirror.dll
-```
-
-Restart OBS after installing or updating, then add the `ViewLab Mirror` source.
+ViewLab's `Install ViewLab Media Capture Plugin` button copies the bundled DLL into the OBS
+install's `obs-plugins\64bit` folder (the location current OBS actually scans). Restart OBS,
+then add the **ViewLab Media Capture** source and/or the **ViewLab Media Filter**.
 
 ## Provenance and licence
 

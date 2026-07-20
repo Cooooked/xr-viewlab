@@ -930,9 +930,12 @@
                       <CheckBox Name="ObsMirrorRacingCheck" Content="iRacing Telemetry" Foreground="#A8A8A8" Margin="0,2,0,0" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
                       <CheckBox Name="ObsMirrorBoundaryCheck" Content="Boundary Flash" Foreground="#A8A8A8" Margin="0,2,0,0" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
-                      <TextBlock Text="VIEWLAB MIRROR OBS PLUGIN" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
-                      <TextBlock Text="ViewLab's own OBS source plugin (early skeleton). Installs per user into %APPDATA%\obs-studio\plugins; no OBS process is launched or controlled." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
-                      <Button Name="InstallViewLabMirrorPluginButton" Content="Install ViewLab Mirror Plugin" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabMirrorPlugin_Click" />
+                      <TextBlock Text="VIEWLAB MEDIA CAPTURE OBS PLUGIN" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <TextBlock Text="ViewLab's own OBS source (ViewLab Media Capture) plus a colour/smoothing filter (ViewLab Media Filter). Installs into OBS's obs-plugins\64bit; no OBS process is launched or controlled. Uninstall removes it cleanly if you prefer direct capture." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
+                      <StackPanel Orientation="Horizontal">
+                        <Button Name="InstallViewLabMirrorPluginButton" Content="Install ViewLab Media Capture Plugin" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabMirrorPlugin_Click" />
+                        <Button Name="UninstallViewLabMirrorPluginButton" Content="Uninstall" Padding="9,4" Margin="6,0,0,0" HorizontalAlignment="Left" Click="UninstallViewLabMirrorPlugin_Click" />
+                      </StackPanel>
                       <TextBlock Name="ViewLabMirrorPluginStatusText" Text="" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" />
                       </StackPanel>
                     </StackPanel>

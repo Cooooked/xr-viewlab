@@ -50,6 +50,29 @@ public class App : Application
 				catch { Environment.Exit(1); }
 			}
 
+				// Elevated OBS-plugin uninstall: delete the ViewLab DLL (plus its bundled LICENSE/README
+				// if present) from OBS's obs-plugins/64bit folder. Missing files count as success (already
+				// gone). Exit code 0 = success, 1 = failure.
+				if (args.Length >= 2 && args[0].Equals("--uninstall-obs-plugin", StringComparison.OrdinalIgnoreCase))
+				{
+					try
+					{
+						string dll = args[1];
+						if (File.Exists(dll)) File.Delete(dll);
+						string? dir = Path.GetDirectoryName(dll);
+						if (dir != null)
+						{
+							foreach (string companion in new[] { "LICENSE.txt", "README.md" })
+							{
+								string p = Path.Combine(dir, companion);
+								if (File.Exists(p)) File.Delete(p);
+							}
+						}
+						Environment.Exit(0);
+					}
+					catch { Environment.Exit(1); }
+				}
+
 		using Mutex mutex = new Mutex(true, MutexName, out bool createdNew);
 		if (!createdNew)
 		{

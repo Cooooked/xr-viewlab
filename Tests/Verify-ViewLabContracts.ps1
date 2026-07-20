@@ -916,11 +916,25 @@ Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(RacingStateBlock\)==68' 'n
 Assert-Contains 'dllmain.cpp' 'g_racing->version!=2' 'native consumes racing state version 2'
 Assert-Contains 'dllmain.cpp' 'const bool wantGripBar = IncludesMirrorFeature' 'native gates the grip bar on enable + mirror feature'
 Assert-Contains 'MainWindow.xaml' 'Name="IRacingGripBarCheck"' 'grip-o-bar enable control is present'
-# Item 8: OBS ViewLab Mirror Capture identity is unique and does not collide with the third-party source.
-Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "viewlab_mirror_capture"' 'ViewLab OBS source uses a unique stable source id'
-Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'return "ViewLab Mirror Capture"' 'ViewLab OBS source display name is the final product name'
-Assert-NotContains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "openxr' 'ViewLab OBS source does not reuse the OpenXR Mirror Capture id'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' "add the 'ViewLab Mirror Capture' source" 'UI instructs the user to add the correctly-named source'
+# ViewLab Media Capture (VLMC): OBS identity is unique and does not collide with the third-party source.
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "viewlab_media_capture"' 'VLMC OBS source uses a unique stable source id'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'return "ViewLab Media Capture"' 'VLMC OBS source display name is the final product name'
+Assert-NotContains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "openxr' 'VLMC OBS source does not reuse the OpenXR Mirror Capture id'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' "add the 'ViewLab Media Capture' source" 'UI instructs the user to add the correctly-named source'
+# VLMC media filter identity + producer/consumer eye-mode contract (v2).
+Assert-Contains 'ViewLabMirrorPlugin\viewlab_media_filter.c' 'info\.id            = "viewlab_media_filter"' 'VLMC media filter registers a unique filter id'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab_media_filter.c' 'info\.type          = OBS_SOURCE_TYPE_FILTER' 'VLMC media filter is an effect-based video filter'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab_mirror_contract.h' '#define VIEWLAB_MIRROR_VERSION 2u' 'VLMC shared surface contract is v2 (adds the eye-mode request channel)'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab_mirror_contract.h' 'uint32_t requestedEyeMode;' 'VLMC contract carries the consumer->producer requested eye mode'
+Assert-Contains 'dllmain.cpp' 'void ProduceViewLabMirrorFrame\(\)' 'ViewLab layer implements the VLMC producer'
+Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(ViewLabMirrorSurface\) == 72' 'VLMC producer struct matches the v2 72-byte contract'
+# VLMC optimizations: OXRMC-equivalent passthrough when overlays off, and no work without a live consumer.
+Assert-Contains 'dllmain.cpp' 'const bool composite = \(obsMirrorVisibilityMask != 0\)' 'VLMC skips all overlay draws when the mirror mask is empty (OXRMC-equivalent passthrough)'
+Assert-Contains 'dllmain.cpp' '\(nowTick - consumerTick\) > 2000u' 'VLMC producer only does per-frame GPU work while an OBS source is live'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'consumerHeartbeatTick = \(uint32_t\)GetTickCount64\(\)' 'VLMC OBS source stamps a consumer heartbeat each render'
+# VLMC plugin can be uninstalled from the ViewLab UI if the user prefers direct capture.
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'UninstallViewLabMirrorPlugin_Click' 'UI exposes an uninstall action for the VLMC OBS plugin'
+Assert-Contains 'XRViewLab.UI\App.cs' '--uninstall-obs-plugin' 'elevated helper supports removing the VLMC OBS plugin'
 # OBS plugin load fix: install into the OBS install obs-plugins\64bit folder (the location OBS scans),
 # NOT the per-user %APPDATA%\obs-studio\plugins folder (which current OBS does not enumerate), and never
 # report "up to date" from a copy OBS ignores.
