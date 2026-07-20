@@ -4,7 +4,25 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-20
-**Current version:** 4.1.289 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.289.msi` (size 149,413,888 bytes; SHA-256
+**Current version:** 4.1.290 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.290.msi` (size 149,434,368 bytes; SHA-256
+`9A841F584E67DA30D1E2278BCC239B9BCE5C34C7173234F48E6C02FA443D2430`). **Integration of the two parallel VLMC work
+streams** (both OBS features now ship in one MSI). (A) **ViewLab Media Capture (VLMC) capture source** — the
+`ViewLabMirrorPlugin` OBS source now actually captures: `dllmain.cpp` gained a layer-side producer
+(`ProduceViewLabMirrorFrame`) that publishes the submitted eye(s) — game pixels + selected ViewLab features — into a
+ViewLab-owned triple-buffered shared-texture ring at `Local\XRViewLabMirrorSurface` (contract **v2/72 bytes**). The
+source was renamed to "ViewLab Media Capture" (`viewlab_media_capture`), gained per-eye request (left/right/SbS via
+`requestedEyeMode`), an OXRMC-equivalent **passthrough** when the "Show in OBS mirror" mask is empty (pure copy, no
+composite), **consumer-gated production** (`consumerHeartbeatTick` — no per-frame GPU work unless an OBS source is
+live), and a UI **Uninstall** button (`--uninstall-obs-plugin`). Also carries a simpler in-module `viewlab_media_filter`
+(colour + sharpen/smooth). (B) **ViewLab Enhancer filter** (from the parallel .289 stream) — the standalone
+`ViewLabStabilizerFilter` OBS filter (stabilize + colour-grade) is unchanged and still packaged. **NOTE — two colour
+filters now exist:** the Enhancer (full: stabilization + grade) supersedes the Media Filter (colour+sharpen only);
+consolidation is an open decision (see Known issues). Merge of `main` (Enhancer .289) into `dev` (capture .288) resolved
+cleanly — the two live in separate files. Full x64/Win32/broker/both-OBS-plugins/MSI build 0/0; payload validated;
+contract suite passes. **Pending live validation:** the capture source has NOT been confirmed in-headset yet (the prior
+failure was a stale install with no producer; this build has the producer — expect a `VLMC producer: publishing …`
+line in `ViewLab.log`).
+**Prior version:** 4.1.289 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.289.msi` (size 149,413,888 bytes; SHA-256
 `0039CC18E0F27D889C63D981AF818C2C8D24F9EFE45B2355A04D78F8EFB1B990`). Renamed to **ViewLab Enhancer** and the
 stabilizer made substantially more capable. **Rename:** user-facing product/OBS source is now "ViewLab Enhancer"
 (OBS id `viewlab_enhancer`); the on-disk project dir/DLL keep the historical `ViewLabStabilizerFilter` /

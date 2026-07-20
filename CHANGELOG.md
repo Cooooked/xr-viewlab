@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.1.290 - 2026-07-20
+
+Integrated the two parallel VLMC work streams into one MSI.
+
+- **ViewLab Media Capture (capture source).** The `ViewLabMirrorPlugin` OBS source now actually
+  captures: the OpenXR layer publishes the submitted eye(s) — game pixels plus selected ViewLab
+  overlays — into a ViewLab-owned triple-buffered shared-texture ring (`ProduceViewLabMirrorFrame`,
+  contract v2). Renamed to "ViewLab Media Capture"; adds per-eye mode (left/right/side-by-side),
+  an OXRMC-equivalent passthrough when no overlays are selected, consumer-gated production (no GPU
+  cost when OBS isn't capturing), and an Uninstall button. Also ships a simpler in-module colour/
+  sharpen filter.
+- **ViewLab Enhancer filter** (from the parallel .289 line) is unchanged and still packaged.
+- Note: two colour filters now coexist (Enhancer supersedes the Media Filter); consolidation TBD.
+- Live VR+OBS validation of the capture source still pending.
+
 ## 4.1.289 - 2026-07-20
 
 Renamed to **ViewLab Enhancer** and made the stabilizer much more capable.
