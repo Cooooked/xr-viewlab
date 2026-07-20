@@ -411,12 +411,20 @@ foreach ($key in @('hud_trace_x', 'hud_trace_y', 'hud_trace_scale', 'hud_trace_w
 }
 Assert-Contains 'MainWindow.xaml' 'Name="HudSafeMarginSlider"' 'HUD safe-margin control exists'
 Assert-Contains 'dllmain.cpp' 'hudClampToVisible' 'HUD clamps complete bounds to the visible eye rectangle'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 272' 'live state carries OBS mirror controls and the visor colour'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 11u\)' 'live state contract is version 11'
-Assert-Contains 'dllmain.cpp' 'snapshot\.version != 11' 'DLL consumes live-state contract version 11'
-# Item 21: versioned visor colour field (0x00RRGGBB) at the grown tail; default 0 = black.
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(268, visorColor & 0xFFFFFFu\)' 'live state publishes the visor colour at the v11 tail'
-Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(LiveStateBlock\)==272' 'native live-state struct grew to the v11 size'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 324' 'live state carries iRacing cue tuning, OBS mirror controls and the visor colour'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 12u\)' 'live state contract is version 12'
+Assert-Contains 'dllmain.cpp' 'snapshot\.version != 12' 'DLL consumes live-state contract version 12'
+# Item 21: versioned visor colour field (0x00RRGGBB); default 0 = black.
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(268, visorColor & 0xFFFFFFu\)' 'live state publishes the visor colour'
+Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(LiveStateBlock\)==324' 'native live-state struct grew to the v12 size'
+# Item 19 follow-up: every iRacing cue control applies live, not only at session restart. The v12 tail
+# carries the numeric tuning and iracingFlags gains bit4 race start, bit5 rear closing, bit6 Grip-O-Bar.
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'iracingRaceStart \? 16u' 'live state publishes the race-start enable bit'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(320, \(float\)irGripBarOpacity\)' 'live state publishes the grip-bar opacity at the v12 tail'
+Assert-Contains 'dllmain.cpp' 'iracingGripBar = \(stable\.iracingFlags & 64u\) != 0' 'native consumes the live grip-bar enable bit'
+Assert-Contains 'dllmain.cpp' 'iracingSpotterFade = std::clamp\(\(double\)stable\.irSpotterFade' 'native consumes live spotter tuning'
+Assert-Contains 'dllmain.cpp' 'iracingRearClosingOpacity = std::clamp\(\(double\)stable\.irRearClosingOpacity' 'native consumes live rear-closing opacity'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'CurrentIRacingSpotterColor\(\)' 'UI publishes the live spotter colour'
 Assert-Contains 'dllmain.cpp' 'cbuffer VisorColor : register\(b0\)' 'visor pixel shader reads the colour constant buffer'
 Assert-Contains 'dllmain.cpp' 'PSSetConstantBuffers\(0, 1, &g_d3d11Mask.visorColorCb\)' 'visor draw binds the visor colour buffer'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'VisorMaskColorKey = "mask_color"' 'UI persists the visor colour key'
@@ -828,13 +836,22 @@ Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'new Rect\(0, 0, w, 24\)' 
 Assert-IniValue 'clock_widget_theme' '0'
 Assert-IniValue 'clock_widget_palette' '2'
 Assert-IniValue 'notify_palette' '0'
+# Item 19: iRacing cue geometry is single-source (shared header) so behavioral tests prove controls change output.
+Assert-Contains 'dllmain.cpp' 'viewlab::racing::SpotterWidthPx\(iracingSpotterWidth,w\)' 'native spotter width uses the shared cue-geometry header'
+Assert-Contains 'dllmain.cpp' 'viewlab::racing::SpotterBase\(iracingSpotterOpacity,iracingSpotterStrength\)' 'native spotter intensity uses the shared cue-geometry header'
+Assert-Contains 'dllmain.cpp' 'viewlab::racing::SpotterBandAlpha\(base,inward,iracingSpotterFade,true\)' 'native spotter fade uses the shared cue-geometry header'
+Assert-Contains 'dllmain.cpp' 'viewlab::racing::FlagBorderThickness\(iracingFlagWidth,minDim\)' 'native flag border uses the shared cue-geometry header'
+Assert-Contains 'dllmain.cpp' 'viewlab::racing::RearGlowHalfWidth\(wd, w\)' 'native rear-closing glow uses the shared cue-geometry header'
+Assert-Contains 'dllmain.cpp' 'viewlab::racing::GripBarWidth\(sev, w\)' 'native grip bar uses the shared cue-geometry header'
+Assert-Contains 'dllmain.cpp' 'viewlab::racing::GripSeverityBand\(sev\)' 'native grip colour band uses the shared cue-geometry header'
+Assert-Contains 'Tests\RenderPolicyFixtures.cpp' 'spotter: increasing width widens the glow' 'behavioral audit proves spotter controls change geometry'
 # Items 4/5/6: the three new iRacing cues have real desktop previews whose geometry matches the native
 # renderer (not just a generic edge placeholder).
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'void DrawIRacingCuePreviews\(DrawingContext dc, Rect crop\)' 'iRacing cues have a real preview renderer'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'halfW=\(0\.10\+0\.30\*_rearClosingPreview\)\*w\*0\.5' 'rear-closing preview width uses the native 0.10+0.30 mapping'
-Assert-Contains 'dllmain.cpp' 'halfW = \(0\.10f \+ 0\.30f \* wd\) \* w \* 0\.5f' 'rear-closing native width uses the same 0.10+0.30 mapping'
+Assert-Contains 'RacingCueGeometry.h' '0\.10 \+ 0\.30 \* width01' 'rear-closing native width uses the same 0.10+0.30 mapping (shared header)'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'barW=\(0\.10\+0\.35\*sev\)\*w\*0\.5' 'grip preview bar width uses the native 0.10+0.35 mapping'
-Assert-Contains 'dllmain.cpp' 'barW = \(0\.10f \+ 0\.35f \* sev\)' 'grip native bar width uses the same 0.10+0.35 mapping'
+Assert-Contains 'RacingCueGeometry.h' '0\.10 \+ 0\.35 \* severity01' 'grip native bar width uses the same 0.10+0.35 mapping (shared header)'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'MaskBeanEditor\.SetIRacingCuePreview\(raceStart, rearWidth' 'main editor drives the real iRacing cue previews'
 # Item 5: Race-start border light wired end-to-end (provider -> racing state -> native render + settings).
 Assert-Contains 'XRViewLab.UI\ViewLabEvents.cs' 'RaceStart,' 'race-start event kind exists'

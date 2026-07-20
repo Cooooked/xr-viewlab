@@ -55,7 +55,7 @@ Forbid $ui 'HudMaxPerRowCombo' 'obsolete maximum-per-row control remains despite
 $fixtures=Get-Content (Join-Path $Root 'Tests\RenderPolicyFixtures.cpp') -Raw
 Require $fixtures 'network probe reports RTT, loss and jitter truthfully' 'network rolling metrics lack an executable fixture'
 Require $fixtures 'three consecutive misses produce a disconnect warning' 'network disconnect policy lacks an executable fixture'
-Require $live '_view\.Write\(4, 11u\)' 'live mapping is not version 11'
+Require $live '_view\.Write\(4, 12u\)' 'live mapping is not version 12'
 Require $telemetryLive 'XRViewLabTelemetryConfigV1' 'versioned telemetry extension mapping is absent'
 foreach($offset in 192,196,200,204){Require $live "_view\.Write\($offset," "live mapping field at $offset is absent"}
 

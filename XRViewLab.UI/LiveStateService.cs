@@ -10,7 +10,7 @@ namespace XRViewLab.UI;
 internal sealed class LiveStateService : IDisposable
 {
     private const string Name = "Local\\XRViewLabLiveState";
-    private const int Size = 272;
+    private const int Size = 324;
     private const uint Magic = 0x534C4C56; // VLLS
     private MemoryMappedFile? _map;
     private MemoryMappedViewAccessor? _view;
@@ -20,7 +20,7 @@ internal sealed class LiveStateService : IDisposable
     {
         _map = MemoryMappedFile.CreateOrOpen(Name, Size, MemoryMappedFileAccess.ReadWrite);
         _view = _map.CreateViewAccessor(0, Size, MemoryMappedFileAccess.ReadWrite);
-        _view.Write(0, Magic); _view.Write(4, 11u); _view.Write(8, (uint)Size);
+        _view.Write(0, Magic); _view.Write(4, 12u); _view.Write(8, (uint)Size);
     }
 
     public void Publish(uint calibrationMask,
@@ -37,6 +37,11 @@ internal sealed class LiveStateService : IDisposable
         bool notifyEnabled, bool notifyShowIcon, bool notifyShowImage, double notifyX, double notifyY,
         double notifyScale, double notifyOpacity, double notifyDurationMs, uint notifyMaxVisible, uint notifyPrivacy,
         bool iracingEnabled, bool iracingLapPopup, bool iracingSpotterGlow, bool iracingFlagBorder,
+        bool iracingRaceStart, bool iracingRearClosing, bool iracingGripBar,
+        double irSpotterWidth, double irSpotterStrength, double irSpotterOpacity, double irSpotterFade, uint irSpotterColor,
+        double irFlagWidth, double irFlagOpacity,
+        double irRaceStartRedOpacity, double irRaceStartGreenOpacity, double irRaceStartGreenMs, double irRaceStartThickness,
+        double irRearClosingOpacity, double irGripBarOpacity,
         bool clockEnabled, bool sessionTimerEnabled, bool clock24Hour, double clockX, double clockY,
         double clockScale, double clockOpacity, uint clockTheme, uint clockPalette,
         IReadOnlyList<int> overlayToggleKeys,
@@ -64,7 +69,8 @@ internal sealed class LiveStateService : IDisposable
         _view.Write(144, (float)notifyX); _view.Write(148, (float)notifyY); _view.Write(152, (float)notifyScale);
         _view.Write(156, (float)notifyOpacity); _view.Write(160, (float)notifyDurationMs);
         _view.Write(164, notifyMaxVisible); _view.Write(168, notifyPrivacy);
-        _view.Write(172, (iracingEnabled ? 1u : 0u) | (iracingLapPopup ? 2u : 0u) | (iracingSpotterGlow ? 4u : 0u) | (iracingFlagBorder ? 8u : 0u));
+        _view.Write(172, (iracingEnabled ? 1u : 0u) | (iracingLapPopup ? 2u : 0u) | (iracingSpotterGlow ? 4u : 0u) | (iracingFlagBorder ? 8u : 0u)
+            | (iracingRaceStart ? 16u : 0u) | (iracingRearClosing ? 32u : 0u) | (iracingGripBar ? 64u : 0u));
         _view.Write(176, traceVisibilityMode == 0 ? 0u : 1u | (traceVisibilityMode == 2 ? 2u : 0u));
         _view.Write(180, (float)chOffsetX); _view.Write(184, (float)chOffsetY);
         _view.Write(188, topmostOverlays ? 1u : 0u);
@@ -77,6 +83,14 @@ internal sealed class LiveStateService : IDisposable
         _view.Write(260, obsMirrorVisibilityMask);
         _view.Write(264, clockPalette); // v10: clockTheme is the design; palette is colours only
         _view.Write(268, visorColor & 0xFFFFFFu); // v11: 0x00RRGGBB visor fill colour (0 = black)
+        // v12: iRacing cue tuning is live (was ini-only, applied on session restart).
+        _view.Write(272, (float)irSpotterWidth); _view.Write(276, (float)irSpotterStrength);
+        _view.Write(280, (float)irSpotterOpacity); _view.Write(284, (float)irSpotterFade);
+        _view.Write(288, irSpotterColor & 0xFFFFFFu);
+        _view.Write(292, (float)irFlagWidth); _view.Write(296, (float)irFlagOpacity);
+        _view.Write(300, (float)irRaceStartRedOpacity); _view.Write(304, (float)irRaceStartGreenOpacity);
+        _view.Write(308, (float)irRaceStartGreenMs); _view.Write(312, (float)irRaceStartThickness);
+        _view.Write(316, (float)irRearClosingOpacity); _view.Write(320, (float)irGripBarOpacity);
         Thread.MemoryBarrier();
         _view.Write(12, unchecked(++_generation));
     }

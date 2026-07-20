@@ -1,4 +1,5 @@
 #include "../RenderPolicy.h"
+#include "../RacingCueGeometry.h"
 #include "../ProjectionTopology.h"
 #include "../ClockWidget.h"
 #include "../NetworkProbe.h"
@@ -155,5 +156,25 @@ int main() {
     const PixelRect mapped=MapTextureBounds({.25f,.1f,.75f,.9f},2000,1000);
     Check(mapped.x==500&&mapped.y==100&&mapped.width==1000&&mapped.height==800,
         "legacy texture bounds map to current submitted texture dimensions");
+
+    // Behavioral audit (item 19): prove each iRacing cue control actually changes computed geometry/alpha,
+    // through the same single-source header the native renderer uses.
+    using namespace viewlab::racing;
+    const float vw = 2000.f;
+    Check(SpotterWidthPx(0.20, vw) > SpotterWidthPx(0.10, vw), "spotter: increasing width widens the glow");
+    Check(SpotterWidthPx(1.0, vw) <= vw * 0.35f + 0.01f, "spotter: width is clamped to a safe maximum");
+    Check(SpotterBase(0.9, 1.0) > SpotterBase(0.4, 1.0), "spotter: increasing opacity raises base intensity");
+    Check(SpotterBase(0.6, 1.5) > SpotterBase(0.6, 1.0), "spotter: increasing strength raises base intensity");
+    const float inwardInner = 0.5f / kSpotterBands; // brightest band for the left edge (near outer edge)
+    Check(SpotterBandAlpha(1.f, inwardInner, 4.0, true) < SpotterBandAlpha(1.f, inwardInner, 1.0, true),
+        "spotter: higher fade sharpens the falloff (lower alpha away from the peak)");
+    Check(std::abs(SpotterBandAlpha(1.f, 0.3f, 2.0, true) - SpotterBandAlpha(1.f, 0.7f, 2.0, false)) < 1e-6f,
+        "spotter: left and right edges are mirror images");
+    Check(RearGlowHalfWidth(0.9, vw) > RearGlowHalfWidth(0.2, vw), "rear-closing: closer car widens the top-centre glow");
+    Check(GripBarWidth(0.9, vw) > GripBarWidth(0.2, vw), "grip: higher severity widens the bar");
+    Check(GripSeverityBand(0.1) == 0 && GripSeverityBand(0.5) == 1 && GripSeverityBand(0.9) == 2,
+        "grip: severity maps to yellow/orange/red bands");
+    Check(FlagBorderThickness(0.10, 1000.f) > FlagBorderThickness(0.02, 1000.f), "flag: increasing width thickens the border");
+    Check(FlagBorderThickness(1.0, 1000.f) <= 1000.f * 0.12f + 0.01f, "flag: border thickness is clamped");
     return 0;
 }

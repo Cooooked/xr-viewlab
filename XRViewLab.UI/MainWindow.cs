@@ -2220,6 +2220,11 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			(uint)Math.Round(NotifyMaxSlider.Value), (uint)Math.Max(0, NotifyPrivacyCombo.SelectedIndex),
 			IRacingEnabledCheck.IsChecked == true, IRacingLapPopupCheck.IsChecked == true,
 			IRacingSpotterGlowCheck.IsChecked == true, IRacingFlagBorderCheck.IsChecked == true,
+			IRacingRaceStartCheck.IsChecked == true, IRacingRearClosingCheck.IsChecked == true, IRacingGripBarCheck.IsChecked == true,
+			IRacingSpotterWidthSlider.Value, IRacingSpotterStrengthSlider.Value, IRacingSpotterOpacitySlider.Value, IRacingSpotterFadeSlider.Value, CurrentIRacingSpotterColor(),
+			IRacingFlagWidthSlider.Value, IRacingFlagOpacitySlider.Value,
+			IRacingRaceStartRedOpacitySlider.Value, IRacingRaceStartGreenOpacitySlider.Value, IRacingRaceStartGreenMsSlider.Value, IRacingRaceStartThicknessSlider.Value,
+			IRacingRearClosingOpacitySlider.Value, IRacingGripBarOpacitySlider.Value,
 			ClockWidgetEnabledCheck.IsChecked==true,ClockSessionTimerCheck.IsChecked==true,Clock24HourCheck.IsChecked==true,
 			ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,ClockWidgetScaleSlider.Value,ClockWidgetOpacitySlider.Value,(uint)Math.Max(0,ClockThemeCombo.SelectedIndex),(uint)Math.Max(0,ClockPaletteCombo.SelectedIndex),
 			new[]{OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudTraceToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(ClockWidgetToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(StickyNoteToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(CrosshairToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(NotifyToggleKeyCombo.SelectedIndex)},
@@ -2626,15 +2631,19 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		_syncingControls = wasSyncing;
 	}
 
+	private uint CurrentIRacingSpotterColor() =>
+		((uint)Math.Round(IRacingSpotterRedSlider.Value) << 16)
+		| ((uint)Math.Round(IRacingSpotterGreenSlider.Value) << 8)
+		| (uint)Math.Round(IRacingSpotterBlueSlider.Value);
+
 	private void IRacingSpotterRgb_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
 		if (_loading || _syncingControls) return;
-		uint rgb = ((uint)Math.Round(IRacingSpotterRedSlider.Value) << 16)
-			| ((uint)Math.Round(IRacingSpotterGreenSlider.Value) << 8)
-			| (uint)Math.Round(IRacingSpotterBlueSlider.Value);
+		uint rgb = CurrentIRacingSpotterColor();
 		SyncIRacingSpotterColorControls(rgb);
 		WritePrivateProfileString("Settings", IRacingSpotterColorKey, rgb.ToString(CultureInfo.InvariantCulture), ConfigPath);
-		StatusText.Text = "Spotter glow colour saved; an active game picks it up at session start.";
+		PublishLiveState();
+		StatusText.Text = "Spotter glow colour applied live.";
 	}
 
 	private void IRacingSpotterColor_Apply(object sender, RoutedEventArgs e)
@@ -2645,7 +2654,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		{
 			WritePrivateProfileString("Settings", IRacingSpotterColorKey, rgb.ToString(CultureInfo.InvariantCulture), ConfigPath);
 			SyncIRacingSpotterColorControls(rgb);
-			StatusText.Text = "Spotter glow colour saved; an active game picks it up at session start.";
+			PublishLiveState();
+			StatusText.Text = "Spotter glow colour applied live.";
 		}
 		else StatusText.Text = "Enter a 6-digit hex colour, e.g. FF4500.";
 	}

@@ -4,14 +4,16 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-19
-**Current version:** 4.1.278 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.278.msi` (size 149,184,512 bytes; SHA-256
-`72D0DDC8B2CAAB47F359041F1DB9C93E79CB43BB186405F314C37E7533346B19`). Adds the Rear-Closing Pressure Cue and the
-Grip-O-Bar wired end-to-end (provider telemetry + per-car calibration -> racing state contract v2 -> native glow/bar
--> settings/persistence/preview), on top of 4.1.277's race-start light. Full WPF/broker/signed-identity/x64+Win32
-native/OBS-plugin/MSI build 0/0; extracted-payload validation passes; all 24 deterministic scripts pass. Live
-iRacing/headset validation pending.
-**Prior version:** 4.1.277 — Race-Start Border Light wired end-to-end (`dist/ViewLab-4.1.277.msi`).
-**Older:** 4.1.276 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.276.msi` (size 149,151,744 bytes; SHA-256
+**Current version:** 4.1.279 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.279.msi` (size 149,196,800 bytes; SHA-256
+`F9F1A371237724012660DFED71A879C554962A3B53DBD55B29D784CEC86E9563`). Adds real desktop previews for the three new
+iRacing cues (race-start border, rear-closing glow, Grip-O-Bar bar — same geometry as native), a single-source
+`RacingCueGeometry.h` shared by the native renderer and the deterministic fixture with a behavioral audit proving
+spotter/flag/rear/grip controls change computed geometry (item 19), and live iRacing cue tuning (live-state v12: the
+spotter/flag/race-start/rear/grip visual params are now applied live instead of only at session restart). Full
+WPF/broker/signed-identity/x64+Win32 native/OBS-plugin/MSI build 0/0; extracted-payload validation passes; all 24
+deterministic scripts pass. Live iRacing/headset validation pending.
+**Prior version:** 4.1.278 — Rear-Closing Pressure Cue + Grip-O-Bar wired end-to-end (`dist/ViewLab-4.1.278.msi`).
+**Older:** 4.1.277 race-start light; 4.1.276 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.276.msi` (size 149,151,744 bytes; SHA-256
 `B66D945C49A0589D48DA0C2CFF92DB8BF00E3BAC1C380AA2BAC70E7EEC2D0027`). Preview repairs: the crosshair now converges at
 the post-crop (crop/visor) centre rather than the full-lens box, and the Optical-centred checkbox is a content-only
 upward shim (crop, visor, crosshair and widgets shift up by 0.077 of frame height; the fixed 55:48 frame viewport,

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "HardwareTelemetry.h"
 #include "RenderPolicy.h"
+#include "RacingCueGeometry.h"
 #include "ProjectionTopology.h"
 #include "ViewLabBridge/BridgeCore.h"
 #include "ClockWidget.h"
@@ -686,7 +687,7 @@ struct LiveStateBlock {
     uint32_t notifyFlags;     // bit0 enabled, bit1 show icon, bit2 show image
     float notifyX, notifyY, notifyScale, notifyOpacity, notifyDurationMs;
     uint32_t notifyMaxVisible, notifyPrivacy; // privacy: 0 full, 1 title only, 2 app only
-    uint32_t iracingFlags;    // bit0 enabled, bit1 lap popup, bit2 spotter glow, bit3 flag border
+    uint32_t iracingFlags;    // bit0 enabled, bit1 lap popup, bit2 spotter glow, bit3 flag border; v12: bit4 race start, bit5 rear closing, bit6 Grip-O-Bar
     uint32_t traceFlags;      // v5: bit0 independent performance trace enabled
     float crosshairOffsetX, crosshairOffsetY; // normalized full-lens tangent coordinates
     uint32_t topmostFlags;    // v6: bit0 experimental topmost composition layer
@@ -696,9 +697,16 @@ struct LiveStateBlock {
     uint32_t obsMirrorVisibilityMask; // v9
     uint32_t clockPalette; // v10: clockTheme is now the layout design; palette is colours only
     uint32_t visorColor;   // v11: 0x00RRGGBB visor fill colour (0 = black, unchanged default)
+    // v12: iRacing cue tuning is live (previously ini-only, applied on session restart). The
+    // iracingFlags word gains bit4 race start, bit5 rear closing, bit6 Grip-O-Bar.
+    float irSpotterWidth, irSpotterStrength, irSpotterOpacity, irSpotterFade;
+    uint32_t irSpotterColor;  // 0x00RRGGBB
+    float irFlagWidth, irFlagOpacity;
+    float irRaceStartRedOpacity, irRaceStartGreenOpacity, irRaceStartGreenMs, irRaceStartThickness;
+    float irRearClosingOpacity, irGripBarOpacity;
 };
 #pragma pack(pop)
-static_assert(sizeof(LiveStateBlock)==272,"live state v11 contract size");
+static_assert(sizeof(LiveStateBlock)==324,"live state v12 contract size");
 constexpr uint32_t kLiveStateMagic = 0x534C4C56; // VLLS
 HANDLE g_liveStateMap = nullptr;
 const LiveStateBlock* g_liveState = nullptr;
@@ -825,7 +833,7 @@ void ConsumeLiveState() {
     ConsumeStickyNoteState();
     if (!g_liveState) { ConnectLiveState(); if (!g_liveState) return; }
     const LiveStateBlock snapshot = *g_liveState;
-    if (snapshot.magic != kLiveStateMagic || snapshot.version != 11 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
+    if (snapshot.magic != kLiveStateMagic || snapshot.version != 12 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
     MemoryBarrier();
     const LiveStateBlock stable = *g_liveState;
     if (stable.generation != snapshot.generation) return;
@@ -861,7 +869,18 @@ void ConsumeLiveState() {
     // Feature 3: notification render settings (content arrives via the separate mapping).
     if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Notifications))==0){notifyEnabled = (stable.notifyFlags & 1u) != 0;notifyX = std::clamp((double)stable.notifyX, 0.0, 1.0); notifyY = std::clamp((double)stable.notifyY, 0.0, 1.0);notifyScale = std::clamp((double)stable.notifyScale, 0.1, 3.0);notifyOpacity = std::clamp((double)stable.notifyOpacity, 0.1, 1.0);}
     // Generic racing presentation enables; event state arrives through its dedicated mapping.
-    if(!profileIRacingFeatureOverride){iracingEnabled = (stable.iracingFlags & 1u) != 0; iracingLapPopup = (stable.iracingFlags & 2u) != 0;iracingSpotterGlow = (stable.iracingFlags & 4u) != 0; iracingFlagBorder = (stable.iracingFlags & 8u) != 0;}
+    // v12: the cue tuning values also arrive live so slider drags apply without a session restart.
+    if(!profileIRacingFeatureOverride){
+        iracingEnabled = (stable.iracingFlags & 1u) != 0; iracingLapPopup = (stable.iracingFlags & 2u) != 0;iracingSpotterGlow = (stable.iracingFlags & 4u) != 0; iracingFlagBorder = (stable.iracingFlags & 8u) != 0;
+        iracingRaceStart = (stable.iracingFlags & 16u) != 0; iracingRearClosing = (stable.iracingFlags & 32u) != 0; iracingGripBar = (stable.iracingFlags & 64u) != 0;
+        iracingSpotterWidth = std::clamp((double)stable.irSpotterWidth, 0.03, 0.35); iracingSpotterStrength = std::clamp((double)stable.irSpotterStrength, 0.1, 2.0);
+        iracingSpotterOpacity = std::clamp((double)stable.irSpotterOpacity, 0.05, 1.0); iracingSpotterFade = std::clamp((double)stable.irSpotterFade, 0.25, 4.0);
+        iracingSpotterColor = stable.irSpotterColor & 0xFFFFFFu;
+        iracingFlagWidth = std::clamp((double)stable.irFlagWidth, 0.003, 0.12); iracingFlagOpacity = std::clamp((double)stable.irFlagOpacity, 0.05, 1.0);
+        iracingRaceStartRedOpacity = std::clamp((double)stable.irRaceStartRedOpacity, 0.05, 1.0); iracingRaceStartGreenOpacity = std::clamp((double)stable.irRaceStartGreenOpacity, 0.05, 1.0);
+        iracingRaceStartGreenMs = std::clamp((double)stable.irRaceStartGreenMs, 250.0, 15000.0); iracingRaceStartThickness = std::clamp((double)stable.irRaceStartThickness, 0.005, 0.12);
+        iracingRearClosingOpacity = std::clamp((double)stable.irRearClosingOpacity, 0.05, 1.0); iracingGripBarOpacity = std::clamp((double)stable.irGripBarOpacity, 0.05, 1.0);
+    }
     if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Clock))==0){clockWidgetEnabled=(stable.clockFlags&1u)!=0;clockSessionTimerEnabled=(stable.clockFlags&2u)!=0;clock24Hour=(stable.clockFlags&4u)!=0;clockWidgetX=std::clamp((double)stable.clockX,0.0,1.0);clockWidgetY=std::clamp((double)stable.clockY,0.0,1.0);clockWidgetScale=std::clamp((double)stable.clockScale,.1,2.0);clockWidgetOpacity=std::clamp((double)stable.clockOpacity,.1,1.0);clockWidgetTheme=std::clamp(stable.clockTheme,0u,3u);clockWidgetPalette=std::clamp(stable.clockPalette,0u,4u);}
     obsMirrorVisibilityMask = stable.obsMirrorVisibilityMask & kAllMirrorFeatures;
     for(size_t i=0;i<(size_t)OverlayFeatureId::Count;++i)if((profileOverlayOverrideMask&(1u<<(uint32_t)i))==0)g_overlayFeatureVisibility[i].toggleKey=(int)std::clamp(stable.overlayToggleKeys[i],0u,255u);
@@ -3406,7 +3425,7 @@ void DrawViewLabOverlaysToTexture(
     // flag state, so telemetry ticks cannot replay an animation or create an event storm.
     if (wantFlag) {
         const float cr=((g_racingStable.flagColor>>16)&255)/255.f,cg=((g_racingStable.flagColor>>8)&255)/255.f,cb=(g_racingStable.flagColor&255)/255.f;
-        const float a=(float)iracingFlagOpacity,th=std::clamp((float)iracingFlagWidth*minDim,2.f,minDim*.12f),inset=2.f;
+        const float a=(float)iracingFlagOpacity,th=viewlab::racing::FlagBorderThickness(iracingFlagWidth,minDim),inset=2.f;
         rectFill(l+inset,t+inset,rr_-inset,t+inset+th,cr,cg,cb,a); rectFill(l+inset,bb_-inset-th,rr_-inset,bb_-inset,cr,cg,cb,a);
         rectFill(l+inset,t+inset,l+inset+th,bb_-inset,cr,cg,cb,a); rectFill(rr_-inset-th,t+inset,rr_-inset,bb_-inset,cr,cg,cb,a);
         flushFlat(cr,cg,cb,a);
@@ -3448,7 +3467,7 @@ void DrawViewLabOverlaysToTexture(
         const uint32_t rc = g_racingStable.reserved1;
         const float op = ((rc >> 8) & 255) / 255.f, wd = ((rc >> 16) & 255) / 255.f, inten = ((rc >> 24) & 255) / 255.f;
         const float alpha = op * (0.35f + 0.65f * inten) * (float)iracingRearClosingOpacity;
-        const float halfW = (0.10f + 0.30f * wd) * w * 0.5f;
+        const float halfW = viewlab::racing::RearGlowHalfWidth(wd, w);
         const float cx = (l + rr_) * 0.5f, band = std::clamp(minDim * 0.05f, 4.f, minDim * 0.14f);
         for (int i = 0; i < 4; ++i) {          // stacked bands fading downward from the top edge
             const float f = 1.f - i / 4.f, a = alpha * f, hw = halfW * (0.7f + 0.3f * f);
@@ -3464,11 +3483,13 @@ void DrawViewLabOverlaysToTexture(
         const uint32_t gp = g_racingStable.gripState;
         const int dir = (gp >> 3) & 3; const float sev = ((gp >> 8) & 255) / 255.f;
         float cr, cg, cb;
-        if (sev < 0.34f) { cr = 1.f; cg = 0.85f; cb = 0.10f; }        // yellow
-        else if (sev < 0.67f) { cr = 1.f; cg = 0.50f; cb = 0.05f; }   // orange
-        else { cr = 1.f; cg = 0.15f; cb = 0.10f; }                    // red
+        switch (viewlab::racing::GripSeverityBand(sev)) {
+            case 0: cr = 1.f; cg = 0.85f; cb = 0.10f; break;          // yellow
+            case 1: cr = 1.f; cg = 0.50f; cb = 0.05f; break;          // orange
+            default: cr = 1.f; cg = 0.15f; cb = 0.10f; break;         // red
+        }
         const float alpha = (0.30f + 0.70f * sev) * (float)iracingGripBarOpacity;
-        const float barW = (0.10f + 0.35f * sev) * w * 0.5f, barH = std::clamp(minDim * 0.06f, 6.f, minDim * 0.16f);
+        const float barW = viewlab::racing::GripBarWidth(sev, w), barH = std::clamp(minDim * 0.06f, 6.f, minDim * 0.16f);
         const float y0 = (float)bb_ - barH - 2.f;
         for (int i = 0; i < 4; ++i) {          // stacked bands fading toward the inside edge
             const float f = 1.f - i / 4.f, a = alpha * f;
@@ -3484,11 +3505,11 @@ void DrawViewLabOverlaysToTexture(
         const uint32_t state=g_racingStable.spotterState;
         const bool left=state==1||state==3||state==4,right=state==2||state==3||state==5;
         const float cr=((iracingSpotterColor>>16)&255)/255.f,cg=((iracingSpotterColor>>8)&255)/255.f,cb=(iracingSpotterColor&255)/255.f;
-        const float width=std::clamp((float)iracingSpotterWidth*w,8.f,w*.35f),step=width/8.f,base=(float)(iracingSpotterOpacity*iracingSpotterStrength);
-        for(int i=0;i<8;++i){
-            const float inward=(i+.5f)/8.f;
-            if(left){const float a=base*powf(1.f-inward,(float)iracingSpotterFade);rectFill(l+i*step,(float)t,l+(i+1)*step,(float)bb_,cr,cg,cb,a);flushFlat(cr,cg,cb,a);}
-            if(right){const float a=base*powf(inward,(float)iracingSpotterFade);rectFill(rr_-width+i*step,(float)t,rr_-width+(i+1)*step,(float)bb_,cr,cg,cb,a);flushFlat(cr,cg,cb,a);}
+        const float width=viewlab::racing::SpotterWidthPx(iracingSpotterWidth,w),step=width/(float)viewlab::racing::kSpotterBands,base=viewlab::racing::SpotterBase(iracingSpotterOpacity,iracingSpotterStrength);
+        for(int i=0;i<viewlab::racing::kSpotterBands;++i){
+            const float inward=(i+.5f)/(float)viewlab::racing::kSpotterBands;
+            if(left){const float a=viewlab::racing::SpotterBandAlpha(base,inward,iracingSpotterFade,true);rectFill(l+i*step,(float)t,l+(i+1)*step,(float)bb_,cr,cg,cb,a);flushFlat(cr,cg,cb,a);}
+            if(right){const float a=viewlab::racing::SpotterBandAlpha(base,inward,iracingSpotterFade,false);rectFill(rr_-width+i*step,(float)t,rr_-width+(i+1)*step,(float)bb_,cr,cg,cb,a);flushFlat(cr,cg,cb,a);}
         }
     }
 
