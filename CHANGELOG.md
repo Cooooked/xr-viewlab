@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.292 - 2026-07-20
+
+- **Live visor editing.** Visor size, roundness, apex, width/height and editor drags now apply
+  in the headset immediately (they previously updated only the desktop preview and needed a game
+  restart; visor size wasn't even saved). The H/V crop resolution is still fixed at session start
+  by design. (Reported by testers on v142.)
+
 ## 4.1.291 - 2026-07-20
 
 One filter, and stabilization that actually stabilizes.

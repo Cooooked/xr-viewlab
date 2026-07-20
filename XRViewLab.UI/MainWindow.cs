@@ -1449,6 +1449,7 @@ public partial class MainWindow : Window
 			SyncMaskEditorFromSliders();
 			MaskRoundedCheck.IsChecked = true;
 			SaveGlobalSettings();
+			PublishLiveState();
 		}
 	}
 
@@ -1486,6 +1487,8 @@ public partial class MainWindow : Window
 		if (!_loading && !_syncingControls && MaskBeanEditor != null)
 		{
 			SyncMaskEditorFromSliders();
+			SaveGlobalSettings();
+			PublishLiveState();   // apply visor size live (was preview-only, never saved/published)
 		}
 	}
 
@@ -1532,6 +1535,7 @@ public partial class MainWindow : Window
 			SyncMaskEditorFromSliders();
 			_syncingControls = false;
 			SaveGlobalSettings();
+			PublishLiveState();
 		}
 	}
 
@@ -1549,6 +1553,7 @@ public partial class MainWindow : Window
 			SetSliderValue(MaskNoseSpreadXSlider, MaskBeanEditor.NoseSpreadX);
 			_syncingControls = false;
 			SaveGlobalSettings();
+			PublishLiveState();   // dragging the visor editor applies live
 		}
 	}
 
@@ -1558,6 +1563,7 @@ public partial class MainWindow : Window
 		{
 			SyncMaskEditorFromSliders();
 			SaveGlobalSettings();
+			PublishLiveState();
 		}
 	}
 
@@ -1747,6 +1753,9 @@ public partial class MainWindow : Window
 				SyncMaskEditorFromSliders();
 			}
 			SaveGlobalSettings();
+			// Publish so the running layer re-crops / redraws the mask live; previously H/V edits
+			// only hit the ini and needed a game restart to take effect (v55 updated live).
+			PublishLiveState();
 		}
 	}
 
@@ -1761,6 +1770,7 @@ public partial class MainWindow : Window
 				SyncMaskEditorFromSliders();
 			}
 			SaveGlobalSettings();
+			PublishLiveState();
 		}
 	}
 

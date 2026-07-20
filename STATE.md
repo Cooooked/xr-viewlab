@@ -4,7 +4,26 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-20
-**Current version:** 4.1.291 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.291.msi` (size 149,442,560 bytes; SHA-256
+**Current version:** 4.1.292 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.292.msi` (size 149,442,560 bytes; SHA-256
+`8C475BE361F653C867CCAD777C53DF6BD4BB5C53FF74C83F14EF797537BF1631`). **Live visor editing fix (tester report).**
+The visor-shape controls only updated the desktop preview — they never republished live state, and `MaskSizeSlider`
+didn't even persist — so visor size/roundness/apex/width/height edits (and editor drags) needed a game restart to take
+effect in-headset (hkguy6: "can't see the mask size change in realtime, v55 could"). All visor handlers
+(`MaskSizeSlider_Changed`, `MaskShapeSlider_Changed`, `MaskApexYSlider_Changed`, `MaskRoundnessSlider_Changed`,
+`MaskBeanEditor_ShapeChanged`, plus `MaskSlider_Changed`/`SplitCheck_Changed`) now `SaveGlobalSettings()` +
+`PublishLiveState()`, matching the existing visor "applied live" path. NOTE: the H/V **crop** (render resolution/FOV
+reported to the game) is fixed at session start by design and cannot change mid-session — only the visor mask redraws
+live. Full build 0/0; payload validated; contracts pass.
+**Known issues / open tester items (2026-07-20):** (1) **EAC "Untrusted system file" popup** on the unsigned layer DLL
+(loads for iRacing but Forefront won't hook + writes no logs) — needs Authenticode signing of the layer in build.ps1
+AND likely anti-cheat allowlisting; no signing cert wired yet. hkguy6's "UAC spam even with ViewLab closed" is this EAC
+popup (implicit layer loaded by every OpenXR app), not an app elevation loop (verified: nothing in the 1s poll timer or
+broker elevates). (2) **"Fovea centering" checkbox** Kinder misses was the retired `foveatedCenterCompensation` —
+the ALGORITHM was removed (it rotated eye poses → tilted/folded world on asymmetric crops), so restoring it means
+resurrecting known-buggy native code as an opt-in (default off) + headset revalidation; not done pending user go-ahead.
+(3) iRacing top/bottom "50→100" is the 4.1.253 split-crop rework changing value semantics (½-lens scaling); old configs
+need ×2 — consider a migration.
+**Prior version:** 4.1.291 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.291.msi` (size 149,442,560 bytes; SHA-256
 `879D03E32269A13C0587C2CE9B1E94000537FBF4958ABD2375304A52279D9C58`). **One filter, stronger stabilization.**
 (1) **Removed the redundant in-module `viewlab_media_filter`** (colour+sharpen only) from `ViewLabMirrorPlugin` — it
 duplicated the far more capable ViewLab Enhancer and caused "two filters" confusion (the user had added the wrong one,
