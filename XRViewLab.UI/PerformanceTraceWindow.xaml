@@ -24,12 +24,15 @@
       <CheckBox Name="BudgetGuides" Content="Frame-budget guides" IsChecked="True" Margin="14,0,5,0" Checked="SeriesChanged" Unchecked="SeriesChanged"/>
     </WrapPanel>
     <Border Grid.Row="3" Background="#171A1F" BorderBrush="#323740" BorderThickness="1" CornerRadius="3">
-      <Canvas Name="GraphCanvas" ClipToBounds="True" SizeChanged="GraphCanvas_SizeChanged" MouseWheel="GraphCanvas_MouseWheel"
+      <!-- Background MUST be non-null (Transparent) or the Canvas gets no mouse events over empty
+           areas, so wheel-zoom / drag-pan / hover only fire when exactly over a plotted line. -->
+      <Canvas Name="GraphCanvas" Background="Transparent" ClipToBounds="True" SizeChanged="GraphCanvas_SizeChanged" MouseWheel="GraphCanvas_MouseWheel"
               MouseLeftButtonDown="GraphCanvas_MouseLeftButtonDown" MouseLeftButtonUp="GraphCanvas_MouseLeftButtonUp"
+              MouseRightButtonDown="GraphCanvas_MouseRightButtonDown"
               MouseMove="GraphCanvas_MouseMove" MouseLeave="GraphCanvas_MouseLeave" Cursor="Cross"/>
     </Border>
     <Grid Grid.Row="4" Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <TextBlock Name="HoverText" Foreground="#D7DCE3" Text="Wheel to zoom · drag to pan · hover for exact values"/>
+      <TextBlock Name="HoverText" Foreground="#D7DCE3" Text="Wheel = zoom time · Ctrl+wheel = vertical scale · drag = pan · right-click = reset · hover for values"/>
       <TextBlock Grid.Column="1" Name="MarkerText" Foreground="#35EAD7"/>
     </Grid>
   </Grid>

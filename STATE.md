@@ -4,7 +4,17 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-20
-**Current version:** 4.1.293 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.293.msi` (size 149,442,560 bytes; SHA-256
+**Current version:** 4.1.294 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.294.msi` (SHA-256
+`3479C796597EB48240CE4B49EF90CE436FE37228EF40CB760D392334A2BE504E`). **DiagMon graph UI fixes.** (1) The Session
+Graph history window (`PerformanceTraceLibraryWindow`) now merges `DiagMonDarkStyles.xaml` so its DataGrid headers/
+cells/rows/selection match the dark theme (was WPF default light). (2) The Performance Trace graph viewer
+(`PerformanceTraceWindow`) navigation is fixed: root cause was the `GraphCanvas` had no `Background`, so a WPF canvas
+receives no mouse events over empty areas — pan/zoom/hover only fired directly over a plotted line. Set
+`Background="Transparent"`; added right-click reset (`GraphCanvas_MouseRightButtonDown`) and Ctrl+wheel vertical scale
+(`_yScale`, applied to yMax); wheel still zooms time, drag still pans. NOTE: latest **published GitHub release is still
+4.1.293** — publish 294 (gh release create) if it should supersede. The ProfileWindow theme mismatch the user also
+mentioned is a separate broader retheme (no DataGrid there), not done.
+**Prior version:** 4.1.293 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.293.msi` (size 149,442,560 bytes; SHA-256
 `E914D90277C49634D96DB0E2F9AE7CD4F9763C9CB699C516CE3F55E6C3847417`). **Foveated-centre compensation restored as an
 opt-in** (tester request — Kinder used it on iRacing; hkguy6/Kinder "recenter foveating gone"). It was retired in the
 4.1.11x era because the eye-pose pitch could read as a slight world tilt; it is back but **default OFF**. When enabled

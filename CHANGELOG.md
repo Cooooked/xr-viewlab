@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.294 - 2026-07-20
+
+- **Session Graph history** now uses the app's dark theme (grid headers, rows and selection were
+  showing WPF's default light styling).
+- **Performance Trace graph** navigation fixed: drag to pan, wheel to zoom time, right-click to
+  reset, and Ctrl+wheel to scale the vertical axis. (The canvas had no background so it wasn't
+  receiving mouse input over empty areas — only directly over a plotted line.)
+
 ## 4.1.293 - 2026-07-20
 
 - **Foveated re-centring is back (opt-in).** New "Recenter foveated rendering (split crop)"

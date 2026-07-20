@@ -20,6 +20,7 @@ public partial class PerformanceTraceWindow : Window
 	private Point _panOrigin;
 	private double _panStart, _panEnd;
 	private double? _hoverElapsed;
+	private double _yScale = 1.0;   // manual vertical zoom (Ctrl+wheel); 1 = auto-fit
 
 	private sealed record SeriesSpec(string Name, Func<PerformanceTraceSample, double> Value, CheckBox Toggle, Color Colour, bool Dashed = false);
 
@@ -68,7 +69,9 @@ public partial class PerformanceTraceWindow : Window
 		scaleValues.Sort();
 		double robust = scaleValues.Count == 0 ? 1 : scaleValues[Math.Clamp((int)(scaleValues.Count * .995), 0, scaleValues.Count - 1)];
 		double display = MedianVisible(first, last, s => s.DisplayMs);
-		double yMax = NiceCeiling(Math.Max(1, Math.Max(robust * 1.18, display > 0 ? display * 1.35 : 0)));
+		double baseMax = Math.Max(1, Math.Max(robust * 1.18, display > 0 ? display * 1.35 : 0));
+		// _yScale > 1 shrinks yMax so the traces appear taller (vertical zoom-in via Ctrl+wheel).
+		double yMax = NiceCeiling(Math.Max(0.1, baseMax / _yScale));
 		double X(double elapsed) => LeftMargin + (elapsed - _viewStart) / Math.Max(1, _viewEnd - _viewStart) * plotWidth;
 		double Y(double value) => TopMargin + (1 - Math.Clamp(value / yMax, 0, 1)) * plotHeight;
 
@@ -163,14 +166,19 @@ public partial class PerformanceTraceWindow : Window
 
 	private void ZoomIn_Click(object sender,RoutedEventArgs e)=>Zoom(.5,(_viewStart+_viewEnd)/2);
 	private void ZoomOut_Click(object sender,RoutedEventArgs e)=>Zoom(2,(_viewStart+_viewEnd)/2);
-	private void ResetView_Click(object sender,RoutedEventArgs e){_viewStart=_fullStart;_viewEnd=_fullEnd;_hoverElapsed=null;HoverText.Text="Wheel to zoom · drag to pan · hover for exact values";DrawGraph();}
+	private const string NavHint="Wheel = zoom time · Ctrl+wheel = vertical scale · drag = pan · right-click = reset · hover for values";
+	private void ResetView_Click(object sender,RoutedEventArgs e)=>ResetView();
+	private void GraphCanvas_MouseRightButtonDown(object sender,MouseButtonEventArgs e){ResetView();e.Handled=true;}
+	private void ResetView(){_viewStart=_fullStart;_viewEnd=_fullEnd;_yScale=1.0;_hoverElapsed=null;HoverText.Text=NavHint;DrawGraph();}
 	private void Zoom(double factor,double centre){double span=Math.Clamp((_viewEnd-_viewStart)*factor,25,_fullEnd-_fullStart);double ratio=(centre-_viewStart)/Math.Max(1,_viewEnd-_viewStart);_viewStart=centre-span*ratio;_viewEnd=_viewStart+span;ClampView();DrawGraph();}
 	private void ClampView(){double span=_viewEnd-_viewStart;if(_viewStart<_fullStart){_viewStart=_fullStart;_viewEnd=_viewStart+span;}if(_viewEnd>_fullEnd){_viewEnd=_fullEnd;_viewStart=_viewEnd-span;}}
-	private void GraphCanvas_MouseWheel(object sender,MouseWheelEventArgs e){double x=e.GetPosition(GraphCanvas).X;double ratio=Math.Clamp((x-LeftMargin)/Math.Max(1,GraphCanvas.ActualWidth-LeftMargin-RightMargin),0,1);Zoom(e.Delta>0?.72:1.38,_viewStart+ratio*(_viewEnd-_viewStart));}
+	private void GraphCanvas_MouseWheel(object sender,MouseWheelEventArgs e){
+		if((Keyboard.Modifiers&ModifierKeys.Control)!=0){_yScale=Math.Clamp(_yScale*(e.Delta>0?1.15:1/1.15),0.2,12);DrawGraph();return;}
+		double x=e.GetPosition(GraphCanvas).X;double ratio=Math.Clamp((x-LeftMargin)/Math.Max(1,GraphCanvas.ActualWidth-LeftMargin-RightMargin),0,1);Zoom(e.Delta>0?.72:1.38,_viewStart+ratio*(_viewEnd-_viewStart));}
 	private void GraphCanvas_MouseLeftButtonDown(object sender,MouseButtonEventArgs e){_panning=true;_panOrigin=e.GetPosition(GraphCanvas);_panStart=_viewStart;_panEnd=_viewEnd;GraphCanvas.CaptureMouse();}
 	private void GraphCanvas_MouseLeftButtonUp(object sender,MouseButtonEventArgs e){_panning=false;GraphCanvas.ReleaseMouseCapture();}
 	private void GraphCanvas_MouseMove(object sender,MouseEventArgs e){Point p=e.GetPosition(GraphCanvas);if(_panning){double dx=p.X-_panOrigin.X;double shift=-dx/Math.Max(1,GraphCanvas.ActualWidth-LeftMargin-RightMargin)*(_panEnd-_panStart);_viewStart=_panStart+shift;_viewEnd=_panEnd+shift;ClampView();DrawGraph();return;}double ratio=Math.Clamp((p.X-LeftMargin)/Math.Max(1,GraphCanvas.ActualWidth-LeftMargin-RightMargin),0,1);_hoverElapsed=_viewStart+ratio*(_viewEnd-_viewStart);DrawGraph();}
-	private void GraphCanvas_MouseLeave(object sender,MouseEventArgs e){if(!_panning){_hoverElapsed=null;HoverText.Text="Wheel to zoom · drag to pan · hover for exact values";DrawGraph();}}
+	private void GraphCanvas_MouseLeave(object sender,MouseEventArgs e){if(!_panning){_hoverElapsed=null;HoverText.Text=NavHint;DrawGraph();}}
 	private void PreviousMarker_Click(object sender,RoutedEventArgs e)=>SelectMarker(-1);
 	private void NextMarker_Click(object sender,RoutedEventArgs e)=>SelectMarker(1);
 	private void SelectMarker(int direction){if(_trace.Markers.Count==0){MarkerText.Text="No user markers captured.";return;}_markerIndex=(_markerIndex+direction+_trace.Markers.Count)%_trace.Markers.Count;var marker=_trace.Markers[_markerIndex];double span=Math.Min(_viewEnd-_viewStart,Math.Max(1000,(_fullEnd-_fullStart)/20));_viewStart=marker.ElapsedMs-span/2;_viewEnd=marker.ElapsedMs+span/2;ClampView();_hoverElapsed=marker.ElapsedMs;MarkerText.Text=$"Marker {marker.Number} · {FormatElapsed(marker.ElapsedMs)}";DrawGraph();}
