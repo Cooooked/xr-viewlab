@@ -263,6 +263,7 @@ public partial class MainWindow : Window
 		LoadAppProfiles();
 		VersionText.Text = CurrentVersion;
 		RefreshViewLabMirrorPluginStatus();
+		RefreshViewLabStabilizerPluginStatus();
 		UpdateResponsiveLayout();
 		UpdateFooterLayout();
 		VisualMasksPopup.Closed += (_, _) => _visualMasksPopupClosedAt = DateTime.UtcNow;
@@ -2127,6 +2128,146 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			StatusText.Text = "Plugin install failed: " + ex.Message;
 		}
 		RefreshViewLabMirrorPluginStatus();
+	}
+
+	// ViewLab Enhancer OBS filter — same install flow as the Mirror plugin: the bundled DLL is
+	// copied into OBS's install obs-plugins\64bit folder (the location OBS actually scans) via the
+	// generic elevated --install-obs-plugin self-relaunch. OBS is never launched or controlled.
+	private static string? ViewLabStabilizerPluginTargetPath
+	{
+		get
+		{
+			string? obs = TryFindObsInstallDirectory();
+			return obs == null ? null : Path.Combine(obs, "obs-plugins", "64bit", "viewlab-stabilizer.dll");
+		}
+	}
+
+	private static string? ViewLabStabilizerPluginBundledPath
+	{
+		get
+		{
+			string local = Path.Combine(ProcessDirectory, "ObsPlugin", "viewlab-stabilizer.dll");
+			if (File.Exists(local)) return local;
+			string installed = Path.Combine(ProgramFilesInstallDirectory, "ObsPlugin", "viewlab-stabilizer.dll");
+			return File.Exists(installed) ? installed : null;
+		}
+	}
+
+	private void RefreshViewLabStabilizerPluginStatus()
+	{
+		if (ViewLabStabilizerPluginStatusText == null || InstallViewLabStabilizerPluginButton == null) return;
+		// The Uninstall button is only meaningful once the DLL is actually present where OBS scans.
+		void SetUninstall(bool enabled)
+		{
+			if (UninstallViewLabStabilizerPluginButton == null) return;
+			UninstallViewLabStabilizerPluginButton.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+			UninstallViewLabStabilizerPluginButton.IsEnabled = enabled;
+		}
+		string? bundled = ViewLabStabilizerPluginBundledPath;
+		if (bundled == null)
+		{
+			InstallViewLabStabilizerPluginButton.IsEnabled = false;
+			SetUninstall(false);
+			ViewLabStabilizerPluginStatusText.Text = "Bundled plugin payload not found (ObsPlugin\\viewlab-stabilizer.dll). Reinstall ViewLab to restore it.";
+			return;
+		}
+		string? target = ViewLabStabilizerPluginTargetPath;
+		if (target == null)
+		{
+			InstallViewLabStabilizerPluginButton.IsEnabled = false;
+			InstallViewLabStabilizerPluginButton.Content = "Install ViewLab Enhancer";
+			SetUninstall(false);
+			ViewLabStabilizerPluginStatusText.Text = "OBS Studio was not found. Install OBS first, then reopen this to install the filter.";
+			return;
+		}
+		InstallViewLabStabilizerPluginButton.IsEnabled = true;
+		if (!File.Exists(target))
+		{
+			InstallViewLabStabilizerPluginButton.Content = "Install ViewLab Enhancer";
+			SetUninstall(false);
+			ViewLabStabilizerPluginStatusText.Text = "Not installed (OBS will not show the filter until you install it here).";
+			return;
+		}
+		// Installed: offer Uninstall alongside Reinstall/Update.
+		SetUninstall(true);
+		bool upToDate = TryFileSha256(bundled) is string bundledHash &&
+			TryFileSha256(target) == bundledHash;
+		InstallViewLabStabilizerPluginButton.Content = upToDate ? "Reinstall ViewLab Enhancer" : "Update ViewLab Enhancer";
+		ViewLabStabilizerPluginStatusText.Text = upToDate
+			? "Installed and up to date: " + target
+			: "Installed but OUTDATED — click to update, then restart OBS.";
+	}
+
+	private void UninstallViewLabStabilizerPlugin_Click(object sender, RoutedEventArgs e)
+	{
+		string? target = ViewLabStabilizerPluginTargetPath;
+		if (target == null || !File.Exists(target))
+		{
+			StatusText.Text = "ViewLab Enhancer is not installed in OBS.";
+			RefreshViewLabStabilizerPluginStatus();
+			return;
+		}
+		try
+		{
+			// Deleting from Program Files needs admin: relaunch ourselves elevated to remove it.
+			string exe = Environment.ProcessPath ?? throw new InvalidOperationException("ViewLab executable path is unavailable.");
+			using Process? helper = Process.Start(new ProcessStartInfo
+			{
+				FileName = exe,
+				Arguments = $"--remove-obs-plugin \"{target}\"",
+				UseShellExecute = true,
+				Verb = "runas",
+				WorkingDirectory = ProcessDirectory
+			});
+			helper?.WaitForExit();
+			bool ok = helper is { ExitCode: 0 } && !File.Exists(target);
+			StatusText.Text = ok
+				? "ViewLab Enhancer removed from OBS. Restart OBS to unload it."
+				: "Uninstall did not complete — administrator approval is required, and OBS must be closed if it locks the file.";
+		}
+		catch (Exception ex)
+		{
+			StatusText.Text = "Filter uninstall failed: " + ex.Message;
+		}
+		RefreshViewLabStabilizerPluginStatus();
+	}
+
+	private void InstallViewLabStabilizerPlugin_Click(object sender, RoutedEventArgs e)
+	{
+		string? bundled = ViewLabStabilizerPluginBundledPath;
+		if (bundled == null)
+		{
+			StatusText.Text = "ViewLab Enhancer payload is missing from this installation.";
+			return;
+		}
+		string? target = ViewLabStabilizerPluginTargetPath;
+		if (target == null)
+		{
+			StatusText.Text = "OBS Studio was not found; install OBS first.";
+			return;
+		}
+		try
+		{
+			string exe = Environment.ProcessPath ?? throw new InvalidOperationException("ViewLab executable path is unavailable.");
+			using Process? helper = Process.Start(new ProcessStartInfo
+			{
+				FileName = exe,
+				Arguments = $"--install-obs-plugin \"{bundled}\" \"{target}\"",
+				UseShellExecute = true,
+				Verb = "runas",
+				WorkingDirectory = ProcessDirectory
+			});
+			helper?.WaitForExit();
+			bool ok = helper is { ExitCode: 0 } && TryFileSha256(bundled) is string h && TryFileSha256(target) == h;
+			StatusText.Text = ok
+				? "ViewLab Enhancer installed into OBS. Restart OBS, then add it via a source's Filters → 'ViewLab Enhancer'."
+				: "Filter install did not complete — administrator approval is required, and OBS must be closed if it locks the file.";
+		}
+		catch (Exception ex)
+		{
+			StatusText.Text = "Filter install failed: " + ex.Message;
+		}
+		RefreshViewLabStabilizerPluginStatus();
 	}
 
 	private void ReviewCalibrationPack_Click(object sender, RoutedEventArgs e)

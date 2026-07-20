@@ -4,45 +4,59 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-20
-**Current version:** 4.1.288 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.288.msi` (size 149,200,896 bytes; SHA-256
-`AA2EB98D7978993C968F247A1E8556B3C2B02E6AE418DAE3C2967F06788A0562`). VLMC fidelity/overhead controls + uninstall.
-(1) **OXRMC-equivalent passthrough:** VLMC compositing now honours the SAME "Show in OBS mirror" mask as the OXRMC
-route (`obsMirrorVisibilityMask`); when the mask is 0 (overlay link off) the producer does a pure game-eye copy with
-**zero extra draw passes** — a maximum-fidelity / minimum-overhead direct-mirror fallback in case the composited path
-underperforms. (2) **No overhead without a live consumer:** contract v2 `reserved`→`consumerHeartbeatTick`; the OBS
-source stamps it every `video_render`, and the producer publishes ring geometry/handles every frame (so the source can
-still connect) but **skips the per-frame copy/composite/Flush entirely** unless a source is actively rendering (stale
->2 s ⇒ idle). No bootstrap deadlock: geometry is published independent of the consumer, the heavy GPU work is what's
-gated. (3) **Uninstall:** the Overlays menu now has an Uninstall button beside Install (enabled only when the plugin is
-present in OBS's `obs-plugins\64bit`), backed by an elevated `--uninstall-obs-plugin` helper that deletes the DLL +
-bundled LICENSE/README — lets the user revert to plain direct capture if VLMC is bad. Full x64/Win32/broker/OBS/MSI
-build 0/0; payload validated; contract suite passes (adds passthrough, consumer-gate, heartbeat and uninstall
-assertions). **Pending live validation unchanged:** no VR+OBS run yet — capture frame, per-eye switching, passthrough
-fidelity, the consumer-gate cadence and the media-filter effect all still need a real headset+OBS test.
-**Prior version:** 4.1.287 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.287.msi` (size 149,204,992 bytes; SHA-256
-`47BA11441802EC4DAAC8CC96331B447F5AD81616CA786418422293501B9AEEF9`). **ViewLab Media Capture (VLMC).** The OBS
-plugin is no longer a skeleton that captures nothing — the layer-side producer now feeds it. (1) **Producer
-(`dllmain.cpp`):** `ProduceViewLabMirrorFrame()` runs at the xrEndFrame capture point (same point the calibration
-suite uses, right after `ProcessCalibrationCaptureRequest`) and publishes the submitted eye(s) — game pixels PLUS
-every ViewLab feature — into a ViewLab-owned triple-buffered ring of shared D3D11 textures (`MISC_SHARED`) plus a
-control block at `Local\XRViewLabMirrorSurface`. Because ViewLab owns the whole path, nothing overwrites its drawing
-(the exact defect that makes the third-party OpenXR Mirror Capture route drop overlays). Overlays are composited onto
-the ring copy only when the direct plan didn't already draw them into the submitted eye (mirrors `CaptureLeftEyePixels`
-compositing conditions); `displayIndex`/`frameNumber`/`heartbeatTick` published after `Flush` so the consumer never
-samples a torn frame; ring + mapping torn down on session/device loss via `DisconnectViewLabMirror()`. (2) **Per-eye
-mode (contract v2, 72 bytes):** the consumer writes `requestedEyeMode` into the shared block (mapping opened
-read/write) and the producer publishes left / right / side-by-side accordingly via `AcquireSubmittedEye(viewIndex)`,
-double-wide ring for SbS, falling back to left on mono titles. (3) **Rename to ViewLab Media Capture:** OBS source id
-`viewlab_mirror_capture`→`viewlab_media_capture`, display/module names and UI install button/help text now say "ViewLab
-Media Capture"; physical DLL/folder/IPC-surface names deliberately unchanged for MSI/install stability. (4) **ViewLab
-Media Filter (`viewlab_media_filter`):** a new GPU effect-based OBS video filter registered by the same module —
-white balance, brightness, contrast, saturation, gamma and one sharpen(+)/smooth(−) control, effect compiled from an
-embedded string (single DLL, no data file). Intended to replace the LVK Video Stabilizer's colour/smoothing role;
-**temporal smoothing + true stabilization are NOT implemented** (deferred phase). The OXRMC (third-party) mirror path
-in `dllmain.cpp` was intentionally left vanilla. Full x64/Win32/broker/OBS/MSI build 0/0; payload validated; contract
-suite passes (adds VLMC source/filter identity + v2 eye-mode/72-byte-struct assertions). **Pending live validation:**
-no VR+OBS run yet — shared-handle open, on-screen frame, per-eye switching and the media filter's effect compile /
-visual result all need a real headset+OBS test.
+**Current version:** 4.1.289 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.289.msi` (size 149,413,888 bytes; SHA-256
+`0039CC18E0F27D889C63D981AF818C2C8D24F9EFE45B2355A04D78F8EFB1B990`). Renamed to **ViewLab Enhancer** and the
+stabilizer made substantially more capable. **Rename:** user-facing product/OBS source is now "ViewLab Enhancer"
+(OBS id `viewlab_enhancer`); the on-disk project dir/DLL keep the historical `ViewLabStabilizerFilter` /
+`viewlab-stabilizer.dll` names for build stability (invisible to users). **Stabilization upgrade:** replaced the
+single global translation block-match with a grid of **texture-gated feature blocks** (flat/black regions such as the
+visor are ignored via a variance gate; border-pinned matches rejected) fed into a least-squares **similarity fit**
+(`stab_fit_similarity`: translation + rotation + uniform scale, one outlier-rejection refit; <3 inliers falls back to
+mean translation) — so it now corrects head **roll** and **dolly/zoom**, not just pan. Rotation and zoom correction
+are independently toggleable (`Correct rotation` / `Correct zoom`). Each path parameter is low-passed CAUSALLY with
+**anti-windup** (`stab_track`) so it stays low-latency and never sticks at the crop limit; the output is re-framed via
+a centre rotate/scale/translate shader bounded by the crop budget (sampler CLAMP ⇒ worst case edge smear, never
+black). The image-enhancement pass (sharpness/saturation/vibrance/contrast/brightness/gamma) and the zero-cost
+passthrough are unchanged. Full WPF/broker/signed-identity/x64+Win32 native/mirror+enhancer OBS plugin/MSI build 0/0;
+MSI payload validated; contract suite passes. **Pending live validation:** in-OBS confirmation that the correction
+DIRECTION (translation/rotation/scale signs) matches LiveVisionKit — any inverted axis is a one-line sign flip in
+`stab_video_render`/`stab_track` usage.
+**Prior version:** 4.1.288 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.288.msi` (size 149,393,408 bytes; SHA-256
+`A0D37933E3923936AD9EFF274428672CB20AB5D32CC33BBAB5C84D2BFD81073E`). **ViewLab Stabilizer** expanded into a full
+VR image-enhancement filter + an Uninstall path. (1) **Image enhancement.** The filter's single output shader pass now
+also applies Sharpness (unsharp, GPU-branched out at 0), Saturation, Vibrance (boosts muted colours, protects vivid
+ones), Contrast, Brightness and Gamma on top of the low-latency stabilization re-framing — everything a VR streamer
+would grade over their mirror feed. All are OBS-side filter properties (NOT ViewLab ini keys). Neutral defaults, and
+`stab_image_active` makes the filter a true zero-cost passthrough (`obs_source_skip_video_filter`) when stabilization
+is off AND every adjustment is neutral. Stabilization stays deliberately low-latency: the path low-pass is CAUSAL
+(no buffered frame delay) and defaults were softened (smoothing 40, crop 8%) for a light touch. (2) **Uninstall.** The
+Overlays menu now shows an **Uninstall** button beside Install whenever the DLL is present at OBS's scanned path,
+backed by a new generic elevated `--remove-obs-plugin` App.cs handler (deletes the target DLL; OBS never launched or
+controlled). Full WPF/broker/signed-identity/x64+Win32 native/mirror+stabilizer OBS plugin/MSI build 0/0; MSI payload
+validated; contract suite passes. **Pending live validation:** in-OBS confirmation that the re-framing direction and
+feel match the LiveVisionKit stabilizer (sign flip in `stab_video_render` is the one-line fix if it amplifies), and a
+visual check of the enhancement controls. Investigation confirmed no pre-built OBS image-filter code existed to reuse
+(the saturation/sharpen hits in the tree are all inside the separate bundled ReShade in-headset framework).
+**Prior version:** 4.1.287 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.287.msi` (size 149,393,408 bytes; SHA-256
+`E33F4CA864DAC3FAD8C9352CEBC5BE82A738E8181E841F4F804A60CFFE0DFB68`). New **ViewLab Stabilizer** OBS filter.
+A standalone, dependency-free OBS video-filter plugin (`ViewLabStabilizerFilter/`, registered as
+`OBS_SOURCE_TYPE_FILTER` id `viewlab_stabilizer`, distinct DLL from `viewlab_mirror_capture`) that smooths shaky VR
+head-motion so a mirrored view is watchable. It applies to ANY source — the ViewLab Mirror Capture source or the
+third-party OpenXR Mirror Capture source — via a source's Filters menu. Modelled on the LiveVisionKit (LVK)
+Video-Stabilization filter. Pipeline: each frame renders the target into a small offscreen luma buffer read back to
+the CPU (`gs_texrender`→`gs_stagesurface`), a full-search block match (`stab_estimate`) finds the dominant
+translation (VR yaw/pitch reads as translation), the motion integrates into a cumulative path that a causal
+exponential low-pass tracks, and the residual jitter is cancelled by re-framing the output through a zoom+UV shader
+(`STAB_EFFECT`) bounded by the crop budget so borders never expose black; disabled = pass-through. Controls
+(Stabilization enabled / Smoothing 0–100 / Max crop 0–50%) are **OBS-side filter properties, NOT ViewLab ini keys**.
+Dependency-free like the Mirror plugin — every libobs entry point is runtime-resolved from `obs.dll` (MSVC-only, no
+OpenCV, no OBS SDK). `build.ps1` builds `viewlab-stabilizer.dll` into `dist\…\ObsPlugin\`, the MSI's `ObsPluginFiles`
+component packages it, and the Overlays menu's **Install ViewLab Stabilizer** button installs it per user into OBS's
+scanned `obs-plugins\64bit` folder via the existing generic elevated `--install-obs-plugin` flow (OBS never launched
+or controlled). Full WPF/broker/signed-identity/x64+Win32 native/mirror+stabilizer OBS plugin/MSI build 0/0; MSI
+payload validated (fresh hashes + Overlays markers match); contract suite passes. **Pending live validation:** in-OBS
+confirmation that the re-framing DIRECTION and feel match the LiveVisionKit stabilizer (if it ever amplifies shake
+instead of cancelling it, the correction sign in `stab_video_render` is a one-line flip).
 **Prior version:** 4.1.286 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.286.msi` (size 149,184,512 bytes; SHA-256
 `CE5C62F64FDA97E1E284574D8A4E02488A934A8CE6082F5C146B8814BD40CBF4`). Three connected rendering fixes (R49). (1) **Notification render quality:** cards were a fixed
 336×96 bitmap that got stretched (blurry, worse when scaled). `NotificationCardLayout` now separates the logical
@@ -134,9 +148,11 @@ native/OBS-plugin/MSI build 0/0; extracted-payload validation passes. 23 determi
 live validation remains pending.
 **Prior version:** 4.1.275 — per-app per-overlay inheritance, deterministic new-iRacing-cue logic, OBS
 "ViewLab Mirror Capture" identity (`dist/ViewLab-4.1.275.msi`).
-**Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
-AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
-remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
+**Branch workflow:** `dev` is the sole ordinary AI working branch; `main` is the integration branch, updated
+regularly from `dev` (fast-forward when `main` has not moved, otherwise merge). Task-specific worktree branches
+are fine and are deleted once merged into `main`. Experiment branches are created only at the user's explicit
+request. Pushing to the GitHub remote still requires the user confirming an in-headset test passed; force pushes,
+history rewrites and deleting unmerged branches require explicit approval.
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See

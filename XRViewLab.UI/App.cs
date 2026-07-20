@@ -50,9 +50,9 @@ public class App : Application
 				catch { Environment.Exit(1); }
 			}
 
-				// Elevated OBS-plugin uninstall: delete the ViewLab DLL (plus its bundled LICENSE/README
-				// if present) from OBS's obs-plugins/64bit folder. Missing files count as success (already
-				// gone). Exit code 0 = success, 1 = failure.
+				// Elevated OBS-plugin uninstall (VLMC capture plugin): delete the ViewLab DLL plus its
+				// bundled LICENSE/README from OBS's obs-plugins/64bit folder. Missing files count as
+				// success (already gone). Exit code 0 = success, 1 = failure.
 				if (args.Length >= 2 && args[0].Equals("--uninstall-obs-plugin", StringComparison.OrdinalIgnoreCase))
 				{
 					try
@@ -68,6 +68,18 @@ public class App : Application
 								if (File.Exists(p)) File.Delete(p);
 							}
 						}
+						Environment.Exit(0);
+					}
+					catch { Environment.Exit(1); }
+				}
+
+				// Elevated OBS-plugin uninstall (Enhancer/Stabilizer filter): delete the DLL from OBS's
+				// obs-plugins/64bit folder. Exit code 0 = removed or already absent, 1 = failure.
+				if (args.Length >= 2 && args[0].Equals("--remove-obs-plugin", StringComparison.OrdinalIgnoreCase))
+				{
+					try
+					{
+						if (File.Exists(args[1])) File.Delete(args[1]);
 						Environment.Exit(0);
 					}
 					catch { Environment.Exit(1); }

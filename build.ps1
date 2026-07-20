@@ -222,6 +222,16 @@ Copy-Item -Path $ObsPluginDll -Destination "$ObsPluginPublishDir\" -Force
 Copy-Item -Path (Join-Path $Root "ViewLabMirrorPlugin\LICENSE") -Destination (Join-Path $ObsPluginPublishDir "LICENSE.txt") -Force
 Copy-Item -Path (Join-Path $Root "ViewLabMirrorPlugin\README.md") -Destination "$ObsPluginPublishDir\" -Force
 
+Write-Host "Building ViewLab Stabilizer OBS filter (x64)..."
+$StabPluginProject = Join-Path $Root "ViewLabStabilizerFilter\ViewLabStabilizerFilter.vcxproj"
+$StabPluginDll = Join-Path $Root "ViewLabStabilizerFilter\x64\$Configuration\viewlab-stabilizer.dll"
+if (Test-Path $StabPluginDll) { Remove-Item -Force $StabPluginDll }
+Invoke-Native $MSBuild $StabPluginProject /p:Configuration=$Configuration /p:Platform=x64 /m
+if (!(Test-Path $StabPluginDll)) { throw "ViewLab Stabilizer OBS filter was not produced at $StabPluginDll" }
+Copy-Item -Path $StabPluginDll -Destination "$ObsPluginPublishDir\" -Force
+Copy-Item -Path (Join-Path $Root "ViewLabStabilizerFilter\LICENSE") -Destination (Join-Path $ObsPluginPublishDir "LICENSE-stabilizer.txt") -Force
+Copy-Item -Path (Join-Path $Root "ViewLabStabilizerFilter\README.md") -Destination (Join-Path $ObsPluginPublishDir "README-stabilizer.md") -Force
+
 Write-Host "Building OpenXR API layer (x64)..."
 $Dll64Expected = Join-Path $Root "x64\$Configuration\XR_APILAYER_cooooked_xrviewlab.dll"
 $Dll32Expected = Join-Path $Root "$Configuration\XR_APILAYER_cooooked_xrviewlab32.dll"
@@ -283,7 +293,7 @@ $PublishVersion = (Get-Item $PublishExe).VersionInfo.ProductVersion
 if ($PublishVersion -ne $version) {
     throw "Published executable version $PublishVersion does not match build version $version"
 }
-foreach ($FreshOutput in @($PublishExe, $BrokerExe, $BrokerPackagePath, $BrokerCertificatePath, $Dll64Src, $Dll32Src, $ObsPluginDll, $MsiSource)) {
+foreach ($FreshOutput in @($PublishExe, $BrokerExe, $BrokerPackagePath, $BrokerCertificatePath, $Dll64Src, $Dll32Src, $ObsPluginDll, $StabPluginDll, $MsiSource)) {
     if (!(Test-Path $FreshOutput)) { throw "Required fresh build output missing: $FreshOutput" }
     if ((Get-Item $FreshOutput).LastWriteTimeUtc -lt $BuildStartedUtc) {
         throw "Build output predates this build and may be stale: $FreshOutput"

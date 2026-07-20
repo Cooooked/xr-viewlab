@@ -1,46 +1,62 @@
 # Changelog
 
+## 4.1.289 - 2026-07-20
+
+Renamed to **ViewLab Enhancer** and made the stabilizer much more capable.
+
+- **Renamed** to **ViewLab Enhancer** (OBS source and ViewLab UI). The plugin file on disk keeps
+  its old `viewlab-stabilizer.dll` name so installs/updates stay stable — it's invisible in use.
+- **Smarter stabilization.** Instead of tracking one global up/down/left/right motion, it now
+  matches a grid of **texture-gated feature blocks** (flat areas and the black visor are ignored)
+  and fits a **similarity model** to them, so it corrects **head roll (rotation)** and
+  **dolly/zoom** as well as pan. Rotation and zoom correction each have their own on/off toggle.
+- **Still low-latency.** Every motion channel is smoothed causally (no frame delay) with
+  anti-windup so it never locks up at the crop edge, and re-framing stays within the crop budget.
+- Image enhancement (sharpness, saturation, vibrance, contrast, brightness, gamma) and the
+  zero-cost passthrough are unchanged.
+
 ## 4.1.288 - 2026-07-20
 
-VLMC fidelity/overhead controls and an uninstall path.
+**ViewLab Stabilizer** expanded into a full VR image-enhancement filter, plus an Uninstall button.
 
-- **OXRMC-equivalent passthrough.** VLMC compositing now honours the same "Show in OBS mirror"
-  mask as the OXRMC route. When the mask is empty (overlay link off), the producer copies the
-  game eye with no extra draw passes — a maximum-fidelity / minimum-overhead direct mirror
-  fallback in case the composited path underperforms.
-- **No overhead without a live consumer.** The OBS source stamps a heartbeat each render; the
-  producer publishes ring geometry every frame (so the source can connect) but skips the
-  per-frame copy/composite/Flush entirely unless a source is actively rendering. Contract v2's
-  spare field became `consumerHeartbeatTick`.
-- **Uninstall.** The Overlays menu now has an Uninstall button beside Install (enabled only when
-  the plugin is present), backed by an elevated `--uninstall-obs-plugin` helper that removes the
-  DLL + bundled LICENSE/README, so you can revert to plain direct capture.
-- Live VR+OBS validation still pending.
+- **Image enhancement.** The filter now also grades the feed in its single output pass:
+  **Sharpness** (unsharp; branched out on the GPU at 0), **Saturation**, **Vibrance**
+  (boosts muted colours while protecting already-vivid ones), **Contrast**, **Brightness**
+  and **Gamma** — the things a VR streamer wants over a mirror capture. All are OBS-side
+  filter properties (not ViewLab ini keys), all neutral by default.
+- **Low overhead / low latency.** Stabilization smoothing is causal (no buffered frame
+  delay = no added latency) and now light by default (smoothing 40, crop 8%). When
+  stabilization is off and every adjustment is neutral, the filter is a true zero-cost
+  passthrough.
+- **Uninstall.** An **Uninstall** button now appears next to Install (in the Overlays menu)
+  whenever the filter is installed, backed by a generic elevated `--remove-obs-plugin`
+  handler. OBS is never launched or controlled.
 
 ## 4.1.287 - 2026-07-20
 
-ViewLab Media Capture (VLMC): the OBS plugin now actually captures, plus a media filter.
+New **ViewLab Stabilizer** OBS filter.
 
-- **VLMC producer (`dllmain.cpp`).** `ProduceViewLabMirrorFrame()` runs at the xrEndFrame
-  capture point and publishes the submitted eye(s) — game pixels plus every selected ViewLab
-  feature — into a ViewLab-owned triple-buffered ring of shared D3D11 textures + a control block
-  at `Local\XRViewLabMirrorSurface`. ViewLab owns the whole path, so nothing overwrites its
-  drawing (unlike the third-party OpenXR Mirror Capture route). Overlays are composited onto the
-  ring only when the direct plan didn't already draw them; `displayIndex`/`frameNumber`/
-  `heartbeatTick` published after `Flush`; torn down on session/device loss.
-- **Per-eye mode (shared contract v2, 72 bytes).** The OBS source writes `requestedEyeMode`
-  into the shared block; the producer publishes left / right / side-by-side accordingly (double-
-  wide ring for SbS), falling back to left on mono titles.
-- **Renamed to ViewLab Media Capture.** OBS source id `viewlab_mirror_capture` →
-  `viewlab_media_capture`; display/module names and the UI install button/help text now read
-  "ViewLab Media Capture". Physical DLL/folder/IPC-surface names left unchanged for installer
-  stability.
-- **ViewLab Media Filter (`viewlab_media_filter`).** New GPU effect-based OBS video filter from
-  the same module: white balance, brightness, contrast, saturation, gamma and one sharpen/smooth
-  control (effect compiled from an embedded string, single DLL). Replaces the colour/smoothing
-  role of the LVK Video Stabilizer. Temporal smoothing and true stabilization are deferred.
-- The third-party OXRMC mirror path in `dllmain.cpp` was intentionally left vanilla.
-- Live VR+OBS validation still pending.
+- **What it is.** A standalone, dependency-free OBS video-filter plugin that smooths
+  shaky VR head-motion so a mirrored VR view is comfortable to watch on a stream or
+  recording. Add it via any source's Filters menu — it works on the ViewLab Mirror
+  Capture source **or** the third-party OpenXR Mirror Capture source. Modelled on the
+  LiveVisionKit (LVK) Video-Stabilization filter.
+- **How it works.** Each frame the filter renders its target into a small offscreen luma
+  buffer and reads it back to the CPU (`gs_texrender` → `gs_stagesurface`); a full-search
+  block match estimates the dominant translation (VR yaw/pitch shows up as translation);
+  the motion integrates into a cumulative path that a causal exponential low-pass tracks;
+  the residual jitter is cancelled by re-framing the output within a crop budget, so
+  intentional pans are followed but shake is removed and borders never expose black.
+- **Controls (OBS-side filter properties, not ViewLab ini keys):** Stabilization enabled,
+  Smoothing (0–100), Max crop (0–50%).
+- **Build & install.** Dependency-free like the ViewLab Mirror plugin — every libobs entry
+  point is resolved at runtime from `obs.dll` (MSVC-only, no OpenCV, no OBS SDK).
+  `build.ps1` builds `viewlab-stabilizer.dll` and ships it in `dist\…\ObsPlugin\`; the MSI
+  packages it; the Overlays menu's **Install ViewLab Stabilizer** button installs it per
+  user into OBS's scanned plugin folder via the existing elevated `--install-obs-plugin`
+  flow. OBS is never launched or controlled.
+- **Pending live validation:** in-OBS confirmation that the re-framing direction and feel
+  match the LiveVisionKit stabilizer.
 
 ## 4.1.286 - 2026-07-20
 
