@@ -235,7 +235,7 @@ and has clean contracts/fixtures plus WPF, broker, x64/Win32 native, signed iden
 extracted-payload validation. Build 4.1.224 additionally passes the full deterministic suite and fresh
 WPF, broker, signed identity, x64/Win32 native, MSI extraction, pinned PresentMon hash/notice validation;
 its DiagMon real-game CSV and live Trace-cap checks remain mandatory before release.
-**Publish state:** 4.1.293 published at the user's direction (2026-07-20): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.293 (latest release; in-app updater now offers it). The in-app updater reads GitHub *Releases* (not branch commits) via the `/releases` API — pushing to main/dev does NOT make the updater see a build; a Release with the `ViewLab-<ver>.msi` asset must be created (gh release create). Prior published release was 4.1.277.
+**Publish state:** 4.1.294 published at the user's direction (2026-07-20): https://github.com/Cooooked/xr-viewlab/releases/tag/v4.1.294 (latest release). Prior: 4.1.293, 4.1.277 (latest release; in-app updater now offers it). The in-app updater reads GitHub *Releases* (not branch commits) via the `/releases` API — pushing to main/dev does NOT make the updater see a build; a Release with the `ViewLab-<ver>.msi` asset must be created (gh release create). Prior published release was 4.1.277.
 
 ## Rear-closing and Grip-O-Bar wired end-to-end (implemented; live iRacing/headset validation pending, 2026-07-19)
 
