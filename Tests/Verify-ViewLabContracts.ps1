@@ -42,7 +42,9 @@ Assert-IniValue 'visor_hd' '0'
 Assert-IniValue 'visor_antialiasing' '0'
 Assert-IniValue 'visibility_mask_visor' '0'
 Assert-IniValue 'foveated_center_compensation' '0'
-Assert-NotContains 'dllmain.cpp' 'view\.pose\.orientation\s*=' 'crop never rotates the game eye pose'
+# The only place the eye pose may be rotated is the opt-in foveated-centre compensation, gated by
+# `if (foveatedCenterCompensation && ...)`. Pin that the rotation stays behind that flag (default off).
+Assert-Contains 'dllmain.cpp' 'if \(foveatedCenterCompensation &&' 'eye-pose rotation only happens under the opt-in foveated-centre gate'
 Assert-IniValue 'stencil_outer_edges_only' '1'
 Assert-IniValue 'crop_outer_edges_only' '1'
 Assert-IniValue 'verbose_logging' '0'
@@ -249,7 +251,11 @@ Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settin
 Assert-Contains 'dllmain.cpp' 'constexpr bool visorHD = false' 'HD visor is hardcoded off'
 Assert-Contains 'dllmain.cpp' 'constexpr bool visorAntialiasing = false' 'visor anti-aliasing is hardcoded off'
 Assert-Contains 'dllmain.cpp' 'bool cropOuterEdgesOnly = true' 'crop outer edges is hardcoded on'
-Assert-Contains 'dllmain.cpp' 'constexpr bool foveatedCenterCompensation = false' 'pose-rotating foveated centre compensation is retired'
+# Foveated centre compensation restored as an OPT-IN (default off): runtime flag, ini read, and the
+# pose-pitch to the crop centre live in ApplyXRViewLabFov. Default stays off (see ini assert above).
+Assert-Contains 'dllmain.cpp' 'foveatedCenterCompensation = ReadBoolSetting\(L"foveated_center_compensation", false\)' 'foveated centre compensation is opt-in, default off'
+Assert-Contains 'dllmain.cpp' 'view\.pose\.orientation = MultiplyQuaternion\(view\.pose\.orientation, PitchQuaternion\(pitchOffset\)\)' 'foveated centre compensation pitches the eye to the crop centre'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"foveated_center_compensation", FoveaCenterCheck' 'UI persists the foveated re-centring toggle'
 Assert-Contains 'dllmain.cpp' 'bool outerEdgeVisibilityMaskOnly = true' 'stencil outer edges only is hardcoded on'
 Assert-Contains 'dllmain.cpp' 'ReadProfileDword\(L"mask_outer_apex_y", profileOuterApexY\);' 'native reads per-app Apex Y'
 Assert-Contains 'dllmain.cpp' 'ReadProfileDword\(L"mask_inner_lower_y", profileInnerLowerY\);' 'native reads per-app Inner low'

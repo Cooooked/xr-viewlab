@@ -3,7 +3,7 @@
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
      xmlns:iis="http://schemas.microsoft.com/wix/IIsExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.292"
+           Language="1033" Version="4.1.293"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />

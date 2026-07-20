@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.293 - 2026-07-20
+
+- **Foveated re-centring is back (opt-in).** New "Recenter foveated rendering (split crop)"
+  checkbox under Split top/bottom. When on and your top/bottom crop is uneven, it re-aims each
+  eye at the centre of the cropped view so the headset's foveated (sharpest) rendering stays on
+  what you actually see. Default off; takes effect on the next game launch. Note: on some titles
+  the re-aim can read as a slight world tilt, which is why it's optional.
+
 ## 4.1.292 - 2026-07-20
 
 - **Live visor editing.** Visor size, roundness, apex, width/height and editor drags now apply

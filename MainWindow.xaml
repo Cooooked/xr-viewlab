@@ -396,8 +396,8 @@
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="0" />
                   <RowDefinition Height="0" />
-                  <RowDefinition Height="0" />
-                  <RowDefinition Height="0" />
+                  <RowDefinition Height="6" />
+                  <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Vertical" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="How much vertical view the game renders. Keep this generous to avoid LOD pop-in; use Visor Mask below for the visible border." />
                 <TextBox Name="TotalBox" Grid.Row="0" Grid.Column="2" TextChanged="RenderValue_Changed" />
@@ -417,6 +417,7 @@
                 <TextBlock Name="BottomHint" Grid.Row="14" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                 <Slider Name="BottomSlider" Grid.Row="16" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="1" ValueChanged="RenderSlider_Changed" />
                 <TextBlock Name="CombinedHint" Grid.Row="18" Grid.ColumnSpan="5" Visibility="Collapsed" />
+                <CheckBox Name="FoveaCenterCheck" Grid.Row="20" Grid.ColumnSpan="5" Content="Recenter foveated rendering (split crop)" ToolTip="When Split top/bottom is uneven, re-aims each eye at the centre of the cropped view so the runtime's foveated (sharpest) region stays on what you actually see. Applies on the next game launch. On some titles the re-aim can read as a slight world tilt." Checked="FoveaCenterCheck_Changed" Unchecked="FoveaCenterCheck_Changed" />
               </Grid>
             </Border>
             <!-- Render Options: lives in LeftColumnPanel for single/two-col; moved to RightColumnPanel in 3-col by UpdateResponsiveLayout -->

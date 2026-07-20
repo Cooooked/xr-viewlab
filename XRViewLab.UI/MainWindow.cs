@@ -1130,6 +1130,7 @@ public partial class MainWindow : Window
 		bool value2 = ReadBoolSetting("split_mode", fallback: false);
 		_viewlabEnabled = ReadBoolSetting("enabled", fallback: true);
 		SplitCheck.IsChecked = value2;
+		if (FoveaCenterCheck != null) FoveaCenterCheck.IsChecked = ReadBoolSetting("foveated_center_compensation", fallback: false);
 		TotalBox.Text = FormatScale(num);
 		TopBox.Text = FormatScale(Math.Clamp(ReadScaleSetting("top_tangent", num * 0.5) * 2.0, 0.0, 1.0));
 		BottomBox.Text = FormatScale(Math.Clamp(ReadScaleSetting("bottom_tangent", num * 0.5) * 2.0, 0.0, 1.0));
@@ -1772,6 +1773,17 @@ public partial class MainWindow : Window
 			SaveGlobalSettings();
 			PublishLiveState();
 		}
+	}
+
+	private void FoveaCenterCheck_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading) return;
+		SaveGlobalSettings();
+		// Read by the layer at session start (like the crop itself), so it takes effect on the
+		// next game launch rather than live.
+		StatusText.Text = FoveaCenterCheck.IsChecked == true
+			? "Foveated re-centring ON — takes effect next game launch."
+			: "Foveated re-centring OFF — takes effect next game launch.";
 	}
 
 	private bool _viewlabEnabled;
@@ -3245,6 +3257,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		Directory.CreateDirectory(ConfigDirectory);
 		WritePrivateProfileString("Settings", "enabled", valueOrDefault2 ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "split_mode", valueOrDefault ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", "foveated_center_compensation", FoveaCenterCheck?.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "total_render_height", FormatStorageScale(value), ConfigPath);
 		WritePrivateProfileString("Settings", "total_share", null, ConfigPath);
 		WritePrivateProfileString("Settings", "vertical_tangent", null, ConfigPath);

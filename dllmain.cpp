@@ -82,7 +82,11 @@ constexpr bool visorAntialiasing = false; // anti-aliasing removed
 // Log button) only ever shows meaningful init/config/error events. OFF by default.
 bool verboseLogging = false;
 bool splitMode = false;
-constexpr bool foveatedCenterCompensation = false; // retired: rotating game eye poses tilted asymmetric crops
+// Optional: on an asymmetric vertical (split) crop, symmetric-ise the vertical FOV and pitch the
+// eye to the crop centre, so the runtime's foveated (centre-dense) rendering stays centred on the
+// visible region. Opt-in (default off) — on some titles the pose pitch reads as a slight world
+// tilt, so it is only for users who want their foveation re-centred on a lopsided crop.
+bool foveatedCenterCompensation = false;
 bool visualMaskOnly = false;
 bool horizontalVisualMaskOnly = false;
 void Log(const char* fmt, ...);
@@ -1774,6 +1778,21 @@ XrQuaternionf NormalizeQuaternion(const XrQuaternionf& value) {
         value.y / length,
         value.z / length,
         value.w / length};
+}
+
+// Pitch (X-axis) rotation quaternion, and Hamilton product. Used by the optional foveated-centre
+// compensation to re-aim an eye at the centre of an asymmetric vertical crop.
+XrQuaternionf PitchQuaternion(float radians) {
+    const float halfAngle = radians * 0.5f;
+    return XrQuaternionf{std::sin(halfAngle), 0.0f, 0.0f, std::cos(halfAngle)};
+}
+
+XrQuaternionf MultiplyQuaternion(const XrQuaternionf& a, const XrQuaternionf& b) {
+    return NormalizeQuaternion(XrQuaternionf{
+        a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+        a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z});
 }
 
 void ReleaseD3D11MaskRenderer() {
@@ -5117,8 +5136,9 @@ void LoadConfig() {
     enabled = ReadBoolSetting(L"enabled", true);
     verboseLogging = ReadBoolSetting(L"verbose_logging", false);
     splitMode = ReadBoolSetting(L"split_mode", false);
-    // Foveated centre compensation is retired: it rotated the game's eye poses and made
-    // asymmetric vertical crops appear as a tilted/folded world. Crop/stencil outer edges remain on.
+    // Opt-in foveated-centre compensation (default off): re-centres the runtime's foveated
+    // rendering on an asymmetric vertical crop by pitching the eye to the crop centre.
+    foveatedCenterCompensation = ReadBoolSetting(L"foveated_center_compensation", false);
     visualMaskOnly = ReadBoolSetting(L"visual_mask_only", false);
     horizontalVisualMaskOnly = ReadBoolSetting(L"horizontal_visual_mask_only", false);
     // There is exactly ONE visor renderer (D3D11 draw into the game's eye textures).
@@ -5779,6 +5799,21 @@ void ApplyXRViewLabFov(uint32_t viewIndex, XrView& view, bool& compensated, floa
 
     compensated = false;
     pitchOffset = 0.0f;
+    // Opt-in: on an asymmetric split crop, present a symmetric vertical FOV and pitch the eye to
+    // the crop centre so the runtime keeps its foveated (centre-dense) rendering on the visible
+    // region instead of the original geometric centre.
+    if (foveatedCenterCompensation &&
+        splitMode &&
+        std::abs(desiredTopTan - desiredBottomTan) > 0.00001) {
+        const double symmetricHalfTan = (std::max)(0.00001, (desiredTopTan + desiredBottomTan) * 0.5);
+        const double centerTan = (desiredTopTan - desiredBottomTan) * 0.5;
+        pitchOffset = static_cast<float>(std::atan(centerTan));
+        view.fov.angleUp = static_cast<float>(std::atan(symmetricHalfTan));
+        view.fov.angleDown = -static_cast<float>(std::atan(symmetricHalfTan));
+        view.pose.orientation = MultiplyQuaternion(view.pose.orientation, PitchQuaternion(pitchOffset));
+        compensated = true;
+        return;
+    }
     view.fov.angleUp = static_cast<float>(std::atan(desiredTopTan));
     view.fov.angleDown = -static_cast<float>(std::atan(desiredBottomTan));
 }

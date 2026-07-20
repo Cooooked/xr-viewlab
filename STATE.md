@@ -4,7 +4,19 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-20
-**Current version:** 4.1.292 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.292.msi` (size 149,442,560 bytes; SHA-256
+**Current version:** 4.1.293 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.293.msi` (size 149,442,560 bytes; SHA-256
+`E914D90277C49634D96DB0E2F9AE7CD4F9763C9CB699C516CE3F55E6C3847417`). **Foveated-centre compensation restored as an
+opt-in** (tester request — Kinder used it on iRacing; hkguy6/Kinder "recenter foveating gone"). It was retired in the
+4.1.11x era because the eye-pose pitch could read as a slight world tilt; it is back but **default OFF**. When enabled
+AND split crop is asymmetric, `ApplyXRViewLabFov` symmetric-ises the vertical FOV and pitches each eye by
+`atan((top−bottom)/2)` (restored `PitchQuaternion`/`MultiplyQuaternion` helpers) so the runtime's foveated centre
+tracks the visible region. New runtime flag `foveatedCenterCompensation` ← ini `foveated_center_compensation`
+(default 0); UI checkbox **"Recenter foveated rendering (split crop)"** under the Split control, persisted globally,
+read by the layer at session start (applies next game launch, like the crop). Contracts updated: the old
+"crop never rotates the eye pose" guard is replaced by a gate assertion that any pose rotation stays behind the opt-in
+flag. Full build 0/0; payload validated. **Headset validation pending** — the tilt caveat means Kinder should eyeball
+it. **Still open:** layer code-signing for the EAC untrusted-DLL popup / Forefront no-hook (needs a cert).
+**Prior version:** 4.1.292 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.292.msi` (size 149,442,560 bytes; SHA-256
 `8C475BE361F653C867CCAD777C53DF6BD4BB5C53FF74C83F14EF797537BF1631`). **Live visor editing fix (tester report).**
 The visor-shape controls only updated the desktop preview — they never republished live state, and `MaskSizeSlider`
 didn't even persist — so visor size/roundness/apex/width/height edits (and editor drags) needed a game restart to take
