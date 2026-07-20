@@ -414,7 +414,7 @@ public partial class ProfileWindow : Window
 
 	private void LoadOverlayControls()
 	{
-		foreach (FrameworkElement element in FindVisualChildren<FrameworkElement>(this).Where(e => e.Tag is string tag && tag.Contains(':')))
+		foreach (FrameworkElement element in FindLogicalChildren<FrameworkElement>(this).Where(e => e.Tag is string tag && tag.Contains(':')))
 		{
 			string[] parts = ((string)element.Tag).Split(':', 2);
 			if (parts[0] == "inherit") continue; // inheritance toggles are handled separately
@@ -436,7 +436,7 @@ public partial class ProfileWindow : Window
 	private static readonly string[] InheritFeatures = { "clock", "hud", "trace", "notifications", "crosshair", "sticky", "obs", "iracing" };
 
 	private CheckBox? InheritCheckboxFor(string feature) =>
-		FindVisualChildren<CheckBox>(this).FirstOrDefault(c => c.Tag is string t && t == "inherit:" + feature);
+		FindLogicalChildren<CheckBox>(this).FirstOrDefault(c => c.Tag is string t && t == "inherit:" + feature);
 
 	private void SetInheritCheckbox(string feature, bool inherit)
 	{
@@ -450,7 +450,7 @@ public partial class ProfileWindow : Window
 
 	private void SetFeatureControlsEnabled(string feature, bool enabled)
 	{
-		foreach (FrameworkElement element in FindVisualChildren<FrameworkElement>(this)
+		foreach (FrameworkElement element in FindLogicalChildren<FrameworkElement>(this)
 			.Where(e => e.Tag is string tag && tag.StartsWith(feature + ":", StringComparison.Ordinal)))
 			element.IsEnabled = enabled;
 		if (feature == "hud" && ProfileHudWidgetList != null) ProfileHudWidgetList.IsEnabled = enabled;
@@ -517,13 +517,18 @@ public partial class ProfileWindow : Window
 		}
 	}
 
-	private static IEnumerable<T> FindVisualChildren<T>(System.Windows.DependencyObject root) where T : System.Windows.DependencyObject
+	// Overlay controls live inside collapsed Expanders and are hydrated during construction, before the
+	// window is laid out — so the VISUAL tree does not contain them yet. The LOGICAL tree (built by
+	// InitializeComponent) always does, regardless of expansion or realization, so tag-based hydration,
+	// enable-state and inheritance-checkbox discovery must walk it. Using the visual tree here was the
+	// root cause of inherited overlays loading blank until a section was toggled/expanded.
+	private static IEnumerable<T> FindLogicalChildren<T>(System.Windows.DependencyObject root) where T : System.Windows.DependencyObject
 	{
-		for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
+		foreach (object child in System.Windows.LogicalTreeHelper.GetChildren(root))
 		{
-			var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
-			if (child is T match) yield return match;
-			foreach (T descendant in FindVisualChildren<T>(child)) yield return descendant;
+			if (child is not System.Windows.DependencyObject dependencyChild) continue;
+			if (dependencyChild is T match) yield return match;
+			foreach (T descendant in FindLogicalChildren<T>(dependencyChild)) yield return descendant;
 		}
 	}
 

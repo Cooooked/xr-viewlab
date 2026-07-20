@@ -894,6 +894,11 @@ Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' '_overlayOverrides.ClearFeature\
 Assert-Contains 'ProfileWindow.xaml' 'Tag="inherit:hud"' 'per-app HUD section has a Use Global Values checkbox'
 Assert-Contains 'ProfileWindow.xaml' 'Tag="inherit:crosshair"' 'per-app crosshair section has a Use Global Values checkbox'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'prefix \+ "unit", widget.ShowUnit' 'per-app HUD overrides persist the per-metric unit setting'
+# Inherited-settings hydration fix: profile overlay controls (inside collapsed Expanders, hydrated before
+# layout) must be discovered via the LOGICAL tree, not the visual tree, or inherited overlays load blank.
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'private void LoadOverlayControls\(\)\s*\{\s*foreach \(FrameworkElement element in FindLogicalChildren' 'per-app hydration walks the logical tree so inherited overlays populate on open'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'FindLogicalChildren<FrameworkElement>\(this\)\s*\.Where\(e => e\.Tag is string tag && tag\.StartsWith\(feature' 'per-app inherited/enabled state also walks the logical tree'
+Assert-NotContains 'XRViewLab.UI\ProfileWindow.cs' 'FindVisualChildren' 'per-app editor no longer relies on the unrealized visual tree for hydration'
 # Item 22: calibration pack review is a read-only integrated workflow, not just documentation.
 Assert-Contains 'XRViewLab.UI\CalibrationPackReview.cs' 'internal static IReadOnlyList<PackReview> ReviewFolder\(string folder\)' 'calibration pack review exposes a folder review entry point'
 Assert-Contains 'XRViewLab.UI\CalibrationPackReview.cs' 'submitted LEFT-EYE texture at xrEndFrame' 'pack review states the PC-side left-eye scope limitation'
