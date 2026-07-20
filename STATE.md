@@ -148,9 +148,11 @@ native/OBS-plugin/MSI build 0/0; extracted-payload validation passes. 23 determi
 live validation remains pending.
 **Prior version:** 4.1.275 — per-app per-overlay inheritance, deterministic new-iRacing-cue logic, OBS
 "ViewLab Mirror Capture" identity (`dist/ViewLab-4.1.275.msi`).
-**Branch workflow:** `master` is the stable validated integration branch; `dev` is the sole ordinary
-AI working branch. Experiment branches are created only at the user's explicit request. The disconnected
-remote `main` history is not used. Force pushes, history rewrites and branch deletion require explicit approval.
+**Branch workflow:** `dev` is the sole ordinary AI working branch; `main` is the integration branch, updated
+regularly from `dev` (fast-forward when `main` has not moved, otherwise merge). Task-specific worktree branches
+are fine and are deleted once merged into `main`. Experiment branches are created only at the user's explicit
+request. Pushing to the GitHub remote still requires the user confirming an in-headset test passed; force pushes,
+history rewrites and deleting unmerged branches require explicit approval.
 **Validation state:** recent builds received repeated manual Pistol Whip and DiRT Rally 2 headset
 testing, but the old state log failed to attach every observation to an exact build. 4.1.103 is the
 narrow confirmed reference for its stencil repair, not the last headset-tested build. See
