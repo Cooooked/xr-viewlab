@@ -252,10 +252,6 @@ static uint32_t viewlab_mirror_get_height(void *data)
     return ctx->height;
 }
 
-/* Implemented in viewlab_media_filter.c: registers the "ViewLab Media Filter" video filter.
- * Resolves its own libobs entry points; returns false only if libobs is missing symbols. */
-extern bool viewlab_media_filter_register(void);
-
 /* ---- module entry points (stable OBS module ABI) -------------------------------------- */
 static obs_module_t *g_module;
 
@@ -300,10 +296,6 @@ __declspec(dllexport) bool obs_module_load(void)
     info.icon_type = OBS_ICON_TYPE_DESKTOP_CAPTURE;
     p_obs_register_source_s(&info, sizeof(info));
     p_blog(LOG_INFO, "[viewlab-mirror] module loaded (ViewLab Media Capture source registered, id=viewlab_media_capture)");
-    /* Register the ViewLab Media Filter too (independent of the capture source; a failure
-     * here must not unload the whole module, so the source stays available regardless). */
-    if (!viewlab_media_filter_register())
-        p_blog(LOG_WARNING, "[viewlab-mirror] ViewLab Media Filter not registered (libobs symbols unavailable)");
     return true;
 }
 

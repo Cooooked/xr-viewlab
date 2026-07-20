@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.1.291 - 2026-07-20
+
+One filter, and stabilization that actually stabilizes.
+
+- **Removed the duplicate filter.** The redundant in-module "ViewLab Media Filter" (colour +
+  sharpen only) is gone; the Mirror plugin is now the capture source only. All grading and
+  stabilization live in the single **ViewLab Enhancer** filter — no more two-filters confusion.
+- **Stronger, smoother stabilization (Enhancer):** sub-pixel block matching (removes integer
+  jitter), a denser feature grid for a more robust motion fit, a perceptual smoothing curve so
+  the middle of the slider is already steady, and defaults that actually stabilize (Steadiness 75,
+  Correction range 16%, up from 40 / 8%). Controls relabelled to make the tuning obvious. Still
+  low-latency (causal) and a zero-cost passthrough when off.
+
 ## 4.1.290 - 2026-07-20
 
 Integrated the two parallel VLMC work streams into one MSI.

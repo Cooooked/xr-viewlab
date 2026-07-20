@@ -127,12 +127,12 @@ static bool resolve_libobs(void)
 }
 
 /* ---- tunables ------------------------------------------------------------------------- */
-#define STAB_ANALYSIS_W 160     /* downscaled analysis width (height follows aspect)          */
+#define STAB_ANALYSIS_W 192     /* downscaled analysis width (height follows aspect)          */
 #define STAB_HB 10              /* feature-block half-size (block is (2*HB+1)^2)              */
-#define STAB_SEARCH 12          /* per-block search radius in analysis pixels                 */
+#define STAB_SEARCH 14          /* per-block search radius in analysis pixels                 */
 #define STAB_MARGIN (STAB_HB + STAB_SEARCH + 1)
-#define STAB_GX 6               /* max feature grid columns                                   */
-#define STAB_GY 4               /* max feature grid rows                                      */
+#define STAB_GX 8               /* max feature grid columns                                   */
+#define STAB_GY 5               /* max feature grid rows                                      */
 #define STAB_MAXBLK (STAB_GX * STAB_GY)
 #define STAB_VAR_MIN 12.0       /* min block luma variance to trust it (skips flat/black)     */
 
@@ -319,13 +319,30 @@ static bool stab_capture_luma(struct viewlab_stab *ctx, obs_source_t *target)
     return true;
 }
 
-/* Best local translation for the block centred at (bx,by): offset o where
- * cur[x,y] ~= prev[x+o,y+o]. Returns false if the block is untextured or the match is
- * ambiguous (best offset pinned to the search border). */
-static bool stab_block_match(const struct viewlab_stab *ctx, int bx, int by, int *ox, int *oy)
+/* Full SAD of the block centred at (bx,by) against prev shifted by (dx,dy). No early-out, so
+ * the value is usable for sub-pixel parabolic refinement of the minimum. */
+static long long stab_block_sad(const struct viewlab_stab *ctx, int bx, int by, int dx, int dy)
 {
     const uint32_t aw = ctx->aw;
     const uint8_t *cur = ctx->lum_cur, *prev = ctx->lum_prev;
+    long long sad = 0;
+    for (int y = by - STAB_HB; y <= by + STAB_HB; ++y) {
+        const uint8_t *crow = cur + (size_t)y * aw;
+        const uint8_t *prow = prev + (size_t)(y + dy) * aw + dx;
+        for (int x = bx - STAB_HB; x <= bx + STAB_HB; ++x)
+            sad += abs((int)crow[x] - (int)prow[x]);
+    }
+    return sad;
+}
+
+/* Best local translation for the block centred at (bx,by): fractional offset o where
+ * cur[x,y] ~= prev[x+o,y+o]. Integer minimum by SAD, then parabolic sub-pixel refinement on
+ * each axis (removes the 1-px quantisation that makes integer-only stabilization jitter).
+ * Returns false if the block is untextured or the best offset is pinned to the search border. */
+static bool stab_block_match(const struct viewlab_stab *ctx, int bx, int by, double *ox, double *oy)
+{
+    const uint32_t aw = ctx->aw;
+    const uint8_t *cur = ctx->lum_cur;
 
     /* texture gate: variance of the current block */
     long sum = 0, sumsq = 0;
@@ -346,22 +363,28 @@ static bool stab_block_match(const struct viewlab_stab *ctx, int bx, int by, int
     long long best = -1;
     for (int dy = -STAB_SEARCH; dy <= STAB_SEARCH; ++dy) {
         for (int dx = -STAB_SEARCH; dx <= STAB_SEARCH; ++dx) {
-            long long sad = 0;
-            for (int y = by - STAB_HB; y <= by + STAB_HB; ++y) {
-                const uint8_t *crow = cur + (size_t)y * aw;
-                const uint8_t *prow = prev + (size_t)(y + dy) * aw + dx;
-                for (int x = bx - STAB_HB; x <= bx + STAB_HB; ++x)
-                    sad += abs((int)crow[x] - (int)prow[x]);
-                if (best >= 0 && sad >= best)
-                    break;
-            }
+            long long sad = stab_block_sad(ctx, bx, by, dx, dy);
             if (best < 0 || sad < best) { best = sad; best_ox = dx; best_oy = dy; }
         }
     }
     if (abs(best_ox) == STAB_SEARCH || abs(best_oy) == STAB_SEARCH)
         return false;   /* pinned to border => unreliable */
-    *ox = best_ox;
-    *oy = best_oy;
+
+    /* Parabolic sub-pixel refinement: fit a parabola through the SAD minimum and its two
+     * neighbours on each axis, take the vertex. Neighbours are interior (best not on border). */
+    double subx = 0.0, suby = 0.0;
+    long long s0 = best;
+    long long sxm = stab_block_sad(ctx, bx, by, best_ox - 1, best_oy);
+    long long sxp = stab_block_sad(ctx, bx, by, best_ox + 1, best_oy);
+    double dxdenom = (double)(sxm + sxp - 2 * s0);
+    if (dxdenom > 1e-6) subx = clampd(0.5 * (double)(sxm - sxp) / dxdenom, -1.0, 1.0);
+    long long sym = stab_block_sad(ctx, bx, by, best_ox, best_oy - 1);
+    long long syp = stab_block_sad(ctx, bx, by, best_ox, best_oy + 1);
+    double dydenom = (double)(sym + syp - 2 * s0);
+    if (dydenom > 1e-6) suby = clampd(0.5 * (double)(sym - syp) / dydenom, -1.0, 1.0);
+
+    *ox = (double)best_ox + subx;
+    *oy = (double)best_oy + suby;
     return true;
 }
 
@@ -437,7 +460,7 @@ static struct stab_motion stab_estimate(struct viewlab_stab *ctx)
         int by = (ny == 1) ? (lo_y + hi_y) / 2 : lo_y + (hi_y - lo_y) * j / (ny - 1);
         for (int i = 0; i < nx; ++i) {
             int bx = (nx == 1) ? (lo_x + hi_x) / 2 : lo_x + (hi_x - lo_x) * i / (nx - 1);
-            int ox, oy;
+            double ox, oy;
             if (!stab_block_match(ctx, bx, by, &ox, &oy))
                 continue;
             /* content displacement = -offset; target point = src + displacement */
@@ -530,8 +553,8 @@ static void stab_get_defaults(obs_data_t *settings)
     p_obs_data_set_default_bool(settings, "enabled", true);
     p_obs_data_set_default_bool(settings, "stab_rotation", true);
     p_obs_data_set_default_bool(settings, "stab_zoom", false);
-    p_obs_data_set_default_double(settings, "smoothing", 40.0);   /* light by default */
-    p_obs_data_set_default_double(settings, "max_crop", 8.0);
+    p_obs_data_set_default_double(settings, "smoothing", 75.0);   /* clearly steady by default */
+    p_obs_data_set_default_double(settings, "max_crop", 16.0);    /* enough budget for VR shake */
     p_obs_data_set_default_double(settings, "sharpness", 0.0);
     p_obs_data_set_default_double(settings, "saturation", 100.0);
     p_obs_data_set_default_double(settings, "vibrance", 0.0);
@@ -546,13 +569,13 @@ static obs_properties_t *stab_get_properties(void *data)
     obs_properties_t *props = p_obs_properties_create();
 
     /* --- stabilization (low-latency; causal, no buffered frame delay) --- */
-    p_obs_properties_add_bool(props, "enabled", "Stabilization enabled (low-latency)");
-    p_obs_properties_add_bool(props, "stab_rotation", "  Correct rotation (head roll)");
-    p_obs_properties_add_bool(props, "stab_zoom", "  Correct zoom (dolly / breathing)");
+    p_obs_properties_add_bool(props, "enabled", "Stabilize (smooth VR head shake — low latency)");
+    p_obs_properties_add_bool(props, "stab_rotation", "  · also correct rotation (head roll / tilt)");
+    p_obs_properties_add_bool(props, "stab_zoom", "  · also correct zoom (dolly / breathing)");
     p_obs_properties_add_float_slider(props, "smoothing",
-        "  Smoothing (higher = steadier, more re-framing)", 0.0, 100.0, 1.0);
+        "  Steadiness — higher locks the view harder (0 = off, 75 default)", 0.0, 100.0, 1.0);
     obs_property_t *cr = p_obs_properties_add_float_slider(props, "max_crop",
-        "  Max crop (border budget used to hide shake)", 0.0, 50.0, 0.5);
+        "  Correction range — border zoomed in to hide shake (more = stronger)", 0.0, 50.0, 0.5);
     if (p_obs_property_float_set_suffix) p_obs_property_float_set_suffix(cr, " %");
 
     /* --- image enhancement (single cheap GPU pass; neutral values = no cost) --- */
@@ -630,7 +653,13 @@ static void stab_video_render(void *data, gs_effect_t *unused)
             uint8_t *tmp = ctx->lum_prev; ctx->lum_prev = ctx->lum_cur; ctx->lum_cur = tmp;
             ctx->has_prev = true;
         }
-        double alpha = clampd(1.0 - (ctx->smoothing / 100.0) * 0.985, 0.015, 1.0);
+        /* Perceptual smoothing: map the 0..100 slider geometrically onto the low-pass
+         * coefficient so the middle of the range is already clearly steady. alpha is the
+         * fraction of the raw path followed per frame — small alpha = long time constant =
+         * heavier stabilization. 0 -> 0.60 (follows almost everything), 100 -> 0.006 (very
+         * locked, ~160-frame time constant). */
+        double s01 = clampd(ctx->smoothing / 100.0, 0.0, 1.0);
+        double alpha = 0.60 * pow(0.006 / 0.60, s01);
         crop_frac = ctx->max_crop / 100.0;
         double aspect = (double)base_w / (double)base_h;
         double corner = 0.5 * sqrt(aspect * aspect + 1.0);   /* corner radius in square space */

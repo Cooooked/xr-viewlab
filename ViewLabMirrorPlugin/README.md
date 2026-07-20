@@ -1,15 +1,15 @@
 # ViewLab Media Capture (VLMC) — OBS Studio plugin
 
-ViewLab's own OBS module. It provides two things, both registered by the same DLL:
+ViewLab's own OBS capture source:
 
-1. **ViewLab Media Capture** source (`viewlab_media_capture`) — brings the ViewLab-composited
-   VR view (game frame plus the selected ViewLab overlays) into OBS. It fills the same role as
-   the third-party `OpenXR Mirror Capture` source but is driven by a ViewLab-owned producer, so
-   ViewLab's own drawing can never be overwritten (the defect the third-party route suffers).
-2. **ViewLab Media Filter** (`viewlab_media_filter`) — a GPU effect video filter you can add to
-   any source: white balance, brightness, contrast, saturation, gamma and a single
-   sharpen/smooth control. Intended to replace a stack of separate colour + denoise filters.
-   (Temporal smoothing and true stabilization are a later VLMC phase.)
+**ViewLab Media Capture** source (`viewlab_media_capture`) — brings the ViewLab-composited VR
+view (game frame plus the selected ViewLab overlays) into OBS. It fills the same role as the
+third-party `OpenXR Mirror Capture` source but is driven by a ViewLab-owned producer, so
+ViewLab's own drawing can never be overwritten (the defect the third-party route suffers).
+
+Colour grading, sharpening and stabilization are **not** here — they live in the separate
+**ViewLab Enhancer** filter (`ViewLabStabilizerFilter/`), which you add to this source (or any
+source) via its Filters menu.
 
 ## Architecture
 

@@ -921,10 +921,9 @@ Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "viewlab_medi
 Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'return "ViewLab Media Capture"' 'VLMC OBS source display name is the final product name'
 Assert-NotContains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "openxr' 'VLMC OBS source does not reuse the OpenXR Mirror Capture id'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' "add the 'ViewLab Media Capture' source" 'UI instructs the user to add the correctly-named source'
-# VLMC media filter identity + producer/consumer eye-mode contract (v2).
-Assert-Contains 'ViewLabMirrorPlugin\viewlab_media_filter.c' 'info\.id            = "viewlab_media_filter"' 'VLMC media filter registers a unique filter id'
-Assert-Contains 'ViewLabMirrorPlugin\viewlab_media_filter.c' 'info\.type          = OBS_SOURCE_TYPE_FILTER' 'VLMC media filter is an effect-based video filter'
+# VLMC eye-mode contract (v2). Colour/enhancement lives in the separate ViewLab Enhancer filter.
 Assert-Contains 'ViewLabMirrorPlugin\viewlab_mirror_contract.h' '#define VIEWLAB_MIRROR_VERSION 2u' 'VLMC shared surface contract is v2 (adds the eye-mode request channel)'
+Assert-NotContains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'viewlab_media_filter_register' 'the redundant in-module media filter was removed (Enhancer is the one filter)'
 Assert-Contains 'ViewLabMirrorPlugin\viewlab_mirror_contract.h' 'uint32_t requestedEyeMode;' 'VLMC contract carries the consumer->producer requested eye mode'
 Assert-Contains 'dllmain.cpp' 'void ProduceViewLabMirrorFrame\(\)' 'ViewLab layer implements the VLMC producer'
 Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(ViewLabMirrorSurface\) == 72' 'VLMC producer struct matches the v2 72-byte contract'

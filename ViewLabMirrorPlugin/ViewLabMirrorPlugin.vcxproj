@@ -43,7 +43,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="viewlab-mirror.c" />
-    <ClCompile Include="viewlab_media_filter.c" />
     <ClInclude Include="obs_abi.h" />
     <ClInclude Include="viewlab_mirror_contract.h" />
   </ItemGroup>

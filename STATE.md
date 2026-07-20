@@ -4,7 +4,21 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-20
-**Current version:** 4.1.290 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.290.msi` (size 149,434,368 bytes; SHA-256
+**Current version:** 4.1.291 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.291.msi` (size 149,442,560 bytes; SHA-256
+`879D03E32269A13C0587C2CE9B1E94000537FBF4958ABD2375304A52279D9C58`). **One filter, stronger stabilization.**
+(1) **Removed the redundant in-module `viewlab_media_filter`** (colour+sharpen only) from `ViewLabMirrorPlugin` — it
+duplicated the far more capable ViewLab Enhancer and caused "two filters" confusion (the user had added the wrong one,
+which is why stabilization looked absent). The Mirror plugin is now the capture source ONLY; all grading/stabilization
+lives in the one ViewLab Enhancer filter. (2) **ViewLab Enhancer stabilization made materially stronger:**
+**sub-pixel block matching** (parabolic SAD refinement — removes the 1-px quantisation that made it jitter), a
+**denser feature grid** (8×5, analysis 192px, search ±14) for a more robust similarity fit, a **perceptual smoothing
+curve** (geometric slider→low-pass map so mid-slider is already clearly steady; 0→α0.60 ≈ off, 100→α0.006 ≈ ~160-frame
+lock), and **defaults that actually stabilize** (Steadiness 75, Correction range 16% — was 40/8%). Controls relabelled
+so the tuning is obvious (Stabilize / rotation / zoom / Steadiness / Correction range). Still causal (no added latency),
+still a zero-cost passthrough when off. Full x64/Win32/broker/both-OBS-plugins/MSI build 0/0; payload validated;
+contracts pass. **Capture source is confirmed working in-headset** (user: "it's capturing"); stabilization strength
+still needs a live look with these new defaults.
+**Prior version:** 4.1.290 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.290.msi` (size 149,434,368 bytes; SHA-256
 `9A841F584E67DA30D1E2278BCC239B9BCE5C34C7173234F48E6C02FA443D2430`). **Integration of the two parallel VLMC work
 streams** (both OBS features now ship in one MSI). (A) **ViewLab Media Capture (VLMC) capture source** — the
 `ViewLabMirrorPlugin` OBS source now actually captures: `dllmain.cpp` gained a layer-side producer
