@@ -556,7 +556,10 @@ public partial class ProfileWindow : Window
 		if (sender is CheckBox check)
 		{
 			RecordOverlaySetting(check, check.IsChecked == true ? "1" : "0");
-			if (check == ProfileTraceEnabled)
+			// Only mirror the enable checkbox into the visibility-mode override for a genuine user edit.
+			// During initial hydration (_syncingControls / before _initialized) this must NOT run, or it
+			// creates a spurious "trace" override that makes the trace section load un-inherited.
+			if (check == ProfileTraceEnabled && _initialized && !_syncingControls)
 			{
 				_overlayOverrides.Set("trace", "hud_trace_visibility_mode", check.IsChecked == true ? Math.Max(1, ProfileTraceVisibility.SelectedIndex).ToString(CultureInfo.InvariantCulture) : "0");
 				ProfileTraceVisibility.SelectedIndex = check.IsChecked == true ? Math.Max(1, ProfileTraceVisibility.SelectedIndex) : 0;

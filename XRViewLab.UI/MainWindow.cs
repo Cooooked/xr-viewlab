@@ -1191,7 +1191,6 @@ public partial class MainWindow : Window
 		HudTraceHistorySlider.Value = ReadRangeSetting(HudTraceHistoryKey, 120.0, 30.0, 600.0);
 		HudAlarmOnlyCheck.IsChecked = ReadBoolSetting(HudAlarmOnlyKey, fallback: false);
 		HudSafeMarginSlider.Value = ReadRangeSetting(HudSafeMarginKey, 0.025, 0.0, 0.25);
-		HudClampCheck.IsChecked = ReadBoolSetting(HudClampKey, fallback: true);
 		foreach (HudWidgetOption widget in _hudWidgets)
 		{
 			widget.Enabled = ReadBoolSetting($"hud_widget_{widget.Id}_enabled", widget.Id is "cpu" or "gpu" or "sys" or "vr");
@@ -2258,7 +2257,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, FixedInnerBridgeWidth,
 			FixedInnerBridgeRise, FixedInnerBridgePeakX, FixedInnerBridgeSteepness, MaskNoseSpreadXSlider.Value,
 			HudEnabledCheck.IsChecked == true, Math.Max(0, HudTraceVisibilityCombo.SelectedIndex), HudXSlider.Value, HudYSlider.Value, HudScaleSlider.Value,
-			HudSafeMarginSlider.Value, HudClampCheck.IsChecked == true, HudAlarmOnlyCheck.IsChecked == true,
+			HudSafeMarginSlider.Value, true /* clamp-to-visible is an always-on default (no user control) */, HudAlarmOnlyCheck.IsChecked == true,
 			HudTraceSensitivitySlider.Value, HudTraceXSlider.Value, HudTraceYSlider.Value, HudTraceScaleSlider.Value,
 			HudTraceWidthSlider.Value, HudTraceHistorySlider.Value, ReadRangeSetting(HudAlarmHoldKey, 1500.0, 0.0, 10000.0),
 			widgetMask, widgetOrder, graphChannels, (uint)Math.Max(0,HudGraphModeCombo.SelectedIndex),
@@ -2750,7 +2749,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", HudTraceHistoryKey, HudTraceHistorySlider.Value.ToString("0", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudAlarmOnlyKey, HudAlarmOnlyCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", HudSafeMarginKey, HudSafeMarginSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", HudClampKey, HudClampCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", HudClampKey, "1", ConfigPath); // always-on default (no user control)
 		for (int order = 0; order < _hudWidgets.Count; ++order)
 		{
 			HudWidgetOption widget = _hudWidgets[order];

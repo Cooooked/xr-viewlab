@@ -4,8 +4,16 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-19
-**Current version:** 4.1.281 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.281.msi` (size 149,196,800 bytes; SHA-256
-`A70FDC8411AD6B2B12FF3C72728981FABCDD0EEFF8796F85D5F0176338E25D90`). Fixes the OBS ViewLab Mirror Capture plugin not
+**Current version:** 4.1.282 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.282.msi` (size 149,196,800 bytes; SHA-256
+`56A7A806741579B91661D053653A913883844178AFC8E4D4AF14B5BCD798C49B`). Per-app overlay editor consistency: (1) the
+Performance Trace "Use global values" checkbox now loads checked/inherited when there is no override — the
+ProfileTraceEnabled special-case no longer writes a spurious "trace" override during hydration (guarded by
+`_initialized && !_syncingControls`); (2) every overlay section (Clock, HUD, Trace, Sticky, Crosshair, Notifications)
+uses one shared small red "Reset" button (`OverlayResetButton` style), resetting only that overlay's position; (3)
+the redundant "applies live" boilerplate is removed (useful descriptions kept); (4) the one-off "Keep HUD inside
+visible region" checkbox is removed and clamp-to-visible is an always-on internal default. Full x64/Win32/broker/OBS/
+MSI build 0/0; payload validated; 23/24 deterministic scripts pass (env live-broker fixture).
+**Prior version:** 4.1.281 — Fixes the OBS ViewLab Mirror Capture plugin not
 loading: the installer wrote the DLL to `%APPDATA%\obs-studio\plugins\...`, which current OBS (verified: 32.0.4) does
 NOT enumerate — so OBS never loaded the module or showed the source, yet the UI reported "installed and up to date"
 purely from a hash match on that ignored copy. Fixed by installing into the OBS install `obs-plugins\64bit` folder

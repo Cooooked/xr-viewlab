@@ -904,6 +904,9 @@ Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' '_overlayOverrides.ClearFeature\
 Assert-Contains 'ProfileWindow.xaml' 'Tag="inherit:hud"' 'per-app HUD section has a Use Global Values checkbox'
 Assert-Contains 'ProfileWindow.xaml' 'Tag="inherit:crosshair"' 'per-app crosshair section has a Use Global Values checkbox'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'prefix \+ "unit", widget.ShowUnit' 'per-app HUD overrides persist the per-metric unit setting'
+# Regression: the ProfileTraceEnabled special-case must not create a "trace" override during hydration,
+# or the Performance Trace section loads with its "Use global values" box unchecked instead of inherited.
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'check == ProfileTraceEnabled && _initialized && !_syncingControls' 'trace enable does not create a spurious override during profile load'
 # Inherited-settings hydration fix: profile overlay controls (inside collapsed Expanders, hydrated before
 # layout) must be discovered via the LOGICAL tree, not the visual tree, or inherited overlays load blank.
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'private void LoadOverlayControls\(\)\s*\{\s*foreach \(FrameworkElement element in FindLogicalChildren' 'per-app hydration walks the logical tree so inherited overlays populate on open'

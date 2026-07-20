@@ -10,10 +10,16 @@ function Forbid($text,$pattern,$message){if($text-match$pattern){throw "Overlay 
 
 foreach($id in 'clock','hud','trace','sticky','crosshair','notifications'){Need $model "\[`"$id`"\]" "catalogue entry $id is absent"}
 foreach($control in 'ClockWidgetToggleKeyCombo','HudToggleKeyCombo','HudTraceToggleKeyCombo','StickyNoteToggleKeyCombo','CrosshairToggleKeyCombo','NotifyToggleKeyCombo','HudOpacitySlider','HudTraceOpacitySlider') { Need $xaml "Name=`"$control`"" "control $control is absent" }
-# Item 8: Performance Trace's dedicated Reset Position button was removed (per-slider right-click reset remains).
-foreach($tag in 'clock','hud','crosshair','notifications'){Need $xaml "Tag=`"$tag`"[^>]+OverlayResetPosition_Click" "reset-position control $tag is absent"}
-Forbid $xaml 'Tag="trace"[^>]+OverlayResetPosition_Click' 'Performance Trace no longer has a dedicated Reset Position button'
-Need $xaml 'Click="StickyNoteReset_Click"' 'per-note reset-position control is absent'
+# Standardized reset controls: every overlay section (incl. Performance Trace) has one small red "Reset"
+# button using the shared OverlayResetButton style; sticky uses its per-note reset with the same style.
+Need $xaml 'x:Key="OverlayResetButton"' 'shared overlay reset button style is absent'
+foreach($tag in 'clock','hud','trace','crosshair','notifications'){Need $xaml "Content=`"Reset`" Tag=`"$tag`"[^>]*OverlayResetPosition_Click[^>]*OverlayResetButton|Content=`"Reset`" Tag=`"$tag`"[^>]*OverlayResetButton[^>]*OverlayResetPosition_Click" "standardized Reset button for $tag is absent"}
+Forbid $xaml 'Content="Reset position"' 'old inconsistent "Reset position" wording remains'
+Need $xaml 'Click="StickyNoteReset_Click" Style="\{StaticResource OverlayResetButton\}"' 'per-note reset control does not use the shared reset style'
+# "applies live" boilerplate removed (all supported overlay settings apply live already).
+Forbid $xaml 'apply live|applies live' 'redundant "applies live" boilerplate remains'
+# One-off "Keep HUD inside visible region" checkbox removed; clamp-to-visible is an always-on internal default.
+Forbid $xaml 'Name="HudClampCheck"' 'the one-off HUD clamp checkbox remains'
 Need $ui 'LoadCommonOverlaySettings\(\)' 'common load path is absent'
 Need $ui 'SaveCommonOverlaySettings\(string id\)' 'common save path is absent'
 Need $ui 'LegacyToggleKey' 'legacy hotkey migration is absent'

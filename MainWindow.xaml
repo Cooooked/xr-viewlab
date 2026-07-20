@@ -60,6 +60,16 @@
         <Setter Property="BorderBrush" Value="#EC3038" />
         <Setter Property="MinWidth" Value="112" />
       </Style>
+      <!-- Shared small red position-reset button used identically by every overlay section. -->
+      <Style x:Key="OverlayResetButton" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="{StaticResource RedBrush}" />
+        <Setter Property="BorderBrush" Value="#EC3038" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Padding" Value="8,2" />
+        <Setter Property="Margin" Value="0,5,0,0" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="FontSize" Value="11" />
+      </Style>
       <Style x:Key="TitleButton" TargetType="{x:Type Button}">
         <Setter Property="Background" Value="#00FFFFFF" />
         <Setter Property="Foreground" Value="#B8B8B8" />
@@ -508,7 +518,7 @@
                   <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Width="280">
                       <TextBlock Text="CALIBRATION PATTERNS" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
-                      <TextBlock Text="Drawn into the submitted eye image. Calibration and HUD controls apply live." TextWrapping="Wrap" Width="280" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,8" />
+                      <TextBlock Text="Drawn into the submitted eye image." TextWrapping="Wrap" Width="280" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,8" />
                       <CheckBox Name="CalGridCheck" Content="64 px texture grid" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Measures geometry and texture-edge distortion." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
                       <CheckBox Name="CalRulerCheck" Content="Pixel ruler" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Counts exact pixels in a capture." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
                       <CheckBox Name="CalGratingsCheck" Content="Resolution gratings" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Shows where 1, 2, and 4 pixel detail stops resolving." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
@@ -577,8 +587,7 @@
                       <Slider Name="ClockWidgetScaleSlider" Minimum="0.1" Maximum="2" Value="1" Tag="1" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Whole-widget scale. Right-click to reset." />
                       <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="ClockWidgetOpacitySlider" Minimum="0.1" Maximum="1" Value="0.82" Tag="0.82" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Card and text opacity. Right-click to reset." />
-                      <Button Content="Reset position" Tag="clock" Click="OverlayResetPosition_Click" Padding="7,2" Margin="0,5,0,0" HorizontalAlignment="Left" />
-                      <TextBlock Text="Clock controls and show/hide bind apply live." Foreground="#72B88A" FontSize="9" Margin="0,3,0,0" />
+                      <Button Content="Reset" Tag="clock" Click="OverlayResetPosition_Click" Style="{StaticResource OverlayResetButton}" />
                         </StackPanel>
                       </Expander>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
@@ -595,7 +604,7 @@
                       <Slider Name="HudScaleSlider" Minimum="0.15" Maximum="3" Value="1" Tag="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Scales rings, icons, numbers, spacing, and padding together. Existing 0.5–3.0 sizes are preserved. Right-click to reset." />
                       <TextBlock Text="HUD opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudOpacitySlider" Minimum="0.1" Maximum="1" Value="0.7" Tag="0.7" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
-                      <Button Content="Reset position" Tag="hud" Click="OverlayResetPosition_Click" Padding="7,2" Margin="0,5,0,0" HorizontalAlignment="Left" />
+                      <Button Content="Reset" Tag="hud" Click="OverlayResetPosition_Click" Style="{StaticResource OverlayResetButton}" />
                       <CheckBox Name="HudAlarmOnlyCheck" Content="Alarm-only symbols (critical/unstable)" Foreground="#A8A8A8" Margin="0,6,0,0" ToolTip="Shows only widgets with a sustained critical or unstable state; recovery uses hysteresis and a hold." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                       <TextBlock Text="Widgets (enabled and order)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,2" />
                       <ListBox Name="HudWidgetList" Background="Transparent" BorderThickness="0" Padding="0">
@@ -674,7 +683,7 @@
                       <Slider Name="HudTraceScaleSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical size of the frame-pacing trace. Right-click to reset." />
                       <TextBlock Text="Graph opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceOpacitySlider" Minimum="0.1" Maximum="1" Value="0.7" Tag="0.7" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
-                      <TextBlock Text="Position, size and opacity sliders reset on right-click." Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" TextWrapping="Wrap" />
+                      <Button Content="Reset" Tag="trace" Click="OverlayResetPosition_Click" Style="{StaticResource OverlayResetButton}" />
                       <TextBlock Text="Graph width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceWidthSlider" Minimum="0.1" Maximum="1" Value="0.42" Tag="0.42" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Width of the frame-pacing trace as a fraction of the visible view. Right-click to reset." />
                       <TextBlock Text="Graph history (samples)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
@@ -683,7 +692,6 @@
                       <Slider Name="HudTraceSensitivitySlider" Minimum="0.5" Maximum="8" Value="2" Tag="2" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Deviation mode uses ±ms; absolute-ms mode uses this as a minimum scale before budget auto-scaling. Right-click to reset." />
                       <TextBlock Text="Safe margin" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudSafeMarginSlider" Minimum="0" Maximum="0.25" Value="0.025" Tag="0.025" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
-                      <CheckBox Name="HudClampCheck" Content="Keep HUD inside visible region" Foreground="#A8A8A8" Margin="0,4,0,0" Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                         </StackPanel>
                       </Expander>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
@@ -703,11 +711,11 @@
                           <Slider Minimum="0" Maximum="1" Value="{Binding X, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/><Slider Minimum="0" Maximum="1" Value="{Binding Y, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/>
                           <TextBlock Text="Scale / opacity" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0"/>
                           <Slider Minimum="0.5" Maximum="2.5" Value="{Binding Scale, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/><Slider Minimum="0.1" Maximum="1" Value="{Binding Opacity, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/>
-                          <Button Content="Reset position" Click="StickyNoteReset_Click" Padding="5,1" Margin="0,4,0,0" HorizontalAlignment="Left"/>
+                          <Button Content="Reset" Click="StickyNoteReset_Click" Style="{StaticResource OverlayResetButton}"/>
                         </StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate>
                       </ItemsControl>
                       <Button Content="Add sticky note" Click="StickyNoteAdd_Click" Padding="7,2" HorizontalAlignment="Left"/>
-                      <TextBlock Text="Each note has independent theme, position, scale and opacity; changes apply live." Foreground="#72B88A" FontSize="9" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                      <TextBlock Text="Each note has independent theme, position, scale and opacity." Foreground="#72B88A" FontSize="9" TextWrapping="Wrap" Margin="0,3,0,0"/>
                         </StackPanel>
                       </Expander>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1"/>
@@ -724,7 +732,7 @@
                       <Slider Name="CrosshairOffsetXSlider" Minimum="-1" Maximum="1" Value="0" ValueChanged="CrosshairPosition_Changed" MouseRightButtonUp="CrosshairOffset_ResetRightClick" />
                       <TextBlock Text="Vertical offset" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                       <Slider Name="CrosshairOffsetYSlider" Minimum="-1" Maximum="1" Value="0" ValueChanged="CrosshairPosition_Changed" MouseRightButtonUp="CrosshairOffset_ResetRightClick" />
-                      <Button Content="Reset position" Tag="crosshair" Style="{StaticResource RedButton}" Padding="8,2" Margin="0,4,0,2" HorizontalAlignment="Left" Click="OverlayResetPosition_Click" />
+                      <Button Content="Reset" Tag="crosshair" Style="{StaticResource OverlayResetButton}" Click="OverlayResetPosition_Click" />
                       <TextBlock Text="Size" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
                       <Slider Name="CrosshairSizeSlider" Minimum="0" Maximum="30" Value="5" Tag="5" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Gap (may be negative)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
@@ -778,7 +786,7 @@
                       <Slider Name="NotifyScaleSlider" Minimum="0.1" Maximum="3" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="NotifyOpacitySlider" Minimum="0.1" Maximum="1" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
-                      <Button Content="Reset position" Tag="notifications" Click="OverlayResetPosition_Click" Padding="7,2" Margin="0,5,0,0" HorizontalAlignment="Left" />
+                      <Button Content="Reset" Tag="notifications" Click="OverlayResetPosition_Click" Style="{StaticResource OverlayResetButton}" />
                       <TextBlock Text="Display duration (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="NotifyDurationSlider" Minimum="500" Maximum="15000" Value="3000" Tag="3000" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Max visible" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
