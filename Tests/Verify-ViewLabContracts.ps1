@@ -492,7 +492,10 @@ Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'private Rect FrameArea\(\) => 
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'area\.Top - OpticalContentShiftY \* area\.Height' 'optical-centred shifts headset content up, not the viewport'
 # Item 18: crosshair preview must use ONE uniform reference-pixel factor for both axes (square, unstretched),
 # matching the native uniform scale x eyeHeight/1080 mapping; per-axis X/Y factors previously stretched it.
-Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'double unit=Quest3PreviewGeometry\.TangentReferencePixelsUniform\(sizeReference,2\.0\*_crosshair\.VrScale\)[\s\S]*armY=armX[\s\S]*thickY=thickX' 'crosshair preview geometry is uniform (square, unstretched)'
+# A shared preview-only scale multiplier enlarges the desktop preview without changing persisted or native values.
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'CrosshairPreview\.Measure\(_crosshair\.Size, _crosshair\.Thickness, _crosshair\.Gap, _crosshair\.OutlineThickness, _crosshair\.Outline, baseUnit\)' 'BeanMaskEditor crosshair preview uses the shared CrosshairPreview.Measure helper (applies the shared preview-only scale)'
+Assert-Contains 'XRViewLab.UI\CrosshairPreview.cs' 'public const double PreviewDisplayScale = 6\.0' 'CrosshairPreview exposes a preview-only display scale'
+Assert-Contains 'XRViewLab.UI\CrosshairPreview.cs' 'internal static \(double arm, double thick, double gap, double outline\) Measure' 'CrosshairPreview centralises preview dimension calculation'
 Assert-Contains 'XRViewLab.UI\DiagMonDarkStyles.xaml' 'Style TargetType="ComboBoxItem"[\s\S]*Style TargetType="DataGridColumnHeader"[\s\S]*Style TargetType="DataGridCell"' 'DiagMon dropdowns and tables use explicit dark styles'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'OnPreviewMouseRightButtonDown[\s\S]*IsOverPreviewWidget[\s\S]*ResetViewToStartupFit' 'non-widget right-click resets shared preview navigation'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'ResetViewToStartupFit\(\)[\s\S]*_viewZoom=1\.0;_viewPan=new Vector\(\)' 'preview reset restores startup fit and clears pan'
@@ -519,7 +522,7 @@ Assert-Contains 'MainWindow.xaml' 'Name="CrosshairOffsetYSlider"[^>]*MouseRightB
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'CrosshairOffset_ResetRightClick[\s\S]*?CrosshairOffsetXSlider\.Value = 0[\s\S]*?CrosshairOffsetYSlider\.Value = 0' 'crosshair right-click handler resets either offset to zero'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, cropSupportsMaskGeometry \? crop : area\)' 'visor preview keeps one crosshair converged at the post-crop centre'
 Assert-NotContains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawCrosshair\(dc, rightEye\)' 'visor preview does not expose raw per-eye crosshair duplication'
-Assert-Contains 'XRViewLab.UI\CrosshairPreview.cs' '1\.125\*VrScale' 'Overlays crosshair preview uses the calibrated half-size display scale'
+Assert-Contains 'XRViewLab.UI\CrosshairPreview.cs' 'BaseUnit\(double vrScale\)[\s\S]*1\.125 \* vrScale' 'Overlays crosshair preview uses the calibrated half-size display scale via BaseUnit'
 foreach ($key in @('crosshair_enabled','crosshair_size','crosshair_gap','crosshair_thickness','crosshair_alpha','crosshair_color','crosshair_tstyle')) {
     Assert-Contains 'dllmain.cpp' $key "DLL reads crosshair key $key"
     Assert-Contains 'xr-viewlab.ini' $key "default ini carries crosshair key $key"

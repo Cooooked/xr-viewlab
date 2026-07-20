@@ -1,5 +1,24 @@
 # Regression memory
 
+## R47 — Crosshair preview rendered at real headset scale
+
+**Symptom:** The desktop crosshair preview appeared as a tiny black pixel and was not useful for
+judging style, colour, thickness, gap, outline or scale changes.
+
+**Cause:** `BeanMaskEditor.DrawCrosshair` and the standalone `CrosshairPreview` both computed arm,
+thickness and gap sizes from the real headset reference-pixel factor (`eyeHeight/1080` via
+`Quest3PreviewGeometry.TangentReferencePixelsUniform`, and the standalone `1.125*VrScale` factor).
+Those real-world sizes are only a few pixels on the desktop preview, so the crosshair was
+indistinguishable from a dot.
+
+**Contract:** The real `CrosshairSettings` (size, thickness, gap, outline thickness, alpha, scale,
+dot, T-style, colour) and the native renderer are unchanged. A preview-only
+`CrosshairPreview.PreviewDisplayScale` multiplier and shared `CrosshairPreview.Measure` helper
+apply only inside `CrosshairPreview.OnRender` and `BeanMaskEditor.DrawCrosshair`. Positioning still
+uses `Quest3PreviewGeometry.ResolveCentredOffset`. The preview enlargement is never persisted and
+does not affect headset rendering. Optical-centred transform and the permanent `+0.077` widget
+preview shim are untouched.
+
 ## R46 — Notification card pixel data not uploaded for non-Bold themes
 
 **Symptom:** Notifications stopped rendering in the headset after the theme/palette redesign. Test

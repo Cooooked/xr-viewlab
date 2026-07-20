@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.1.284 - 2026-07-20
+
+- Fix crosshair preview scaling. The desktop preview was rendering at the real
+  headset reference-pixel scale, so small crosshairs appeared as a tiny black
+  pixel. Added a preview-only `CrosshairPreview.PreviewDisplayScale` multiplier
+  and a shared `CrosshairPreview.Measure` helper used by both the standalone
+  `CrosshairPreview` control and `BeanMaskEditor.DrawCrosshair`. Real
+  `CrosshairSettings`, persisted keys and native rendering are unchanged;
+  positioning still uses `Quest3PreviewGeometry.ResolveCentredOffset`.
+- Preserve optical-centred preview transforms and the permanent `+0.077` widget
+  preview shim while enlarging the crosshair preview.
+- Add `Tests/CrosshairPreviewFixtures` and an `Invoke-CrosshairPreviewFixtures.ps1`
+  runner. The fixture asserts that tiny real settings still produce a clearly
+  visible preview, that the enlargement does not leak into persisted settings,
+  that native geometry is untouched, and that main/per-app previews share the
+  same scaling rule.
+
 ## 4.1.283 - 2026-07-20
 
 - Fix notification rendering after the theme/palette redesign. `NotificationService.ComposeCard`

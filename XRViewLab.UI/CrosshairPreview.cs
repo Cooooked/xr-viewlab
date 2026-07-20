@@ -8,6 +8,10 @@ namespace XRViewLab.UI;
 // construction; the only difference is the preview pixel scale chosen to remain legible.
 public sealed class CrosshairPreview : FrameworkElement
 {
+    // Preview-only display multiplier: real headset geometry is unchanged; the desktop preview is
+    // enlarged so small thickness/gap/size values remain clearly visible and draggable.
+    public const double PreviewDisplayScale = 6.0;
+
     public double CrosshairSize { get; set; } = 5;
     public double Gap { get; set; } = -2;
     public double Thickness { get; set; } = 1;
@@ -28,12 +32,27 @@ public sealed class CrosshairPreview : FrameworkElement
         Color=Color.FromRgb(s.R,s.G,s.B); InvalidateVisual();
     }
 
+    // Reference-pixel factor for the standalone 280x120 preview. This is purely preview-side and
+    // intentionally separate from the native eyeHeight/1080 scale.
+    internal static double BaseUnit(double vrScale) => Math.Max(0.75, 1.125 * vrScale);
+
+    // Centralised preview-dimension calculator used by both CrosshairPreview and BeanMaskEditor.
+    internal static (double arm, double thick, double gap, double outline) Measure(
+        double size, double thickness, double gap, double outlineThickness, bool outline, double baseUnit)
+    {
+        double unit = baseUnit * PreviewDisplayScale;
+        double arm = Math.Max(1, Math.Round(size * unit));
+        double thick = Math.Max(1, Math.Round(thickness * unit));
+        double g = Math.Round(gap * unit);
+        double outlineWidth = outline ? Math.Max(1, Math.Round(outlineThickness * unit)) : 0;
+        return (arm, thick, g, outlineWidth);
+    }
+
     protected override void OnRender(DrawingContext dc)
     {
         var bounds=new Rect(0,0,ActualWidth,ActualHeight);
         dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(28,31,36)),new Pen(new SolidColorBrush(Color.FromRgb(75,80,88)),1),bounds);
-        double unit=Math.Max(0.75,1.125*VrScale), arm=Math.Max(1,Math.Round(CrosshairSize*unit));
-        double thick=Math.Max(1,Math.Round(Thickness*unit)), gap=Math.Round(Gap*unit), outline=Outline?Math.Max(1,Math.Round(OutlineThickness*unit)):0;
+        var (arm, thick, gap, outline) = Measure(CrosshairSize, Thickness, Gap, OutlineThickness, Outline, BaseUnit(VrScale));
         double cx=Math.Floor(ActualWidth/2)+.5, cy=Math.Floor(ActualHeight/2)+.5, half=thick/2, inner=gap+half;
         Rect[] arms = TStyle
             ? [new(cx-inner-arm,cy-half,arm,thick),new(cx+inner,cy-half,arm,thick),new(cx-half,cy+inner,thick,arm)]

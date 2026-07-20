@@ -4,16 +4,21 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-20
-**Current version:** 4.1.283 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.283.msi` (size 149,188,608 bytes; SHA-256
-`7D23D35C160FD0171B1448E9A8EBBEE7DF43724B53F4A96E9F7607AFFD290CD1`). Fix notification rendering regression after
-theme/palette redesign: `NotificationService.ComposeCard` now pads every design footprint to the fixed 336×96
-shared-memory slot via `NotificationCardLayout.PadToSlot`; previously non-Bold themes produced a tightly-packed bitmap
-that `WriteBlock` silently skipped because the byte count did not match `CardPixels`, so the native layer received no
-valid pixel data. Completed the broker project file wiring (`NotificationCardLayout`, `NowPlayingLogic`) and
-main-UI excludes so `ViewLab.NotificationBroker.exe` builds again. Added deterministic
-`Tests/NotificationCardFixtures` covering the four theme footprints and `PadToSlot` correctness; updated the contract
-script to verify the centralized `DesignFootprint`. Full x64/Win32/broker/OBS/MSI build 0/0; payload validated; contract
-tests and new fixture pass.
+**Current version:** 4.1.284 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.284.msi` (size 149,188,608 bytes; SHA-256
+`6DD56150F8BB1983A19651B0666C18DB7108273BDC71FCBFC0C4C7D1F8F1C868`). Fix crosshair preview scaling: the desktop
+preview was rendering at the real headset reference-pixel scale, making small crosshairs a tiny black pixel.
+`CrosshairPreview` now exposes a shared preview-only `PreviewDisplayScale` multiplier and a centralised `Measure`
+helper used by both the standalone `CrosshairPreview` control and `BeanMaskEditor.DrawCrosshair`. Real
+`CrosshairSettings`, persisted keys and native rendering are unchanged; positioning still uses
+`Quest3PreviewGeometry.ResolveCentredOffset`; optical-centred transform and the `+0.077` widget preview shim are
+untouched. Added deterministic `Tests/CrosshairPreviewFixtures` verifying preview enlargement, no persisted-value
+leak, and shared scaling between main and per-app previews. Full x64/Win32/broker/OBS/MSI build 0/0; payload
+validated; contract tests, notification fixtures and new crosshair fixtures pass.
+**Prior version:** 4.1.283 — Fix notification rendering regression after theme/palette redesign:
+`NotificationService.ComposeCard` pads every design footprint to the fixed 336×96 shared-memory slot via
+`NotificationCardLayout.PadToSlot`; broker wiring completed; deterministic notification fixtures and contract
+updates. MSI `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.283.msi` (SHA-256
+`7D23D35C160FD0171B1448E9A8EBBEE7DF43724B53F4A96E9F7607AFFD290CD1`).
 **Prior version:** 4.1.282 — Per-app overlay editor consistency: (1) the
 Performance Trace "Use global values" checkbox now loads checked/inherited when there is no override — the
 ProfileTraceEnabled special-case no longer writes a spurious "trace" override during hydration (guarded by
