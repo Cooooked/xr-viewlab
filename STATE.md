@@ -67,6 +67,12 @@ persistence/migration/reset; contracts pin each UI→provider→racing-state→n
 x64/Win32 compile; all deterministic scripts pass. Live iRacing driving and in-headset appearance remain pending.
 The iRacing connection HUD icons (item 5 of the original list) and the OBS shared-frame producer remain not started.
 
+**Per-app scope decision (2026-07-19):** the iRacing cues (spotter, flag, lap/fuel, race-start, rear-closing,
+Grip-O-Bar) are intentionally NOT per-app / per-game overridable — they only ever render while iRacing is the running
+title, so a per-game override is meaningless. Their settings are global-only by design. Item 23 per-app parity
+therefore excludes the iRacing cues; the remaining per-app parity gap is limited to non-iRacing overlay options
+(e.g. HUD unit visibility, visor RGB) if desired. Do not add per-app iRacing controls.
+
 ## Race-start border light wired end-to-end (implemented; live iRacing/headset validation pending, 2026-07-19)
 
 The Race-Start Border Light (item 5) is now connected through the whole product, not just a state machine.
