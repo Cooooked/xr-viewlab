@@ -887,6 +887,16 @@ Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "viewlab_mirr
 Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'return "ViewLab Mirror Capture"' 'ViewLab OBS source display name is the final product name'
 Assert-NotContains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "openxr' 'ViewLab OBS source does not reuse the OpenXR Mirror Capture id'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' "add the 'ViewLab Mirror Capture' source" 'UI instructs the user to add the correctly-named source'
+# OBS plugin load fix: install into the OBS install obs-plugins\64bit folder (the location OBS scans),
+# NOT the per-user %APPDATA%\obs-studio\plugins folder (which current OBS does not enumerate), and never
+# report "up to date" from a copy OBS ignores.
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"obs-plugins", "64bit", "viewlab-mirror.dll"' 'plugin installs into the OBS install obs-plugins\\64bit folder OBS actually scans'
+Assert-NotContains 'XRViewLab.UI\MainWindow.cs' '"obs-studio", "plugins", "viewlab-mirror", "bin", "64bit"' 'plugin no longer installs to the per-user folder OBS ignores'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'internal static string\? TryFindObsInstallDirectory\(\)' 'OBS install directory is detected'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'Uninstall\\OBS Studio' 'OBS install directory detection reads the OBS uninstall registry key'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'Arguments = \$"--install-obs-plugin' 'plugin install elevates to write into the OBS install folder'
+Assert-Contains 'XRViewLab.UI\App.cs' '"--install-obs-plugin"' 'elevated install-obs-plugin verb exists'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'Not installed \(OBS will not show the source' 'status is truthful when the plugin is absent from the scanned location'
 # Item 24: per-overlay "Use Global Values" inheritance in the per-app editor.
 Assert-Contains 'XRViewLab.UI\OverlaySettingsModels.cs' 'public void ClearFeature\(string id\)' 'override model can clear a single overlay for inheritance'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'void OverlayInherit_Changed' 'per-app editor handles per-overlay inheritance toggles'
@@ -914,7 +924,7 @@ Assert-Contains 'ViewLabMirrorPlugin\viewlab_mirror_contract.h' 'XRViewLabMirror
 Assert-Contains 'Installer\Product.wxs' 'viewlab-mirror\.dll' 'MSI carries the ViewLab Mirror plugin payload'
 Assert-Contains 'build.ps1' 'ViewLabMirrorPlugin.vcxproj' 'full build produces the ViewLab Mirror plugin'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'InstallViewLabMirrorPlugin_Click' 'UI installs the plugin'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'obs-studio", "plugins", "viewlab-mirror"' 'plugin installs to the per-user OBS location'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"obs-plugins", "64bit", "viewlab-mirror.dll"' 'plugin installs into the OBS install folder OBS scans'
 Assert-Contains 'ViewLabMirrorPlugin\LICENSE' 'GNU General Public License' 'plugin licence is recorded'
 
 # The Quest 3 lens-outline preview feature was removed; assert no plumbing, geometry, UI or

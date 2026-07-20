@@ -4,13 +4,19 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-19
-**Current version:** 4.1.280 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.280.msi` (size 149,196,800 bytes; SHA-256
-`1635FB439163337F00B25D2F08E117096CB7EB84B7F76383AFD9EAAF3D67E2DD`). Fixes per-app overlay inherited-settings
-hydration: the profile editor now discovers its tag-based overlay controls via the logical tree (not the visual
-tree), so overlays set to "Use global values" immediately show the effective global settings on open instead of
-loading blank until a section is toggled. Full x64/Win32/broker/OBS/MSI build 0/0; payload validated; 23/24
-deterministic scripts pass (the one failure is the environmental live-broker notification fixture).
-**Prior version:** 4.1.279 — real desktop previews for the three new iRacing cues, single-source `RacingCueGeometry.h`
+**Current version:** 4.1.281 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.281.msi` (size 149,196,800 bytes; SHA-256
+`A70FDC8411AD6B2B12FF3C72728981FABCDD0EEFF8796F85D5F0176338E25D90`). Fixes the OBS ViewLab Mirror Capture plugin not
+loading: the installer wrote the DLL to `%APPDATA%\obs-studio\plugins\...`, which current OBS (verified: 32.0.4) does
+NOT enumerate — so OBS never loaded the module or showed the source, yet the UI reported "installed and up to date"
+purely from a hash match on that ignored copy. Fixed by installing into the OBS install `obs-plugins\64bit` folder
+(the location OBS actually scans, where win-openxr etc. live), detected from the OBS uninstall registry key with a
+`%ProgramFiles%\obs-studio` fallback, written via an elevated self-relaunch (`--install-obs-plugin`, mirroring the
+OpenXR-layer registration flow). Detection is now truthful: it reports "Not installed" / "OBS not found" instead of a
+false "up to date" when the DLL is absent from the scanned location. The plugin binary and its identity
+(`viewlab_mirror_capture` / "ViewLab Mirror Capture") are unchanged; OpenXR Mirror Capture is untouched. Full
+x64/Win32/broker/OBS/MSI build 0/0; payload validated; 23/24 deterministic scripts pass (env live-broker fixture).
+**Prior version:** 4.1.280 — per-app overlay inherited-settings hydration fix (logical vs visual tree).
+**Older:** 4.1.279 — real desktop previews for the three new iRacing cues, single-source `RacingCueGeometry.h`
 + behavioral audit (item 19), live iRacing cue tuning via live-state v12 (`dist/ViewLab-4.1.279.msi`).
 **Older:** 4.1.278 — Rear-Closing Pressure Cue + Grip-O-Bar wired end-to-end (`dist/ViewLab-4.1.278.msi`).
 **Older:** 4.1.277 race-start light; 4.1.276 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.276.msi` (size 149,151,744 bytes; SHA-256

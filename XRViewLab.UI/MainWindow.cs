@@ -1953,14 +1953,44 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	}
 
 	// ---- ViewLab Mirror OBS plugin installation -------------------------------------------
-	// Installs the bundled plugin into OBS's per-user plugin location (supported by OBS 28+),
-	// so no elevation is needed and OBS itself is never launched or controlled.
-	private static string ViewLabMirrorPluginTargetDirectory => Path.Combine(
-		Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-		"obs-studio", "plugins", "viewlab-mirror", "bin", "64bit");
+	// Installs the bundled plugin into OBS's INSTALL obs-plugins\64bit folder — the location OBS
+	// on Windows actually scans (verified from OBS logs: the per-user %APPDATA%\obs-studio\plugins
+	// folder is not enumerated by current OBS builds, so a plugin placed there silently never loads).
+	// Writing under Program Files needs elevation, done via a self-relaunch (--install-obs-plugin),
+	// mirroring the OpenXR-layer registration flow. OBS is never launched or controlled.
 
-	private static string ViewLabMirrorPluginTargetPath =>
-		Path.Combine(ViewLabMirrorPluginTargetDirectory, "viewlab-mirror.dll");
+	// Detect the OBS install directory from the uninstall registry, then common locations.
+	internal static string? TryFindObsInstallDirectory()
+	{
+		foreach (RegistryView view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+		{
+			try
+			{
+				using RegistryKey baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+				using RegistryKey? key = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OBS Studio");
+				if (key?.GetValue("InstallLocation") is string loc && !string.IsNullOrWhiteSpace(loc) &&
+					Directory.Exists(Path.Combine(loc, "obs-plugins", "64bit")))
+					return loc;
+			}
+			catch { /* try the next view / fallback */ }
+		}
+		foreach (var folder in new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 })
+		{
+			string candidate = Path.Combine(Environment.GetFolderPath(folder), "obs-studio");
+			if (Directory.Exists(Path.Combine(candidate, "obs-plugins", "64bit"))) return candidate;
+		}
+		return null;
+	}
+
+	// The scanned target: <obs-install>\obs-plugins\64bit\viewlab-mirror.dll (null if OBS isn't found).
+	private static string? ViewLabMirrorPluginTargetPath
+	{
+		get
+		{
+			string? obs = TryFindObsInstallDirectory();
+			return obs == null ? null : Path.Combine(obs, "obs-plugins", "64bit", "viewlab-mirror.dll");
+		}
+	}
 
 	private static string? ViewLabMirrorPluginBundledPath
 	{
@@ -1993,18 +2023,28 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			ViewLabMirrorPluginStatusText.Text = "Bundled plugin payload not found (ObsPlugin\\viewlab-mirror.dll). Reinstall ViewLab to restore it.";
 			return;
 		}
+		string? target = ViewLabMirrorPluginTargetPath;
+		if (target == null)
+		{
+			// No OBS install found: never claim the plugin is installed.
+			InstallViewLabMirrorPluginButton.IsEnabled = false;
+			InstallViewLabMirrorPluginButton.Content = "Install ViewLab Mirror Plugin";
+			ViewLabMirrorPluginStatusText.Text = "OBS Studio was not found. Install OBS first, then reopen this to install the plugin.";
+			return;
+		}
 		InstallViewLabMirrorPluginButton.IsEnabled = true;
-		if (!File.Exists(ViewLabMirrorPluginTargetPath))
+		// Truthful detection: status reflects the file OBS actually loads, not an ignored copy elsewhere.
+		if (!File.Exists(target))
 		{
 			InstallViewLabMirrorPluginButton.Content = "Install ViewLab Mirror Plugin";
-			ViewLabMirrorPluginStatusText.Text = "Not installed.";
+			ViewLabMirrorPluginStatusText.Text = "Not installed (OBS will not show the source until you install it here).";
 			return;
 		}
 		bool upToDate = TryFileSha256(bundled) is string bundledHash &&
-			TryFileSha256(ViewLabMirrorPluginTargetPath) == bundledHash;
+			TryFileSha256(target) == bundledHash;
 		InstallViewLabMirrorPluginButton.Content = upToDate ? "Reinstall ViewLab Mirror Plugin" : "Update ViewLab Mirror Plugin";
 		ViewLabMirrorPluginStatusText.Text = upToDate
-			? "Installed and up to date: " + ViewLabMirrorPluginTargetPath
+			? "Installed and up to date: " + target
 			: "Installed but OUTDATED — click to update, then restart OBS.";
 	}
 
@@ -2016,18 +2056,29 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			StatusText.Text = "ViewLab Mirror plugin payload is missing from this installation.";
 			return;
 		}
+		string? target = ViewLabMirrorPluginTargetPath;
+		if (target == null)
+		{
+			StatusText.Text = "OBS Studio was not found; install OBS first.";
+			return;
+		}
 		try
 		{
-			Directory.CreateDirectory(ViewLabMirrorPluginTargetDirectory);
-			File.Copy(bundled, ViewLabMirrorPluginTargetPath, overwrite: true);
-			string? license = Path.Combine(Path.GetDirectoryName(bundled)!, "LICENSE.txt");
-			if (File.Exists(license))
-				File.Copy(license, Path.Combine(ViewLabMirrorPluginTargetDirectory, "LICENSE.txt"), overwrite: true);
-			StatusText.Text = "ViewLab Mirror plugin installed. Restart OBS, then add the 'ViewLab Mirror Capture' source (not 'OpenXR Mirror Capture').";
-		}
-		catch (IOException ex)
-		{
-			StatusText.Text = "Plugin install failed (is OBS running?): " + ex.Message;
+			// Program Files needs admin: relaunch ourselves elevated to copy the DLL into place.
+			string exe = Environment.ProcessPath ?? throw new InvalidOperationException("ViewLab executable path is unavailable.");
+			using Process? helper = Process.Start(new ProcessStartInfo
+			{
+				FileName = exe,
+				Arguments = $"--install-obs-plugin \"{bundled}\" \"{target}\"",
+				UseShellExecute = true,
+				Verb = "runas",
+				WorkingDirectory = ProcessDirectory
+			});
+			helper?.WaitForExit();
+			bool ok = helper is { ExitCode: 0 } && TryFileSha256(bundled) is string h && TryFileSha256(target) == h;
+			StatusText.Text = ok
+				? "ViewLab Mirror plugin installed into OBS. Restart OBS, then add the 'ViewLab Mirror Capture' source (not 'OpenXR Mirror Capture')."
+				: "Plugin install did not complete — administrator approval is required, and OBS must be closed if it locks the file.";
 		}
 		catch (Exception ex)
 		{

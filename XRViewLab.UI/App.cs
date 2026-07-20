@@ -37,6 +37,19 @@ public class App : Application
 			return;
 		}
 
+			// Elevated OBS-plugin install: copy the bundled DLL into OBS's install obs-plugins/64bit
+			// folder (the location OBS actually scans on Windows). Exit code 0 = success, 1 = failure.
+			if (args.Length >= 3 && args[0].Equals("--install-obs-plugin", StringComparison.OrdinalIgnoreCase))
+			{
+				try
+				{
+					Directory.CreateDirectory(Path.GetDirectoryName(args[2])!);
+					File.Copy(args[1], args[2], overwrite: true);
+					Environment.Exit(0);
+				}
+				catch { Environment.Exit(1); }
+			}
+
 		using Mutex mutex = new Mutex(true, MutexName, out bool createdNew);
 		if (!createdNew)
 		{
