@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.1.307 - 2026-07-25
+
+- **"What happened?" now actually finds things, and explains itself.** It gained a **?** help button
+  like the other windows, and it now reads Windows' own crash and anti-cheat records as well as
+  ViewLab's log. New things it can tell you about:
+  - **Your game crashed** — Windows recorded it, ViewLab's log just stops. Now it says so, and names
+    the program. A crash in one of ViewLab's own programs is reported as ViewLab's fault, not the game's.
+  - **Anti-cheat blocked or complained about ViewLab** (EasyAntiCheat, BattlEye, "untrusted system
+    file"). These never appear in ViewLab's log, so this was previously unexplainable.
+  - **The background helper is stopped or has gone silent** — the failure that silently kills iRacing
+    cues, notification cards and the OBS recording cue with no error anywhere. Only reported if you
+    actually have one of those features switched on.
+  - **The headset wasn't available** when a game asked for it, and **ViewLab failing to attach to a
+    game** even though it loaded.
+- As before, CONFIRMED quotes the exact evidence and LIKELY is clearly a hypothesis. Nothing is
+  invented: no evidence, no finding.
+
 ## 4.1.302 - 2026-07-25
 
 - **Fixes 4.1.301: Top and Bottom still showed the full total.** With "Split top and bottom" switched

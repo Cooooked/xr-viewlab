@@ -20,10 +20,18 @@ public sealed record FailureFinding(string Category, string Summary, string Evid
 // supplies their contents.
 public static class FailureDiagnostics
 {
+	// An external crash/anti-cheat record gathered from the Windows Application event log by the caller
+	// (kept out of this class so the rules stay dependency-free and fixture-testable).
+	public sealed record SystemEvent(string Source, string Message, DateTime WhenLocal);
+
 	public static IReadOnlyList<FailureFinding> Analyze(string logText, bool layerRegisteredInRegistry, bool anyLogLineToday,
 		CrashMarker.Record? uiCrash = null,
 		string? notificationBrokerState = null, string? notificationBrokerDetail = null,
-		string? iRacingDiagnostics = null)
+		string? iRacingDiagnostics = null,
+		bool? brokerProcessRunning = null,
+		bool anyBrokerFeatureEnabled = false,
+		TimeSpan? brokerStatusAge = null,
+		IReadOnlyList<SystemEvent>? systemEvents = null)
 	{
 		var findings = new List<FailureFinding>();
 		string[] lines = string.IsNullOrEmpty(logText) ? Array.Empty<string>() : logText.Split('\n');
@@ -135,6 +143,110 @@ public static class FailureDiagnostics
 				"Usually means iRacing wasn't running or its telemetry wasn't active yet when ViewLab checked. Make sure you're in a live session, not just the sim launcher."));
 		}
 
+		// The background helper is a SEPARATE process that owns every iRacing cue, the notification
+		// cards and the OBS recording cue. If it is not running, all of those silently do nothing and
+		// nothing anywhere reports an error — the status file simply stops being updated, which is
+		// indistinguishable from "idle". This is exactly how R51 hid for a full day, so it is detected
+		// explicitly rather than inferred.
+		if (brokerProcessRunning == false && anyBrokerFeatureEnabled)
+		{
+			findings.Add(new FailureFinding(
+				"The background helper isn't running",
+				"ViewLab's background helper is stopped, and you have features switched on that depend on it — iRacing cues (spotter, flags, race start, lap and fuel), notification cards and the OBS recording cue. All of them do nothing while it is stopped, without reporting an error anywhere.",
+				"ViewLab.NotificationBroker.exe is not present in the running process list." +
+					(brokerStatusAge is { } age ? $" Its status was last updated {DescribeAge(age)}." : ""),
+				FailureCertainty.Confirmed,
+				"Reopen ViewLab, which starts it automatically, or sign out and back in to Windows. If this happened straight after updating ViewLab, update to 4.1.298 or newer — older installers stopped the helper and never restarted it."));
+		}
+		// Running, but its published state has gone stale: the process is alive yet no longer reporting,
+		// so a status line elsewhere in the UI may be showing hours-old information as if it were current.
+		else if (brokerProcessRunning == true && anyBrokerFeatureEnabled && brokerStatusAge is { } staleAge && staleAge > TimeSpan.FromMinutes(10))
+		{
+			findings.Add(new FailureFinding(
+				"The background helper has stopped reporting",
+				"ViewLab's background helper is running but has not updated its status for a long time. Anything it feeds — iRacing cues, notification cards, the OBS recording cue — may have stopped working, and status text elsewhere in ViewLab may be showing old information as though it were current.",
+				$"Last status update was {DescribeAge(staleAge)}.",
+				FailureCertainty.Likely,
+				"Restart ViewLab. If it goes stale again soon after, note what you were doing at the time."));
+		}
+
+		// Anti-cheat. ViewLab's layer DLL is not code-signed, so EasyAntiCheat/BattlEye can warn about
+		// it or refuse to let it hook — a known open issue. These records live in Windows' Application
+		// event log, never in ViewLab's own log, so ViewLab could not previously explain them at all.
+		SystemEvent? antiCheat = systemEvents?.LastOrDefault(e =>
+			Mentions(e.Source, "EasyAntiCheat") || Mentions(e.Source, "BattlEye") ||
+			Mentions(e.Message, "EasyAntiCheat") || Mentions(e.Message, "BattlEye") ||
+			Mentions(e.Message, "Untrusted system file"));
+		if (antiCheat != null)
+		{
+			findings.Add(new FailureFinding(
+				"Anti-cheat reported a problem",
+				"An anti-cheat system recorded an error around the time you were playing. ViewLab's OpenXR layer is not code-signed yet, so some anti-cheat systems warn about it (\"untrusted system file\") or block it from attaching — which can stop ViewLab's overlays appearing in that game, or show a popup at launch.",
+				$"{antiCheat.WhenLocal:yyyy-MM-dd HH:mm} {antiCheat.Source}: {Truncate(antiCheat.Message, 300)}",
+				FailureCertainty.Confirmed,
+				"This is a known limitation and not something you can fix from ViewLab's settings — the layer needs a code-signing certificate. If a game refuses to start with ViewLab enabled, turn the layer off for that game."));
+		}
+
+		// Game crashes. Windows records these as Application Error / .NET Runtime entries naming the
+		// faulting executable; ViewLab's own log usually just stops mid-session with no explanation.
+		SystemEvent? appCrash = systemEvents?.LastOrDefault(e =>
+			(Mentions(e.Source, "Application Error") || Mentions(e.Source, "Application Hang") ||
+			 Mentions(e.Source, "Windows Error Reporting") || Mentions(e.Source, ".NET Runtime")) &&
+			!IsViewLabProcess(e.Message));
+		if (appCrash != null)
+		{
+			findings.Add(new FailureFinding(
+				"A program crashed recently",
+				"Windows recorded an application crash or hang around the time you were playing. If this is your game, ViewLab's overlays would have disappeared with it — that is the game ending, not ViewLab switching off.",
+				$"{appCrash.WhenLocal:yyyy-MM-dd HH:mm} {appCrash.Source}: {Truncate(appCrash.Message, 300)}",
+				FailureCertainty.Confirmed,
+				"If the named program is your game, this is a game or driver crash rather than a ViewLab fault. To check whether ViewLab was involved, launch it once with the layer disabled and see if the crash still happens."));
+		}
+
+		// ViewLab's own processes crashing. Separated from the generic case so the wording is honest
+		// about it being ViewLab's fault rather than the game's.
+		SystemEvent? ownCrash = systemEvents?.LastOrDefault(e =>
+			(Mentions(e.Source, "Application Error") || Mentions(e.Source, ".NET Runtime")) &&
+			IsViewLabProcess(e.Message));
+		if (ownCrash != null)
+		{
+			findings.Add(new FailureFinding(
+				"A ViewLab process crashed",
+				"Windows recorded a crash in one of ViewLab's own programs. If it was the background helper, every feature it owns (iRacing cues, notification cards, the OBS recording cue) stopped at that moment.",
+				$"{ownCrash.WhenLocal:yyyy-MM-dd HH:mm} {ownCrash.Source}: {Truncate(ownCrash.Message, 300)}",
+				FailureCertainty.Confirmed,
+				"Reopen ViewLab. This is a ViewLab bug worth reporting — quote the line above, and say which game you were in."));
+		}
+
+		// The headset/runtime was not available when a game asked for it. dllmain.cpp surfaces the
+		// runtime's own error code, so this is quoted rather than guessed.
+		string? formFactor = lines.LastOrDefault(l => l.Contains("XR_ERROR_FORM_FACTOR_UNAVAILABLE", StringComparison.Ordinal));
+		if (formFactor != null)
+		{
+			findings.Add(new FailureFinding(
+				"The headset wasn't available",
+				"A game asked the OpenXR runtime for your headset and it wasn't there — usually the headset was off, asleep, or not yet streaming when the game started.",
+				formFactor.Trim(),
+				FailureCertainty.Confirmed,
+				"Get the headset connected and streaming first, then start the game. Nothing in ViewLab needs changing."));
+		}
+
+		// The layer loaded but the runtime rejected its instance creation, so ViewLab was absent for
+		// that whole session even though the log shows it starting up.
+		string? instanceFailed = lines.LastOrDefault(l =>
+			l.Contains("xrCreateApiLayerInstance", StringComparison.Ordinal) &&
+			l.Contains("result=", StringComparison.Ordinal) &&
+			!l.Contains("result=0", StringComparison.Ordinal));
+		if (instanceFailed != null)
+		{
+			findings.Add(new FailureFinding(
+				"ViewLab couldn't attach to the game",
+				"ViewLab's layer was loaded by the game but the OpenXR runtime refused to let it start, so none of ViewLab's features were active for that session.",
+				instanceFailed.Trim(),
+				FailureCertainty.Confirmed,
+				"Check that your OpenXR runtime and headset software are up to date. If it only happens with one game, that game may be rejecting extra OpenXR layers."));
+		}
+
 		// Likely (not confirmed): the layer is registered in the registry, but nothing in the log
 		// suggests it actually loaded into a game today. This is a plausible explanation for "I
 		// enabled ViewLab but nothing happened in the headset" — stated as a hypothesis, not a fact,
@@ -151,4 +263,25 @@ public static class FailureDiagnostics
 
 		return findings;
 	}
+
+	// Any ViewLab-owned executable (settings app, broker, bundled fixtures) is attributed to ViewLab
+	// rather than reported as "a program crashed", which would otherwise read as "your game crashed".
+	private static bool IsViewLabProcess(string? message) =>
+		Mentions(message, "xr-viewlab") || Mentions(message, "ViewLab.");
+
+	private static bool Mentions(string? haystack, string needle) =>
+		haystack != null && haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
+
+	private static string Truncate(string value, int max)
+	{
+		string flat = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+		while (flat.Contains("  ", StringComparison.Ordinal)) flat = flat.Replace("  ", " ", StringComparison.Ordinal);
+		return flat.Length <= max ? flat : flat[..max] + "…";
+	}
+
+	private static string DescribeAge(TimeSpan age) =>
+		age < TimeSpan.FromMinutes(2) ? "just now"
+		: age < TimeSpan.FromHours(1) ? $"{(int)age.TotalMinutes} minutes ago"
+		: age < TimeSpan.FromDays(1) ? $"{(int)age.TotalHours} hours ago"
+		: $"{(int)age.TotalDays} days ago";
 }

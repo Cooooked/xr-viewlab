@@ -4,7 +4,24 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-25
-**Current version:** 4.1.305 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.305.msi` (SHA-256
+**Current version:** 4.1.307 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.307.msi` (SHA-256
+`3A3AAD7444A6A45F9B7316C4F16CDB719B3649BA91EE95AA0AC5B39EED6E3B5B`). **"What happened?" expanded from
+log-scraping into real failure detection, plus a `?` help button.** User called it "practically useless". It now
+also reads the **Windows Application event log** (last 12 h, levels 1-3, ≤400 records, bounded so opening the
+window stays cheap) — crashes and anti-cheat records never appear in `ViewLab.log`, so those classes were
+previously undetectable. New findings: game crash / hang (Application Error, Application Hang, WER, .NET Runtime);
+**ViewLab's own** process crash, attributed separately via `IsViewLabProcess` so a ViewLab fixture crash is never
+reported as "your game crashed"; anti-cheat (EasyAntiCheat/BattlEye/"Untrusted system file"); **background helper
+stopped** — gated on `AnyBrokerFeatureEnabled()` so it never nags when nothing depends on it — and **helper
+running but stale >10 min** (Likely, not Confirmed); `XR_ERROR_FORM_FACTOR_UNAVAILABLE`; and non-zero
+`xrCreateApiLayerInstance result=`. The helper checks directly close STATE Known-issue (4): a dead broker was
+previously indistinguishable from an idle one. `FailureDiagnostics` stays dependency-free — the window gathers
+evidence and passes it in — so all rules remain fixture-testable; 30 assertions pass, including negative cases
+(no events ⇒ no findings; healthy helper ⇒ no finding; `result=0` ⇒ no finding). Help text added as
+`BuiltInHelpWindow.WhatHappenedSections`, and it states plainly what the window **cannot** see.
+**Verified against this machine, not just fixtures:** the event-log query returned 14 real records and correctly
+matched a genuine `pong_waves_vr.exe` crash at 04:02. In-app visual confirmation of the `?` button still pending.
+**Prior version:** 4.1.305 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.305.msi` (SHA-256
 `C5E0C3775A8CB9B30F3D7DA13E0CA9AF8FDA7E3EF684EE16E028BE8D03AF3317`). **DiagMon opt-in checkbox label was
 unreadable.** It rendered as black text on the dark panel because `DiagMonDarkStyles.xaml` defines **no CheckBox
 style**, so a bare `CheckBox` falls back to WPF's default template and does not inherit the Window `Foreground`.

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using XRViewLab.UI;
 
@@ -87,5 +87,60 @@ Require(!iracingIdle.Any(f => f.Category.Contains("iRacing")), "normal iRacing i
 var combined = FailureDiagnostics.Analyze(deviceRemovedLog + "d3d11 mask: PS compile failed hr=0x1\n", true, true);
 Require(combined.Count(f => f.Certainty == FailureCertainty.Confirmed) >= 2,
 	"multiple distinct confirmed failures in one log all surface, not just the first match");
+
+// ---- Expanded detection (What happened? made actually useful) --------------------------------
+// The background helper being stopped is the failure that hid R51 for a full day: every iRacing cue,
+// notification card and the OBS cue silently do nothing and NOTHING reports an error anywhere.
+var brokerStopped = FailureDiagnostics.Analyze("", true, true,
+	brokerProcessRunning: false, anyBrokerFeatureEnabled: true, brokerStatusAge: TimeSpan.FromHours(5));
+Require(brokerStopped.Any(f => f.Category.Contains("background helper") && f.Certainty == FailureCertainty.Confirmed),
+	"a stopped background helper with dependent features enabled is Confirmed");
+
+// ...but it must NOT nag when the user has none of those features switched on.
+var brokerStoppedUnused = FailureDiagnostics.Analyze("", true, true,
+	brokerProcessRunning: false, anyBrokerFeatureEnabled: false);
+Require(!brokerStoppedUnused.Any(f => f.Category.Contains("background helper")),
+	"a stopped helper is not reported when nothing depends on it");
+
+// Running but silent for hours: stated as Likely, since the process being alive is not proof of fault.
+var brokerStale = FailureDiagnostics.Analyze("", true, true,
+	brokerProcessRunning: true, anyBrokerFeatureEnabled: true, brokerStatusAge: TimeSpan.FromHours(3));
+Require(brokerStale.Any(f => f.Category.Contains("stopped reporting") && f.Certainty == FailureCertainty.Likely),
+	"a live but stale helper is reported as Likely, not Confirmed");
+var brokerFresh = FailureDiagnostics.Analyze("", true, true,
+	brokerProcessRunning: true, anyBrokerFeatureEnabled: true, brokerStatusAge: TimeSpan.FromSeconds(30));
+Require(!brokerFresh.Any(f => f.Category.Contains("stopped reporting")), "a freshly reporting helper is not flagged");
+
+var now = new DateTime(2026, 7, 25, 12, 0, 0);
+var antiCheat = FailureDiagnostics.Analyze("", true, true, systemEvents: new[] {
+	new FailureDiagnostics.SystemEvent("EasyAntiCheat", "Untrusted system file XR_APILAYER_cooooked_xrviewlab.dll", now) });
+Require(antiCheat.Any(f => f.Category.Contains("Anti-cheat") && f.Certainty == FailureCertainty.Confirmed),
+	"an anti-cheat event log record is reported as Confirmed");
+
+var gameCrash = FailureDiagnostics.Analyze("", true, true, systemEvents: new[] {
+	new FailureDiagnostics.SystemEvent("Application Error", "Faulting application name: iRacingSim64DX11.exe", now) });
+Require(gameCrash.Any(f => f.Category.Contains("program crashed") && f.Certainty == FailureCertainty.Confirmed),
+	"a game crash recorded by Windows is reported as Confirmed");
+
+// A ViewLab crash must be attributed to ViewLab, not reported as "your game crashed".
+var ownCrash = FailureDiagnostics.Analyze("", true, true, systemEvents: new[] {
+	new FailureDiagnostics.SystemEvent("Application Error", "Faulting application name: ViewLab.NotificationBroker.exe", now) });
+Require(ownCrash.Any(f => f.Category.Contains("ViewLab process crashed")),
+	"a crash in ViewLab's own process is attributed to ViewLab");
+Require(!ownCrash.Any(f => f.Category.Contains("program crashed")),
+	"a ViewLab crash is not also reported as a generic third-party program crash");
+
+var noEvents = FailureDiagnostics.Analyze("", true, true, systemEvents: Array.Empty<FailureDiagnostics.SystemEvent>());
+Require(!noEvents.Any(f => f.Category.Contains("Anti-cheat") || f.Category.Contains("crashed")),
+	"no event log records produces no crash or anti-cheat findings");
+
+var headsetMissing = FailureDiagnostics.Analyze("INFO | xrGetSystem failed XR_ERROR_FORM_FACTOR_UNAVAILABLE\n", true, true);
+Require(headsetMissing.Any(f => f.Category.Contains("headset") && f.Certainty == FailureCertainty.Confirmed),
+	"an unavailable headset/runtime is reported as Confirmed");
+
+var attachFailed = FailureDiagnostics.Analyze("INFO | xrCreateApiLayerInstance result=-1 state=enabled\n", true, true);
+Require(attachFailed.Any(f => f.Category.Contains("attach")), "a rejected layer instance is reported");
+var attachOk = FailureDiagnostics.Analyze("INFO | xrCreateApiLayerInstance result=0 state=enabled\n", true, true);
+Require(!attachOk.Any(f => f.Category.Contains("attach")), "a successful layer instance is never reported as a failure");
 
 Console.WriteLine("Failure diagnostics classification fixtures passed.");

@@ -29,6 +29,15 @@ internal static class BuiltInHelpWindow
         new HelpSection("Exporting", "Stop and finalise first, then Export Analysis Package creates a ZIP with the manifest, metrics, summary and retained raw evidence. Read collector states and limitations alongside any conclusion.")
     };
 
+    internal static readonly IReadOnlyList<HelpSection> WhatHappenedSections = new[]
+    {
+        new HelpSection("What this window does", "It answers \"why didn't ViewLab work just then?\" without you reading a log file. ViewLab already records what happens across several places — the OpenXR layer's log, the background helper's status, Windows' own crash and anti-cheat records — and this window reads all of them, matches them against known failure patterns, and explains each one in plain language with the exact evidence it used."),
+        new HelpSection("Confirmed vs Likely", "CONFIRMED means a specific line of recorded evidence proves it, and that line is quoted underneath. LIKELY means the evidence is consistent with the explanation but does not prove it — it is offered as a hypothesis to check, never as a fact. Nothing here is invented: if there is no evidence, no finding is shown."),
+        new HelpSection("What it can detect", "The settings window crashing; your game crashing; anti-cheat (EasyAntiCheat, BattlEye) blocking or complaining about ViewLab's layer; the graphics device being lost mid-session; the visor renderer failing to start; Topmost overlay mode falling back; the headset or OpenXR runtime being unavailable; the layer failing to attach to a game; the background helper being stopped or stale (which silently disables iRacing cues, notifications and the OBS cue); notification permission and listener problems; and iRacing telemetry being unreadable."),
+        new HelpSection("What it cannot detect", "Anything that leaves no trace. If a game never launched, or a crash was so severe Windows recorded nothing, there is nothing to find. \"No issues detected\" means no known pattern matched — it is not a guarantee that nothing went wrong."),
+        new HelpSection("Using it", "Check it right after something goes wrong, while the evidence is recent — most checks only look at the last few hours. Refresh re-reads everything. When asking for help, quote the CONFIRMED lines: they name the exact failure.")
+    };
+
     internal static readonly IReadOnlyList<HelpSection> ObsRecordingSections = new[]
     {
         new HelpSection("Enable OBS WebSocket", "In OBS, open Tools > WebSocket Server Settings, then enable the WebSocket server."),
