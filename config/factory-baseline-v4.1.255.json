@@ -154,7 +154,7 @@
     "hud_graph_wait_duration": "0",
     "hud_graph_submit_duration": "0",
     "hud_graph_display_period": "0",
-    "performance_trace_recording": "1",
+    "performance_trace_recording": "0",
     "performance_trace_marker_vk": "119",
     "overlay_trace_toggle_vk": "0",
     "sticky_note_enabled": "0",

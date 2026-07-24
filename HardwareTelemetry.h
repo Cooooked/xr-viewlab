@@ -36,6 +36,7 @@ struct Snapshot {
 // Starts one bounded, allocation-free-after-initialisation collector. Safe to call repeatedly.
 void Start();
 void Stop();
+bool Running();
 void SetPreferredAdapterLuid(uint64_t luid);
 void SetNetworkProbeTarget(uint32_t ipv4NetworkOrder);
 void SetNetworkProbeEnabled(bool enabled);

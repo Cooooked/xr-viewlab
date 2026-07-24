@@ -31,6 +31,16 @@ internal static class NotificationBrokerProgram
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern uint GetPrivateProfileString(string section, string key, string fallback, StringBuilder value, uint size, string path);
 
+    private const string ActiveProfileMappingName = "Local\\XRViewLabActiveProfileV1";
+    private const uint FileMapRead = 0x0004;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr OpenFileMappingW(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, string name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
+
     [STAThread]
     public static void Main(string[] args)
     {
@@ -111,7 +121,7 @@ internal static class NotificationBrokerProgram
         if (initialCommand is "test" or "request-access-and-test") service.EnqueueTestNotification();
         WriteStatus(service.State.ToString(), service.Status, identityReady);
 
-        var settingsTimer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) =>
+        void RefreshFromSettings()
         {
             NotificationSettings next = ReadSettings();
             if (!Equivalent(current, next))
@@ -137,8 +147,55 @@ internal static class NotificationBrokerProgram
             }
             bool nextObsEnabled=ReadBool("obs_indicator_enabled",false);string nextObsEndpoint=Read("obs_websocket_url","ws://127.0.0.1:4455"),nextObsPassword=Read("obs_websocket_password","");
             if(nextObsEnabled!=obsEnabled||nextObsEndpoint!=obsEndpoint||nextObsPassword!=obsPassword){obsEnabled=nextObsEnabled;obsEndpoint=nextObsEndpoint;obsPassword=nextObsPassword;obsProvider.Update(obsEnabled,obsEndpoint,obsPassword);}
+        }
+
+        // The broker is resident from login, so it must be idle when nothing changes: settings arrive as
+        // file-change events rather than a poll. The two slow timers cover the paths a watcher cannot see —
+        // per-app overrides live in the registry and are selected by whichever profile the layer has active.
+        var settingsDebounce = new DispatcherTimer(TimeSpan.FromMilliseconds(300), DispatcherPriority.Background, (sender, _) =>
+        {
+            ((DispatcherTimer)sender!).Stop();
+            RefreshFromSettings();
         }, dispatcher);
-        settingsTimer.Start();
+        settingsDebounce.Stop();
+
+        FileSystemWatcher? settingsWatcher = null;
+        void QueueRefresh() => _ = dispatcher.BeginInvoke(() => { settingsDebounce.Stop(); settingsDebounce.Start(); });
+        void StartWatcher()
+        {
+            try
+            {
+                var watcher = new FileSystemWatcher(ConfigDirectory, Path.GetFileName(ConfigPath))
+                {
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName
+                };
+                watcher.Changed += (_, _) => QueueRefresh();
+                watcher.Created += (_, _) => QueueRefresh();
+                watcher.Renamed += (_, _) => QueueRefresh();
+                watcher.Error += (_, _) =>
+                {
+                    settingsWatcher?.Dispose(); settingsWatcher = null;
+                    _ = dispatcher.BeginInvoke(() => { StartWatcher(); RefreshFromSettings(); });
+                };
+                watcher.EnableRaisingEvents = true;
+                settingsWatcher = watcher;
+            }
+            catch (Exception ex)
+            {
+                // Without a watcher the fallback timer still applies every change, just less promptly.
+                WriteStatus(service.State.ToString(), $"Settings watch unavailable ({ex.GetType().Name}); using periodic refresh.", identityReady);
+            }
+        }
+        StartWatcher();
+
+        var profileTimer = new DispatcherTimer(TimeSpan.FromSeconds(2), DispatcherPriority.Background, (_, _) =>
+        {
+            if (TryReadActiveProfileKey() != _activeProfileKey) RefreshFromSettings();
+        }, dispatcher);
+        profileTimer.Start();
+
+        var fallbackTimer = new DispatcherTimer(TimeSpan.FromSeconds(30), DispatcherPriority.Background, (_, _) => RefreshFromSettings(), dispatcher);
+        fallbackTimer.Start();
 
         _ = Task.Run(async () =>
         {
@@ -157,7 +214,7 @@ internal static class NotificationBrokerProgram
                             case "request-access": service.Update(current, requestAccess: identityReady); break;
                             case "request-access-and-test": service.Update(current, requestAccess: identityReady); service.EnqueueTestNotification(); break;
                             case "test": service.EnqueueTestNotification(); break;
-                            case "refresh": service.Update(current); break;
+                            case "refresh": RefreshFromSettings(); service.Update(current); break;
                             case "simulate-left": racingProvider.Simulate("Left"); break;
                             case "simulate-right": racingProvider.Simulate("Right"); break;
                             case "simulate-both": racingProvider.Simulate("Both"); break;
@@ -169,7 +226,7 @@ internal static class NotificationBrokerProgram
                             case "simulate-blue": racingProvider.Simulate("Blue"); break;
                             case "simulate-lowfuel": racingProvider.Simulate("LowFuel"); break;
                             case "shutdown":
-                                settingsTimer.Stop(); racingProvider.Dispose(); racingState.Dispose(); mediaProvider.Dispose(); obsProvider.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
+                                settingsDebounce.Stop(); profileTimer.Stop(); fallbackTimer.Stop(); settingsWatcher?.Dispose(); racingProvider.Dispose(); racingState.Dispose(); mediaProvider.Dispose(); obsProvider.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
                         }
                     });
                     if (received == "shutdown") return;
@@ -276,11 +333,16 @@ internal static class NotificationBrokerProgram
         return b.ToString();
     }
 
+	// Probed on an idle timer, so the no-session case must not cost a thrown exception per tick:
+	// OpenFileMapping simply reports absence.
 	private static string? TryReadActiveProfileKey()
 	{
+		IntPtr probe = OpenFileMappingW(FileMapRead, false, ActiveProfileMappingName);
+		if (probe == IntPtr.Zero) return null;
+		CloseHandle(probe);
 		try
 		{
-			using MemoryMappedFile mapping = MemoryMappedFile.OpenExisting("Local\\XRViewLabActiveProfileV1", MemoryMappedFileRights.Read);
+			using MemoryMappedFile mapping = MemoryMappedFile.OpenExisting(ActiveProfileMappingName, MemoryMappedFileRights.Read);
 			using MemoryMappedViewAccessor view = mapping.CreateViewAccessor(0, 272, MemoryMappedFileAccess.Read);
 			if (view.ReadUInt32(0) != 0x31504156u || view.ReadUInt32(4) != 1u) return null;
 			byte[] bytes = new byte[256]; view.ReadArray(16, bytes, 0, bytes.Length);

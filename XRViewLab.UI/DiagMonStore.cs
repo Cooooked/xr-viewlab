@@ -30,6 +30,11 @@ public sealed class DiagMonStore
     {
         RootPath = Path.GetFullPath(rootPath ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XR ViewLab", "DiagMon"));
+    }
+
+    // Browsing DiagMon must leave no trace on disk, so the store is materialised on first write only.
+    public void EnsureCreated()
+    {
         Directory.CreateDirectory(SessionsPath);
         Directory.CreateDirectory(Path.GetDirectoryName(IndexPath)!);
         Directory.CreateDirectory(Path.Combine(RootPath, "Baselines"));
@@ -38,7 +43,7 @@ public sealed class DiagMonStore
     }
 
     public DiagMonSettings LoadSettings() => ReadJson<DiagMonSettings>(SettingsPath) ?? new();
-    public void SaveSettings(DiagMonSettings settings) => WriteJsonAtomic(SettingsPath, settings);
+    public void SaveSettings(DiagMonSettings settings) { EnsureCreated(); WriteJsonAtomic(SettingsPath, settings); }
     public DiagMonIndex LoadIndex() => ReadJson<DiagMonIndex>(IndexPath) ?? new();
     public DiagMonSession? LoadSession(string directory) => ReadJson<DiagMonSession>(Path.Combine(directory, "session.json"));
     public DiagMonMetrics LoadMetrics(string directory) => ReadJson<DiagMonMetrics>(Path.Combine(directory, "metrics.json")) ?? new();
@@ -52,6 +57,7 @@ public sealed class DiagMonStore
 
     public (DiagMonSession Session, string Directory) CreatePartial(DiagMonCaptureOptions options, string viewLabVersion)
     {
+        EnsureCreated();
         DateTimeOffset now = DateTimeOffset.UtcNow;
         string id = Guid.NewGuid().ToString("D");
         string label = Sanitize(options.UserLabel, "capture");
@@ -107,6 +113,7 @@ public sealed class DiagMonStore
     public async Task<int> RecoverAbandonedAsync()
     {
         int recovered = 0;
+        if (!Directory.Exists(SessionsPath)) return recovered;
         foreach (string partial in Directory.EnumerateDirectories(SessionsPath, "*.partial"))
         {
             DiagMonSession? session = LoadSession(partial);
@@ -247,6 +254,7 @@ public sealed class DiagMonStore
     {
         DiagMonSettings settings = LoadSettings();
         var warnings = new List<string>();
+        if (!Directory.Exists(SessionsPath)) return warnings;
         var dirs = Directory.EnumerateDirectories(SessionsPath).Select(d => new DirectoryInfo(d)).ToList();
         long bytes = dirs.Sum(d => DirectorySize(d.FullName));
         if (dirs.Count > settings.RetentionSessionCount) warnings.Add($"{dirs.Count} sessions exceed the configured count of {settings.RetentionSessionCount}.");

@@ -170,6 +170,7 @@ void Run() {
 
 void Start(){std::lock_guard<std::mutex> lock(lifecycleMutex);if(running.exchange(true))return;stopping.store(false);worker=std::thread(Run);}
 void Stop(){std::lock_guard<std::mutex> lock(lifecycleMutex);if(!running.load()&&!worker.joinable())return;stopping.store(true);wakeCondition.notify_all();if(worker.joinable())worker.join();}
+bool Running(){return running.load(std::memory_order_acquire);}
 void SetPreferredAdapterLuid(uint64_t luid){preferredLuid.store(luid,std::memory_order_release);}
 void SetNetworkProbeTarget(uint32_t ipv4NetworkOrder){networkProbeTarget.store(ipv4NetworkOrder,std::memory_order_release);}
 void SetNetworkProbeEnabled(bool enabled){networkProbeEnabled.store(enabled,std::memory_order_release);}

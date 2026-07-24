@@ -370,3 +370,28 @@ Split Top and Bottom controls are relative to their respective half of the lens.
 `value × 0.5` to full-lens retained height, so `1/0` selects the top half, `0/1` the bottom half, `0.5/0.5`
 the centred middle half, and `1/1` the full height. Existing `top_tangent` and `bottom_tangent` persistence stays
 in full-lens shares for native compatibility; UI load/save performs the ×2/×0.5 boundary conversion.
+
+## Zero idle cost: background work is demand-gated by its consumer
+
+ViewLab is resident whenever the user is at their PC — the broker starts at login and the layer loads into
+every OpenXR game — so no subsystem may cost CPU, memory or disk while the feature that needs it is off.
+
+Diagnostics recording (`performance_trace_recording`) is therefore opt-in, default 0. The hardware-telemetry
+collector thread starts only when recording, the Performance HUD or the Performance Trace overlay actually
+consumes its samples (`EnsureTelemetryWorker`), and the ~24 MB session ring is reserved only when recording.
+Because HUD and trace enable arrive live while recording resolves at session start, the gate is re-evaluated
+per frame from a lock-free `viewlab::telemetry::Running()` check; the worker is stopped only at
+`xrDestroySession` so toggling an overlay never churns a thread.
+
+The notification broker reads settings from file-change events plus slow probes rather than a 1 Hz poll, and
+the notification animation timer exists only while cards are on screen. DiagMon creates its store on first
+write, so browsing it leaves no directories behind.
+
+Corrected factory-baseline values do not bump the baseline version: re-applying a bumped baseline would
+overwrite every listed key and discard user tuning that diverged after 4.1.255. A behavioral default change
+that must reach existing installs instead gets its own one-shot registry marker (`DiagnosticsOptInApplied`),
+which rewrites only the affected key. Per-app overrides are never rewritten — those were deliberate choices.
+
+Rejected: a second `diagnostics_enabled` key (dual-key drift, and it would orphan the existing per-app
+`overlay_override_trace__performance_trace_recording`), stopping the collector mid-session on overlay toggles,
+and removing the broker's login autostart (notifications must work without the settings app open).

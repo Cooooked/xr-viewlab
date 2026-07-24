@@ -82,6 +82,7 @@ internal sealed class NotificationService : IDisposable
     private MemoryMappedFile? _map;
     private MemoryMappedViewAccessor? _view;
     private Timer? _timer;
+    private Timer? _listenerPollTimer;
     private UserNotificationListener? _listener;
     private volatile NotificationSettings _settings = new();
     private volatile bool _listenerReady;
@@ -121,14 +122,31 @@ internal sealed class NotificationService : IDisposable
         if (settings.Enabled)
         {
             EnsureListener(requestAccess);
-            if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 50);
+            EnsureListenerPollTimer();
+            lock (_lock) { if (_cards.Count > 0) EnsureAnimationTimer(); }
         }
         else
         {
-            _timer?.Dispose(); _timer = null;
-            lock (_lock) { _cards.Clear(); _seen.Clear(); _baselineComplete = false; }
+            _listenerPollTimer?.Dispose(); _listenerPollTimer = null;
+            lock (_lock) { _timer?.Dispose(); _timer = null; _cards.Clear(); _seen.Clear(); _baselineComplete = false; }
             WriteBlock(); // publish an empty block so nothing renders
         }
+    }
+
+    // The animation timer exists only while cards are on screen; Tick stops it once the queue drains,
+    // and every card-producing path restarts it. Callers already hold _lock or are single-threaded.
+    private void EnsureAnimationTimer()
+    {
+        _timer ??= new Timer(_ => Tick(), null, 0, 50);
+    }
+
+    // Separate slow timer so the missed-NotificationChanged safety net no longer needs the 20 Hz tick.
+    private void EnsureListenerPollTimer()
+    {
+        _listenerPollTimer ??= new Timer(_ =>
+        {
+            if (_listenerReady && Environment.TickCount64 - Interlocked.Read(ref _lastRefreshTick) >= 2000) _ = RefreshAsync();
+        }, null, 2000, 2000);
     }
 
     private async void EnsureListener(bool requestAccess)
@@ -168,7 +186,7 @@ internal sealed class NotificationService : IDisposable
     {
         if (_view == null) { SetStatus(ServiceState.InternalRendererFailure, "Shared-memory card bridge was not created."); return; }
         var s = _settings;
-        if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 50);
+
         _ui.Invoke(() =>
         {
             var icon = new DrawingVisual();
@@ -189,7 +207,7 @@ internal sealed class NotificationService : IDisposable
     public void EnqueueEvent(ViewLabEvent e)
     {
         if (_view == null) return;
-        if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 50);
+
         var s=_settings;
         _ui.Invoke(() => AddComposedCard(_nextId++, "ViewLab event", e.Title ?? e.Kind.ToString(), e.Body ?? $"Value {e.Value:0.###}", null, s));
     }
@@ -200,7 +218,7 @@ internal sealed class NotificationService : IDisposable
     public void EnqueueMediaCard(string title, string artist, BitmapSource? artwork)
     {
         if (_view == null) return;
-        if (_timer == null) _timer = new Timer(_ => Tick(), null, 0, 50);
+
         var s = _settings;
         _ui.Invoke(() => AddComposedCard(_nextId++, "Now playing", title, artist, artwork, s));
     }
@@ -343,6 +361,7 @@ internal sealed class NotificationService : IDisposable
             _cards.Add(card);
             // Age out anything beyond a generous backlog cap so memory stays bounded.
             while (_cards.Count > MaxCards * 2) _cards.RemoveAt(0);
+            EnsureAnimationTimer();
         }
         WriteBlock();
     }
@@ -562,9 +581,8 @@ internal sealed class NotificationService : IDisposable
     {
         var s = _settings;
         long now = Environment.TickCount64;
-        if (_listenerReady && now - Interlocked.Read(ref _lastRefreshTick) >= 2000)
-            _ = RefreshAsync(); // bounded safety poll in case NotificationChanged is missed
         bool changed = false;
+        bool drained;
         lock (_lock)
         {
             int max = Math.Clamp(s.MaxVisible, 1, MaxCards);
@@ -587,8 +605,17 @@ internal sealed class NotificationService : IDisposable
                 }
             }
             foreach (var c in toRemove) { _cards.Remove(c); changed = true; }
+            drained = _cards.Count == 0;
         }
         if (changed) WriteBlock();
+        // Nothing left to animate: stop until a card-producing path calls EnsureAnimationTimer again.
+        if (drained)
+        {
+            lock (_lock)
+            {
+                if (_cards.Count == 0) { _timer?.Dispose(); _timer = null; }
+            }
+        }
     }
 
     private void WriteBlock()
@@ -645,6 +672,7 @@ internal sealed class NotificationService : IDisposable
     {
         if (_disposed) return; _disposed = true;
         _timer?.Dispose();
+        _listenerPollTimer?.Dispose();
         _view?.Dispose();
         _map?.Dispose();
     }

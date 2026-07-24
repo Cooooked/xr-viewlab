@@ -760,7 +760,7 @@ foreach ($key in @('performance_trace_recording','performance_trace_marker_vk'))
     Assert-Contains 'XRViewLab.UI\MainWindow.cs' $key "UI persists $key"
     Assert-Contains 'dllmain.cpp' $key "native layer reads $key"
 }
-Assert-IniValue 'performance_trace_recording' '1'
+Assert-IniValue 'performance_trace_recording' '0'
 Assert-IniValue 'performance_trace_marker_vk' '119'
 Assert-Contains 'dllmain.cpp' 'CapturePerformanceTraceMarker\(stop\.QuadPart\)' 'bind edge is stamped with the actual xrWaitFrame QPC timestamp'
 Assert-Contains 'dllmain.cpp' 'sample\.qpc=qpc; sample\.markerNumber=g_pendingTraceMarker' 'marker is attached to the real visor trace stream'
@@ -779,6 +779,21 @@ Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml.cs' 'PreviousMarker_Cl
 Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml.cs' 'DrawDownsampledSeries' 'post-session graph uses spike-preserving downsampling'
 Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml' 'Reset view' 'post-session graph exposes zoom and reset controls'
 Assert-NotContains 'dllmain.cpp' 'HistoryService.*PerformanceTrace|PerformanceTrace.*HistoryService' 'trace markers must never use generic history'
+
+# Zero idle cost: diagnostics recording is opt-in and every background worker is demand-gated (R50).
+Assert-Contains 'dllmain.cpp' 'ReadBoolSetting\(L"performance_trace_recording",false\)' 'diagnostics session recording defaults off'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'PerformanceTraceRecordingKey, fallback: false' 'UI reads the diagnostics opt-in as default-off'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'DiagnosticsOptInApplied' 'upgrades clear the old default-on recording value exactly once'
+Assert-Contains 'dllmain.cpp' 'SetCheckpointCallback\(SavePerformanceTraceSession\);\s*EnsureTelemetryWorker\(\)' 'session start arms checkpointing but only starts the collector on demand'
+Assert-Contains 'dllmain.cpp' 'ConsumeLiveState\(\);\s*EnsureTelemetryWorker\(\)' 'live HUD/trace enable starts the collector mid-session'
+Assert-Contains 'dllmain.cpp' 'if \(!performanceTraceRecording && !hudEnabled && !hudTraceEnabled\) return;' 'collector runs only while recording or an overlay consumes it'
+Assert-Contains 'HardwareTelemetry.cpp' 'bool Running\(\)' 'collector exposes its run state so it is never started twice'
+Assert-Contains 'XRViewLab.UI\DiagMonStore.cs' 'public void EnsureCreated\(\)' 'DiagMon materialises its store on first write, not on browse'
+Assert-NotContains 'NotificationBroker\Program.cs' 'DispatcherTimer\(TimeSpan\.FromSeconds\(1\), DispatcherPriority\.Background' 'broker must not poll settings once per second'
+Assert-Contains 'NotificationBroker\Program.cs' 'new FileSystemWatcher\(ConfigDirectory' 'broker settings refresh is event-driven'
+Assert-Contains 'NotificationBroker\Program.cs' 'OpenFileMappingW' 'idle active-profile probe reports absence without throwing'
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'private void EnsureAnimationTimer\(\)' 'card animation timer is demand-started'
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'if \(_cards\.Count == 0\) \{ _timer\?\.Dispose\(\); _timer = null; \}' 'card animation timer stops when the queue drains'
 
 # Bounded sticky notes are native visor widgets, not notification cards.
 foreach ($key in @('sticky_note_enabled','sticky_note_x','sticky_note_y','sticky_note_scale','sticky_note_opacity','sticky_note_toggle_vk')) {

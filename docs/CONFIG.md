@@ -11,7 +11,11 @@ Cue and iRacing Telemetry use this form only for enable state. Layout uses `over
 The native layer publishes its current executable key through `Local\XRViewLabActiveProfileV1`; the independent
 notification broker uses that key only to resolve `overlay_override_notifications__*` values for an enabled profile,
 then falls back to the global INI. This keeps notification filters, privacy, theme and presentation options aligned
-with the same profile selected by the renderer.
+with the same profile selected by the renderer. The broker is resident from login, so since 4.1.295 it reads those
+settings on demand instead of once per second: a `FileSystemWatcher` on the INI (300 ms debounce) covers global keys,
+a 2 s `OpenFileMappingW` probe of that mapping covers profile switches without throwing while no session exists, a
+30 s timer is the fallback, and the settings app sends the existing `refresh` pipe command after a per-app profile
+save because registry overrides are invisible to a file watcher.
 `experimental_draw_in_void` defaults off and has no renderer effect. ReShade UI preferences use
 `reshade_remote_xr_mode`, `reshade_remote_menu_visible`, `reshade_remote_win_headless` and
 `reshade_remote_win_always_on_top`; deployment state is deliberately absent.
@@ -139,7 +143,7 @@ visor-only checkbox as permission to discard the profile.
 | `hud_trace_x`, `hud_trace_y` | 0.05, 0.75 | graph layout | Live graph position within the shared binocular overlap. Legacy key names are retained for migration. |
 | `hud_trace_scale`, `hud_trace_width`, `hud_trace_opacity` | 1.0, 0.42, 0.70 | shared overlay/graph layout | Live whole-graph scale (0.25–3), base width/shape fraction (0.1–1), and independent opacity. Width is bounded to the available render area after uniform scale. |
 | `hud_trace_history` | 120 | graph history | Live sample count shown (30–600); storage is always a fixed 600-sample ring. |
-| `performance_trace_recording` | 1 | native trace recorder | Retains a bounded one-hour ring of the same QPC samples used by the visor graph. Each session checkpoints to a unique `%LOCALAPPDATA%\XR ViewLab\PerformanceTraces\session-*.csv`; `latest.csv` remains a hard-link/copy compatibility alias. The DiagMonster Session Graph browser opens, compares and explicitly deletes retained sessions. Abrupt exit does not require a shutdown callback. |
+| `performance_trace_recording` | 0 | native trace recorder | **Opt-in since 4.1.295.** While off the layer starts no hardware-telemetry collector thread, reserves no sample ring and writes no `session-*.csv`; the Session Graph and DiagMon simply have no new evidence. The collector also runs whenever `hud_enabled` or the Performance Trace overlay is on, because those overlays consume its samples. Recording resolves at session start, while HUD/trace enable arrives live and starts the collector mid-session. An upgrade clears a pre-4.1.295 stored `1` exactly once, tracked by the `DiagnosticsOptInApplied` marker under `HKCU\Software\cooooked\xr-viewlab`. Retains a bounded one-hour ring of the same QPC samples used by the visor graph. Each session checkpoints to a unique `%LOCALAPPDATA%\XR ViewLab\PerformanceTraces\session-*.csv`; `latest.csv` remains a hard-link/copy compatibility alias. The DiagMonster Session Graph browser opens, compares and explicitly deletes retained sessions. Abrupt exit does not require a shutdown callback. |
 | `performance_trace_marker_vk` | 119 (F8) | native trace marker | Windows virtual-key code for a rising-edge marker bind (UI offers F6–F12). Each press receives an exact QPC timestamp, numbered visor confirmation and post-session graph marker. Read at session startup. |
 | `crosshair_offset_x`, `crosshair_offset_y` | 0, 0 | `crosshairOffsetX`, `crosshairOffsetY` | User calibration in normalized full-lens tangent coordinates. Applied to the lens-centre target before Lens Pinned clamping. |
 | `hud_alarm_only` | 0 | `hudAlarmOnly` | Hides widgets unless their sustained state is critical/unstable or within the post-recovery hold. Enabled alarming widgets pack together; the graph remains independent. |

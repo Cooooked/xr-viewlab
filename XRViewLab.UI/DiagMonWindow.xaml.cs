@@ -4,6 +4,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -35,7 +37,7 @@ public partial class DiagMonWindow : Window
         {
             int recovered = await _store.RecoverAbandonedAsync();
             if (recovered > 0) MessageBox.Show(this, $"Recovered {recovered} interrupted capture session(s) and marked them incomplete. Their partial evidence remains in the Session Library.", "DiagMon(ster) recovery", MessageBoxButton.OK, MessageBoxImage.Information);
-            ShowRetention(); UpdateState();
+            ShowRetention(); ShowRecordingOptIn(); UpdateState();
         };
     }
 
@@ -137,4 +139,21 @@ public partial class DiagMonWindow : Window
     }
 
     private void ShowRetention() { var warnings = _store.CheckRetention(); RetentionText.Text = warnings.Count == 0 ? "Storage is within configured guidance." : string.Join("\n", warnings) + " Evidence is never deleted automatically."; }
+
+    // DiagMon's own collectors are self-contained, but the VR session trace it correlates against is
+    // written by the layer only while the opt-in recording key is set.
+    private void ShowRecordingOptIn()
+    {
+        var value = new StringBuilder(8);
+        GetPrivateProfileStringW("Settings", "performance_trace_recording", "0", value, (uint)value.Capacity,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XR ViewLab", "xr-viewlab.ini"));
+        bool recording = value.ToString().Trim() is "1" or "true" or "True";
+        RecordingOptInText.Visibility = recording ? Visibility.Collapsed : Visibility.Visible;
+        RecordingOptInText.Text = "VR session-trace recording is off. DiagMon captures still work, but the layer writes no "
+            + "session-*.csv evidence for the Session Graph. Enable “Record real session trace” under Overlays → Performance Graph "
+            + "and restart the VR session to collect it.";
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetPrivateProfileStringW(string section, string key, string defaultValue, StringBuilder value, uint size, string filePath);
 }

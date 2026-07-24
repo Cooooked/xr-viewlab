@@ -203,7 +203,7 @@ struct PerformanceTraceMarker { uint32_t number = 0; int64_t qpc = 0; };
 std::vector<PerformanceTraceMarker> g_sessionTraceMarkers;
 int64_t g_sessionTraceStartQpc = 0;
 int64_t g_sessionTraceStartUtcFileTime = 0;
-bool performanceTraceRecording = true, g_traceMarkerKeyDown = false;
+bool performanceTraceRecording = false, g_traceMarkerKeyDown = false;
 int performanceTraceMarkerKey = VK_F8;
 uint32_t g_pendingTraceMarker = 0, g_nextTraceMarker = 1;
 XrSession g_performanceTraceSession = XR_NULL_HANDLE;
@@ -439,6 +439,15 @@ void RecordHudFrameSample(double actualMs, double targetMs, int64_t qpc) {
         else { g_sessionTraceSamples[g_sessionTraceStart]=sample; g_sessionTraceStart=(g_sessionTraceStart+1)%kSessionTraceCapacity; }
         ++g_sessionTraceTotalSamples;
     }
+}
+// The hardware collector costs a 4 Hz sampling thread, so it runs only while something consumes it.
+// Trace recording is fixed at session start; the HUD/trace overlays arrive live, hence the per-frame
+// re-check. The worker is stopped only at xrDestroySession so toggling an overlay never churns it.
+void EnsureTelemetryWorker() {
+    if (viewlab::telemetry::Running()) return;
+    if (!performanceTraceRecording && !hudEnabled && !hudTraceEnabled) return;
+    Log("telemetry: worker started (recording=%d hud=%d trace=%d)\n", performanceTraceRecording ? 1 : 0, hudEnabled ? 1 : 0, hudTraceEnabled ? 1 : 0);
+    viewlab::telemetry::Start();
 }
 // APP workload is the application-side wall-clock window after xrBeginFrame returns and before
 // xrEndFrame is entered. It excludes runtime blocking inside both calls and is expressed against
@@ -1239,7 +1248,9 @@ void BeginPerformanceTraceSession(int64_t startQpc) {
     std::lock_guard<std::mutex> fileLock(g_traceFileMutex);
     std::lock_guard<std::mutex> lock(g_hudTimingMutex);
     g_sessionTraceSamples.clear();
-    if (g_sessionTraceSamples.capacity() < kSessionTraceCapacity) g_sessionTraceSamples.reserve(kSessionTraceCapacity);
+    // The ring costs ~24 MB; reserve it only when this session actually records.
+    if (!performanceTraceRecording) g_sessionTraceSamples.shrink_to_fit();
+    else if (g_sessionTraceSamples.capacity() < kSessionTraceCapacity) g_sessionTraceSamples.reserve(kSessionTraceCapacity);
     g_sessionTraceStart=0; g_sessionTraceMarkers.clear(); g_sessionTraceMarkers.reserve(256);
     FILETIME utc{}; GetSystemTimeAsFileTime(&utc); ULARGE_INTEGER utcValue{}; utcValue.LowPart=utc.dwLowDateTime; utcValue.HighPart=utc.dwHighDateTime;
     g_sessionTraceStartQpc=startQpc; g_sessionTraceStartUtcFileTime=static_cast<int64_t>(utcValue.QuadPart);
@@ -5182,7 +5193,7 @@ void LoadConfig() {
     hudTraceEnabled = ReadBoolSetting(L"hud_trace_enabled", false);
     hudTraceVisibilityMode = (uint32_t)std::clamp((int)ReadDoubleSetting(L"hud_trace_visibility_mode",hudTraceEnabled?1.0:0.0),0,2);
     hudTraceEnabled = hudTraceVisibilityMode != 0;
-    performanceTraceRecording=ReadBoolSetting(L"performance_trace_recording",true);
+    performanceTraceRecording=ReadBoolSetting(L"performance_trace_recording",false);
     performanceTraceMarkerKey=(int)std::clamp(ReadDoubleSetting(L"performance_trace_marker_vk",VK_F8),1.0,255.0);
     constexpr const wchar_t* widgetKeys[kHudWidgetCount]={L"cpu",L"gpu",L"app",L"vr",L"cpu_peak",L"cpu_frequency",L"ram",L"commit",L"vram",L"sys",L"fps",L"frame_interval",L"network_ping",L"network_loss",L"network_jitter",L"network_status"};
     hudWidgetMask=0;
@@ -5970,7 +5981,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
     const auto* d3d11Binding = reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(
         FindStructInChain(createInfo->next, XR_TYPE_GRAPHICS_BINDING_D3D11_KHR));
     viewlab::telemetry::SetCheckpointCallback(SavePerformanceTraceSession);
-    viewlab::telemetry::Start();
+    EnsureTelemetryWorker();
     if (d3d11Binding != nullptr && d3d11Binding->device != nullptr) {
         g_d3d11Mask.device = d3d11Binding->device;
         g_d3d11Mask.device->AddRef();
@@ -6059,9 +6070,11 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrWaitFrame(
         // The runtime throttles the app inside xrWaitFrame, so the wait-to-wait interval is
         // the app's true frame cadence — the input for reprojection-aware budget detection.
         UpdateHudCadence(stop, frameState->predictedDisplayPeriod);
-        const bool markerDown=(GetAsyncKeyState(performanceTraceMarkerKey)&0x8000)!=0;
-        if(markerDown&&!g_traceMarkerKeyDown)CapturePerformanceTraceMarker(stop.QuadPart);
-        g_traceMarkerKeyDown=markerDown;
+        if(performanceTraceRecording){
+            const bool markerDown=(GetAsyncKeyState(performanceTraceMarkerKey)&0x8000)!=0;
+            if(markerDown&&!g_traceMarkerKeyDown)CapturePerformanceTraceMarker(stop.QuadPart);
+            g_traceMarkerKeyDown=markerDown;
+        }
         UpdateOverlayFeatureHotkeys();
     }
     return result;
@@ -6184,6 +6197,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
 
     // One generation check against the UI-published shared snapshot; no ini parsing here.
     ConsumeLiveState();
+    EnsureTelemetryWorker();
     if (g_d3d11Mask.initialized && !RendererDeviceHealthy("xrEndFrame") &&
         g_topmostLayer.swapchain != XR_NULL_HANDLE) {
         BlockTopmostLayer("device removed at xrEndFrame", DXGI_ERROR_DEVICE_REMOVED);

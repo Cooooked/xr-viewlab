@@ -1,5 +1,24 @@
 # Changelog
 
+## 4.1.295 - 2026-07-25
+
+- **Diagnostics session recording is now opt-in.** "Record real session trace" defaults to off, so a
+  normal VR session starts no performance collector and writes no `session-*.csv` files. Turn it on
+  under Overlays → Performance Graph when you want Session Graph or DiagMon evidence; it applies from
+  the next VR session. Existing installs have it switched off once on upgrade — per-game profile
+  overrides you set yourself are kept.
+- **No background work while its feature is off.** The hardware sampling thread (CPU/GPU/RAM, four
+  times a second) used to run in every VR game whether or not anything displayed it. It now starts
+  only when recording, the Performance HUD or the Performance Trace overlay actually needs it, and
+  still starts immediately if you enable the HUD mid-session.
+- **The background notification helper is idle when idle.** It starts with Windows and used to re-read
+  every setting once per second forever; it now reacts to setting changes as they happen.
+  Notifications appear just as quickly.
+- **Notification animation stops when no cards are showing**, instead of ticking twenty times a second
+  for as long as notifications were enabled.
+- **Opening DiagMon no longer creates folders** on disk — its storage is created the first time you
+  actually capture something. The window now tells you when session-trace recording is off.
+
 ## 4.1.294 - 2026-07-20
 
 - **Session Graph history** now uses the app's dark theme (grid headers, rows and selection were

@@ -3,8 +3,37 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-07-20
-**Current version:** 4.1.294 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.294.msi` (SHA-256
+**Updated:** 2026-07-25
+**Current version:** 4.1.295 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.295.msi` (size 149,442,560 bytes; SHA-256
+`223F17FBB9B0617F96D69DF25B12939A76E9458BD7005C3837C32F34C3F0EA83`). **Zero idle cost: diagnostics opt-in +
+demand-gated background work.** ViewLab is resident whenever the user is at their PC, so this pass removes every cost
+paid while the owning feature is off. (1) **Diagnostics recording is opt-in** — `performance_trace_recording` now
+defaults **0** (bundled ini, `config/factory-baseline-v4.1.255.json` corrected WITHOUT a version bump, DLL/UI
+fallbacks, checkbox relabelled "Record real session trace (diagnostics, off by default)"). A one-shot
+`DiagnosticsOptInApplied` marker under `HKCU\Software\cooooked\xr-viewlab` clears a pre-existing `1` on upgrade, since
+that value recorded the old default rather than a choice; per-app overrides are deliberately untouched. (2) **The
+hardware-telemetry worker is demand-gated** — the 4 Hz PDH/DXGI/CPU collector thread previously started on EVERY
+`xrCreateSession`. New `EnsureTelemetryWorker()` (`dllmain.cpp`) starts it only when `performanceTraceRecording ||
+hudEnabled || hudTraceEnabled`, backed by a new lock-free `viewlab::telemetry::Running()`. Because HUD/trace enable
+arrives live while recording resolves at session start, it is re-checked per frame after `ConsumeLiveState()`; the
+worker still stops only at `xrDestroySession`, so toggling an overlay never churns a thread. The ~24 MB sample ring is
+reserved only when recording (`shrink_to_fit` otherwise), and the per-frame F8 marker `GetAsyncKeyState` is gated on
+recording. (3) **The broker no longer polls** — `ViewLab.NotificationBroker.exe` autostarts at login and re-read ~15
+ini keys + the profile registry + a *throwing* MMF probe once per second forever. It now refreshes from a
+`FileSystemWatcher` on the ini (300 ms debounce), a 2 s non-throwing `OpenFileMappingW` profile probe, a 30 s
+fallback, and the existing `refresh` pipe command which the settings app sends after a per-app profile save (registry
+overrides are invisible to a file watcher). (4) **Notification timers self-suspend** — the 20 Hz card animation timer
+ran forever while notifications were enabled; it is now started at the single card-entry choke point
+(`AddComposedCard` → `EnsureAnimationTimer`) and disposed by `Tick` when the queue drains, with the 2 s listener
+safety re-poll moved to its own timer instead of riding the 20 Hz tick. (5) **DiagMon leaves no trace when browsed** —
+`DiagMonStore` materialises its directories on first write (`EnsureCreated`) instead of in its constructor, and the
+window shows a hint when session-trace recording is off. Full WPF/broker/x64+Win32 native/MSI build 0 errors (3
+pre-existing C4244 warnings at `dllmain.cpp:3504-3542`, untouched code); MSI payload validated; contract suite plus
+FactoryBaseline/SessionGraph/PerformanceHud/OverlaySettings and the DiagMon/PerformanceTrace/NotificationCard/
+MediaSession/ObsProtocol/IRacing fixtures all pass. **Pending live validation:** in-headset confirmation that no
+`session-*.csv` appears with recording off, that enabling the HUD mid-session still populates within ~1 s, and that
+broker idle CPU is ~0 with notification features off.
+**Prior version:** 4.1.294 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.294.msi` (SHA-256
 `3479C796597EB48240CE4B49EF90CE436FE37228EF40CB760D392334A2BE504E`). **DiagMon graph UI fixes.** (1) The Session
 Graph history window (`PerformanceTraceLibraryWindow`) now merges `DiagMonDarkStyles.xaml` so its DataGrid headers/
 cells/rows/selection match the dark theme (was WPF default light). (2) The Performance Trace graph viewer

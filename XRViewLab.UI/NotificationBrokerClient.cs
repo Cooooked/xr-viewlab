@@ -15,6 +15,11 @@ internal sealed class NotificationBrokerClient
 
     public string Status { get; private set; } = "Unavailable: notification broker has not started.";
 
+    // True only when a broker is already resident, so callers can nudge it without starting one.
+    public static bool IsRunning => System.Threading.Mutex.TryOpenExisting(@"Local\XRViewLabNotificationBroker", out System.Threading.Mutex? mutex) && Dispose(mutex);
+
+    private static bool Dispose(System.Threading.Mutex mutex) { mutex.Dispose(); return true; }
+
     public bool Start(bool requestAccess)
     {
         if (!File.Exists(BrokerPath))

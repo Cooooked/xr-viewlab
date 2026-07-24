@@ -95,6 +95,7 @@ public partial class MainWindow : Window
 	private const string HudTraceHistoryKey = "hud_trace_history";
 	private const string HudTraceVisibilityKey = "hud_trace_visibility_mode";
 	private const string PerformanceTraceRecordingKey = "performance_trace_recording";
+	private const string DiagnosticsOptInMarker = "DiagnosticsOptInApplied";
 	private const string PerformanceTraceMarkerVkKey = "performance_trace_marker_vk";
 	private const string HudAlarmOnlyKey = "hud_alarm_only";
 	private const string HudAlarmHoldKey = "hud_alarm_hold_ms";
@@ -339,6 +340,14 @@ public partial class MainWindow : Window
 			foreach ((string key, uint value) in FactoryBaseline.ReShadeRemote)
 				if (!WritePrivateProfileString("Settings", "reshade_remote_" + key, value.ToString(CultureInfo.InvariantCulture), ConfigPath)) throw new IOException($"Could not migrate ReShade preference '{key}'.");
 			productKey.SetValue(FactoryBaseline.MigrationMarker, FactoryBaseline.Version, RegistryValueKind.String);
+		}
+
+		// Session-trace recording used to default on, so an existing "1" records the old default rather
+		// than a choice. Clear it once; per-app overrides were deliberate and are left alone.
+		if (!string.Equals(productKey.GetValue(DiagnosticsOptInMarker) as string, "1", StringComparison.Ordinal))
+		{
+			if (!WritePrivateProfileString("Settings", PerformanceTraceRecordingKey, "0", ConfigPath)) throw new IOException("Could not apply the diagnostics opt-in default.");
+			productKey.SetValue(DiagnosticsOptInMarker, "1", RegistryValueKind.String);
 		}
 	}
 
@@ -1186,7 +1195,7 @@ public partial class MainWindow : Window
 		HudTraceVisibilityCombo.SelectedIndex = int.TryParse(traceModeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int traceMode)
 			? Math.Clamp(traceMode, 0, 2) : (ReadBoolSetting(HudTraceEnabledKey, fallback: false) ? 1 : 0);
 		TraceEnabledCheck.IsChecked = HudTraceVisibilityCombo.SelectedIndex > 0;
-		PerformanceTraceRecordingCheck.IsChecked = ReadBoolSetting(PerformanceTraceRecordingKey, fallback: true);
+		PerformanceTraceRecordingCheck.IsChecked = ReadBoolSetting(PerformanceTraceRecordingKey, fallback: false);
 		PerformanceTraceMarkerKeyCombo.SelectedIndex = Math.Clamp((int)ReadRangeSetting(PerformanceTraceMarkerVkKey, 119, 117, 123)-117,0,6);
 		HudTraceSensitivitySlider.Value = ReadRangeSetting(HudTraceSensitivityKey, 2.0, 0.5, 8.0);
 		HudTraceWidthSlider.Value = ReadRangeSetting(HudTraceWidthKey, 0.42, 0.1, 1.0);
@@ -3962,6 +3971,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			}
 			appProfile.RefreshSummary();
 			LoadAppProfiles();
+			// Per-app overrides live in the registry, which the broker's settings watcher cannot see.
+			if (NotificationBrokerClient.IsRunning) _notificationBroker.SendCommand("refresh");
 			StatusText.Text = "Saved app profile. Restart the VR game.";
 		}
 	}
