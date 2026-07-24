@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.1.299 - 2026-07-25
+
+- **Debris on track no longer shows a yellow flag border.** The debris flag is its own flag (yellow and
+  red striped), not a full-course yellow, but ViewLab was drawing a yellow border for it: iRacing sends
+  a caution alongside debris, and the yellow check ran first, so the debris colour was never used.
+  Debris now has its own border. Red, black and disqualification still take priority over it, and a
+  caution without debris is still yellow as before.
+- **Removed the "iRacing Telemetry" checkbox from the per-game settings.** It did nothing — the iRacing
+  features only ever run while iRacing is the game in front, so a per-game switch had no meaning, and
+  nothing in ViewLab ever read the value it saved. iRacing settings live in the main Overlays menu.
+
 ## 4.1.298 - 2026-07-25
 
 - **Fixed: updating ViewLab stopped iRacing features until you restarted Windows.** Installing an

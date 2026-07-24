@@ -4,7 +4,25 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-25
-**Current version:** 4.1.298 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.298.msi` (size 149,442,560 bytes; SHA-256
+**Current version:** 4.1.299 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.299.msi` (size 149,442,560 bytes; SHA-256
+`2C6DEE83BBC9C8D2192F60AB392A8B3B1BF1952FE100D8DE1C066689FF6DAAB0`). **Debris flag no longer renders as yellow
+(R52); dead per-app iRacing checkbox removed (R53).** (1) `NormalizeFlag` tested the yellow/caution bits before the
+debris bit and returned on first match, so a real `0x4040` (caution+debris) resolved to Yellow and the existing
+`Debris` state/colour was unreachable outside tests. Debris is now evaluated before yellow and after red/black/DQ.
+The fixture only ever tested one bit at a time — which is why it stayed green — so it now covers realistic
+combinations, with a Clear between consecutive debris cases because the provider publishes only on state change.
+(2) The per-app "iRacing Telemetry" checkbox wrote `overlay_override_iracing__iracing_enabled`, which **no consumer
+read**: the broker resolves only `overlay_override_notifications__*` and native `ReadBoolSetting` reads the global
+ini. Removed from `ProfileWindow.xaml`, dropped from `InheritFeatures`, and `ReadAppOverlayOverrides` now skips
+legacy `iracing` keys so existing profiles shed the dead value on next save. The old contract pinning the checkbox
+was rewritten rather than deleted. Full build 0/0; contracts + iRacing/cue/overlay-inheritance fixtures pass.
+**Still pending live iRacing confirmation** that debris now shows its own border in-headset.
+**Open user requests being worked (2026-07-25):** DiagMon logging must become opt-in and be **forced off for all
+users on update** (checkbox inside DiagMon; mirror the 4.1.295 `DiagnosticsOptInApplied` one-shot marker pattern),
+and the flag-state border needs **per-flag checkboxes** rather than one global on/off. Planned per-flag approach
+carries no native or contract change: native already skips the border when `flagColor == 0` (`dllmain.cpp:3356`),
+so a disabled flag publishes colour 0.
+**Prior version:** 4.1.298 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.298.msi` (size 149,442,560 bytes; SHA-256
 `9E2ED85279659560E1B62FA24F12F5C52E716E6BD7A1070247519A4896786D3B`). **Upgrading no longer kills the notification
 broker until the next logon (R51).** Reported live by the user: after the 4.1.295 upgrade every broker-owned feature
 (iRacing spotter/flag/race-start/rear-closing/grip/lap/fuel, Now Playing, OBS recording cue) silently did nothing for

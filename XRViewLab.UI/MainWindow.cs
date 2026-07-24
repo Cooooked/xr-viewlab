@@ -3577,6 +3577,11 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			string encoded = valueName[prefix.Length..];
 			int separator = encoded.IndexOf("__", StringComparison.Ordinal);
 			if (separator <= 0) continue;
+			// Drop any legacy per-app iRacing override (R53). The old per-app "iRacing Telemetry" checkbox
+			// wrote this key, but no consumer ever read it: the broker resolves only
+			// overlay_override_notifications__*, and the native layer reads the global ini. Skipping it here
+			// means an existing profile stops carrying dead state and a subsequent save removes it.
+			if (encoded[..separator].Equals("iracing", StringComparison.OrdinalIgnoreCase)) continue;
 			result.Set(encoded[..separator], encoded[(separator + 2)..], Convert.ToString(appKey.GetValue(valueName), CultureInfo.InvariantCulture) ?? string.Empty);
 		}
 		return result;

@@ -291,8 +291,10 @@
             </StackPanel></Expander>
             <Separator Margin="0,8"/>
             <CheckBox Name="ProfileObsCueEnabled" Content="OBS Recording Cue" Tag="obs:obs_indicator_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/>
-            <CheckBox Name="ProfileIRacingEnabled" Content="iRacing Telemetry" Tag="iracing:iracing_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/>
-            <TextBlock Text="These two feature modules use their existing global detailed configuration." FontSize="10" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="20,2,0,0"/>
+            <!-- No per-app iRacing control here by design (R53). The iRacing cues only ever render while
+                 iRacing is the running title, so a per-game override is meaningless; the old checkbox also
+                 wrote an override key that nothing read. iRacing settings are global-only. -->
+            <TextBlock Text="This feature module uses its existing global detailed configuration." FontSize="10" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="20,2,0,0"/>
           </StackPanel>
           <TextBlock Name="CombinedHint" Grid.Row="19" Grid.ColumnSpan="3" Foreground="{StaticResource MutedBrush}" />
           <StackPanel Grid.Row="21" Grid.ColumnSpan="3" Orientation="Horizontal">

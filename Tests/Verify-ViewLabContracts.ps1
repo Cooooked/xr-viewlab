@@ -148,7 +148,9 @@ Assert-Contains 'ProfileWindow.xaml' 'Grid\.Column="1" Name="PART_VerticalScroll
 Assert-Contains 'ProfileWindow.xaml' 'ProfileClockEnabled[\s\S]*ProfileHudEnabled[\s\S]*ProfileTraceEnabled[\s\S]*ProfileStickyEnabled[\s\S]*ProfileCrosshairEnabled[\s\S]*ProfileNotifyEnabled' 'profile uses the six configurable overlay rows'
 Assert-Contains 'ProfileWindow.xaml' 'Name="ProfileHudWidgetList"' 'profile HUD expansion reuses the complete widget catalogue'
 Assert-Contains 'ProfileWindow.xaml' 'Name="ProfileStickyNotesList"' 'profile Sticky Notes expansion exposes the bounded note collection'
-Assert-Contains 'ProfileWindow.xaml' 'Content="OBS Recording Cue"[\s\S]*Content="iRacing Telemetry"' 'feature modules remain simple profile checkboxes'
+# R53: was 'OBS Recording Cue' + 'iRacing Telemetry'. iRacing is global-only, so OBS is now the only
+# per-app feature module; it must stay a simple checkbox.
+Assert-Contains 'ProfileWindow.xaml' 'Content="OBS Recording Cue"' 'the remaining feature module is a simple profile checkbox'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' '_overlayOverrides\.Clear\(\)' 'Use Global Values clears the complete profile overlay configuration'
 Assert-Contains 'dllmain.cpp' 'overlay_override_clock__clock_widget_enabled' 'native runtime resolves per-app overlay settings'
 Assert-Contains 'MainWindow.xaml' 'Content="Run Calibration Suite \(Experimental\)"' 'experimental calibration suite is explicitly labelled'
@@ -977,6 +979,12 @@ Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' '_overlayOverrides.ClearFeature\
 Assert-Contains 'ProfileWindow.xaml' 'Tag="inherit:hud"' 'per-app HUD section has a Use Global Values checkbox'
 Assert-Contains 'ProfileWindow.xaml' 'Tag="inherit:crosshair"' 'per-app crosshair section has a Use Global Values checkbox'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'prefix \+ "unit", widget.ShowUnit' 'per-app HUD overrides persist the per-metric unit setting'
+# R53: the iRacing cues only render while iRacing is the running title, so a per-game override is
+# meaningless. The old per-app checkbox also wrote an override key no consumer ever read.
+Assert-NotContains 'ProfileWindow.xaml' 'Tag="iracing:' 'per-app editor exposes no iRacing control'
+Assert-NotContains 'ProfileWindow.xaml' 'Name="ProfileIRacingEnabled"' 'the dead per-app iRacing checkbox is gone'
+Assert-NotContains 'XRViewLab.UI\ProfileWindow.cs' 'InheritFeatures = \{[^}]*"iracing"' 'iRacing has no per-app inheritance entry'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'Equals\("iracing", StringComparison.OrdinalIgnoreCase\)\) continue;' 'legacy per-app iRacing override keys are dropped on load'
 # Regression: the ProfileTraceEnabled special-case must not create a "trace" override during hydration,
 # or the Performance Trace section loads with its "Use global values" box unchecked instead of inherited.
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'check == ProfileTraceEnabled && _initialized && !_syncingControls' 'trace enable does not create a spurious override during profile load'

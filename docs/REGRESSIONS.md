@@ -1,5 +1,53 @@
 # Regression memory
 
+## R53 — Per-app iRacing checkbox was a control that nothing read (removed 4.1.299, 2026-07-25)
+
+**Symptom:** the per-app/per-game profile editor offered an "iRacing Telemetry" checkbox. Ticking or
+unticking it appeared to configure iRacing for that game and did nothing at all.
+
+**Cause:** the checkbox wrote `overlay_override_iracing__iracing_enabled` into the app's registry key,
+but no consumer ever read that value. The broker's `Read()` resolves per-app overrides for exactly one
+feature (`overlay_override_notifications__` + key, `NotificationBroker/Program.cs`); the native layer's
+`ReadBoolSetting` (`dllmain.cpp:1512`) reads the global ini only, with no registry lookup; and the
+runtime iRacing flags reach the layer from the global live-state snapshot. So the control was inert.
+It also contradicted the recorded 2026-07-19 decision that the iRacing cues are global-only by design,
+since they render only while iRacing is the running title.
+
+**Contract:** `ProfileWindow.xaml` contains no `Tag="iracing:"` control and no `ProfileIRacingEnabled`;
+`InheritFeatures` in `ProfileWindow.cs` has no `"iracing"` entry; `ReadAppOverlayOverrides`
+(`MainWindow.cs`) skips any `iracing` feature key so an existing profile stops carrying the dead value
+and a later save removes it. The older contract that pinned the checkbox's existence was deliberately
+rewritten, not deleted — OBS Recording Cue remains the one per-app feature module.
+
+**Never again:** a per-app control must have a per-app consumer. Before adding one, confirm the reader
+actually resolves that feature's override prefix; a UI control whose value nothing reads is worse than
+no control, because it advertises configurability that does not exist.
+
+## R52 — Debris on track drew a yellow border (reported 4.1.298; fixed 4.1.299, 2026-07-25)
+
+**Symptom:** debris on track produced a full yellow flag border in the headset. ViewLab has a distinct
+`Debris` flag state with its own colour (`0xFF8000`), and it never appeared in a real session.
+
+**Cause:** `NormalizeFlag` (`XRViewLab.UI/IRacingTelemetryProvider.cs`) tested the yellow/caution bits
+(`0x8 | 0x100 | 0x4000 | 0x8000`) *before* the debris bit (`0x40`) and returned on first match. iRacing
+raises a caution bit alongside debris, so a real value such as `0x4040` matched yellow and returned
+before the debris branch was ever reached — the `Debris` state was unreachable outside tests.
+
+**Why the tests passed:** `Tests/IRacingFixtures/Program.cs` exercised one flag bit at a time. `0x40`
+alone correctly produced `Debris`, so the suite was green while the real behaviour was wrong. Isolated
+enum-mapping cases cannot prove priority; only combinations can.
+
+**Contract:** debris is evaluated before yellow and after red/black/DQ, so debris never renders as a
+yellow flag while genuinely more severe flags still win. The fixture table now includes realistic
+combinations (`0x48`, `0x4040`, `0x8040`, `0x140`, `0xC148` → Debris; `0x50` → Red; `0x10040` → Black;
+`0x20040` → Disqualified; `0x4008` → Yellow). Note the provider publishes only on state *change*, so
+every consecutive entry in that table must resolve to a different state — combination cases are
+separated by a Clear.
+
+**Never again:** when a first-match priority chain maps a bitfield, test bit *combinations* that the
+source actually emits, not one bit at a time. A lower branch in such a chain can be dead code in
+production while fully covered by tests.
+
 ## R51 — Upgrading killed the notification broker until the next logon (reported 4.1.295; fixed 4.1.298, 2026-07-25)
 
 **Symptom:** after installing an upgrade, every broker-owned feature silently stopped for the rest of

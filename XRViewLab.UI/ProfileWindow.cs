@@ -433,7 +433,9 @@ public partial class ProfileWindow : Window
 	// A per-app overlay inherits the global configuration exactly when it has no override keys.
 	// Ticking the box clears that overlay's override keys (it then follows future global changes);
 	// unticking seeds override keys from the current effective values. Other overlays are untouched.
-	private static readonly string[] InheritFeatures = { "clock", "hud", "trace", "notifications", "crosshair", "sticky", "obs", "iracing" };
+	// "iracing" is deliberately absent (R53): the iRacing cues are global-only, so the per-app editor
+	// exposes no iRacing control for an inheritance checkbox to govern.
+	private static readonly string[] InheritFeatures = { "clock", "hud", "trace", "notifications", "crosshair", "sticky", "obs" };
 
 	private CheckBox? InheritCheckboxFor(string feature) =>
 		FindLogicalChildren<CheckBox>(this).FirstOrDefault(c => c.Tag is string t && t == "inherit:" + feature);
