@@ -17,7 +17,11 @@
     <Border Grid.Row="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="5" Padding="12">
       <StackPanel>
       <!-- DiagMon is entirely opt-in (R54): unticked, no capture can start and nothing is written to disk. -->
+      <!-- DiagMonDarkStyles.xaml has no CheckBox style, so a checkbox falls back to WPF's default black
+           text and is unreadable on this dark panel. Bound to the Window's own Foreground so it always
+           matches the rest of the window's text rather than hardcoding a colour that could drift. -->
       <CheckBox x:Name="LoggingOptInCheck" Margin="0,0,0,10" Checked="LoggingOptIn_Changed" Unchecked="LoggingOptIn_Changed"
+                Foreground="{StaticResource Muted}"
                 Content="Enable DiagMon logging (off by default)"
                 ToolTip="DiagMon is opt-in. While this is unticked no capture can start, and DiagMon creates no files or folders on your PC."/>
       <Grid>

@@ -4,7 +4,14 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-25
-**Current version:** 4.1.302 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.302.msi` (SHA-256
+**Current version:** 4.1.305 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.305.msi` (SHA-256
+`C5E0C3775A8CB9B30F3D7DA13E0CA9AF8FDA7E3EF684EE16E028BE8D03AF3317`). **DiagMon opt-in checkbox label was
+unreadable.** It rendered as black text on the dark panel because `DiagMonDarkStyles.xaml` defines **no CheckBox
+style**, so a bare `CheckBox` falls back to WPF's default template and does not inherit the Window `Foreground`.
+Label now uses `{StaticResource Muted}` (#96989F), matching the window's other body text. **Note for future
+DiagMon UI work: any new CheckBox in that window must set `Foreground` explicitly, or add a CheckBox style to
+`DiagMonDarkStyles.xaml`** — this will recur otherwise.
+**Prior version:** 4.1.302 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.302.msi` (SHA-256
 `A1343795D31B5E64EA94A47EE9FC64F8D77B7C3896CE5215876FFD91049A0779`). **Fixes an R55 bug shipped in 4.1.301.**
 4.1.301 removed the ×0.5-on-save but missed that, while split is OFF, `RenderValue_Changed` copies the TOTAL into
 both Top and Bottom (correct under the old half-lens meaning, wrong under whole-screen). Result on the user's
