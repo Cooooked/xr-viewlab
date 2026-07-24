@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.1.298 - 2026-07-25
+
+- **Fixed: updating ViewLab stopped iRacing features until you restarted Windows.** Installing an
+  update shut down ViewLab's background helper to replace its files and never started it again — it
+  only came back when you next logged in. Until then the spotter, flags, race-start light, lap and
+  fuel cards, Now Playing and the OBS recording cue all silently did nothing, and the iRacing status
+  line kept showing the last thing it had seen rather than admitting the helper was gone. Installing
+  an update now restarts the helper as part of the install, so everything keeps working immediately.
+  This affected anyone who upgraded to 4.1.295 and had not rebooted since.
+
 ## 4.1.295 - 2026-07-25
 
 - **Diagnostics session recording is now opt-in.** "Record real session trace" defaults to off, so a

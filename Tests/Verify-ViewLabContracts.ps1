@@ -587,6 +587,11 @@ Assert-Contains 'XRViewLab.UI\App.cs' '--set-layer-enabled' 'machine-wide layer 
 Assert-Contains 'Installer\Product.wxs' 'ViewLab.NotificationIdentity.msix' 'MSI installs the signed notification identity package'
 Assert-Contains 'Installer\Product.wxs' 'StoreName="trustedPeople"' 'MSI trusts only the packaged broker signer certificate'
 Assert-Contains 'Installer\Product.wxs' 'ViewLab Notification Broker' 'MSI starts the independent notification broker at logon'
+# R51: the logon Run key alone leaves the broker dead for the rest of the session after an upgrade
+# replaces its files, so the installer must also relaunch it before InstallFinalize.
+Assert-Contains 'Installer\Product.wxs' 'CustomAction Id="LaunchNotificationBrokerPostInstall"[\s\S]{0,200}FileKey="NotificationBrokerExe"' 'installer relaunches the broker from its installed executable'
+Assert-Contains 'Installer\Product.wxs' 'Custom Action="LaunchNotificationBrokerPostInstall" Before="InstallFinalize">NOT REMOVE<' 'broker relaunch runs on install/upgrade/repair but never on uninstall'
+Assert-Contains 'NotificationBroker\Program.cs' 'new Mutex\(true, MutexName, out bool primary\)' 'a duplicate broker launch is a no-op, so the installer relaunch is always safe'
 Assert-Contains 'build.ps1' 'makeappx\.exe' 'build creates the external-location identity package'
 Assert-Contains 'build.ps1' 'signtool\.exe' 'build signs the notification identity package'
 Assert-Contains 'Tests\Invoke-RealNotificationFixture.ps1' 'CardCount' 'real packaged notification fixture proves production card delivery'

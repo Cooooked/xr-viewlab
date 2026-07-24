@@ -3,7 +3,7 @@
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
      xmlns:iis="http://schemas.microsoft.com/wix/IIsExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.295"
+           Language="1033" Version="4.1.298"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -43,10 +43,22 @@
                   Execute="deferred"
                   Return="ignore"
                   Impersonate="no" />
+    <!-- The broker is killed by RemoveNotificationIdentity (uninstall) and by the file lock during a
+         MajorUpgrade's old-version removal pass, but only the HKLM Run key relaunches it, and that
+         only fires at the next login. Without this, every upgrade leaves ViewLab.NotificationBroker.exe
+         dead (no notifications, no iRacing telemetry) until the user reboots. The mutex in Main() makes
+         a duplicate launch a harmless no-op, so it's safe to fire this unconditionally on install/upgrade/repair. -->
+    <CustomAction Id="LaunchNotificationBrokerPostInstall"
+                  FileKey="NotificationBrokerExe"
+                  ExeCommand="--start"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="asyncNoWait" />
 
     <InstallExecuteSequence>
       <Custom Action="SetRemoveNotificationIdentityCommand" Before="RemoveNotificationIdentity">REMOVE~=&quot;ALL&quot;</Custom>
       <Custom Action="RemoveNotificationIdentity" Before="RemoveFiles">REMOVE~=&quot;ALL&quot;</Custom>
+      <Custom Action="LaunchNotificationBrokerPostInstall" Before="InstallFinalize">NOT REMOVE</Custom>
     </InstallExecuteSequence>
 
     <UI>

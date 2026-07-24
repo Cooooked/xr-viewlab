@@ -4,7 +4,27 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-25
-**Current version:** 4.1.295 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.295.msi` (size 149,442,560 bytes; SHA-256
+**Current version:** 4.1.298 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.298.msi` (size 149,442,560 bytes; SHA-256
+`9E2ED85279659560E1B62FA24F12F5C52E716E6BD7A1070247519A4896786D3B`). **Upgrading no longer kills the notification
+broker until the next logon (R51).** Reported live by the user: after the 4.1.295 upgrade every broker-owned feature
+(iRacing spotter/flag/race-start/rear-closing/grip/lap/fuel, Now Playing, OBS recording cue) silently did nothing for
+a full day of racing. Root cause proven from the machine, not inferred: `ViewLab.NotificationBroker.exe` was absent
+from the process list while `iRacing_Sim64DX11.exe` was running, and `iracing-status.json` was frozen at the exact
+minute of the upgrade (03:49) — the MSI stops the broker to replace its files (`MajorUpgrade` removal pass takes the
+file lock; `RemoveNotificationIdentity` kills it on uninstall) but the ONLY restart path was the `HKLM ...\Run` value,
+which fires at **logon**, so an in-place upgrade left it dead until reboot. `Installer/Product.wxs` now carries
+`LaunchNotificationBrokerPostInstall` — deferred, `Impersonate="yes"`, `Return="asyncNoWait"`,
+`FileKey="NotificationBrokerExe"`, `ExeCommand="--start"` — sequenced `Before="InstallFinalize"` under `NOT REMOVE`,
+so it runs on install/upgrade/repair but never on uninstall. Firing it unconditionally is safe because `Main()` takes
+a named mutex and a non-primary launch forwards its command and exits. Contracts pin the action, its
+sequencing/condition and the mutex. Full build 0/0; contract suite passes (3 new assertions).
+**Validation status — read before publishing:** the MSI's `CustomAction`/`InstallExecuteSequence` tables were read
+back out of the built package and verified (Type 1234, Source `NotificationBrokerExe`, Target `--start`, sequence
+6599 immediately before `InstallFinalize` at 6600, condition `NOT REMOVE`). A live end-to-end install was **NOT**
+completed — the agent shell is non-elevated and the upgrade's removal pass returned `Error 1730` / exit 1603. The
+user must run one real elevated upgrade install and confirm `ViewLab.NotificationBroker.exe` is running afterwards
+**without a reboot**. Do not publish a release until that passes.
+**Prior version:** 4.1.295 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.295.msi` (size 149,442,560 bytes; SHA-256
 `223F17FBB9B0617F96D69DF25B12939A76E9458BD7005C3837C32F34C3F0EA83`). **Zero idle cost: diagnostics opt-in +
 demand-gated background work.** ViewLab is resident whenever the user is at their PC, so this pass removes every cost
 paid while the owning feature is off. (1) **Diagnostics recording is opt-in** — `performance_trace_recording` now
@@ -73,7 +93,18 @@ broker elevates). (2) **"Fovea centering" checkbox** Kinder misses was the retir
 the ALGORITHM was removed (it rotated eye poses → tilted/folded world on asymmetric crops), so restoring it means
 resurrecting known-buggy native code as an opt-in (default off) + headset revalidation; not done pending user go-ahead.
 (3) iRacing top/bottom "50→100" is the 4.1.253 split-crop rework changing value semantics (½-lens scaling); old configs
-need ×2 — consider a migration.
+need ×2 — consider a migration. NOTE: item (2) above is now STALE — `foveatedCenterCompensation` was restored as an
+opt-in in 4.1.293; leaving the text for history only.
+**Known issues found 2026-07-25 (recorded per rule 6, NOT fixed in this commit):**
+(4) **The iRacing status line cannot say "the broker is gone".** `NotificationBrokerClient.RefreshIRacingStatus()`
+reads `iracing-status.json` and renders whatever it finds, with no freshness check against `updatedUtc` and no probe
+for a live broker process. A status file frozen hours ago renders identically to a live "Connected (inactive)", which
+is precisely why R51 hid for a full day. Fix: treat a stale `updatedUtc` (or an absent broker mutex/process) as its own
+reported state. This is a truthful-diagnostics gap, and the same pattern likely affects the notification status line.
+(5) **R50 was never written to `docs/REGRESSIONS.md`.** Commit 91746c3 (4.1.295) states "Contracts pin every gate
+(R50)", but R50 exists only as a comment at `Tests/Verify-ViewLabContracts.ps1:783`; the regression file jumps 49→51.
+The rule-4 documentation contract was asserted in a commit message without being honoured. Either write R50 up from
+that commit's gates or stop citing it.
 **Prior version:** 4.1.291 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.291.msi` (size 149,442,560 bytes; SHA-256
 `879D03E32269A13C0587C2CE9B1E94000537FBF4958ABD2375304A52279D9C58`). **One filter, stronger stabilization.**
 (1) **Removed the redundant in-module `viewlab_media_filter`** (colour+sharpen only) from `ViewLabMirrorPlugin` — it

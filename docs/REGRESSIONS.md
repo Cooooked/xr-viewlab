@@ -1,5 +1,35 @@
 # Regression memory
 
+## R51 — Upgrading killed the notification broker until the next logon (reported 4.1.295; fixed 4.1.298, 2026-07-25)
+
+**Symptom:** after installing an upgrade, every broker-owned feature silently stopped for the rest of
+the Windows session — no iRacing spotter/flag/cue/lap/fuel output, no Now Playing or OBS cards. The
+settings app still showed a plausible iRacing status line ("Connected (inactive)"), because
+`RefreshIRacingStatus()` reads `iracing-status.json` off disk and that file simply stopped being
+rewritten. Restarting iRacing, the game, or the settings app did not help; only a reboot did. The
+user lost a full day of racing to this and reported "my iRacing features aren't working".
+
+**Cause:** `ViewLab.NotificationBroker.exe` is a separate resident process. The MSI has to stop it to
+replace its files (the `MajorUpgrade` removal pass takes the file lock; on uninstall
+`RemoveNotificationIdentity` kills it outright), but the ONLY thing that ever started it again was the
+`HKLM ...\CurrentVersion\Run` value — which fires at **logon**, not at end of install. So every
+upgrade left the process dead until the user next logged in. Nothing logged an error, because from
+the layer's and the UI's point of view nothing failed: the status file was merely stale, and stale
+data here is indistinguishable from "iRacing is sitting in the menus".
+
+**Contract:** `Installer/Product.wxs` carries a deferred, impersonated, `Return="asyncNoWait"`
+`LaunchNotificationBrokerPostInstall` custom action (`FileKey="NotificationBrokerExe"`,
+`ExeCommand="--start"`) sequenced `Before="InstallFinalize"` under condition `NOT REMOVE`. It is safe
+to fire unconditionally on install/upgrade/repair because `Main()` in `NotificationBroker/Program.cs`
+takes `new Mutex(true, MutexName, out bool primary)` and a non-primary launch forwards its command and
+exits. Contracts pin the custom action, its sequencing/condition, and the mutex that makes it safe.
+
+**Never again:** a resident helper process that an installer stops must be restarted **by that
+installer** before `InstallFinalize`. A logon-triggered `Run` key is autostart, not recovery — never
+treat it as the restart path for an in-place upgrade. Related: a status surface that reads a file
+written by another process must be able to say the writer is *absent*; reporting last-known state as
+if it were current is what hid this for a day (see Known issues in `STATE.md`).
+
 ## R49 — Notification cards low-resolution; Minimal boxed; magenta edge; OBS mirror overlays
 
 **Symptom (quality):** Notification text/graphics looked low-resolution in-headset and got
