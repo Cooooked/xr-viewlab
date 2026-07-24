@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -182,8 +182,9 @@ public partial class ProfileWindow : Window
 		HiddenValue = hidden;
 		NameBox.Text = appName;
 		ExeNameText.Text = exeName;
-		TopBox.Text = FormatScale(Math.Clamp(top * 2.0, 0.0, 1.0));
-		BottomBox.Text = FormatScale(Math.Clamp(bottom * 2.0, 0.0, 1.0));
+		// R55: Top/Bottom are whole-screen shares, stored and displayed 1:1 (no half-lens conversion).
+		TopBox.Text = FormatScale(Math.Clamp(top, 0.0, 0.5));
+		BottomBox.Text = FormatScale(Math.Clamp(bottom, 0.0, 0.5));
 		HorizontalBox.Text = FormatScale(horizontal);
 		RenderScaleValue = renderScale;
 		RenderBox.Text = (renderScale * 100.0).ToString("0.####", CultureInfo.InvariantCulture);
@@ -252,7 +253,7 @@ public partial class ProfileWindow : Window
 	{
 		if (TryRead(TopBox.Text, out var top) && TryRead(BottomBox.Text, out var bottom))
 		{
-			return Math.Clamp((top + bottom) * 0.5, 0.01, 1.0);
+			return Math.Clamp(top + bottom, 0.01, 1.0); // R55: whole-screen shares sum directly
 		}
 		return 1.0;
 	}
@@ -288,8 +289,9 @@ public partial class ProfileWindow : Window
 		MaskBeanEditor.SetVisorVisible(VisorEnabledCheck?.IsChecked == true);
 		MaskBeanEditor.OpenInnerPreview = true; // Stencil outer edges only is permanently enabled
 		// Preview rect tracks the post-crop render area so the mask aspect is WYSIWYG.
+		// R55: whole-screen shares here, half-relative in Quest3PreviewGeometry — convert at the boundary.
 		if (TryRead(TopBox.Text, out double previewTop) && TryRead(BottomBox.Text, out double previewBottom))
-			MaskBeanEditor.SetCropVertical(previewTop, previewBottom);
+			MaskBeanEditor.SetCropVertical(previewTop * 2.0, previewBottom * 2.0);
 		else
 			MaskBeanEditor.CropVertical = CurrentVerticalCrop();
 		MaskBeanEditor.CropHorizontal = CurrentHorizontalCrop();
@@ -653,7 +655,7 @@ public partial class ProfileWindow : Window
 		HorizontalHint.Text = (flag3 ? (FormatPercent(value3) + " horizontal") : "Enter horizontal width");
 		RenderHint.Text = TryReadPercent(RenderBox.Text, out var rs) ? ($"{rs * 100.0:0.####}% render res") : "100 = no change";
 		bool maskOk = TryRead(MaskVerticalBox.Text, out var maskV) && TryRead(MaskHorizontalBox.Text, out var maskH) && maskV >= 0.01 && maskH >= 0.01;
-		CombinedHint.Text = ((flag && flag2 && maskOk) ? ("Combined: " + FormatPercent((value + value2) * 0.5) + " total render height") : "Combined: enter valid values");
+		CombinedHint.Text = ((flag && flag2 && maskOk) ? ("Combined: " + FormatPercent(value + value2) + " total render height") : "Combined: enter valid values");
 	}
 
 	private void Values_Changed(object sender, TextChangedEventArgs e)
@@ -673,7 +675,7 @@ public partial class ProfileWindow : Window
 
 	private void Save_Click(object sender, RoutedEventArgs e)
 	{
-		if (!TryRead(TopBox.Text, out var value) || !TryRead(BottomBox.Text, out var value2) || !TryRead(HorizontalBox.Text, out var value3) || (value + value2) * 0.5 < 0.01 || value3 < 0.01)
+		if (!TryRead(TopBox.Text, out var value) || !TryRead(BottomBox.Text, out var value2) || !TryRead(HorizontalBox.Text, out var value3) || value + value2 < 0.01 || value3 < 0.01)
 		{
 			MessageBox.Show(this, "Enter values from 0.00 to 1.00. Combined vertical and horizontal values must be at least 0.01.", "ViewLab", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 			return;
@@ -682,8 +684,8 @@ public partial class ProfileWindow : Window
 		TryRead(MaskHorizontalBox.Text, out var maskH);
 		maskV = Math.Clamp(maskV, 0.01, 1.0);
 		maskH = Math.Clamp(maskH, 0.01, 1.0);
-		TopValue = value * 0.5;
-		BottomValue = value2 * 0.5;
+		TopValue = value;
+		BottomValue = value2;
 		HorizontalValue = value3;
 		DisplayName = (NameBox.Text ?? "").Trim();
 		TryReadPercent(RenderBox.Text, out double rs);

@@ -1099,7 +1099,9 @@ public partial class MainWindow : Window
 			TryReadTextBox(TopBox, out var top) &&
 			TryReadTextBox(BottomBox, out var bottom))
 		{
-			return Math.Clamp((top + bottom) * 0.5, 0.01, 1.0);
+			// R55: Top/Bottom are whole-screen shares, so the total is simply their sum (matching
+			// native totalTangent = topTangent + bottomTangent).
+			return Math.Clamp(top + bottom, 0.01, 1.0);
 		}
 		return TryReadTextBox(TotalBox, out var total) ? Math.Clamp(total, 0.01, 1.0) : 1.0;
 	}
@@ -1135,8 +1137,11 @@ public partial class MainWindow : Window
 		MaskBeanEditor.SetVisorVisible(MaskEnabledCheck?.IsChecked==true);
 		MaskBeanEditor.OpenInnerPreview = true; // Stencil outer edges only is permanently enabled
 		// Preview rect tracks the post-crop render area so the mask aspect is WYSIWYG.
+		// R55: the Top/Bottom controls are whole-screen shares, but Quest3PreviewGeometry parameterises
+		// each half independently (0..1 across that half), so convert at this boundary. Without the ×2 the
+		// preview would draw half the real crop.
 		if (SplitCheck?.IsChecked == true && TryReadTextBox(TopBox, out double previewTop) && TryReadTextBox(BottomBox, out double previewBottom))
-			MaskBeanEditor.SetCropVertical(previewTop, previewBottom);
+			MaskBeanEditor.SetCropVertical(previewTop * 2.0, previewBottom * 2.0);
 		else
 			MaskBeanEditor.CropVertical = CurrentVerticalCrop();
 		MaskBeanEditor.CropHorizontal = CurrentHorizontalCrop();
@@ -1152,8 +1157,10 @@ public partial class MainWindow : Window
 		SplitCheck.IsChecked = value2;
 		if (FoveaCenterCheck != null) FoveaCenterCheck.IsChecked = ReadBoolSetting("foveated_center_compensation", fallback: false);
 		TotalBox.Text = FormatScale(num);
-		TopBox.Text = FormatScale(Math.Clamp(ReadScaleSetting("top_tangent", num * 0.5) * 2.0, 0.0, 1.0));
-		BottomBox.Text = FormatScale(Math.Clamp(ReadScaleSetting("bottom_tangent", num * 0.5) * 2.0, 0.0, 1.0));
+		// R55: Top/Bottom are shares of the WHOLE screen, matching the stored values 1:1 and matching the
+		// single Vertical control (0.15 vertical == 0.075 top + 0.075 bottom). No conversion either way.
+		TopBox.Text = FormatScale(Math.Clamp(ReadScaleSetting("top_tangent", num * 0.5), 0.0, 0.5));
+		BottomBox.Text = FormatScale(Math.Clamp(ReadScaleSetting("bottom_tangent", num * 0.5), 0.0, 0.5));
 		HorizontalBox.Text = FormatScale(value);
 		// Mask (visor): absolute bounds, default 1.0 = no mask on that axis.
 		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
@@ -3286,8 +3293,9 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", "total_render_height", FormatStorageScale(value), ConfigPath);
 		WritePrivateProfileString("Settings", "total_share", null, ConfigPath);
 		WritePrivateProfileString("Settings", "vertical_tangent", null, ConfigPath);
-		WritePrivateProfileString("Settings", "top_tangent", FormatStorageScale(value2 * 0.5), ConfigPath);
-		WritePrivateProfileString("Settings", "bottom_tangent", FormatStorageScale(value3 * 0.5), ConfigPath);
+		// R55: stored 1:1 — the Top/Bottom controls are already whole-screen shares.
+		WritePrivateProfileString("Settings", "top_tangent", FormatStorageScale(value2), ConfigPath);
+		WritePrivateProfileString("Settings", "bottom_tangent", FormatStorageScale(value3), ConfigPath);
 		WritePrivateProfileString("Settings", "horizontal_render_width", FormatStorageScale(value4), ConfigPath);
 		double maskV = TryReadTextBox(MaskVerticalBox, out var mv) ? Math.Clamp(mv, 0.01, 1.0) : 1.0;
 		double maskH = TryReadTextBox(MaskHorizontalBox, out var mh) ? Math.Clamp(mh, 0.01, 1.0) : 1.0;

@@ -1,5 +1,46 @@
 # Regression memory
 
+## R55 — Split Top/Bottom sliders were half-lens shares and read as double (changed 4.1.301, 2026-07-25)
+
+**Symptom:** with Vertical at 0.15, ticking "Split top and bottom" showed 0.15 top and 0.15 bottom. The
+user reasonably expected 0.075 each and read the display as a 1:1 scaling bug.
+
+**Cause (of the confusion, not of any render error):** R39/4.1.253 made each slider a share of its OWN
+half-lens, so the editors converted ×2 on load and ×0.5 on save. The render was always correct — native
+`totalTangent = topTangent + bottomTangent` (`dllmain.cpp:5395`) and the stored `top_tangent`/
+`bottom_tangent` were always whole-screen shares. The user's own session log confirmed it end to end:
+`total_render_height=0.150 top_render_height=0.075 bottom_render_height=0.075 top_scale=0.150
+bottom_scale=0.150`. Only the displayed number was ambiguous.
+
+**Contract:** the Top/Bottom controls are whole-screen shares displayed 1:1 with the stored value, in
+both the main and per-app editors; the ×2/×0.5 conversions are gone; sliders cap at 0.5 each; the total
+is `top + bottom`, matching native. **`Quest3PreviewGeometry` is deliberately unchanged** — it still
+parameterises each half independently, so both editors convert `×2` where they hand values to
+`SetCropVertical`. That conversion is what keeps the preview and the headset render identical; without
+it the preview would draw half the real crop. Contracts pin the 1:1 display, the unhalved store, and
+both preview boundary conversions.
+
+**Never again:** a stored value and its control should share one meaning unless there is a strong reason
+not to. If a control must use a different unit from storage, every consumer of that control's value —
+persistence, preview, hints, validation — has to be converted at its own boundary, and the contracts must
+name which side of the boundary each expression belongs to. No saved configuration migrates here, because
+storage never changed.
+
+## R54 — DiagMon wrote to disk without an explicit opt-in (changed 4.1.300, 2026-07-25)
+
+**Symptom / rationale:** DiagMon could create folders and capture sessions without the user ever having
+agreed to diagnostics. Users who will never use DiagMon had no way to know it was inert.
+
+**Contract:** `diagmon_logging_enabled` (ini, default **0**) gates DiagMon. While off, `Start Capture` is
+disabled, `Start_Click` refuses regardless of button state, and `RecoverAbandonedAsync` — which finalises
+abandoned sessions and therefore writes — is skipped on window load, so browsing a disabled DiagMon
+leaves the filesystem untouched. The key lives in the shared ini, NOT in DiagMon's own `settings.json`,
+because that file sits inside the DiagMon store and persisting an opt-OUT must not itself create the
+store. No migration marker is required: the key is new, so every existing install reads the 0 default.
+
+**Never again:** a diagnostics feature is off until the user says otherwise, and "off" must mean it
+writes nothing at all — not merely that it captures less. Gate the write path, not just the button.
+
 ## R53 — Per-app iRacing checkbox was a control that nothing read (removed 4.1.299, 2026-07-25)
 
 **Symptom:** the per-app/per-game profile editor offered an "iRacing Telemetry" checkbox. Ticking or

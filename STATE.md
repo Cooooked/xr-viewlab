@@ -4,7 +4,23 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-25
-**Current version:** 4.1.300 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.300.msi` (size 149,438,464 bytes; SHA-256
+**Current version:** 4.1.301 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.301.msi` (size 149,438,464 bytes; SHA-256
+`A1585D23FF647ACF220EFBCC6CA4ACCAFB3A5E96516A2271A3A285D450FBB4C2`). **Split Top/Bottom sliders are whole-screen
+shares (R55).** On user instruction, superseding the R39/4.1.253 UI convention. Vertical 0.15 + split now displays
+0.075 top / 0.075 bottom instead of 0.15 / 0.15. The ×2-on-load / ×0.5-on-save conversions are removed from both
+editors, sliders cap at 0.5 each, and the combined total is `top + bottom` (matching native). **Nothing about the
+render or storage changed** — `top_tangent`/`bottom_tangent` were always whole-screen shares, so no saved config
+migrates and no game renders differently; only the displayed number changes. `Quest3PreviewGeometry` is deliberately
+untouched: it still parameterises each half independently, so both editors convert ×2 at `SetCropVertical`, which is
+exactly what keeps preview and headset identical. Contracts updated to pin the new convention plus both preview
+boundary conversions. Full build 0/0; main contracts, Quest3 preview/profile contracts, iRacing/cue/
+overlay-inheritance fixtures and factory-baseline all pass.
+**Repo hygiene finding (fixed here):** `Tests/Verify-Quest3PreviewAndProfiles.ps1` had been FAILING since 91746c3
+(4.1.295) — that commit inserted the broker `refresh` send between `LoadAppProfiles()` and the "Saved app profile"
+status, which its adjacency pattern forbade. The script evidently had not been run since. Pattern relaxed to
+tolerate intervening statements while keeping its intent. Same commit is responsible for R51 and the phantom R50;
+**run the full deterministic suite, not just `Verify-ViewLabContracts.ps1`, before claiming a build is green.**
+**Prior version:** 4.1.300 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.300.msi` (size 149,438,464 bytes; SHA-256
 `06A93A0B152AED060F23B4EF012ECC11566C061E666B93C2F3DF9E891DECA24D`). **DiagMon logging is opt-in and off for
 everyone (R54); per-flag border checkboxes.** (1) New ini key `diagmon_logging_enabled` (default **0**) plus an
 "Enable DiagMon logging (off by default)" checkbox at the top of `DiagMonWindow`. While off, `Start Capture` is

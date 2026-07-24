@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Window x:Class="XRViewLab.UI.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title="ViewLab" Width="330" Height="390" MinWidth="190" MinHeight="280" WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="True" Background="#00FFFFFF" Foreground="#E8E8E8" FontFamily="Segoe UI" FontSize="14" xmlns:ui="clr-namespace:XRViewLab.UI">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="7" GlassFrameThickness="0" CornerRadius="10" />
@@ -407,15 +407,15 @@
                 <TextBox Name="HorizontalBox" Grid.Row="4" Grid.Column="2" TextChanged="RenderValue_Changed" />
                 <TextBlock Name="HorizontalHint" Grid.Row="4" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                 <Slider Name="HorizontalSlider" Grid.Row="6" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0.01" Maximum="1" ValueChanged="RenderSlider_Changed" />
-                <CheckBox Name="SplitCheck" Grid.Row="8" Grid.ColumnSpan="5" Content="Split top and bottom" ToolTip="Use separate top and bottom render height values to move the rendered slice up or down." Checked="SplitCheck_Changed" Unchecked="SplitCheck_Changed" />
-                <TextBlock Grid.Row="10" Grid.Column="0" Text="Top" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <CheckBox Name="SplitCheck" Grid.Row="8" Grid.ColumnSpan="5" Content="Split top and bottom" ToolTip="Use separate top and bottom render height values to move the rendered slice up or down. Each is a share of the whole screen and they add up to the total, so Vertical 0.15 becomes Top 0.075 + Bottom 0.075." Checked="SplitCheck_Changed" Unchecked="SplitCheck_Changed" />
+                <TextBlock Grid.Row="10" Grid.Column="0" Text="Top" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="Share of the WHOLE screen rendered above centre. Top + Bottom is the total render height, so 0.075 + 0.075 equals a 0.15 Vertical setting." />
                 <TextBox Name="TopBox" Grid.Row="10" Grid.Column="2" TextChanged="RenderValue_Changed" />
                 <TextBlock Name="TopHint" Grid.Row="10" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
-                <Slider Name="TopSlider" Grid.Row="12" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="1" ValueChanged="RenderSlider_Changed" />
-                <TextBlock Grid.Row="14" Grid.Column="0" Text="Bottom" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <Slider Name="TopSlider" Grid.Row="12" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="0.5" ValueChanged="RenderSlider_Changed" />
+                <TextBlock Grid.Row="14" Grid.Column="0" Text="Bottom" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="Share of the WHOLE screen rendered below centre. Top + Bottom is the total render height." />
                 <TextBox Name="BottomBox" Grid.Row="14" Grid.Column="2" TextChanged="RenderValue_Changed" />
                 <TextBlock Name="BottomHint" Grid.Row="14" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
-                <Slider Name="BottomSlider" Grid.Row="16" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="1" ValueChanged="RenderSlider_Changed" />
+                <Slider Name="BottomSlider" Grid.Row="16" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="0.5" ValueChanged="RenderSlider_Changed" />
                 <TextBlock Name="CombinedHint" Grid.Row="18" Grid.ColumnSpan="5" Visibility="Collapsed" />
                 <CheckBox Name="FoveaCenterCheck" Grid.Row="20" Grid.ColumnSpan="5" Content="Recenter foveated rendering (split crop)" ToolTip="When Split top/bottom is uneven, re-aims each eye at the centre of the cropped view so the runtime's foveated (sharpest) region stays on what you actually see. Applies on the next game launch. On some titles the re-aim can read as a slight world tilt." Checked="FoveaCenterCheck_Changed" Unchecked="FoveaCenterCheck_Changed" />
               </Grid>

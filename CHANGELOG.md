@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.1.301 - 2026-07-25
+
+- **Split Top and Bottom now read as a share of the whole screen.** Setting Vertical to 0.15 and then
+  ticking "Split top and bottom" now shows **0.075 top and 0.075 bottom**, which add up to your 0.15 —
+  instead of showing 0.15 and 0.15, which meant "0.15 of each half" and read as double. Nothing about
+  what your headset renders has changed, and no saved setting has moved: the numbers displayed are now
+  simply the same ones ViewLab was already storing and using. The desktop preview is unchanged too.
+  Existing configurations will display halved numbers the first time you open them — that is the fix,
+  not a change to your crop.
+
 ## 4.1.300 - 2026-07-25
 
 - **DiagMon logging is now opt-in and starts switched off for everyone.** A new "Enable DiagMon logging"

@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
 function Assert-Close([double]$actual, [double]$expected, [double]$epsilon, [string]$name) {
@@ -177,7 +177,10 @@ foreach ($contract in @(
     @{ Text=$profileXaml; Pattern='Name="VisorEnabledCheck" Content="Enable visor mask"'; Name='editable per-app enable control' },
     @{ Text=$profileXaml; Pattern='Name="VisorWidthSlider"[^>]+Minimum="0\.25"[^>]+Maximum="2"'; Name='per-app Width range parity' },
     @{ Text=$profileXaml; Pattern='Name="VisorHeightSlider"[^>]+Minimum="0\.25"[^>]+Maximum="2"'; Name='per-app Height range parity' },
-    @{ Text=$main; Pattern='LoadAppProfiles\(\);\s*StatusText\.Text = "Saved app profile'; Name='post-save registry reload' },
+    # Broken by 91746c3 (4.1.295), which inserted the broker 'refresh' send between these two statements;
+    # this script was evidently not run then. The contract's intent - reload from the registry before
+    # reporting saved - still holds, so the pattern now tolerates intervening statements.
+    @{ Text=$main; Pattern='LoadAppProfiles\(\);[\s\S]{0,300}?StatusText\.Text = "Saved app profile'; Name='post-save registry reload' },
     @{ Text=$preview; Pattern='Quest3PreviewGeometry\.FullEyeGuides'; Name='overlapping circular eye guides' },
     @{ Text=$preview; Pattern='double radius = eye\.Width \* 0\.5'; Name='unstretched circle radius' },
     @{ Text=$geometry; Pattern='double width = area\.Width \* horizontal'; Name='single direct horizontal percentage mapping' },
@@ -209,9 +212,14 @@ foreach ($contract in @(
     @{ Text=$profile; Pattern='"OBS RECORDING CUE"[\s\S]*OverlayPreviewAnchor\.RecordingRenderEdge'; Name='profile OBS cue preview uses its post-crop anchor' },
     @{ Text=$preview; Pattern='Anchor==OverlayPreviewAnchor\.RecordingRenderEdge[\s\S]*OverlayPreviewGeometry\(item,crop'; Name='OBS cue border uses exact crop bounds' },
     @{ Text=$preview; Pattern='RecordingRenderEdge[\s\S]*rect\.Bottom-15/_viewZoom'; Name='OBS cue label is bottom-left' },
-    @{ Text=$main; Pattern='ReadScaleSetting\("top_tangent", num \* 0\.5\) \* 2\.0'; Name='stored top share converts to half-relative UI value' },
-    @{ Text=$main; Pattern='FormatStorageScale\(value2 \* 0\.5\)'; Name='half-relative top UI value converts back to stored full-lens share' },
-    @{ Text=$profile; Pattern='TopValue = value \* 0\.5'; Name='profile top control converts back to stored full-lens share' },
+    # R55: Top/Bottom are whole-screen shares shown 1:1 with the stored value (0.15 vertical = 0.075 +
+    # 0.075). The preview still parameterises each half independently, so the UI converts at that
+    # boundary only - that x2 is what keeps the preview and the headset render identical.
+    @{ Text=$main; Pattern='ReadScaleSetting\("top_tangent", num \* 0\.5\), 0\.0, 0\.5\)'; Name='stored top share displays 1:1 as a whole-screen value' },
+    @{ Text=$main; Pattern='"top_tangent", FormatStorageScale\(value2\)'; Name='top UI value stores 1:1, unhalved' },
+    @{ Text=$profile; Pattern='TopValue = value;'; Name='profile top control stores 1:1, unhalved' },
+    @{ Text=$main; Pattern='SetCropVertical\(previewTop \* 2\.0, previewBottom \* 2\.0\)'; Name='main preview keeps its half-relative input so the drawn crop is unchanged' },
+    @{ Text=$profile; Pattern='SetCropVertical\(previewTop \* 2\.0, previewBottom \* 2\.0\)'; Name='profile preview keeps its half-relative input so the drawn crop is unchanged' },
     @{ Text=$native; Pattern='originalRightTan - \(originalRightTan - originalLeftTan\) \* horizontalScale'; Name='exact left outer crop' },
     @{ Text=$native; Pattern='mask_nose_spread_x'; Name='native Nose Spread X persistence' },
     @{ Text=$main; Pattern='MaskNoseSpreadXSlider\.Value'; Name='UI Nose Spread X plumbing' }
