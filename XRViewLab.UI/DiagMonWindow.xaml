@@ -15,6 +15,11 @@
       </Border>
     </Grid>
     <Border Grid.Row="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="5" Padding="12">
+      <StackPanel>
+      <!-- DiagMon is entirely opt-in (R54): unticked, no capture can start and nothing is written to disk. -->
+      <CheckBox x:Name="LoggingOptInCheck" Margin="0,0,0,10" Checked="LoggingOptIn_Changed" Unchecked="LoggingOptIn_Changed"
+                Content="Enable DiagMon logging (off by default)"
+                ToolTip="DiagMon is opt-in. While this is unticked no capture can start, and DiagMon creates no files or folders on your PC."/>
       <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="190"/><ColumnDefinition Width="14"/><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="8"/><RowDefinition Height="Auto"/><RowDefinition Height="8"/><RowDefinition Height="Auto"/><RowDefinition Height="10"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -29,6 +34,7 @@
           <Button x:Name="ExportButton" Content="Export Analysis Package" Click="Export_Click" IsEnabled="False"/>
         </WrapPanel>
       </Grid>
+      </StackPanel>
     </Border>
     <Grid Grid.Row="4">
       <Grid.ColumnDefinitions><ColumnDefinition Width="310"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>

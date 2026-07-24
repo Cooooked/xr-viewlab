@@ -20,6 +20,26 @@ public partial class DiagMonWindow : Window
     private readonly DiagMonCaptureService _capture;
     private readonly DispatcherTimer _timer;
     private string? _lastDirectory;
+    private bool _loadingOptIn;
+
+    // DiagMon logging is opt-in and defaults OFF (R54). Some users will never use DiagMon and are
+    // entitled to know it is inert; while this is off no capture can start and nothing is written.
+    // It lives in the shared ini rather than DiagMon's own settings.json because settings.json sits
+    // inside the DiagMon store, and persisting an opt-OUT must not itself create the store on disk.
+    private const string LoggingEnabledKey = "diagmon_logging_enabled";
+
+    private static string SharedConfigPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XR ViewLab", "xr-viewlab.ini");
+
+    private static bool LoggingEnabled
+    {
+        get
+        {
+            var value = new StringBuilder(8);
+            GetPrivateProfileStringW("Settings", LoggingEnabledKey, "0", value, (uint)value.Capacity, SharedConfigPath);
+            return value.ToString().Trim() is "1" or "true" or "True";
+        }
+    }
 
     public DiagMonWindow()
     {
@@ -30,13 +50,19 @@ public partial class DiagMonWindow : Window
         TargetModeCombo.ItemsSource = Enum.GetValues<DiagMonTargetMode>(); TargetModeCombo.SelectedItem = DiagMonTargetMode.Foreground;
         DiagMonSettings retention = _store.LoadSettings();
         RetentionDaysBox.Text = retention.RetentionDays.ToString(); RetentionCountBox.Text = retention.RetentionSessionCount.ToString(); RetentionMbBox.Text = retention.RetentionMaximumMb.ToString();
+        _loadingOptIn = true; LoggingOptInCheck.IsChecked = LoggingEnabled; _loadingOptIn = false;
         RefreshProcesses();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += (_, _) => UpdateState(); _timer.Start();
         Loaded += async (_, _) =>
         {
-            int recovered = await _store.RecoverAbandonedAsync();
-            if (recovered > 0) MessageBox.Show(this, $"Recovered {recovered} interrupted capture session(s) and marked them incomplete. Their partial evidence remains in the Session Library.", "DiagMon(ster) recovery", MessageBoxButton.OK, MessageBoxImage.Information);
+            // Recovery writes to disk (it finalises abandoned sessions), so it must not run while
+            // DiagMon logging is opted out — browsing a disabled DiagMon leaves the filesystem untouched.
+            if (LoggingEnabled)
+            {
+                int recovered = await _store.RecoverAbandonedAsync();
+                if (recovered > 0) MessageBox.Show(this, $"Recovered {recovered} interrupted capture session(s) and marked them incomplete. Their partial evidence remains in the Session Library.", "DiagMon(ster) recovery", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
             ShowRetention(); ShowRecordingOptIn(); UpdateState();
         };
     }
@@ -60,6 +86,9 @@ public partial class DiagMonWindow : Window
     {
         try
         {
+            // Belt and braces: the button is already disabled while opted out, but a capture is the one
+            // thing that writes to disk, so it is refused here too rather than relying on UI state alone.
+            if (!LoggingEnabled) { MessageBox.Show(this, "DiagMon logging is turned off. Tick “Enable DiagMon logging” to allow captures.", "DiagMon(ster)", MessageBoxButton.OK, MessageBoxImage.Information); return; }
             var targetMode = (DiagMonTargetMode)TargetModeCombo.SelectedItem;
             int? pid = targetMode == DiagMonTargetMode.Manual ? (ProcessCombo.SelectedItem as ProcessChoice)?.Pid : null;
             if (targetMode == DiagMonTargetMode.Manual && pid == null) { MessageBox.Show(this, "Choose a running target process first.", "DiagMon(ster)", MessageBoxButton.OK, MessageBoxImage.Information); return; }
@@ -130,7 +159,9 @@ public partial class DiagMonWindow : Window
 
     private void UpdateState()
     {
-        bool active = _capture.IsCapturing; StartButton.IsEnabled = !active; StopButton.IsEnabled = active; ModeCombo.IsEnabled = !active; TargetModeCombo.IsEnabled = !active; ProcessCombo.IsEnabled = !active && TargetModeCombo.SelectedItem is DiagMonTargetMode.Manual; LabelBox.IsEnabled = !active;
+        bool active = _capture.IsCapturing; bool logging = LoggingEnabled;
+        StartButton.IsEnabled = !active && logging; StopButton.IsEnabled = active;
+        StartButton.ToolTip = logging ? null : "Tick “Enable DiagMon logging” above to allow captures."; ModeCombo.IsEnabled = !active; TargetModeCombo.IsEnabled = !active; ProcessCombo.IsEnabled = !active && TargetModeCombo.SelectedItem is DiagMonTargetMode.Manual; LabelBox.IsEnabled = !active;
         OpenCurrentButton.IsEnabled = _capture.CurrentDirectory != null || _lastDirectory != null; ExportButton.IsEnabled = !active && (_capture.CurrentDirectory != null || _lastDirectory != null);
         StatusText.Text = active ? (_capture.CurrentSession?.TargetPid == null ? "Capturing — waiting for target" : "Capture active") : "Idle";
         ElapsedText.Text = active && _capture.CaptureStartUtc.HasValue ? (DateTimeOffset.UtcNow - _capture.CaptureStartUtc.Value).ToString(@"hh\:mm\:ss") : "00:00:00";
@@ -154,6 +185,18 @@ public partial class DiagMonWindow : Window
             + "and restart the VR session to collect it.";
     }
 
+    private void LoggingOptIn_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingOptIn) return;
+        bool enabled = LoggingOptInCheck.IsChecked == true;
+        Directory.CreateDirectory(Path.GetDirectoryName(SharedConfigPath)!);
+        WritePrivateProfileStringW("Settings", LoggingEnabledKey, enabled ? "1" : "0", SharedConfigPath);
+        UpdateState();
+    }
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern uint GetPrivateProfileStringW(string section, string key, string defaultValue, StringBuilder value, uint size, string filePath);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool WritePrivateProfileStringW(string section, string key, string value, string filePath);
 }

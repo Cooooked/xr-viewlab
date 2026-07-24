@@ -4,7 +4,36 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-25
-**Current version:** 4.1.299 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.299.msi` (size 149,442,560 bytes; SHA-256
+**Current version:** 4.1.300 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.300.msi` (size 149,438,464 bytes; SHA-256
+`06A93A0B152AED060F23B4EF012ECC11566C061E666B93C2F3DF9E891DECA24D`). **DiagMon logging is opt-in and off for
+everyone (R54); per-flag border checkboxes.** (1) New ini key `diagmon_logging_enabled` (default **0**) plus an
+"Enable DiagMon logging (off by default)" checkbox at the top of `DiagMonWindow`. While off, `Start Capture` is
+disabled AND `Start_Click` refuses (the button state is not the only guard), and `RecoverAbandonedAsync` — which
+finalises abandoned sessions and therefore writes — is skipped on load, so browsing a disabled DiagMon touches the
+filesystem not at all. The key deliberately lives in the shared ini rather than DiagMon's own `settings.json`,
+because that file sits inside the DiagMon store and persisting an opt-OUT must not itself create the store. No
+one-shot migration marker is needed: the key is new, so every existing install reads the 0 default and is off.
+(2) Per-flag border visibility via nine `iracing_flag_show_<flag>` keys (default **1**, so enabling the border
+behaves exactly as before) and a checkbox row under the flag-border control. Implementation carries **no native and
+no contract change**: the broker composes a `FlagVisibilityMask`, and `PublishFlag` sets a hidden flag's colour to
+0, which the native border path already treats as "draw nothing" (`wantFlag` requires `flagColor != 0`). The flag
+state is still classified and published, so spotter/attention behaviour is untouched. Both keys added to
+`xr-viewlab.ini` and the factory baseline (insert-only diff; baseline now 241 keys). Full build 0/0; contracts,
+iRacing/cue/overlay-inheritance fixtures and factory-baseline verification pass.
+**Caveat to confirm in-headset:** per-flag changes take effect on the next published flag *change*, since the
+provider publishes only on change — toggling a checkbox while a flag is already displayed will not clear it
+mid-flag. Also still pending: live confirmation that debris now draws its own border (R52).
+**Split top/bottom: the RENDER was already correct; the SLIDER CONVENTION is being changed on user instruction.**
+Investigated 2026-07-25. Vertical 0.15 showing "0.15 top / 0.15 bottom" was not a render bug — per R39/4.1.253 the
+sliders are shares of their OWN half-lens and each stores `value × 0.5`. Native `totalTangent = topTangent +
+bottomTangent` (`dllmain.cpp:5395`); the log's `top_scale`/`bottom_scale` are `topTangent × 2`
+(`dllmain.cpp:5657`). The user's own 08:25 iRacing log proves the pipeline end to end:
+`total_render_height=0.150 top_render_height=0.075 bottom_render_height=0.075 top_scale=0.150 bottom_scale=0.150`
+— i.e. 0.15 global and 0.15/0.15 split both render exactly 15%. **However the user finds the half-lens convention
+confusing and has directed that the sliders instead express a share of the WHOLE screen** (0.15 vertical → 0.075
+top + 0.075 bottom, which is already what is stored). This supersedes the R39 UI convention; the stored INI/registry
+values and all native behaviour are unchanged, so no saved configuration migrates. In progress — see R55.
+**Prior version:** 4.1.299 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.299.msi` (size 149,442,560 bytes; SHA-256
 `2C6DEE83BBC9C8D2192F60AB392A8B3B1BF1952FE100D8DE1C066689FF6DAAB0`). **Debris flag no longer renders as yellow
 (R52); dead per-app iRacing checkbox removed (R53).** (1) `NormalizeFlag` tested the yellow/caution bits before the
 debris bit and returned on first match, so a real `0x4040` (caution+debris) resolved to Yellow and the existing

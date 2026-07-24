@@ -147,6 +147,17 @@ public partial class MainWindow : Window
 	private const string IRacingSpotterColorKey = "iracing_spotter_color";
 	private const string IRacingFlagWidthKey = "iracing_flag_width";
 	private const string IRacingFlagOpacityKey = "iracing_flag_opacity";
+	// Per-flag border visibility. Default true everywhere so an existing install keeps drawing every
+	// flag exactly as before; the broker turns a hidden flag's published colour into 0, which the
+	// native border path already treats as "draw nothing" (dllmain.cpp, wantFlag requires flagColor != 0).
+	private static readonly (string Name, string Key)[] IRacingFlagVisibilityKeys =
+	{
+		("Green", "iracing_flag_show_green"), ("Yellow", "iracing_flag_show_yellow"),
+		("Debris", "iracing_flag_show_debris"), ("Blue", "iracing_flag_show_blue"),
+		("White", "iracing_flag_show_white"), ("Red", "iracing_flag_show_red"),
+		("Black", "iracing_flag_show_black"), ("Disqualified", "iracing_flag_show_disqualified"),
+		("Checkered", "iracing_flag_show_checkered"),
+	};
 	private const string IRacingLapDurationKey = "iracing_lap_duration_ms";
 
 	// ReShade MENU � OpenXR
@@ -1300,6 +1311,8 @@ public partial class MainWindow : Window
 		SyncIRacingSpotterColorControls(spotterColor);
 		IRacingFlagWidthSlider.Value = ReadRangeSetting(IRacingFlagWidthKey, 0.018, 0.003, 0.12);
 		IRacingFlagOpacitySlider.Value = ReadRangeSetting(IRacingFlagOpacityKey, 0.60, 0.05, 1.0);
+		foreach ((string name, string key) in IRacingFlagVisibilityKeys)
+			if (FindName("IRacingFlagShow" + name + "Check") is CheckBox box) box.IsChecked = ReadBoolSetting(key, true);
 		IRacingLapDurationSlider.Value = ReadRangeSetting(IRacingLapDurationKey, 4500, 1000, 15000);
 		IRacingRaceStartCheck.IsChecked = ReadBoolSetting("iracing_race_start", false);
 		IRacingRaceStartGreenMsSlider.Value = ReadRangeSetting("iracing_race_start_green_ms", 3000, 250, 15000);
@@ -2852,6 +2865,9 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", IRacingLapPopupKey, IRacingLapPopupCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", IRacingSpotterGlowKey, IRacingSpotterGlowCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", IRacingFlagBorderKey, IRacingFlagBorderCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		foreach ((string name, string key) in IRacingFlagVisibilityKeys)
+			if (FindName("IRacingFlagShow" + name + "Check") is CheckBox box)
+				WritePrivateProfileString("Settings", key, box.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", IRacingFuelWarningKey, IRacingFuelWarningCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		var c = CultureInfo.InvariantCulture;
 		WritePrivateProfileString("Settings", IRacingFuelWarningThresholdKey, IRacingFuelWarningThresholdSlider.Value.ToString("0.###", c), ConfigPath);

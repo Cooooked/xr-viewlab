@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.1.300 - 2026-07-25
+
+- **DiagMon logging is now opt-in and starts switched off for everyone.** A new "Enable DiagMon logging"
+  checkbox sits at the top of the DiagMon window. While it is unticked no capture can start and DiagMon
+  creates no files or folders on your PC at all — if you never use DiagMon it now stays completely
+  inert. Tick it when you actually want to capture something.
+- **Choose which flags show a border.** The flag-state border used to be all-or-nothing. There is now a
+  checkbox per flag — Green, Yellow, Debris, Blue, White, Red, Black, Disqualified and Checkered — so you
+  can show only the ones you care about. All are on by default, so nothing changes until you untick
+  something. Turning a flag off only hides its border; it does not affect anything else.
+
 ## 4.1.299 - 2026-07-25
 
 - **Debris on track no longer shows a yellow flag border.** The debris flag is its own flag (yellow and

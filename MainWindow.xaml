@@ -876,6 +876,18 @@
 
                           <TextBlock Text="Flag State Border" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
                           <CheckBox Name="IRacingFlagBorderCheck" Content="Enable flag-state border" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                          <TextBlock Text="Show a border for these flags" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,0" />
+                          <WrapPanel Margin="10,2,0,0">
+                            <CheckBox Name="IRacingFlagShowGreenCheck" Content="Green" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                            <CheckBox Name="IRacingFlagShowYellowCheck" Content="Yellow" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Full-course caution / waved yellow." />
+                            <CheckBox Name="IRacingFlagShowDebrisCheck" Content="Debris" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Debris on track — its own flag (yellow and red striped), not a full-course yellow." />
+                            <CheckBox Name="IRacingFlagShowBlueCheck" Content="Blue" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                            <CheckBox Name="IRacingFlagShowWhiteCheck" Content="White" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                            <CheckBox Name="IRacingFlagShowRedCheck" Content="Red" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                            <CheckBox Name="IRacingFlagShowBlackCheck" Content="Black" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                            <CheckBox Name="IRacingFlagShowDisqualifiedCheck" Content="Disqualified" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                            <CheckBox Name="IRacingFlagShowCheckeredCheck" Content="Checkered" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                          </WrapPanel>
                           <TextBlock Text="Border width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingFlagWidthSlider" Minimum="0.003" Maximum="0.12" Value="0.018" Tag="0.018" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                           <TextBlock Text="Border opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />

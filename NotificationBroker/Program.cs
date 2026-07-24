@@ -91,6 +91,7 @@ internal static class NotificationBrokerProgram
         double lapDurationMs = ReadDouble("iracing_lap_duration_ms", 4500, 1000, 15000);
         bool fuelWarningEnabled = ReadBool("iracing_fuel_warning", false);
         racingProvider.FuelWarningThresholdPct = ReadDouble("iracing_fuel_warning_threshold_pct", 10, 1, 50) / 100.0;
+        racingProvider.FlagVisibilityMask = ReadFlagVisibilityMask();
         SpotterState attentionSpotter = SpotterState.Clear;
         RacingFlagState attentionFlag = RacingFlagState.Clear;
         racingProvider.DiagnosticsChanged += () =>
@@ -134,6 +135,7 @@ internal static class NotificationBrokerProgram
             lapDurationMs = ReadDouble("iracing_lap_duration_ms", 4500, 1000, 15000);
             fuelWarningEnabled = ReadBool("iracing_fuel_warning", false);
             racingProvider.FuelWarningThresholdPct = ReadDouble("iracing_fuel_warning_threshold_pct", 10, 1, 50) / 100.0;
+            racingProvider.FlagVisibilityMask = ReadFlagVisibilityMask();
             if (nextRacingEnabled != racingEnabled)
             {
                 racingEnabled = nextRacingEnabled;
@@ -315,6 +317,25 @@ internal static class NotificationBrokerProgram
         AllowlistMode = ReadBool("notify_allowlist_mode", false),
 		AppFilters = Read("notify_app_filters", string.Empty).Split(new[] { ',', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
 		};
+	}
+
+	// Per-flag border visibility. Bit i corresponds to (RacingFlagState)i; every flag defaults to shown,
+	// so an install that has never touched these keys behaves exactly as before. Clear (0) is not a drawn
+	// flag and is left set so it is never mistaken for a hidden state.
+	private static int ReadFlagVisibilityMask()
+	{
+		int mask = 1 << (int)RacingFlagState.Clear;
+		void Apply(RacingFlagState state, string key) { if (ReadBool(key, true)) mask |= 1 << (int)state; }
+		Apply(RacingFlagState.Green, "iracing_flag_show_green");
+		Apply(RacingFlagState.Yellow, "iracing_flag_show_yellow");
+		Apply(RacingFlagState.Debris, "iracing_flag_show_debris");
+		Apply(RacingFlagState.Blue, "iracing_flag_show_blue");
+		Apply(RacingFlagState.White, "iracing_flag_show_white");
+		Apply(RacingFlagState.Red, "iracing_flag_show_red");
+		Apply(RacingFlagState.Black, "iracing_flag_show_black");
+		Apply(RacingFlagState.Disqualified, "iracing_flag_show_disqualified");
+		Apply(RacingFlagState.Checkered, "iracing_flag_show_checkered");
+		return mask;
 	}
 
     private static string Read(string key, string fallback)

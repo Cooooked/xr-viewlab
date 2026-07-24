@@ -61,6 +61,19 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         set => Volatile.Write(ref _fuelWarningThresholdPct, Math.Clamp(value, 0.01, 0.5));
     }
 
+    // Per-flag border visibility, set by the broker from its settings read (not part of the SDK layout).
+    // A hidden flag still classifies and still drives attention/safety logic; only its published border
+    // colour becomes 0, which the native border path already treats as "draw nothing". Bit i corresponds
+    // to (RacingFlagState)i, and the default (all bits set) preserves the previous always-draw behaviour.
+    private int _flagVisibilityMask = ~0;
+    public int FlagVisibilityMask
+    {
+        get => Volatile.Read(ref _flagVisibilityMask);
+        set => Volatile.Write(ref _flagVisibilityMask, value);
+    }
+
+    internal bool IsFlagVisible(RacingFlagState state) => (FlagVisibilityMask & (1 << (int)state)) != 0;
+
     private readonly record struct Variable(int Type, int Offset, int Count);
 
     public IRacingTelemetryProvider() : this(DefaultMapName) { }
@@ -482,6 +495,9 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
             RacingFlagState.Yellow => 0xFFD000, RacingFlagState.Debris => 0xFF8000, RacingFlagState.Red => 0xFF2020,
             RacingFlagState.Black => 0x202020, RacingFlagState.Disqualified => 0xFF2020, RacingFlagState.Checkered => 0xFFFFFF, _ => 0
         };
+        // Per-flag visibility: colour 0 means the native border path draws nothing for this flag. The
+        // state itself is still published, so spotter/attention behaviour is unchanged.
+        if (!IsFlagVisible(state)) color = 0;
         Publish(new ViewLabEvent { Kind = ViewLabEventKind.FlagState, Flag = state, Title = state.ToString(), Color = color,
             IsPresentationTest = presentationTest, ClearPresentationTests = clearPresentationTests, TimestampUtc = DateTimeOffset.UtcNow });
     }
