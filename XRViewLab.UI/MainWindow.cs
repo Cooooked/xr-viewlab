@@ -1157,10 +1157,14 @@ public partial class MainWindow : Window
 		SplitCheck.IsChecked = value2;
 		if (FoveaCenterCheck != null) FoveaCenterCheck.IsChecked = ReadBoolSetting("foveated_center_compensation", fallback: false);
 		TotalBox.Text = FormatScale(num);
-		// R55: Top/Bottom are shares of the WHOLE screen, matching the stored values 1:1 and matching the
-		// single Vertical control (0.15 vertical == 0.075 top + 0.075 bottom). No conversion either way.
-		TopBox.Text = FormatScale(Math.Clamp(ReadScaleSetting("top_tangent", num * 0.5), 0.0, 0.5));
-		BottomBox.Text = FormatScale(Math.Clamp(ReadScaleSetting("bottom_tangent", num * 0.5), 0.0, 0.5));
+		// R55: Top/Bottom are shares of the WHOLE screen, stored 1:1 (0.15 vertical == 0.075 + 0.075).
+		// While split is OFF they are not independent — they are simply half the total each, so they are
+		// derived rather than read. This also repairs a config written by 4.1.301, which stored the full
+		// total in each and would otherwise display 0.15/0.15 and double the crop when split was ticked.
+		TopBox.Text = FormatScale(value2
+			? Math.Clamp(ReadScaleSetting("top_tangent", num * 0.5), 0.0, 0.5) : num * 0.5);
+		BottomBox.Text = FormatScale(value2
+			? Math.Clamp(ReadScaleSetting("bottom_tangent", num * 0.5), 0.0, 0.5) : num * 0.5);
 		HorizontalBox.Text = FormatScale(value);
 		// Mask (visor): absolute bounds, default 1.0 = no mask on that axis.
 		MaskEnabledCheck.IsChecked = ReadBoolSetting(MaskEnabledKey, fallback: false);
@@ -1372,7 +1376,10 @@ public partial class MainWindow : Window
 		bool valueOrDefault = SplitCheck.IsChecked == true;
 		if (!valueOrDefault && flag)
 		{
-			double num = value;
+			// R55: Top/Bottom are whole-screen shares, so with split off each is HALF the total, not the
+			// whole total. Writing the total into both here is what made a 0.153 vertical store 0.153 in
+			// each and read back as 0.15/0.15 (and would have doubled the crop once split was ticked).
+			double num = value * 0.5;
 			if (!_loading)
 			{
 				TopBox.TextChanged -= RenderValue_Changed;

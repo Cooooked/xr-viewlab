@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.302 - 2026-07-25
+
+- **Fixes 4.1.301: Top and Bottom still showed the full total.** With "Split top and bottom" switched
+  off, Top and Bottom were each being set to the whole Vertical value instead of half of it, so a 0.153
+  Vertical still displayed as 0.15 / 0.15 — and ticking split would have doubled your crop. They are now
+  each half the total, so 0.153 Vertical shows 0.0765 top and 0.0765 bottom. A configuration saved by
+  4.1.301 is corrected automatically the next time you open the settings.
+
 ## 4.1.301 - 2026-07-25
 
 - **Split Top and Bottom now read as a share of the whole screen.** Setting Vertical to 0.15 and then

@@ -219,6 +219,12 @@ foreach ($contract in @(
     @{ Text=$main; Pattern='"top_tangent", FormatStorageScale\(value2\)'; Name='top UI value stores 1:1, unhalved' },
     @{ Text=$profile; Pattern='TopValue = value;'; Name='profile top control stores 1:1, unhalved' },
     @{ Text=$main; Pattern='SetCropVertical\(previewTop \* 2\.0, previewBottom \* 2\.0\)'; Name='main preview keeps its half-relative input so the drawn crop is unchanged' },
+    # R55 follow-up: with split OFF, Top/Bottom are half the total each - NOT the whole total. Storing
+    # the whole total in each made 0.153 vertical read back as 0.15/0.15 and would have doubled the crop
+    # the moment split was ticked. Pinned on both the derive-on-load and the keep-in-sync paths.
+    @{ Text=$main; Pattern='double num = value \* 0\.5;'; Name='split-off keeps Top/Bottom at half the total' },
+    @{ Text=$main; Pattern='TopBox\.Text = FormatScale\(value2\s*?
+\s*\? Math\.Clamp\(ReadScaleSetting\("top_tangent"'; Name='split-off derives Top from the total instead of reading a stale stored share' },
     @{ Text=$profile; Pattern='SetCropVertical\(previewTop \* 2\.0, previewBottom \* 2\.0\)'; Name='profile preview keeps its half-relative input so the drawn crop is unchanged' },
     @{ Text=$native; Pattern='originalRightTan - \(originalRightTan - originalLeftTan\) \* horizontalScale'; Name='exact left outer crop' },
     @{ Text=$native; Pattern='mask_nose_spread_x'; Name='native Nose Spread X persistence' },

@@ -4,7 +4,18 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-25
-**Current version:** 4.1.301 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.301.msi` (size 149,438,464 bytes; SHA-256
+**Current version:** 4.1.302 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.302.msi` (SHA-256
+`A1343795D31B5E64EA94A47EE9FC64F8D77B7C3896CE5215876FFD91049A0779`). **Fixes an R55 bug shipped in 4.1.301.**
+4.1.301 removed the ×0.5-on-save but missed that, while split is OFF, `RenderValue_Changed` copies the TOTAL into
+both Top and Bottom (correct under the old half-lens meaning, wrong under whole-screen). Result on the user's
+machine: `total_render_height=0.153, top_tangent=0.153, bottom_tangent=0.153, split_mode=0` — still displaying
+0.15/0.15, and ticking split would have summed to 0.306, **doubling the crop**. Now `num = value * 0.5` on that
+sync, and the load path DERIVES Top/Bottom as `num * 0.5` whenever `split_mode` is off rather than trusting a
+stored share, which self-repairs any config written by 4.1.301. Contracts pin both paths. **Lesson recorded:** the
+4.1.301 change was reasoned about only at the load/save boundary; the third writer (the split-off sync) was never
+searched for. When changing the meaning of a control's value, enumerate EVERY writer and reader of that control,
+not just persistence — `grep` for the control name, do not reason from the two obvious call sites.
+**Prior version:** 4.1.301 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.301.msi` (size 149,438,464 bytes; SHA-256
 `A1585D23FF647ACF220EFBCC6CA4ACCAFB3A5E96516A2271A3A285D450FBB4C2`). **Split Top/Bottom sliders are whole-screen
 shares (R55).** On user instruction, superseding the R39/4.1.253 UI convention. Vertical 0.15 + split now displays
 0.075 top / 0.075 bottom instead of 0.15 / 0.15. The ×2-on-load / ×0.5-on-save conversions are removed from both
