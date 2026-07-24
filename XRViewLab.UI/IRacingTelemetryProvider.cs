@@ -452,9 +452,14 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         if ((raw & 0x00020000) != 0) return RacingFlagState.Disqualified;
         if ((raw & 0x00010000) != 0) return RacingFlagState.Black;
         if ((raw & 0x00000010) != 0) return RacingFlagState.Red;
+        // Debris outranks yellow ON PURPOSE (R52). iRacing raises a caution bit alongside the debris
+        // bit, so checking yellow first meant debris on track always resolved to Yellow and drew a
+        // yellow border — the debris state below was unreachable in a real session. The debris flag is
+        // its own flag (yellow/red striped), not a full-course yellow, so it keeps its own presentation.
+        // Red/black/DQ still outrank it: those stop or penalise the session and are more severe.
+        if ((raw & 0x00000040) != 0) return RacingFlagState.Debris;
         if ((raw & (0x00000008 | 0x00000100 | 0x00004000 | 0x00008000)) != 0) return RacingFlagState.Yellow;
         if ((raw & 0x00000020) != 0) return RacingFlagState.Blue;
-        if ((raw & 0x00000040) != 0) return RacingFlagState.Debris;
         if ((raw & 0x00000002) != 0) return RacingFlagState.White;
         if ((raw & 0x00000001) != 0) return RacingFlagState.Checkered;
         if ((raw & 0x00000004) != 0) return RacingFlagState.Green;

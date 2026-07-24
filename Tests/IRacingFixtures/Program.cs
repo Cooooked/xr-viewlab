@@ -96,6 +96,25 @@ var flags = new (uint Raw, RacingFlagState Expected)[]
     (0x8, RacingFlagState.Yellow), (0x40, RacingFlagState.Debris), (0x10, RacingFlagState.Red),
     (0x10000, RacingFlagState.Black), (0x20000, RacingFlagState.Disqualified), (0x1, RacingFlagState.Checkered),
     (0x28, RacingFlagState.Yellow), (0, RacingFlagState.Clear),
+    // R52: real sessions never send one bit at a time. iRacing raises a caution alongside debris, and
+    // testing bits in isolation is exactly why debris silently drew a yellow border for so long.
+    // Debris must win over every yellow/caution combination, and must still yield to red/black/DQ.
+    // NOTE: the provider publishes only on state CHANGE, so every consecutive entry in this table must
+    // resolve to a different state — hence the Clear between each combination case.
+    (0x48, RacingFlagState.Debris),      // debris + yellow
+    (0, RacingFlagState.Clear),
+    (0x4040, RacingFlagState.Debris),    // debris + caution
+    (0, RacingFlagState.Clear),
+    (0x8040, RacingFlagState.Debris),    // debris + waving caution
+    (0, RacingFlagState.Clear),
+    (0x140, RacingFlagState.Debris),     // debris + waving yellow
+    (0, RacingFlagState.Clear),
+    (0xC148, RacingFlagState.Debris),    // debris + every yellow/caution bit at once
+    (0x50, RacingFlagState.Red),         // red outranks debris
+    (0x10040, RacingFlagState.Black),    // black outranks debris
+    (0x20040, RacingFlagState.Disqualified), // DQ outranks debris
+    (0x4008, RacingFlagState.Yellow),    // caution without debris is still yellow
+    (0, RacingFlagState.Clear),
 };
 foreach ((uint raw, RacingFlagState expected) in flags)
 {
