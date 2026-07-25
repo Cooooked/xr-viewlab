@@ -1,5 +1,19 @@
 # Changelog
 
+## 4.1.310 - 2026-07-25
+
+- **The GPU usage meter no longer goes blank at random.** ViewLab asks Windows for a list of
+  everything currently using your graphics card, and it was keeping that list in a fixed-size space.
+  On a real machine that list needed 64,874 bytes against a 65,536 limit — about four items of room
+  to spare. Any extra program touching the GPU (a browser tab, the driver's overlay, your headset
+  streamer reconnecting) pushed it over, and ViewLab showed nothing instead of making room. It only
+  broke when other things were running, which made it look like something was blocking it. It now
+  makes room as needed.
+- **The GPU meter also counts work it was previously ignoring.** It only counted one kind of GPU
+  work and threw away the rest — including the "high priority" queues a VR headset leans on, and all
+  compute work. Video encoding is still excluded on purpose, so streaming your headset to a PC
+  doesn't make the meter claim your game is busy when it isn't.
+
 ## 4.1.309 - 2026-07-25
 
 - **The HUD widget list no longer cuts off "Symbol" and hides the reorder arrows.** Rows were sizing

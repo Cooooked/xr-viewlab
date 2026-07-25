@@ -57,7 +57,16 @@ struct Providers {
     uint64_t lastIdle=0,lastKernel=0,lastUser=0;
     DWORD logicalProcessors=0;
     std::vector<ProcessorPowerInformation> power;
-    std::array<uint8_t,65536> pdhBuffer{};
+    // Holds the counter list Windows hands back. This was a FIXED 64 KiB array, and when the list
+    // did not fit the read was simply abandoned (return -1), so the metric silently reported
+    // "unavailable" instead of a number. On a real machine mid-VR-session the GPU engine list
+    // measured 64,874 bytes against that 65,536-byte ceiling — about four instances of headroom —
+    // so any extra process touching the GPU (a browser tab, the vendor overlay, the streamer
+    // reconnecting) pushed it over and blanked the GPU meter. It reads as external interference
+    // because it depends on what else happens to be running. Now it grows to whatever Windows asks
+    // for and keeps that capacity, so the growth happens a few times early and then never again —
+    // the collector stays allocation-free in steady state, which is the property that mattered.
+    std::vector<uint8_t> pdhBuffer=std::vector<uint8_t>(65536);
     HANDLE icmp=INVALID_HANDLE_VALUE;
     viewlab::network::Window networkWindow{};
     uint64_t lastNetworkProbeMs=0;
@@ -101,16 +110,66 @@ struct Providers {
     }
 };
 
-bool ParseGpuName(const wchar_t* name,uint64_t& luid,uint32_t& engine) {
-    unsigned long pid=0,high=0,low=0,phys=0,eng=0; wchar_t type[64]{};
-    if(!name||swscanf_s(name,L"pid_%lu_luid_0x%lx_0x%lx_phys_%lu_eng_%lu_engtype_%63s",&pid,&high,&low,&phys,&eng,type,(unsigned)_countof(type))!=6||_wcsicmp(type,L"3D"))return false;
-    luid=(static_cast<uint64_t>(high)<<32)|low; engine=eng; return true;
+// Case-insensitive substring search over the engine type name.
+bool TypeContains(const wchar_t* type,const wchar_t* needle) {
+    const size_t n=wcslen(needle);
+    for(const wchar_t* p=type;*p;++p) if(_wcsnicmp(p,needle,n)==0) return true;
+    return false;
 }
+
+// Classify a GPU engine type into the work the game is actually waiting on.
+//
+// This used to accept ONLY the exact string "3D", which is why the meter read far too low or sat
+// near zero. Two separate reasons, both confirmed against the live counter names on an RX 7800 XT:
+//   1. Modern titles and the VR runtime push much of a frame onto COMPUTE queues ("Compute 0/1").
+//   2. Windows names its high-priority queues "High Priority 3D" and "High Priority Compute" —
+//      note the SPACES. The old %63s scan stopped at the first space and saw the type as "High",
+//      so 42 render-engine instances per adapter were silently discarded.
+// Video/Copy/Security/Timer/True Audio stay excluded on purpose: on this machine the video engines
+// are Virtual Desktop's encoder, and counting them would report a busy GPU while the game is idle.
+enum class GpuEngineClass : uint32_t { None=0, Graphics=1, Compute=2 };
+
+GpuEngineClass ClassifyEngineType(const wchar_t* type) {
+    if(TypeContains(type,L"3D")||TypeContains(type,L"Graphics")) return GpuEngineClass::Graphics;
+    if(TypeContains(type,L"Compute")) return GpuEngineClass::Compute;
+    return GpuEngineClass::None;
+}
+
+bool ParseGpuName(const wchar_t* name,uint64_t& luid,uint32_t& engine) {
+    if(!name)return false;
+    unsigned long pid=0,high=0,low=0,phys=0,eng=0;
+    if(swscanf_s(name,L"pid_%lu_luid_0x%lx_0x%lx_phys_%lu_eng_%lu",&pid,&high,&low,&phys,&eng)!=5)return false;
+    // Take the WHOLE remainder after "engtype_" — the type name can contain spaces.
+    const wchar_t* marker=wcsstr(name,L"engtype_");
+    if(!marker)return false;
+    const wchar_t* type=marker+8;
+    const GpuEngineClass cls=ClassifyEngineType(type);
+    if(cls==GpuEngineClass::None)return false;
+    // Engines are independent hardware queues that run concurrently, so they must stay in separate
+    // buckets — a 3D engine at 90% alongside a compute engine at 90% is a saturated GPU, not 180%.
+    // Fold the class into the key so a graphics and a compute queue sharing an ordinal stay distinct.
+    luid=(static_cast<uint64_t>(high)<<32)|low;
+    engine=eng|(static_cast<uint32_t>(cls)<<16)|(TypeContains(type,L"High Priority")?0x40000u:0u);
+    return true;
+}
+// Ask PDH how much room the counter list needs, grow the buffer to fit, then fetch it. Returns
+// null only on a genuine query failure — running out of room is no longer treated as one.
+// The 8 MiB ceiling is a sanity bound, not an expected limit: the observed worst case is ~64 KiB.
+PDH_FMT_COUNTERVALUE_ITEM_W* FetchCounterArray(Providers& p,PDH_HCOUNTER counter,DWORD& count) {
+    DWORD size=0; count=0;
+    if(PdhGetFormattedCounterArrayW(counter,PDH_FMT_DOUBLE,&size,&count,nullptr)!=PDH_MORE_DATA)return nullptr;
+    if(size>8u*1024u*1024u)return nullptr;
+    if(size>p.pdhBuffer.size()){ p.pdhBuffer.resize(size); }
+    auto* values=reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM_W*>(p.pdhBuffer.data());
+    size=static_cast<DWORD>(p.pdhBuffer.size());
+    if(PdhGetFormattedCounterArrayW(counter,PDH_FMT_DOUBLE,&size,&count,values)!=ERROR_SUCCESS)return nullptr;
+    return values;
+}
+
 double ReadGpu(Providers& p,uint64_t wanted,uint64_t& selected) {
     selected=0; if(!p.gpuCounter||PdhCollectQueryData(p.gpuQuery)!=ERROR_SUCCESS)return -1;
-    DWORD count=0,size=0; if(PdhGetFormattedCounterArrayW(p.gpuCounter,PDH_FMT_DOUBLE,&size,&count,nullptr)!=PDH_MORE_DATA||size>p.pdhBuffer.size())return -1;
-    auto* values=reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM_W*>(p.pdhBuffer.data());
-    if(PdhGetFormattedCounterArrayW(p.gpuCounter,PDH_FMT_DOUBLE,&size,&count,values)!=ERROR_SUCCESS)return -1;
+    DWORD count=0; auto* values=FetchCounterArray(p,p.gpuCounter,count);
+    if(!values)return -1;
     struct Engine {uint64_t luid=0;uint32_t id=0;double value=0;};std::array<Engine,256> engines{};size_t engineCount=0;
     for(DWORD i=0;i<count;++i){uint64_t l=0;uint32_t e=0;if(values[i].FmtValue.CStatus!=ERROR_SUCCESS||!ParseGpuName(values[i].szName,l,e))continue;size_t slot=0;for(;slot<engineCount;++slot)if(engines[slot].luid==l&&engines[slot].id==e)break;if(slot==engineCount){if(engineCount==engines.size())continue;engines[engineCount++]={l,e,0};}engines[slot].value+=(std::max)(0.0,values[i].FmtValue.doubleValue);}
     struct Adapter {uint64_t luid=0;double value=0;};std::array<Adapter,32> adapters{};size_t adapterCount=0;
@@ -119,8 +178,7 @@ double ReadGpu(Providers& p,uint64_t wanted,uint64_t& selected) {
 }
 double ReadPeakCore(Providers& p) {
     if(!p.cpuCounter||PdhCollectQueryData(p.cpuQuery)!=ERROR_SUCCESS)return -1;
-    DWORD count=0,size=0;if(PdhGetFormattedCounterArrayW(p.cpuCounter,PDH_FMT_DOUBLE,&size,&count,nullptr)!=PDH_MORE_DATA||size>p.pdhBuffer.size())return -1;
-    auto* values=reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM_W*>(p.pdhBuffer.data());if(PdhGetFormattedCounterArrayW(p.cpuCounter,PDH_FMT_DOUBLE,&size,&count,values)!=ERROR_SUCCESS)return -1;
+    DWORD count=0; auto* values=FetchCounterArray(p,p.cpuCounter,count); if(!values)return -1;
     double peak=-1;for(DWORD i=0;i<count;++i)if(values[i].FmtValue.CStatus==ERROR_SUCCESS&&values[i].szName&&wcsstr(values[i].szName,L"_Total")==nullptr)peak=(std::max)(peak,std::clamp(values[i].FmtValue.doubleValue,0.0,100.0));return peak;
 }
 double MemoryPressure(double percent,double start,double full){return std::clamp((percent-start)/(full-start),0.0,1.0);}

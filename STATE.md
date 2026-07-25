@@ -4,7 +4,53 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-25
-**Current version:** 4.1.309 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.309.msi` (size 149,458,944 bytes; SHA-256
+**Current version:** 4.1.310 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.310.msi` (SHA-256
+`8FB6956BCDE4B5C24637CE70D7575C451F056B0DE93A309E2DF0883C96B354BC`). **GPU utilisation widget intermittently read
+nothing — root cause was a fixed PDH buffer, NOT the data source.** User reported the meter "often doesn't read, like
+something is blocking it", suspecting AMD Adrenalin. Measured on the user's machine (RX 7800 XT + iGPU) during a live
+VR session, so this is evidence, not inference.
+**Root cause.** `Providers::pdhBuffer` was a fixed `std::array<uint8_t,65536>`, and both array reads bailed with
+`return -1` when `PdhGetFormattedCounterArrayW` reported a required size larger than it — reporting the metric as
+unavailable rather than growing. Measured live: 415 GPU-engine instances requiring **64,874 bytes against the
+65,536-byte ceiling — roughly four instances of headroom.** The requirement is dominated by instance NAME strings
+(54,914 of those bytes), because each is of the form
+`pid_15816_luid_0x00000000_0x00315636_phys_0_eng_9_engtype_high priority 3d`. Any additional GPU-touching process (a
+browser tab, the vendor overlay, Virtual Desktop reconnecting, a second game) pushes it over and blanks the widget.
+That is exactly why it looked like external interference: the failure correlates with what else is running, and
+nothing is logged. **Fix:** `pdhBuffer` is a `std::vector` and new `FetchCounterArray()` grows it to whatever PDH asks
+for (8 MiB sanity ceiling), then reuses that capacity — so growth happens a few times early and the collector remains
+allocation-free in steady state, which was the property the fixed array existed to guarantee. The same latent
+overflow applied to `ReadPeakCore`'s CPU array read and is fixed by the same helper.
+**Second, unrelated defect fixed in the same area — and explicitly NOT the reported bug.** `ParseGpuName` accepted
+only engines whose type string was exactly `3D`, and parsed that string with `%63s`, which stops at whitespace. Live
+enumeration shows Windows names its queues with SPACES — `High Priority 3D`, `High Priority Compute`, `Compute 0`,
+`Compute 1` — so `%63s` saw `High` and **42 render-engine instances per adapter were silently discarded**, as was all
+compute work. Now the full type string after `engtype_` is read and classified (`ClassifyEngineType`), graphics and
+compute queues are counted, and the class is folded into the engine key so concurrent queues stay in separate buckets
+rather than summing past 100%. Video/Copy/Security/Timer/True Audio remain excluded deliberately — on this machine the
+video engines are Virtual Desktop's encoder, and counting them would report a busy GPU while the game is idle.
+**Measured impact of this second fix: none in the tested session** — old and new algorithms both read 57.6% across
+three consecutive samples, because the plain `3D` queue was the busiest. It is a correctness fix for titles that lean
+on compute or high-priority queues; it is NOT what the user was hitting. Recorded so nobody later credits it with the
+repair.
+**Adapter selection was investigated and cleared:** `SetPreferredAdapterLuid` is called from `xrCreateSession` with
+the LUID of the actual D3D11 render device (`dllmain.cpp:6019`), so the dual-adapter machine picks the right GPU
+during a session. No change made.
+**Not yet proven:** that the widget now survives a heavy session. The overflow margin was measured; the repair was
+not observed failing-then-working, because the metric happened to be reading at measurement time. Needs a real
+session with several GPU-touching processes running.
+**Open user requests still in progress (Phase 1 of the HUD work):** frame rate / frame time / 99th-percentile FPS
+metrics, HUD presets with a dropdown (gaming / overclocking / debugging / minimal / extended), `?` help for the six
+windows that lack it, and a STATE.md tidy. **Phase 2, agreed but not started:** GPU clock, board power, temperature,
+hotspot temperature, fan speed, voltage, VRAM clock and VRAM temperature. Those are **not obtainable from PDH or
+DXGI at all** and require a vendor SDK. Agreed approach is **AMD ADLX read from `ViewLab.NotificationBroker.exe`
+(out-of-process) and published over the existing shared-memory telemetry block** — deliberately NOT loaded into the
+game process, because the HUD is drawn by the OpenXR layer inside a title that may be EAC-protected and STATE already
+records EAC flagging ViewLab's own DLL. A LibreHardwareMonitor-style kernel driver is ruled out for the same reason.
+HWiNFO's shared-memory feed was considered and rejected as a primary source (off by default, requires HWiNFO running,
+Pro-only in current versions); acceptable later as an optional extra. Metrics ADLX does not expose on a given card
+must report unavailable rather than a fabricated number.
+**Prior version:** 4.1.309 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.309.msi` (size 149,458,944 bytes; SHA-256
 `0365DF0007390F6275CA136953DA1C4686346CAE92DD3152D88FD10A4388211A`). **HUD widget rows clipped "Symbol" to
 "Symb"/"Sym" and lost their reorder buttons.** Reported by the user against 4.1.309's predecessor with a screenshot;
 pre-existing, not caused by the 4.1.308 audit work (that touched only the merged dictionary, `SortMemberPath` and the
