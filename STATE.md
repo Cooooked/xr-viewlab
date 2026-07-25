@@ -4,7 +4,33 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-25
-**Current version:** 4.1.308 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.308.msi` (size 149,458,944 bytes; SHA-256
+**Current version:** 4.1.309 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.309.msi` (size 149,458,944 bytes; SHA-256
+`0365DF0007390F6275CA136953DA1C4686346CAE92DD3152D88FD10A4388211A`). **HUD widget rows clipped "Symbol" to
+"Symb"/"Sym" and lost their reorder buttons.** Reported by the user against 4.1.309's predecessor with a screenshot;
+pre-existing, not caused by the 4.1.308 audit work (that touched only the merged dictionary, `SortMemberPath` and the
+help badge in `MainWindow.xaml`). **Root cause — and my first diagnosis of it was WRONG, recorded here because the
+wrong one is plausible and will be re-derived otherwise.** I initially blamed the `*` column collapsing and WPF then
+clipping the neighbouring `Auto` columns; a measured repro disproved that — the `Auto` column kept its full 49.3 px at
+every width down to 260 px. The actual cause is that **a default `ListBoxItem` measures its content at infinite
+width**, so each row sized to its own desired width and the ListBox viewport clipped whatever hung past the panel
+edge. Row width therefore varied with the length of each widget's provider subtitle, which is why the damage differed
+per row. Measured desired widths against a ~300 px viewport: GPU 352.0 (overflow 52 → "Sym"), CPU 345.8 (overflow 46
+→ "Symb"), SYS 316.3 (overflow 16), APP 287.5 (fits, so its ↑↓ buttons were the only visible ones). That prediction
+matches the reported screenshot exactly, including GPU losing more characters than CPU.
+**Fix:** `HudWidgetList` gains `HorizontalContentAlignment="Stretch"` plus
+`ScrollViewer.HorizontalScrollBarVisibility="Disabled"` so rows track the panel width and the label column absorbs the
+shortfall; `Grid.IsSharedSizeScope` with `SharedSizeGroup` on the flags/↑/↓ columns so every row's right-hand block is
+identical; `MinWidth="58"` on the Symbol/Unit stack; and `TextTrimming="CharacterEllipsis"` on the label and subtitle
+so the column that gives up space ellipsises instead of cutting mid-glyph. Verified by measurement: all four sample
+rows arrange to exactly 300 px with a full 58 px Symbol block and the ↑ button at x=245 in every row.
+**The stretch is what actually fixes it** — the shared size groups and MinWidth are consistency/robustness, not the
+cure. Three contracts pin the stretch, the shared-size scope and the flags group.
+**Validation:** user visually confirmed the rebuilt UI before this MSI was cut ("looks good"), having already
+installed and opened 4.1.308. 26/26 deterministic scripts pass; full build 0 errors (3 pre-existing C4244 warnings);
+MSI payload validated. **In-headset VR validation of the 4.1.308 debounce work has NOT been performed** — the
+confirmation was desktop-UI only. The debounce deliberately leaves `PublishLiveState()` immediate, so live visor/
+overlay editing should be unchanged, but that specific behaviour is still unproven in a headset.
+**Prior version:** 4.1.308 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.308.msi` (size 149,458,944 bytes; SHA-256
 `B69901E393BA187615DD581DFD304CBED13FB677CFB8C1D62C9E041DD43574FB`). **Product audit remediation — interaction/idle
 cost and UI consistency.** Fixes audit findings (6)–(9), (11)–(16) and (18)–(20) recorded in the audit block below;
 that block keeps the full evidence and now marks what is fixed vs still open. Built on top of the parallel session's

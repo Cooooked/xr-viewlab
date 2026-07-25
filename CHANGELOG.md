@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.309 - 2026-07-25
+
+- **The HUD widget list no longer cuts off "Symbol" and hides the reorder arrows.** Rows were sizing
+  themselves to their own text rather than to the panel, so any row with a longer description ran off
+  the right-hand edge — losing its ↑↓ buttons and truncating "Symbol" to "Symb" or "Sym", by a
+  different amount on each row. Rows now fit the panel, every row lines up, and long descriptions end
+  in "…" instead of being cut mid-word.
+
 ## 4.1.308 - 2026-07-25
 
 - **Dragging a slider no longer hammers your disk.** Every slider in the settings app saved the whole

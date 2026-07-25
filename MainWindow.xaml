@@ -614,18 +614,31 @@
                       <Button Content="Reset" Tag="hud" Click="OverlayResetPosition_Click" Style="{StaticResource OverlayResetButton}" />
                       <CheckBox Name="HudAlarmOnlyCheck" Content="Alarm-only symbols (critical/unstable)" Foreground="#A8A8A8" Margin="0,6,0,0" ToolTip="Shows only widgets with a sustained critical or unstable state; recovery uses hysteresis and a hold." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                       <TextBlock Text="Widgets (enabled and order)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,2" />
-                      <ListBox Name="HudWidgetList" Background="Transparent" BorderThickness="0" Padding="0">
+                      <!-- IsSharedSizeScope + the SharedSizeGroup columns below make every row agree on
+                           the width of the Symbol/Unit block and the two reorder buttons. Without it each
+                           row sized independently, so under width pressure they clipped by DIFFERENT
+                           amounts ("Symbol" / "Symb" / "Sym" down the list). HorizontalScrollBarVisibility
+                           is disabled so items track the panel width instead of overflowing sideways. -->
+                      <ListBox Name="HudWidgetList" Background="Transparent" BorderThickness="0" Padding="0"
+                               Grid.IsSharedSizeScope="True" HorizontalContentAlignment="Stretch"
+                               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemTemplate>
                           <DataTemplate>
                             <Grid Margin="0,1">
                               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                              <!-- The label column is the only star column, so it is what absorbs a narrow
+                                   window. The Auto columns carry SharedSizeGroup so they cannot be squeezed
+                                   to different widths per row, and the flags column has a MinWidth so
+                                   "Symbol" never truncates. -->
+                              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*" MinWidth="0"/><ColumnDefinition Width="Auto" SharedSizeGroup="HudWidgetFlags"/><ColumnDefinition Width="Auto" SharedSizeGroup="HudWidgetUp"/><ColumnDefinition Width="Auto" SharedSizeGroup="HudWidgetDown"/></Grid.ColumnDefinitions>
                               <CheckBox Grid.Row="0" IsChecked="{Binding Enabled, Mode=TwoWay}" ToolTip="{Binding ToolTip}" Checked="HudWidgetToggle_Changed" Unchecked="HudWidgetToggle_Changed" />
                                 <StackPanel Grid.Row="0" Grid.Column="1" Margin="5,0" ToolTip="{Binding ToolTip}">
-                                  <TextBlock Text="{Binding Label}" FontSize="10" Foreground="#B8B8B8" />
-                                  <TextBlock FontSize="8" Foreground="#777"><Run Text="{Binding Provider}"/><Run Text=" · "/><Run Text="{Binding Unit}"/><Run Text=" · "/><Run Text="{Binding Availability}"/></TextBlock>
+                                  <TextBlock Text="{Binding Label}" FontSize="10" Foreground="#B8B8B8" TextTrimming="CharacterEllipsis" />
+                                  <!-- Ellipsis rather than a hard cut: this is the column that gives up space
+                                       when the window is narrow, and a mid-glyph clip reads as a rendering bug. -->
+                                  <TextBlock FontSize="8" Foreground="#777" TextTrimming="CharacterEllipsis"><Run Text="{Binding Provider}"/><Run Text=" · "/><Run Text="{Binding Unit}"/><Run Text=" · "/><Run Text="{Binding Availability}"/></TextBlock>
                                 </StackPanel>
-                              <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Vertical">
+                              <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Vertical" MinWidth="58">
                                 <CheckBox Content="Symbol" IsChecked="{Binding UseSymbol, Mode=TwoWay}" Checked="HudWidgetToggle_Changed" Unchecked="HudWidgetToggle_Changed" FontSize="9" ToolTip="Use this widget's compact symbol; unchecked shows its literal label."/>
                                 <CheckBox Content="Unit" IsChecked="{Binding ShowUnit, Mode=TwoWay}" IsEnabled="{Binding HasUnit}" Checked="HudWidgetToggle_Changed" Unchecked="HudWidgetToggle_Changed" FontSize="9" ToolTip="Show this metric's unit suffix (e.g. %, ms, FPS). The value stays visible when off. Metrics without a unit are unaffected."/>
                               </StackPanel>

@@ -233,6 +233,15 @@ Assert-Contains 'dllmain.cpp' 'RotateOpenLogIfNeeded' 'log size is re-checked wh
 
 # MemoryMappedFile.OpenExisting throws when OBS is absent, and this runs once a second.
 Assert-Contains 'XRViewLab.UI\NotificationBrokerClient.cs' 'OpenFileMappingW' 'the OBS state probe does not throw once per second when OBS is closed'
+
+# A default ListBoxItem measures its content at INFINITE width, so each HUD widget row took its own
+# desired width and the viewport clipped whatever hung past the panel edge — rows with longer provider
+# subtitles lost the reorder buttons and truncated "Symbol" to "Symb"/"Sym" by differing amounts.
+# Stretch forces rows to the panel width so the label column absorbs instead; the shared size groups
+# keep every row's right-hand block identical.
+Assert-Contains 'MainWindow.xaml' 'Name="HudWidgetList"[\s\S]{0,320}?HorizontalContentAlignment="Stretch"' 'HUD widget rows track the panel width instead of overflowing it'
+Assert-Contains 'MainWindow.xaml' 'Name="HudWidgetList"[\s\S]{0,320}?Grid\.IsSharedSizeScope="True"' 'HUD widget rows share column widths so they cannot clip by different amounts'
+Assert-Contains 'MainWindow.xaml' 'SharedSizeGroup="HudWidgetFlags"' 'the Symbol/Unit block is width-shared across HUD widget rows'
 Assert-Contains 'MainWindow.xaml' 'Name="AppsHeader" Visibility="Collapsed"' 'Applications sub-header is removed for aligned responsive columns'
 Assert-Contains 'MainWindow.xaml' 'Name="OptionsHeader" Visibility="Collapsed"' 'Render Options sub-header is removed for aligned responsive columns'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ThanksTextRight\.Visibility     = threeCol \? Visibility\.Visible : Visibility\.Collapsed;' 'beta-testers line moves to the third column in triple-column mode'
