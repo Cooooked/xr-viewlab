@@ -8,7 +8,12 @@
 
 namespace viewlab::racing {
 
-constexpr int kSpotterBands = 8;
+// 32 bands (up from 8): the fade is drawn as stacked flat-colour rectangles (the overlay pixel
+// shader takes a constant colour, not an interpolated vertex colour, to avoid a past VDXR bug
+// where interpolated vertex colour delivered black), so band count is what controls how smooth
+// the falloff reads. 8 bands produced a visibly blocky staircase; 32 keeps each band under
+// roughly a quarter of the width of the old ones while staying cheap to draw.
+constexpr int kSpotterBands = 32;
 
 // Spotter glow: total band width in pixels grows with the configured width, clamped to a safe range.
 inline float SpotterWidthPx(double spotterWidth, float viewW) {

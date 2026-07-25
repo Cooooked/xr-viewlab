@@ -4,7 +4,30 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-25
-**Current version:** 4.1.310 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.310.msi` (SHA-256
+**Current version:** 4.1.311 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.311.msi` (size 149,454,848 bytes; SHA-256
+`33942DE4B2672A01CC3EF4F584EA9BA0D686E95823BED6940FE465E88C67B6D8`). **iRacing spotter glow was drawn into both eyes
+per side, and its inward fade was visibly blocky (8 flat bands).** User report ("peripheral spotter glow is not
+supposed to affect both eyes — it's supposed to affect the left of the left eye or the right of the right eye")
+plus a follow-up that the fade itself reads as a strong blocky gradient.
+**Root cause 1 (both-eye bleed).** `dllmain.cpp`'s spotter block (~`dllmain.cpp:3568`) runs once per submitted eye
+texture and drew BOTH the left-edge band and the right-edge band into whichever eye it was currently rendering,
+gated only on `spotterState` — never on which eye. So a car on the left lit the left edge of the left eye (correct,
+temporal/peripheral) AND the left edge of the right eye (wrong — that's the nasal side, not peripheral).
+**Fix 1:** each band is now additionally gated on `eye.viewIndex` — left band only when `viewIndex==0` (left eye,
+matching the existing `outerLeft` convention at `dllmain.cpp:2609`), right band only when `viewIndex==1`.
+**Root cause 2 (blocky fade).** The overlay pixel shader (`kOverlayPS`) deliberately takes a single constant-buffer
+colour per draw call rather than an interpolated per-vertex colour — `dllmain.cpp`'s own comment records that VDXR
+previously delivered interpolated vertex colour as black, breaking a crosshair. That constraint means the spotter's
+exponential inward falloff can only be approximated as stacked flat-colour rectangles, and `kSpotterBands` was 8,
+producing a visible staircase across the ~0.03–0.35 view-width band.
+**Fix 2:** `kSpotterBands` (`RacingCueGeometry.h`) raised 8 → 32; each band is now ~1/4 the width of before. Kept
+inside the same flat-colour-per-draw-call approach (no shader change) to avoid reopening the VDXR interpolated-colour
+bug. `Tests/RenderPolicyFixtures.cpp`'s spotter assertions only exercise the shared geometry helpers (width/base/
+band-alpha ordering), which are unaffected by band count, so no fixture changes were needed.
+**Verification:** full build 0 errors (3 pre-existing C4244 warnings, same three lines as prior versions, untouched
+math); `Tests\Verify-ViewLabContracts.ps1` passes; MSI payload validated. **Not yet in-headset validated** — the
+per-eye gating and the finer fade have not been confirmed live against real iRacing spotter telemetry.
+**Prior version:** 4.1.310 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.310.msi` (SHA-256
 `8FB6956BCDE4B5C24637CE70D7575C451F056B0DE93A309E2DF0883C96B354BC`). **GPU utilisation widget intermittently read
 nothing — root cause was a fixed PDH buffer, NOT the data source.** User reported the meter "often doesn't read, like
 something is blocking it", suspecting AMD Adrenalin. Measured on the user's machine (RX 7800 XT + iGPU) during a live

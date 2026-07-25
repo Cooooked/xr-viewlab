@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.1.311 - 2026-07-25
+
+- **The iRacing spotter glow no longer lights up both eyes for a one-sided warning.** A car on your
+  left is peripheral vision only for your left eye, but the glow was drawing the same left-edge band
+  into both eye textures, and likewise for the right. Each side now only renders into its matching
+  eye.
+- **The spotter glow's fade is smoother.** It's built from stacked flat-colour bands (a rendering
+  constraint, not a choice — the shared overlay shader takes one constant colour per draw call rather
+  than a smooth per-pixel gradient, to avoid a past compatibility bug where interpolated vertex colour
+  rendered black on VDXR), and 8 bands read as a visible staircase. Now 32.
+
 ## 4.1.310 - 2026-07-25
 
 - **The GPU usage meter no longer goes blank at random.** ViewLab asks Windows for a list of

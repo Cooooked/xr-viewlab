@@ -3565,9 +3565,13 @@ void DrawViewLabOverlaysToTexture(
 
     // Spotter is spatial rather than textual: maximum intensity at the relevant peripheral edge,
     // fading inward in eight bounded bands. Both-sides remains two simultaneous independent cues.
+    // Each side is monocular: a car on the left only lights the outer (left) edge of the LEFT eye,
+    // never the inner edge of the right eye, so the cue reads as true peripheral vision, not a
+    // symmetric band duplicated into both eyes.
     if (wantSpotter) {
         const uint32_t state=g_racingStable.spotterState;
-        const bool left=state==1||state==3||state==4,right=state==2||state==3||state==5;
+        const bool left=(state==1||state==3||state==4) && eye.viewIndex==0;
+        const bool right=(state==2||state==3||state==5) && eye.viewIndex==1;
         const float cr=((iracingSpotterColor>>16)&255)/255.f,cg=((iracingSpotterColor>>8)&255)/255.f,cb=(iracingSpotterColor&255)/255.f;
         const float width=viewlab::racing::SpotterWidthPx(iracingSpotterWidth,w),step=width/(float)viewlab::racing::kSpotterBands,base=viewlab::racing::SpotterBase(iracingSpotterOpacity,iracingSpotterStrength);
         for(int i=0;i<viewlab::racing::kSpotterBands;++i){
