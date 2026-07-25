@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 
 namespace XRViewLab.UI;
@@ -11,14 +13,37 @@ public enum DiagMonSessionType { Normal, Baseline, Experiment, StressTest, Incom
 public enum DiagMonCollectorState { Pending, Running, Complete, Partial, Missing, Failed }
 public enum DiagMonComparability { Direct, Partial, None }
 
-public sealed class DiagMonCollectorStatus
+// Raises change notifications so the DiagMon collector grid can bind ONCE and still show live
+// State/Message updates. The window previously forced refreshes by reassigning ItemsSource through
+// null on a 1 Hz timer, which rebuilt the grid every second and destroyed the user's sort and row
+// selection. The capture service replaces the whole list only at capture start and mutates these
+// items in place afterwards, so per-property notification is exactly what is needed here.
+// Serialization is unaffected — these are still ordinary public read/write properties.
+public sealed class DiagMonCollectorStatus : INotifyPropertyChanged
 {
-    public string Name { get; set; } = "";
+    private string _name = "";
+    private DiagMonCollectorState _state;
+    private string _message = "";
+    private DateTimeOffset? _startedUtc;
+    private DateTimeOffset? _stoppedUtc;
+
+    public string Name { get => _name; set => Set(ref _name, value); }
+
     [JsonConverter(typeof(JsonStringEnumConverter))]
-    public DiagMonCollectorState State { get; set; }
-    public string Message { get; set; } = "";
-    public DateTimeOffset? StartedUtc { get; set; }
-    public DateTimeOffset? StoppedUtc { get; set; }
+    public DiagMonCollectorState State { get => _state; set => Set(ref _state, value); }
+
+    public string Message { get => _message; set => Set(ref _message, value); }
+    public DateTimeOffset? StartedUtc { get => _startedUtc; set => Set(ref _startedUtc, value); }
+    public DateTimeOffset? StoppedUtc { get => _stoppedUtc; set => Set(ref _stoppedUtc, value); }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void Set<T>(ref T field, T value, [CallerMemberName] string? property = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));
+    }
 }
 
 public sealed class DiagMonAnnotations

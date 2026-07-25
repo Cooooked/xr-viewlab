@@ -1,5 +1,17 @@
 <Window x:Class="XRViewLab.UI.PerformanceTraceWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ViewLab — Last Performance Trace" Width="1120" Height="700" MinWidth="760" MinHeight="480" Background="#101114" Foreground="#E8E8E8">
+  <!-- This window merged NO styles at all, so its buttons rendered in WPF default light chrome on a
+       dark background and its one unlabelled-foreground checkbox was black on black. DiagMonDarkStyles
+       supplies the Button/DataGrid chrome its sibling PerformanceTraceLibraryWindow already used;
+       ViewLabTheme supplies the CheckBox and ComboBox styles neither of them had. -->
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="DiagMonDarkStyles.xaml" />
+        <ResourceDictionary Source="/ViewLabTheme.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Window.Resources>
   <Grid Margin="14">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <DockPanel Margin="0,0,0,8">

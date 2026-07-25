@@ -1349,15 +1349,43 @@ std::filesystem::path VerboseLogPath() {
     return UserDataDirectory() / L"Logs" / L"ViewLab.verbose.log";
 }
 
+constexpr std::uintmax_t kLogRotateBytes = 2 * 1024 * 1024;
+
+// Derive the archive name from the log's OWN stem. Both logs previously rotated onto a
+// hardcoded ViewLab.old.log, so whichever rotated second destroyed the other's archive:
+// ViewLab.log -> ViewLab.old.log, ViewLab.verbose.log -> ViewLab.verbose.old.log.
+std::filesystem::path RotatedLogPath(const std::filesystem::path& logPath) {
+    std::filesystem::path rotated = logPath.parent_path();
+    rotated /= logPath.stem().wstring() + L".old" + logPath.extension().wstring();
+    return rotated;
+}
+
 void RotateLogIfNeeded(const std::filesystem::path& logPath) {
     std::error_code ec;
-    if (!std::filesystem::exists(logPath, ec) || std::filesystem::file_size(logPath, ec) < 2 * 1024 * 1024) {
+    if (!std::filesystem::exists(logPath, ec) || std::filesystem::file_size(logPath, ec) < kLogRotateBytes) {
         return;
     }
 
-    const std::filesystem::path oldPath = logPath.parent_path() / L"ViewLab.old.log";
+    const std::filesystem::path oldPath = RotatedLogPath(logPath);
     std::filesystem::remove(oldPath, ec);
     std::filesystem::rename(logPath, oldPath, ec);
+}
+
+// Rotation used to be checked ONLY when the stream was opened, and the stream is held open for
+// the whole process — so the 2 MB cap never applied during a long session and the file grew
+// without bound (worst with verbose logging, which writes per frame). Check the live write
+// offset after each line and roll over in place. Callers must already hold logMutex.
+void RotateOpenLogIfNeeded(std::ofstream& stream, const std::filesystem::path& logPath) {
+    if (!stream.is_open()) {
+        return;
+    }
+    const std::streampos written = stream.tellp();
+    if (written < 0 || static_cast<std::uintmax_t>(written) < kLogRotateBytes) {
+        return;
+    }
+    stream.close();
+    RotateLogIfNeeded(logPath);
+    stream.open(logPath, std::ios_base::app);
 }
 
 void OpenLogIfNeeded() {
@@ -1405,6 +1433,7 @@ void Log(const char* fmt, ...) {
             logStream << '\n';
         }
         logStream.flush();
+        RotateOpenLogIfNeeded(logStream, LogPath());
     }
 }
 
@@ -1458,6 +1487,7 @@ void LogVerbose(const char* fmt, ...) {
             verboseLogStream << '\n';
         }
         verboseLogStream.flush();
+        RotateOpenLogIfNeeded(verboseLogStream, VerboseLogPath());
     }
 }
 

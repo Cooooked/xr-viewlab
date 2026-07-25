@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.1.308 - 2026-07-25
+
+- **Dragging a slider no longer hammers your disk.** Every slider in the settings app saved the whole
+  settings file on *every pixel* of movement — and saving it means ~34 separate rewrites of that file.
+  A one-second drag was thousands of writes. Settings are now written once, shortly after you stop
+  moving the control. **Changes still apply live in the headset exactly as before** — only the save to
+  disk waits. The iRacing controls were the worst case: they were also launching the background helper
+  program on every pixel of movement.
+- **Logs can no longer grow without limit, and no longer overwrite each other.** The 2 MB cap was only
+  checked when a game started, so a long session's log just kept growing. Separately, the normal log
+  and the verbose log both archived to the *same* filename, so whichever rotated second destroyed the
+  other's history.
+- **The settings window is quieter when idle.** It was throwing away an error every second checking
+  whether OBS was running, and re-reading and re-parsing two status files every second whether or not
+  anything had changed. Some leftover do-nothing code has been removed from that loop too.
+- **The per-app profile editor looks and behaves like the rest of ViewLab now.** Its buttons had no
+  hover, pressed or disabled states at all, and most of its checkbox labels were black text on a dark
+  panel. It, the Performance Trace window and the DiagMon comparison table all now share one style.
+- **Dropdown menus match the app.** They were rendering in Windows' default light grey on ViewLab's
+  dark panels. This is the one deliberate visual change in this release.
+- **The DiagMon collector table is usable.** It rebuilt itself every second, so any sort or row you
+  selected was wiped before you could do anything with it.
+- **Sorting the app list by the checkbox column works.** That column header previously did nothing.
+- **Launching ViewLab when it's already open brings the window back** instead of doing nothing. It was
+  searching for the wrong window name, so it never found the running copy — and it now also restores
+  the window if you'd minimised it.
+
 ## 4.1.307 - 2026-07-25
 
 - **"What happened?" now actually finds things, and explains itself.** It gained a **?** help button

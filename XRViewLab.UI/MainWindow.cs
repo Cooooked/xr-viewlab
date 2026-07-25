@@ -364,8 +364,85 @@ public partial class MainWindow : Window
 
 	protected override void OnClosing(CancelEventArgs e)
 	{
+		// Anything still sitting in the debounce window must reach disk before we go.
+		FlushPendingSaves();
 		SaveWindowSize();
 		base.OnClosing(e);
+	}
+
+	// --- Coalesced persistence -------------------------------------------------------------
+	// WPF raises Slider.ValueChanged once per pixel of thumb travel, and each of these save
+	// routines rewrites the entire INI: SaveGlobalSettings alone issues 34 separate
+	// WritePrivateProfileString calls, and every one of those is a full open/parse/rewrite/close
+	// of xr-viewlab.ini. Saving straight from the handler therefore turned a one-second drag into
+	// thousands of synchronous file writes on the UI thread. Saves are now coalesced into a single
+	// write once the control settles.
+	//
+	// IMPORTANT: only the DISK WRITE is deferred. PublishLiveState() still runs immediately on
+	// every change, so in-headset visor/overlay editing stays as live as it was in 4.1.292 — the
+	// layer reads shared memory, not the ini. Discrete controls (checkboxes, buttons) keep saving
+	// immediately; they fire once, so there is nothing to coalesce and deferring them would only
+	// widen the window in which a crash loses the toggle.
+	[Flags]
+	private enum PendingSave
+	{
+		None = 0,
+		Global = 1 << 0,
+		Crosshair = 1 << 1,
+		Notification = 1 << 2,
+		Calibration = 1 << 3,
+		IRacing = 1 << 4,
+		CommonOverlay = 1 << 5,
+		StickyNotes = 1 << 6,
+	}
+
+	private PendingSave _pendingSaves;
+	private string? _pendingCommonOverlayId;
+	private System.Windows.Threading.DispatcherTimer? _persistTimer;
+	private const int PersistDebounceMilliseconds = 250;
+
+	// Queue a save for after the user stops moving the control. Each call restarts the window, so
+	// a continuous drag writes exactly once, when it settles.
+	private void RequestSave(PendingSave kind)
+	{
+		_pendingSaves |= kind;
+		if (_persistTimer == null)
+		{
+			_persistTimer = new System.Windows.Threading.DispatcherTimer
+			{
+				Interval = TimeSpan.FromMilliseconds(PersistDebounceMilliseconds)
+			};
+			_persistTimer.Tick += (_, _) => FlushPendingSaves();
+		}
+		_persistTimer.Stop();
+		_persistTimer.Start();
+	}
+
+	private void RequestSaveCommonOverlay(string id)
+	{
+		_pendingCommonOverlayId = id;
+		RequestSave(PendingSave.CommonOverlay);
+	}
+
+	// Write everything that is pending, now. Safe to call when nothing is queued.
+	private void FlushPendingSaves()
+	{
+		_persistTimer?.Stop();
+		PendingSave pending = _pendingSaves;
+		_pendingSaves = PendingSave.None;
+		if (pending == PendingSave.None) return;
+
+		if ((pending & PendingSave.Global) != 0) SaveGlobalSettings();
+		if ((pending & PendingSave.Crosshair) != 0) SaveCrosshairSettings();
+		if ((pending & PendingSave.Notification) != 0) SaveNotificationSettings();
+		if ((pending & PendingSave.Calibration) != 0) SaveCalibrationSettings();
+		if ((pending & PendingSave.IRacing) != 0) SaveIRacingSettings();
+		if ((pending & PendingSave.StickyNotes) != 0) SaveStickyNotes();
+		if ((pending & PendingSave.CommonOverlay) != 0 && _pendingCommonOverlayId is string overlayId)
+		{
+			SaveCommonOverlaySettings(overlayId);
+			_pendingCommonOverlayId = null;
+		}
 	}
 
 	private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1475,7 +1552,9 @@ public partial class MainWindow : Window
 			{
 				SyncMaskEditorFromSliders();
 			}
-			SaveGlobalSettings();
+			// Debounced: this is a TextChanged handler, so it also stops SaveGlobalSettings'
+			// out-of-range MessageBox firing on every keystroke of a half-typed number.
+			RequestSave(PendingSave.Global);
 		}
 	}
 
@@ -1485,7 +1564,7 @@ public partial class MainWindow : Window
 		{
 			SyncMaskEditorFromSliders();
 			MaskRoundedCheck.IsChecked = true;
-			SaveGlobalSettings();
+			RequestSave(PendingSave.Global);
 			PublishLiveState();
 		}
 	}
@@ -1524,7 +1603,7 @@ public partial class MainWindow : Window
 		if (!_loading && !_syncingControls && MaskBeanEditor != null)
 		{
 			SyncMaskEditorFromSliders();
-			SaveGlobalSettings();
+			RequestSave(PendingSave.Global);
 			PublishLiveState();   // apply visor size live (was preview-only, never saved/published)
 		}
 	}
@@ -1571,7 +1650,7 @@ public partial class MainWindow : Window
 			_syncingControls = true;
 			SyncMaskEditorFromSliders();
 			_syncingControls = false;
-			SaveGlobalSettings();
+			RequestSave(PendingSave.Global);
 			PublishLiveState();
 		}
 	}
@@ -1589,7 +1668,7 @@ public partial class MainWindow : Window
 			SetSliderValue(MaskInnerLowerSlider, MaskBeanEditor.InnerLowerY);
 			SetSliderValue(MaskNoseSpreadXSlider, MaskBeanEditor.NoseSpreadX);
 			_syncingControls = false;
-			SaveGlobalSettings();
+			RequestSave(PendingSave.Global);
 			PublishLiveState();   // dragging the visor editor applies live
 		}
 	}
@@ -1599,7 +1678,7 @@ public partial class MainWindow : Window
 		if (!_loading && !_syncingControls && MaskBeanEditor != null)
 		{
 			SyncMaskEditorFromSliders();
-			SaveGlobalSettings();
+			RequestSave(PendingSave.Global);
 			PublishLiveState();
 		}
 	}
@@ -1609,7 +1688,7 @@ public partial class MainWindow : Window
 		if (!_loading && !_syncingControls && MaskBeanEditor != null)
 		{
 			SyncMaskEditorFromSliders();
-			SaveGlobalSettings();
+			RequestSave(PendingSave.Global);
 		}
 	}
 
@@ -1618,7 +1697,7 @@ public partial class MainWindow : Window
 		if (!_loading && !_syncingControls && MaskBeanEditor != null)
 		{
 			SyncMaskEditorFromSliders();
-			SaveGlobalSettings();
+			RequestSave(PendingSave.Global);
 		}
 	}
 
@@ -1651,7 +1730,7 @@ public partial class MainWindow : Window
 		if (_loading || MaskBeanEditor == null || !double.TryParse(PreviewIpdBox.Text,
 			NumberStyles.Float, CultureInfo.InvariantCulture, out _)) return;
 		MaskBeanEditor.PreviewIpdMillimetres = CurrentPreviewIpd();
-		SaveGlobalSettings();
+		RequestSave(PendingSave.Global);
 	}
 
 	private void PreviewIpd_Commit(object sender, KeyboardFocusChangedEventArgs e) =>
@@ -1760,7 +1839,7 @@ public partial class MainWindow : Window
 			{
 				SyncMaskEditorFromSliders();
 			}
-			SaveGlobalSettings();
+			RequestSave(PendingSave.Global);
 		}
 	}
 
@@ -1769,7 +1848,7 @@ public partial class MainWindow : Window
 		if (!_loading && !_syncingControls)
 		{
 			SyncSlidersFromText();
-			SaveGlobalSettings();
+			RequestSave(PendingSave.Global);
 		}
 	}
 
@@ -1789,7 +1868,7 @@ public partial class MainWindow : Window
 			{
 				SyncMaskEditorFromSliders();
 			}
-			SaveGlobalSettings();
+			RequestSave(PendingSave.Global);
 			// Publish so the running layer re-crops / redraws the mask live; previously H/V edits
 			// only hit the ini and needed a game restart to take effect (v55 updated live).
 			PublishLiveState();
@@ -1864,7 +1943,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			try { TraceEnabledCheck.IsChecked = traceEnabled; }
 			finally { _loading = false; }
 		}
-		SaveCalibrationSettings();
+		RequestSave(PendingSave.Calibration);
 		PublishLiveState();
 		StatusText.Text = "HUD position applied live.";
 	}
@@ -1893,7 +1972,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			else if (!widget.LowerIsWorse && widget.Critical < widget.Warning)
 				(widget.Warning, widget.Critical) = (widget.Critical, widget.Warning);
 		}
-		SaveCalibrationSettings();
+		RequestSave(PendingSave.Calibration);
 		PublishLiveState();
 		StatusText.Text = "Widget thresholds saved. All metrics use their own warning and critical values next session.";
 	}
@@ -2462,7 +2541,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void ClockWidgetControl_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading || _applyingOverlayPreviewEdit) return;
-		SaveCommonOverlaySettings("clock");
+		RequestSaveCommonOverlay("clock");
 		WritePrivateProfileString("Settings", ClockSessionTimerKey, ClockSessionTimerCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", Clock24HourKey, Clock24HourCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", ClockThemeKey, Math.Max(0, ClockThemeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
@@ -2601,12 +2680,12 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			{
 				StickyNoteOption note=_stickyNotes[index];
 				if(e.Kind==OverlayPreviewEditKind.Position){note.X=e.X;note.Y=e.Y;}else note.Scale=e.Scale;
-				SaveStickyNotes();StatusText.Text=$"Note {index+1} placement applied live.";return;
+				RequestSave(PendingSave.StickyNotes);StatusText.Text=$"Note {index+1} placement applied live.";return;
 			}
 			if(!OverlaySettingsCatalog.All.ContainsKey(e.Id))return;
 			(_,Slider x,Slider y,Slider scale,_)=OverlayControls(e.Id);
 			if(e.Kind==OverlayPreviewEditKind.Position){x.Value=e.X;y.Value=e.Y;}else scale.Value=e.Scale;
-			SaveCommonOverlaySettings(e.Id);PublishLiveState();StatusText.Text=$"{e.Id} placement applied live.";
+			RequestSaveCommonOverlay(e.Id);PublishLiveState();StatusText.Text=$"{e.Id} placement applied live.";
 		}
 		finally{_applyingOverlayPreviewEdit=false;}
 	}
@@ -2664,7 +2743,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		_crosshair.TStyle = CrosshairTStyleCheck.IsChecked == true;
 		CrosshairOverlayPreview?.Apply(_crosshair);
 		MaskBeanEditor?.SetCrosshair(_crosshair,CrosshairEnabledCheck?.IsChecked==true,CrosshairOffsetXSlider?.Value??0,CrosshairOffsetYSlider?.Value??0);
-		SaveCrosshairSettings();
+		RequestSave(PendingSave.Crosshair);
 		PublishLiveState();
 		StatusText.Text = "Crosshair applied live.";
 	}
@@ -2724,7 +2803,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 	private void CrosshairPosition_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
 	{
-		if (_loading) return; SaveCrosshairSettings(); PublishLiveState();
+		if (_loading) return; RequestSave(PendingSave.Crosshair); PublishLiveState();
 		StatusText.Text = "Crosshair calibration applied live.";
 	}
 
@@ -2803,7 +2882,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void NotifyControl_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading || _applyingOverlayPreviewEdit) return;
-		SaveNotificationSettings();
+		RequestSave(PendingSave.Notification);
 		PublishLiveState();
 		ApplyNotificationSettings(requestAccess: sender == NotifyEnabledCheck && NotifyEnabledCheck.IsChecked == true);
 		StatusText.Text = "Notification settings applied.";
@@ -2871,9 +2950,19 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	}
 
 	// ---- iRacing integration UI ----------------------------------------------------------------
+	// Live effects only — cheap, and safe to run on every tick of a slider drag. The 23 ini writes
+	// plus the broker nudge are deferred to SaveIRacingSettings via the debounce; EnsureIRacingProvider
+	// in particular calls Process.Start on ViewLab.NotificationBroker.exe, which must not happen once
+	// per pixel of thumb travel.
 	private void IRacingControl_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading) return;
+		PublishLiveState();
+		RequestSave(PendingSave.IRacing);
+	}
+
+	private void SaveIRacingSettings()
+	{
 		Directory.CreateDirectory(ConfigDirectory);
 		WritePrivateProfileString("Settings", IRacingEnabledKey, IRacingEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", IRacingLapPopupKey, IRacingLapPopupCheck.IsChecked == true ? "1" : "0", ConfigPath);
@@ -2901,7 +2990,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", "iracing_rear_closing_opacity", IRacingRearClosingOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", "iracing_grip_bar", IRacingGripBarCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "iracing_grip_bar_opacity", IRacingGripBarOpacitySlider.Value.ToString("0.###", c), ConfigPath);
-		PublishLiveState();
 		EnsureIRacingProvider();
 		StatusText.Text = "iRacing telemetry settings applied.";
 	}
@@ -3044,7 +3132,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if(_stickyNotes.Count>0){var n=_stickyNotes[0];WritePrivateProfileString("Settings",StickyNoteTextKey,StickyNoteLiveStateService.Normalize(n.Text),ConfigPath);WritePrivateProfileString("Settings","sticky_note_x",n.X.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings","sticky_note_y",n.Y.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings","sticky_note_scale",n.Scale.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings","sticky_note_opacity",n.Opacity.ToString("0.###",c),ConfigPath);}
 		SaveAllOverlayHotkeys();_stickyNoteLiveState.Publish(StickyNoteEnabledCheck.IsChecked==true,_stickyNotes);RefreshMaskOverlayPreview();
 	}
-	private void StickyNote_Changed(object sender,RoutedEventArgs e){if(_loading||_applyingOverlayPreviewEdit)return;SaveStickyNotes();StatusText.Text="Sticky notes applied live.";}
+	private void StickyNote_Changed(object sender,RoutedEventArgs e){if(_loading||_applyingOverlayPreviewEdit)return;RequestSave(PendingSave.StickyNotes);StatusText.Text="Sticky notes applied live.";}
 	private void StickyNoteItem_Changed(object sender,RoutedEventArgs e)=>StickyNote_Changed(sender,e);
 	private void StickyNoteItemSlider_Changed(object sender,RoutedPropertyChangedEventArgs<double> e)=>StickyNote_Changed(sender,e);
 	private void StickyNoteAdd_Click(object sender,RoutedEventArgs e){if(_stickyNotes.Count>=StickyNoteLiveStateService.MaxNotes){StatusText.Text="Sticky notes are limited to eight.";return;}_stickyNotes.Add(new StickyNoteOption{Number=_stickyNotes.Count+1,X=.78,Y=.22+.08*_stickyNotes.Count});SaveStickyNotes();}
@@ -3056,10 +3144,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if (!_loading) { SaveCalibrationSettings(); StatusText.Text="Trace marker bind applies when the next VR session starts."; }
 	}
 
-
-	private void ReShadeMenuSetting_Changed(object sender, RoutedEventArgs e) { }
-
-	private void SaveReShadeMenuSettings() { }
 
 	private ReShadeRemoteWindow? _reshadeRemote;
 	private DiagMonWindow? _diagMonWindow;
@@ -3117,7 +3201,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			{
 				LogToFile("XR control connected");
 				ApplySavedXrLaunchMode();
-				XrSyncToUI();
 			}
 		}
 		else
@@ -3127,10 +3210,12 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 				_xrLaunchModeApplied = false;
 				_xrControl.Disconnect();
 			}
-			else
+			else if (!_xrLaunchModeApplied)
 			{
+				// Worth a tick only until the mode has actually been pushed. This previously ran
+				// every second solely to hit ApplySavedXrLaunchMode's early return, alongside a
+				// call to XrSyncToUI() whose body had been emptied out.
 				ApplySavedXrLaunchMode();
-				XrSyncToUI();
 			}
 		}
 	}
@@ -3270,8 +3355,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		_vrQuadPopupClosedAt = DateTime.UtcNow;
 	}
 
-	// ReShade menu/window/quad controls moved to the ReShade Remote pop-out (ReShadeRemoteWindow).
-	private void XrSyncToUI() { }
+	// ReShade menu/window/quad controls moved to the ReShade Remote pop-out (ReShadeRemoteWindow),
+	// which owns its own sync — the stubs that survived that move here have been removed.
 
 	private void SaveGlobalSettings()
 	{
@@ -3335,7 +3420,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		// Written last: the native layer only live-reloads visor values after this revision changes.
 		WritePrivateProfileString("Settings", "visor_live_revision", DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture), ConfigPath);
 		PublishLiveState();
-		SaveReShadeMenuSettings();
 		SaveExperimentalSettings();
 		WriteRegistryEnabled(valueOrDefault2);
 		_loading = true;

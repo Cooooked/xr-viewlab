@@ -4,7 +4,9 @@
   <Grid Margin="14">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="8"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <TextBlock Text="Selected session comparison" FontSize="18" FontWeight="SemiBold"/>
-    <DataGrid Grid.Row="2" x:Name="ComparisonGrid" AutoGenerateColumns="False" IsReadOnly="True" Background="#111215" Foreground="#E4E4E4" BorderBrush="#34363B">
+    <!-- Colours come from the merged DiagMonDarkStyles DataGrid style; they were previously also
+         hardcoded here, which quietly took this grid out of the shared style's ownership. -->
+    <DataGrid Grid.Row="2" x:Name="ComparisonGrid" AutoGenerateColumns="False" IsReadOnly="True">
       <DataGrid.Columns>
         <DataGridTextColumn Header="Date" Binding="{Binding Date}" Width="145"/>
         <DataGridTextColumn Header="Application" Binding="{Binding Application}" Width="*"/>

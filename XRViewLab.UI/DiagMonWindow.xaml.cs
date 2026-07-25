@@ -166,7 +166,21 @@ public partial class DiagMonWindow : Window
         StatusText.Text = active ? (_capture.CurrentSession?.TargetPid == null ? "Capturing — waiting for target" : "Capture active") : "Idle";
         ElapsedText.Text = active && _capture.CaptureStartUtc.HasValue ? (DateTimeOffset.UtcNow - _capture.CaptureStartUtc.Value).ToString(@"hh\:mm\:ss") : "00:00:00";
         var s = _capture.CurrentSession; TargetText.Text = s?.TargetPid is int pid ? $"{s.TargetProcessName} — PID {pid}\nSelection: {s.TargetSelection}" : $"No target detected\nSelection: {s?.TargetSelection ?? (DiagMonTargetMode)TargetModeCombo.SelectedItem}";
-        CollectorGrid.ItemsSource = null; CollectorGrid.ItemsSource = s?.Collectors;
+        BindCollectors(s?.Collectors);
+    }
+
+    // The collector list used to be rebound as `ItemsSource = null; ItemsSource = ...` on every one
+    // of these 1 Hz ticks. That tore down and rebuilt the whole grid once a second, so any sort or
+    // row selection the user applied was wiped before they could act on it — the table was
+    // effectively unusable. Rebind only when the underlying collection instance actually changes;
+    // the collectors themselves raise change notifications for their own State/Message updates.
+    private object? _boundCollectors;
+
+    private void BindCollectors(object? collectors)
+    {
+        if (ReferenceEquals(_boundCollectors, collectors)) return;
+        _boundCollectors = collectors;
+        CollectorGrid.ItemsSource = collectors as System.Collections.IEnumerable;
     }
 
     private void ShowRetention() { var warnings = _store.CheckRetention(); RetentionText.Text = warnings.Count == 0 ? "Storage is within configured guidance." : string.Join("\n", warnings) + " Evidence is never deleted automatically."; }

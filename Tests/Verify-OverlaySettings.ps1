@@ -45,7 +45,12 @@ Need $preview 'OverlayPreviewHandle\.Move' 'preview nodes have no shared move ha
 Need $preview 'OverlayPreviewHandle\.Scale' 'preview nodes have no shared scale handle'
 Need $preview 'OverlayPreviewChanged\?\.Invoke' 'preview edits are not emitted through one generic placement event'
 Need $ui 'MaskBeanEditor_OverlayPreviewChanged' 'preview edits are not connected to the common settings path'
-Need $ui 'SaveCommonOverlaySettings\(e\.Id\);PublishLiveState\(\)' 'preview placement does not persist and publish through the common overlay path'
+# Dragging an overlay in the preview raises this per mouse-move, so the ini write is coalesced
+# (RequestSaveCommonOverlay) while the live publish still happens on every event. The pinned intent
+# is unchanged: placement persists through the ONE common overlay path and publishes immediately.
+Need $ui 'RequestSaveCommonOverlay\(e\.Id\);PublishLiveState\(\)' 'preview placement does not persist and publish through the common overlay path'
+Need $ui 'SaveCommonOverlaySettings\(overlayId\)' 'the coalesced overlay save never reaches the common writer'
+Need $ui 'FlushPendingSaves' 'coalesced overlay placement is never flushed to disk'
 Need $previewModel 'OverlayPreviewReplicaLayout' 'preview replicas have no central footprint resolver'
 Need $previewModel 'Quest3PreviewGeometry\.TangentReferencePixelsToX' 'preview width does not use the native tangent reference scale'
 Need $previewModel 'Quest3PreviewGeometry\.TangentReferencePixelsToY' 'preview height does not use the native tangent reference scale'

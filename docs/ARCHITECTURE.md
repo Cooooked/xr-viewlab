@@ -288,6 +288,35 @@ major resolution/API/refresh/frame-cap/hardware/driver mismatches are excluded w
 | App list / per-app profiles | `MainWindow.cs` app-table region, `AppProfile.cs`, `ProfileWindow.xaml`/`.cs`; registry encode helpers `ToMillis`/`ToSignedMillis`/`FromMillis`/`FromSignedMillis`. The profile visor editor uses the same `BeanMaskEditor` geometry and Size/Width/Height/Curve/Outer Dip/Nose/Nose Spread X ranges as the main editor. A custom visor persists its enable and complete shape; `Use global visor settings` writes the `visor_size=0` sentinel and removes custom visor keys. The distinct `Use Global Values` action is the only whole-profile reset. After Save, the table is reloaded from the registry. |
 | ReShade Remote | `ReShadeRemoteWindow.cs` + `ReShadeControlService.cs` + `BuiltInHelpWindow.cs`: scrollable concise control panel, focusable-by-default desktop preview, revision-gated shared-memory control, independently managed payload files/manifest registration, post-attachment heartbeat handshake, and built-in help for `ReShadePayload/`. `ReShadePayloadSource/` is the canonical modified ReShade source. Its `ReShade` CMake target builds `build/Release/ReShade64.dll`; the fork owns the Home menu, `Local\ReShadeXRControl`, OpenXR/OpenComposite quad route and persistent desktop mirror lifecycle. See `ReShadePayloadSource/README.ViewLab.md` and `ReShadePayload/Docs/SOURCE_BUILD.md`. |
 | Update check | `UpdateRelease.cs` + GitHub releases endpoint in `MainWindow.cs` |
+| Shared theme | `ViewLabTheme.xaml` (repo root), merged as `/ViewLabTheme.xaml` by `MainWindow`, `ProfileWindow`, `DiagMonWindow` and `PerformanceTraceWindow`. DiagMon windows additionally merge `XRViewLab.UI/DiagMonDarkStyles.xaml` for dark DataGrid/Button chrome. |
+
+### Settings persistence is coalesced
+
+`SaveGlobalSettings()` performs ~34 `WritePrivateProfileString` calls and each one is a full
+open/parse/rewrite/close of the ini. WPF raises `Slider.ValueChanged` per pixel of thumb travel, so any
+drag-driven control that saves synchronously generates thousands of file writes per drag. **Drag-driven
+handlers must call `RequestSave(PendingSave.X)`, never a `Save*` method directly.** `RequestSave` restarts a
+250 ms `DispatcherTimer`; `FlushPendingSaves()` performs the queued writes and is also called from
+`OnClosing` so nothing pending is lost. Discrete controls (checkboxes, buttons) may still save immediately —
+they fire once, and deferring them only widens the window in which a crash loses the toggle.
+
+**`PublishLiveState()` is deliberately NOT deferred.** The native layer reads live state from shared memory,
+not from the ini, so publishing on every event is what keeps in-headset visor/overlay editing responsive
+(4.1.292); only the disk write waits. Do not "optimise" the publish into the debounce.
+
+### Theming rules
+
+`App.cs` declares no `Application.Resources` — historically every window re-declared its own theme, which is
+why they drifted generation by generation. `ViewLabTheme.xaml` is the shared dictionary, and it is
+deliberately narrow: **a window's locally-declared styles take precedence over merged ones**, so the theme
+holds only styles that were missing somewhere (CheckBox, ComboBox/ComboBoxItem, HelpBadge). Two traps:
+
+- **Any new `CheckBox` needs a CheckBox style in scope.** WPF's default CheckBox style pins `Foreground` to
+  `SystemColors.ControlTextBrushKey` (black), which beats inheritance from the Window — so a bare CheckBox
+  renders an unreadable black label on ViewLab's dark panels. This has now recurred three times (4.1.305
+  DiagMon, 20 instances in ProfileWindow, one in PerformanceTraceWindow). Merging the theme is the fix.
+- **Merge URIs resolve at window construction, not at build time.** A wrong `Source` compiles cleanly and
+  throws when the window opens, so a new merge must be validated by actually opening that window.
 
 Split vertical crop has an explicit UI/storage boundary. Top and Bottom controls are each relative to their own
 half of the lens, so each contributes `control × 0.5` of full height. INI and per-app tangent values remain

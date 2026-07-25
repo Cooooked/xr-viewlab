@@ -105,6 +105,7 @@ symbol search, never end-to-end "to get familiar":
 | `dllmain.cpp` | the entire native layer: OpenXR hooks, FOV/resolution crop, D3D11 visor renderer, visibility-mask stencil filter, config/registry reads |
 | `XR_APILAYER_cooooked_xrviewlab.json` | implicit layer manifest (installer registers x64+Win32 under HKLM Khronos ApiLayers) |
 | `XRViewLab.UI/MainWindow.cs` + `MainWindow.xaml` | settings UI, ini/registry persistence, app list, update check |
+| `ViewLabTheme.xaml` | shared WPF styles merged by every window (CheckBox/ComboBox/HelpBadge). A window's own styles win over it, so add here only what is genuinely shared |
 | `XRViewLab.UI/BeanMaskEditor.cs` | visor preview canvas + draggable pins — **reference spec for native geometry** (must stay formula-identical to `dllmain.cpp`) |
 | `XRViewLab.UI/ProfileWindow.cs` + `ProfileWindow.xaml` | per-app profile editor (registry DWORDs) |
 | `XRViewLab.UI/AppProfile.cs` | app row model |
@@ -117,4 +118,5 @@ symbol search, never end-to-end "to get familiar":
 | `backups/`, `reference/` | snapshots & reading material — never referenced by code |
 
 Live config at runtime: `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini` (UI writes, DLL reads).
-Per-app profiles: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>`. Logs: `%LOCALAPPDATA%\XR ViewLab\ViewLab.log`.
+Per-app profiles: `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>`. Logs: `%LOCALAPPDATA%\XR ViewLab\Logs\ViewLab.log`
+(verbose detail in `Logs\ViewLab.verbose.log`; each rotates to its own `*.old.log` at 2 MB).

@@ -4,7 +4,81 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-07-25
-**Current version:** 4.1.307 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.307.msi` (SHA-256
+**Current version:** 4.1.308 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.308.msi` (size 149,458,944 bytes; SHA-256
+`B69901E393BA187615DD581DFD304CBED13FB677CFB8C1D62C9E041DD43574FB`). **Product audit remediation — interaction/idle
+cost and UI consistency.** Fixes audit findings (6)–(9), (11)–(16) and (18)–(20) recorded in the audit block below;
+that block keeps the full evidence and now marks what is fixed vs still open. Built on top of the parallel session's
+4.1.307 — no file overlap with that work (`FailureDiagnostics*` was deliberately not audited or touched).
+(1) **Settings persistence is coalesced (finding 7 — the headline fix).** `SaveGlobalSettings()` issues 34 separate
+`WritePrivateProfileString` calls, each a full open/parse/rewrite/close of the ini, and **nine slider `ValueChanged`
+handlers called it directly** — WPF raises that per pixel of thumb travel, so a one-second drag was ~2,000–4,000
+synchronous file writes on the UI thread. New `RequestSave(PendingSave)` / `FlushPendingSaves()` pair coalesces every
+drag-driven writer (`Global`, `Crosshair`, `Notification`, `Calibration`, `IRacing`, `CommonOverlay`, `StickyNotes`)
+behind a 250 ms `DispatcherTimer`; `OnClosing` flushes so nothing pending is lost. **Only the disk write is deferred —
+`PublishLiveState()` still runs on every event, so live in-headset visor/overlay editing stays exactly as responsive as
+4.1.292 made it** (the layer reads shared memory, not the ini). Discrete controls (checkboxes, buttons,
+`SplitCheck_Changed`) deliberately keep writing immediately. **`IRacingControl_Changed` was worse than its file writes
+suggested:** it also called `EnsureIRacingProvider()` → `NotificationBrokerClient.Start()` → `Process.Start` on
+`ViewLab.NotificationBroker.exe`, i.e. a process spawn per mouse-move. Persistence and the broker nudge are split into
+`SaveIRacingSettings()` and now run only on flush.
+(2) **Log rotation (finding 6).** `RotateLogIfNeeded` hardcoded the archive name `ViewLab.old.log` for BOTH
+`ViewLab.log` and `ViewLab.verbose.log`, so whichever rotated second destroyed the other's archive. New
+`RotatedLogPath()` derives the name from each log's own stem. Rotation was also only checked when the stream was
+opened, and the stream is held for process lifetime — so the 2 MB cap never applied mid-session and a long session grew
+unbounded. New `RotateOpenLogIfNeeded()` re-checks the live write offset after each line and rolls over in place.
+(3) **1 s poll timer (findings 8, 9).** `RefreshObsStatus()` called `MemoryMappedFile.OpenExisting`, which **throws
+whenever OBS is not running** — once per second, forever, swallowed by `catch {}`. It now probes with non-throwing
+`OpenFileMappingW` first (the pattern 4.1.295 adopted for the broker). `RefreshStatus`/`RefreshIRacingStatus` gate their
+`ReadAllText` + `JsonDocument.Parse` on the file's last-write timestamp actually moving, and cache the parsed result.
+Removed dead code the timer executed: empty `XrSyncToUI()`, plus unreferenced `SaveReShadeMenuSettings()` and
+`ReShadeMenuSetting_Changed()`; `ApplySavedXrLaunchMode()` is no longer called every tick just to hit its early return.
+(4) **Shared theme (findings 11–14).** Root cause of the generational UI drift is that `App.cs` declares **no
+`Application.Resources`**, so every window re-declared its theme from scratch. New root-level `ViewLabTheme.xaml`,
+merged by MainWindow, ProfileWindow, DiagMonWindow and PerformanceTraceWindow. **Deliberately narrow — the user
+reviewed typography and palette during the audit and confirmed fonts, sizes and colours are as wanted, so the theme
+introduces no new look.** It carries only what was MISSING somewhere: a `CheckBox` style (copied verbatim from
+MainWindow — WPF's default pins `Foreground` to `SystemColors.ControlTextBrushKey`, i.e. black on dark, the recurring
+4.1.305 bug; ProfileWindow had 20 more instances and PerformanceTraceWindow one), a `ComboBox`/`ComboBoxItem` style
+(MainWindow and ProfileWindow declared none between them — 36 combo boxes in default light chrome while DiagMon's were
+dark), and one `HelpBadge`/`HelpBadgeGlyph` pair replacing hand-rolled "?" circles that had drifted to three sizes and
+border weights. **Locally-declared styles win over merged ones**, so MainWindow is unchanged apart from its combo boxes.
+`PerformanceTraceWindow` merged NO styles at all and now also takes `DiagMonDarkStyles`, like its sibling library
+window. `ProfileWindow`'s Button template had **zero `ControlTemplate.Triggers`** — no hover, pressed, disabled or hand
+cursor, so the per-app editor's buttons looked inert because they were; it now carries MainWindow's states.
+`DiagMonComparisonWindow`'s DataGrid hardcoded colours past its own merged style and now inherits it.
+**Expander is deliberately NOT restyled** — 24 unstyled Expanders exist, but they are part of the look the user
+approved, so changing them was out of scope. Left open below.
+(5) **Broken behaviours (findings 15, 16, 18).** The DiagMon collector table rebound as
+`ItemsSource = null; ItemsSource = …` on a 1 Hz timer, rebuilding the grid every second and wiping any sort or row
+selection — it could not be used. `DiagMonCollectorStatus` now implements `INotifyPropertyChanged` (the capture service
+replaces the list only at capture start and mutates items in place, so per-property notification is the right
+mechanism) and the window binds once via `BindCollectors`. **Note: a naive fix here would have frozen the grid** — the
+model was a plain POCO in a plain `List<T>`, so the null-rebind was the only thing making updates appear at all.
+`AppsGrid`'s checkbox column is a `DataGridTemplateColumn` with no `SortMemberPath`, so its header silently did nothing
+while every neighbour sorted — now sorts on `AppEnabled`. **Single-instance activation was broken:** `App.cs` matched
+`FindWindowW(null, "xr-viewlab")` — the process name — but the window title is `"ViewLab"` and is never reassigned, so a
+second launch exited silently instead of raising the window. **Confirmed live this session:** the resident instance
+reported `MainWindowTitle = ViewLab` and a second launch returned exit 0 without activating it. Now matches
+`MainWindowTitle`, with `SW_RESTORE` so a minimised window also returns. (finding 20) `agents.md` recorded the log path
+without its `Logs\` subfolder; corrected, and `ViewLabTheme.xaml` added to its source map.
+**Contracts:** the two assertions this work invalidated were **rewritten to pin intent, not deleted** — the DiagMon
+help-icon contract now pins the shared `HelpBadge` style rather than one window's hardcoded `CornerRadius="14"`, and the
+overlay-preview contract pins the coalesced path plus the flush. 16 new assertions cover the theme merges, the
+single-instance title, flush-on-close, the log-rotation rename and the non-throwing OBS probe. One of my own new
+assertions was first written as an adjacency pattern and failed; relaxed to order-independent, since STATE already
+records an adjacency pattern silently rotting `Verify-Quest3PreviewAndProfiles` for five versions.
+**Verification:** full build 0 errors (3 pre-existing C4244 warnings at `dllmain.cpp:3534-3572`, untouched code); MSI
+payload validated; **26/26 deterministic scripts pass** (`Invoke-RealNotificationFixture` excluded — needs a live
+broker). `ViewLabTheme.xaml` was verified to parse via `XamlReader` with all 10 entries and every `StaticResource`
+resolving, and `viewlabtheme.baml` confirmed present at the assembly resource root, so the `/ViewLabTheme.xaml`
+app-relative merge URI resolves from any folder.
+**PENDING USER VALIDATION — the one thing NOT proven here.** A resident ViewLab held the single-instance mutex for this
+whole session, so **no window was ever constructed from this build**; XAML merge URIs resolve at window construction,
+not compile time. The user must launch 4.1.308 and open **MainWindow, the per-app profile editor, DiagMon and the
+Performance Trace viewer** — a wrong merge URI would throw when that window opens. Also worth a look: main-window combo
+boxes are now dark rather than default light (intended, and the one deliberate visual change), a slider drag should feel
+smoother while still applying live in-headset, and the DiagMon collector table should now hold a sort/selection.
+**Prior version:** 4.1.307 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.307.msi` (SHA-256
 `3A3AAD7444A6A45F9B7316C4F16CDB719B3649BA91EE95AA0AC5B39EED6E3B5B`). **"What happened?" expanded from
 log-scraping into real failure detection, plus a `?` help button.** User called it "practically useless". It now
 also reads the **Windows Application event log** (last 12 h, levels 1-3, ≤400 records, bounded so opening the
@@ -203,6 +277,98 @@ reported state. This is a truthful-diagnostics gap, and the same pattern likely 
 (R50)", but R50 exists only as a comment at `Tests/Verify-ViewLabContracts.ps1:783`; the regression file jumps 49→51.
 The rule-4 documentation contract was asserted in a commit message without being honoured. Either write R50 up from
 that commit's gates or stop citing it.
+
+## Full product audit 2026-07-25 — findings (6)–(20)
+
+**STATUS: (6)–(9), (11)–(16), (18)–(20) FIXED in 4.1.308 (see the entry at the top of this file).
+STILL OPEN: (10) DiagMon `Process` handle leak + `StartTime`-in-comparator exception storm — low priority, opt-in
+capture path only. (17) partially done: the three hand-rolled `?` badges are unified onto the shared `HelpBadge`
+style, but six windows still have NO help affordance (ProfileWindow, PerformanceTraceWindow,
+PerformanceTraceLibraryWindow, DiagMonLibraryWindow, DiagMonSessionWindow, DiagMonComparisonWindow) — adding one
+needs real help CONTENT per window, which is a writing task, not a styling task. Also deliberately left open: 24
+unstyled `Expander`s in MainWindow/ProfileWindow, untouched because the user approved the current look.
+Note (4) and (5) from the previous block remain open and are unrelated to this audit.**
+
+User-requested audit of (a) logging/code causing performance cost on user machines and (b) UI inconsistency across
+generations. Findings are recorded here first per rule 6 so they survive an interrupted session. Items are being
+worked in the order A2 → A1 → A3/A4 → B1–B4 → B5–B8. **Typography and colour palette are explicitly OUT of scope —
+the user reviewed them during the audit and confirmed fonts, font sizes and font colours are as wanted.** Theme
+unification must therefore converge on `MainWindow.xaml`'s *existing* appearance and introduce no new look.
+`FailureDiagnostics*` is owned by a parallel session ("What happened?" expansion) and was deliberately not audited.
+
+**Performance / logging.** The native layer came out clean and needs no change beyond (6): all 103 `Log()` sites in
+`dllmain.cpp` are one-shot latched (`exchange(true)` / `fetch_add()==0`), `LogVerbose` short-circuits on
+`verboseLogging` before formatting its arguments, and `verbose_logging` defaults to 0. Managed logging is 3 call
+sites total. The cost is in the WPF app, not the layer.
+(6) **Log rotation clobbers itself and never fires mid-session.** `RotateLogIfNeeded` (`dllmain.cpp:1352`) hardcodes
+the archive name `ViewLab.old.log` but is called for BOTH `ViewLab.log` and `ViewLab.verbose.log`, so whichever
+rotates second destroys the other's archive. It is also only ever called from `OpenLogIfNeeded`/`OpenVerboseLogIfNeeded`,
+and the stream is held open for process lifetime — so the 2 MB cap is only checked at process start and a long
+session grows unbounded. Fix: derive the archive name from the log's own stem, and re-check size on write.
+(7) **Slider drags rewrite the whole INI, per mouse-move. Highest-impact finding.** `SaveGlobalSettings()`
+(`XRViewLab.UI/MainWindow.cs:3276`) issues **34 separate `WritePrivateProfileString` calls**, each a full
+open/parse/rewrite/close of `xr-viewlab.ini`. Nine slider `ValueChanged` handlers call it directly (`:1482`, `:1522`,
+`:1567`, `:1597`, `:1607`, `:1616`, `:1739`, `:1776`, plus `MaskBeanEditor_ShapeChanged` `:1579`), and
+`PublishLiveState()` on the same path adds two INI *reads* (`ReadBoolSetting(OverlayForceDirectKey)`,
+`ReadRangeSetting(HudAlarmHoldKey)`). WPF raises `ValueChanged` per pixel of thumb travel, so a one-second drag is
+~2,000–4,000 synchronous file writes on the UI thread. **There is zero debouncing anywhere in the codebase** (grepped:
+no debounce/throttle/pending-save construct exists). Same shape: `IRacingControl_Changed` 23 writes (driven by
+`IRacingControlSlider_Changed`), `SaveCalibrationSettings` 31, `SaveNotificationSettings` 12, `SaveCrosshairSettings` 8,
+`ClockWidgetControl_Changed`+`SaveCommonOverlaySettings` 9. 97 sliders across MainWindow + ProfileWindow. Fix: coalesce
+persistence behind a debounce timer; keep checkbox/immediate paths (e.g. `SplitCheck_Changed`, pinned by contract at
+`Verify-ViewLabContracts.ps1:189`) writing immediately.
+(8) **The 1 s UI poll timer throws an exception every second.** `NotificationBrokerClient.RefreshObsStatus()`
+(`XRViewLab.UI/NotificationBrokerClient.cs:131`) calls `MemoryMappedFile.OpenExisting`, which throws
+`FileNotFoundException` whenever OBS is not running, swallowed by `catch { }`. This is the identical throwing-MMF-probe
+anti-pattern 4.1.295 removed from the broker — it survived in the UI. The same tick also does `File.Exists` +
+`ReadAllText` + `JsonDocument.Parse` twice per second (`RefreshStatus`, `RefreshIRacingStatus`). The broker already
+demonstrates the fix: non-throwing `OpenFileMappingW` + `FileSystemWatcher`.
+(9) **Dead work on that same timer.** `XrSyncToUI()` (`MainWindow.cs:3274`) is an empty method called every tick;
+`ApplySavedXrLaunchMode()` is called every tick only to early-return on `_xrLaunchModeApplied`. Also unreferenced dead
+code: `SaveReShadeMenuSettings()` (`:3062`), `ReShadeMenuSetting_Changed()` (`:3060`) — both empty, neither wired in XAML.
+(10) **DiagMon leaks process handles.** `DiagMonCaptureService.GetCandidateProcesses` (`:159`) and `DetectNewProcess`
+(`:235`) never dispose the `Process` objects from `Process.GetProcesses()`. `DetectNewProcess` additionally sorts on
+`p.StartTime` *inside the `OrderByDescending` comparator*, which throws `Win32Exception` for every protected process,
+O(n log n) times per call. Only runs during an opt-in capture, so low priority.
+NOT a defect (checked and cleared): the per-frame `g_locateViewsEvidence` mutex + deque push in `xrLocateViews`
+(`dllmain.cpp:5924`) looked like diagnostics overhead but is load-bearing — `dllmain.cpp:6250` uses it to recover the
+pre-crop FOV for overlay placement. Leave it alone.
+
+**UI consistency / function.** Root cause of the generational drift is structural, not cosmetic:
+(11) **There is no `Application.Resources`.** `XRViewLab.UI/App.cs` defines none, so every window re-declares its
+entire theme from scratch and they drift independently. Every item below is a symptom of this.
+(12) **`ProfileWindow.xaml` is a stale copy of MainWindow's styles.** It re-declares the brushes and
+Button/TextBox/Slider styles but **omits the CheckBox style entirely** — 26 checkboxes, only 6 with an explicit
+`Foreground`, so 20 fall back to WPF's default `SystemColors.ControlTextBrushKey` (black) on dark panels. Identical
+failure mode to the 4.1.305 DiagMon fix. Its Button template (`ProfileWindow.xaml:28-37`) also has **zero
+`ControlTemplate.Triggers`** where MainWindow has 12, so per-app editor buttons have no hover, no pressed, no disabled
+state and no hand cursor — they look inert because they are. This is the "ProfileWindow theme mismatch" the user
+reported and 4.1.294 deferred.
+(13) **36 ComboBoxes and 24 Expanders are unstyled** across MainWindow (23 combos, 18 expanders) and ProfileWindow
+(13 combos, 6 expanders) — neither window defines a `ComboBox` or `Expander` style. `DiagMonDarkStyles.xaml` holds the
+only themed ComboBox in the product. This is the user's "some menus look on-theme, some don't".
+(14) **`PerformanceTraceWindow.xaml` merges no dark styles at all.** Its 5 buttons render in WPF default light chrome
+on a `#101114` window, and its `BudgetGuides` checkbox (`:24`) has no `Foreground` — the same unreadable-label bug as
+4.1.305. Its sibling `PerformanceTraceLibraryWindow` was fixed in 4.1.294; this one was missed.
+(15) **The DiagMon collector table is genuinely non-functional.** `DiagMonWindow.xaml.cs:169` does
+`CollectorGrid.ItemsSource = null; CollectorGrid.ItemsSource = s?.Collectors;` from a 1 s `DispatcherTimer` that runs
+unconditionally whether or not a capture is active. That tears down and rebuilds the whole grid every second,
+discarding any sort or selection — the table cannot be sorted or selected in.
+(16) **`AppsGrid`'s checkbox column has no `SortMemberPath`** (`MainWindow.xaml:1052`). It is a
+`DataGridTemplateColumn`, so clicking that header does nothing while every neighbouring header sorts.
+(17) **Three hand-rolled `?` buttons, five windows with none.** MainWindow `:818` is 20 px / 1.2 border / 12 pt,
+FailureDiagnosticsWindow `:35` is 26 / 1.5 / 15, DiagMonWindow `:13` is 28 / 1.5 / 16 — no shared style. ProfileWindow,
+PerformanceTraceWindow, PerformanceTraceLibraryWindow, DiagMonLibraryWindow, DiagMonSessionWindow and
+DiagMonComparisonWindow have no help affordance at all.
+(18) **Single-instance focus is broken.** `App.cs:92` calls `FindWindowW(null, "xr-viewlab")` but MainWindow is
+`Title="ViewLab"` (`MainWindow.xaml:2`) and nothing reassigns it at runtime. Launching ViewLab while it is already
+running silently exits instead of raising the existing window.
+(19) **`DiagMonComparisonWindow.xaml:7` hardcodes DataGrid colours inline** (`Background="#111215"`,
+`Foreground="#E4E4E4"`, `BorderBrush="#34363B"`) despite merging `DiagMonDarkStyles.xaml`, which already supplies
+them — so the shared style silently does not own that grid and future theme edits will skip it.
+(20) **`agents.md:120` records the wrong log path.** It states `%LOCALAPPDATA%\XR ViewLab\ViewLab.log`; the real path
+is `%LOCALAPPDATA%\XR ViewLab\Logs\ViewLab.log` (`dllmain.cpp:1345`, `FailureDiagnosticsWindow.cs:44`).
+
 **Prior version:** 4.1.291 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.291.msi` (size 149,442,560 bytes; SHA-256
 `879D03E32269A13C0587C2CE9B1E94000537FBF4958ABD2375304A52279D9C58`). **One filter, stronger stabilization.**
 (1) **Removed the redundant in-module `viewlab_media_filter`** (colour+sharpen only) from `ViewLabMirrorPlugin` — it

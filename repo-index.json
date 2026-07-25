@@ -183,10 +183,20 @@
     "uiShell": {
       "what": "Main settings window: app table, sliders, update check, layouts",
       "files": ["XRViewLab.UI/MainWindow.cs", "MainWindow.xaml", "XRViewLab.UI/SliderDefaults.cs", "XRViewLab.UI/UpdateRelease.cs", "XRViewLab.UI/App.cs"],
-      "symbols": ["MainWindow", "SliderDefaults", "SliderResetToTag_RightClick", "AppProfile", "StencilOuterEdgesCheck", "MaskApexYSlider", "MaskInnerLowerSlider"],
+      "symbols": ["MainWindow", "SliderDefaults", "SliderResetToTag_RightClick", "AppProfile", "StencilOuterEdgesCheck", "MaskApexYSlider", "MaskInnerLowerSlider", "RequestSave", "FlushPendingSaves", "PendingSave", "SaveIRacingSettings"],
       "tests": ["Tests/Invoke-SliderDefaultsFixtures.ps1"],
       "docs": ["docs/ARCHITECTURE.md#wpf-app-anatomy"],
-      "keywords": ["WPF", "slider", "checkbox", "app list", "update check", "layout"]
+      "invariants": ["drag-driven controls persist through RequestSave (coalesced), never by calling a Save* method directly", "PublishLiveState stays immediate so headset editing is live", "OnClosing must flush pending saves"],
+      "keywords": ["WPF", "slider", "checkbox", "app list", "update check", "layout", "debounce", "coalesced save"]
+    },
+    "uiTheme": {
+      "what": "Shared WPF styles merged by every window. Exists because App.cs declares no Application.Resources, so windows previously re-declared their themes and drifted apart",
+      "files": ["ViewLabTheme.xaml", "XRViewLab.UI/DiagMonDarkStyles.xaml", "MainWindow.xaml", "ProfileWindow.xaml", "XRViewLab.UI/DiagMonWindow.xaml", "XRViewLab.UI/PerformanceTraceWindow.xaml"],
+      "symbols": ["HelpBadge", "HelpBadgeGlyph", "ThemeInputBrush", "ThemeAccentBrush"],
+      "tests": ["Tests/Verify-ViewLabContracts.ps1"],
+      "docs": ["docs/ARCHITECTURE.md#wpf-app-anatomy"],
+      "invariants": ["a window's own styles win over the merged theme, so the theme holds only what is genuinely shared", "any new CheckBox needs a CheckBox style in scope or its label renders black on dark (recurring bug: 4.1.305)", "merge URIs are app-relative /ViewLabTheme.xaml and resolve only at window construction, so a bad path fails at runtime not build time"],
+      "keywords": ["theme", "ResourceDictionary", "MergedDictionaries", "style", "dark", "checkbox foreground", "combobox", "help button"]
     },
     "reshadeRemote": {
       "what": "Advanced popout controlling bundled ReShade OpenXR payload via shared memory",

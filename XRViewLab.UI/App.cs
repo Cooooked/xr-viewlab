@@ -19,6 +19,9 @@ public class App : Application
 
 	private const string MutexName = "XRViewLabSingleInstance";
 
+	// Must match Title in MainWindow.xaml — this is what FindWindow matches on.
+	private const string MainWindowTitle = "ViewLab";
+
 	private static string ConfigDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XR ViewLab");
 
 	public void InitializeComponent()
@@ -88,11 +91,14 @@ public class App : Application
 		using Mutex mutex = new Mutex(true, MutexName, out bool createdNew);
 		if (!createdNew)
 		{
-			// Bring existing instance to foreground
-			IntPtr hwnd = FindWindowByCaption(IntPtr.Zero, "xr-viewlab");
+			// Bring the existing instance to the foreground. This searched for the caption
+			// "xr-viewlab" — the process name, not the window title, which is "ViewLab"
+			// (MainWindow.xaml) and is never reassigned at runtime. FindWindow therefore always
+			// returned NULL and a second launch just exited silently instead of raising the window.
+			IntPtr hwnd = FindWindowByCaption(IntPtr.Zero, MainWindowTitle);
 			if (hwnd != IntPtr.Zero)
 			{
-				ShowWindow(hwnd, 1);
+				ShowWindow(hwnd, 9 /* SW_RESTORE — also un-minimises, where SW_SHOWNORMAL did not */);
 				SetForegroundWindow(hwnd);
 			}
 			return;

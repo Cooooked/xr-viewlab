@@ -5,6 +5,12 @@
   </shell:WindowChrome.WindowChrome>
   <FrameworkElement.Resources>
     <ResourceDictionary>
+      <!-- Shared theme. Every style this window declares below WINS over the merged copy (local
+           resources take precedence), so the only thing this changes here is the ComboBox styling
+           MainWindow never had — its 23 combo boxes were rendering in default light chrome. -->
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/ViewLabTheme.xaml" />
+      </ResourceDictionary.MergedDictionaries>
       <SolidColorBrush x:Key="ShellBrush" Color="#171819" />
       <SolidColorBrush x:Key="PanelBrush" Color="#101112" />
       <SolidColorBrush x:Key="PanelRaisedBrush" Color="#161719" />
@@ -815,8 +821,8 @@
                         <StackPanel Margin="20,4,0,4">
                           <TextBlock Text="Red visor corners while OBS records." Foreground="#A8A8A8" FontSize="10" Margin="0,0,0,3"/>
                           <DockPanel Margin="0,2,0,5">
-                            <Border DockPanel.Dock="Right" Width="20" Height="20" CornerRadius="10" Margin="6,0,0,0" Cursor="Hand" ToolTip="OBS Recording Cue setup help" Background="Transparent" BorderBrush="White" BorderThickness="1.2" MouseLeftButtonUp="ObsHelp_Click">
-                              <TextBlock Text="?" Foreground="White" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="OBS Recording Cue setup help" MouseLeftButtonUp="ObsHelp_Click">
+                              <TextBlock Style="{StaticResource HelpBadgeGlyph}"/>
                             </Border>
                             <TextBlock Text="Uses OBS WebSocket to detect when OBS is recording." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" VerticalAlignment="Center"/>
                           </DockPanel>
@@ -1049,7 +1055,9 @@
                   <Grid Grid.Row="2">
                     <DataGrid Name="AppsGrid" IsReadOnly="False" CanUserResizeColumns="True" MouseDoubleClick="AppsGrid_DoubleClick" PreviewKeyDown="AppsGrid_KeyDown">
                       <DataGrid.Columns>
-                        <DataGridTemplateColumn x:Name="AppsCheckColumn" Header="" Width="28" MinWidth="24" MaxWidth="52" CanUserResize="True">
+                        <!-- SortMemberPath: a template column has no binding to infer a sort from, so
+                             clicking this header silently did nothing while every other header sorted. -->
+                        <DataGridTemplateColumn x:Name="AppsCheckColumn" Header="" Width="28" MinWidth="24" MaxWidth="52" CanUserResize="True" SortMemberPath="AppEnabled">
                           <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                               <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">

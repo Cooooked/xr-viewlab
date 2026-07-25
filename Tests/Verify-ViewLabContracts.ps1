@@ -203,7 +203,36 @@ Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawPin\(dc, pins\.innerSteepn
 Assert-Contains 'MainWindow.xaml' 'Name="ReShadeButton"' 'ReShade Remote is available next to Edge Masks'
 Assert-NotContains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'WARNING.*DO NOT USE' 'obsolete ReShade warning is removed'
 Assert-Contains 'XRViewLab.UI\ReShadeRemoteWindow.cs' 'BuiltInHelpWindow\.ReShadeSections' 'ReShade has built-in help'
-Assert-Contains 'XRViewLab.UI\DiagMonWindow.xaml' 'CornerRadius="14"' 'DiagMon(ster) has a circular help icon'
+# The circular help icon is now the shared HelpBadge style rather than a hand-rolled Border, so the
+# three copies that had drifted to three different sizes stay identical. Pinning the style reference
+# asserts the same intent more strongly than pinning one window's hardcoded CornerRadius did.
+Assert-Contains 'XRViewLab.UI\DiagMonWindow.xaml' 'Style="\{StaticResource HelpBadge\}"' 'DiagMon(ster) has a circular help icon'
+Assert-Contains 'MainWindow.xaml' 'Style="\{StaticResource HelpBadge\}"' 'the main window help icon uses the shared badge style'
+Assert-Contains 'ViewLabTheme.xaml' 'x:Key="HelpBadge"' 'the shared help badge is defined once in the theme'
+Assert-Contains 'ViewLabTheme.xaml' 'x:Key="\{x:Type CheckBox\}"' 'the shared theme supplies a CheckBox style (WPF default pins Foreground to black)'
+Assert-Contains 'ViewLabTheme.xaml' 'x:Key="\{x:Type ComboBox\}"' 'the shared theme supplies a ComboBox style'
+Assert-Contains 'ProfileWindow.xaml' 'Source="/ViewLabTheme.xaml"' 'the per-app editor inherits the shared theme rather than drifting from it'
+Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml' 'Source="/ViewLabTheme.xaml"' 'the trace viewer inherits the shared theme'
+Assert-Contains 'XRViewLab.UI\PerformanceTraceWindow.xaml' 'Source="DiagMonDarkStyles.xaml"' 'the trace viewer gets dark button/grid chrome like its sibling library window'
+
+# Single-instance activation matches on the WINDOW TITLE, not the process name. Searching for
+# "xr-viewlab" always returned NULL, so a second launch exited silently instead of raising the window.
+Assert-Contains 'XRViewLab.UI\App.cs' 'MainWindowTitle = "ViewLab"' 'single-instance activation uses the real window title'
+Assert-NotContains 'XRViewLab.UI\App.cs' 'FindWindowByCaption\(IntPtr\.Zero, "xr-viewlab"\)' 'the stale process-name window lookup is gone'
+
+# Persistence is coalesced so a slider drag writes the ini once instead of ~34 times per mouse-move,
+# but anything still pending must reach disk before the window closes.
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'OnClosing[\s\S]{0,200}?FlushPendingSaves\(\)' 'pending debounced saves are flushed on close'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'RequestSave\(PendingSave\.Global\)' 'visor/render controls persist through the coalescing path'
+
+# Both logs used to rotate onto a hardcoded ViewLab.old.log, so whichever rotated second destroyed
+# the other's archive; rotation was also only checked when the stream was opened.
+Assert-Contains 'dllmain.cpp' 'RotatedLogPath' 'log archives are derived from each log stem'
+Assert-NotContains 'dllmain.cpp' 'L"ViewLab\.old\.log"' 'no hardcoded shared archive name remains'
+Assert-Contains 'dllmain.cpp' 'RotateOpenLogIfNeeded' 'log size is re-checked while the stream stays open'
+
+# MemoryMappedFile.OpenExisting throws when OBS is absent, and this runs once a second.
+Assert-Contains 'XRViewLab.UI\NotificationBrokerClient.cs' 'OpenFileMappingW' 'the OBS state probe does not throw once per second when OBS is closed'
 Assert-Contains 'MainWindow.xaml' 'Name="AppsHeader" Visibility="Collapsed"' 'Applications sub-header is removed for aligned responsive columns'
 Assert-Contains 'MainWindow.xaml' 'Name="OptionsHeader" Visibility="Collapsed"' 'Render Options sub-header is removed for aligned responsive columns'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ThanksTextRight\.Visibility     = threeCol \? Visibility\.Visible : Visibility\.Collapsed;' 'beta-testers line moves to the third column in triple-column mode'
