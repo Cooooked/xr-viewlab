@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.1.343 - 2026-08-24 (Restored single/mini-column card gap)
+
+- **Single-column and mini (narrow-window) mode had zero gap between `RenderCard` and `OptionsCard`** — the two cards touched directly. `RenderCard`'s bottom margin was set to `0,0,0,0` during earlier alignment work; restored to `0,0,0,10` so the two cards have their normal 10px gap again. `OptionsCard` moves to a separate panel entirely in two/three-column mode, so this only affects single/mini layout.
+
 ## 4.1.342 - 2026-08-24 (Exact pixel-matched 3-column heights & 1x4 app actions)
 
 - **Formatted app actions in a single 1x4 horizontal row:** `Reload apps`, `Add app`, `Reset profile`, and `Show hidden` sit on one equal 4-column row (`Padding="4,4"`, `MinWidth="0"`) without wrapping or hanging buttons.

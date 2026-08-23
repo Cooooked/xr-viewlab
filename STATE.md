@@ -4,7 +4,9 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-23
-**Current version:** 4.1.342 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.342.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
+**Current version:** 4.1.343 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.343.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
+
+**2026-08-24 — 4.1.343 Restored single/mini-column card gap.** Single-column and mini (narrow-window) mode had zero gap between `RenderCard` and `OptionsCard` — the two cards touched directly, a regression from earlier 3-column alignment work that zeroed `RenderCard`'s bottom margin. Restored to `0,0,0,10`. `OptionsCard` moves to a separate panel entirely in two/three-column mode, so this only affects single/mini layout; two/three-column unaffected. Contracts and full MSI build pass. **Pending live validation.**
 
 **2026-08-24 — 4.1.342 Exact pixel-matched 3-column heights & 1x4 app actions.** App actions (`Reload apps`, `Add app`, `Reset profile`, `Show hidden`) sit in a single 1x4 horizontal row with equal `*` column widths and skinny `Padding="4,4"`. `AppsGridRow` set to 263px and `MaskBeanEditor` set to 220px so Column 2 (`AppsCard`) and Column 3 (`OptionsCard`) align 100% flat with Column 1 (`RenderCard`), based on the user's direct pixel measurements from screenshots (17px and 35px corrections respectively). Contracts and full MSI build pass. **Pending live validation:** these UI fixes — alignment was tuned against screenshots, not measured in a live running window, so it may still need a follow-up correction once seen live.
 

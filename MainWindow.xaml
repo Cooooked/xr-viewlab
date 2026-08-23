@@ -397,7 +397,7 @@
                 </TextBlock.Foreground>
               </TextBlock>
             </Border>
-            <Border Name="RenderCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,0">
+            <Border Name="RenderCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Name="RenderLabelColumn" Width="Auto" />
