@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.342 - 2026-08-24 (Exact pixel-matched 3-column heights & 1x4 app actions)
+
+- **Formatted app actions in a single 1x4 horizontal row:** `Reload apps`, `Add app`, `Reset profile`, and `Show hidden` sit on one equal 4-column row (`Padding="4,4"`, `MinWidth="0"`) without wrapping or hanging buttons.
+- **Exact pixel-matched card heights:**
+  - Column 2 (`AppsCard`): `AppsGridRow` set to **263px** (+17px adjustment) to align Column 2 100% flat with Column 1 (`RenderCard`).
+  - Column 3 (`OptionsCard`): `MaskBeanEditor` set to **220px** (+35px adjustment) to align Column 3 100% flat with Column 1 and Column 2.
+
 ## 4.1.340 - 2026-08-24 (1x4 app buttons & exact pixel card alignment)
 
 - **Formatted app actions in a single 1x4 horizontal row:** `Reload apps`, `Add app`, `Reset profile`, and `Show hidden` sit on one equal 4-column row (`Padding="4,4"`, `MinWidth="0"`) without wrapping or hanging buttons.

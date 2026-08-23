@@ -988,10 +988,10 @@ public partial class MainWindow : Window
 			ThanksText.Visibility          = threeCol ? Visibility.Collapsed : Visibility.Visible;
 			ThanksTextRight.Visibility     = threeCol ? Visibility.Visible : Visibility.Collapsed;
 
-			AppsGridRow.Height = new GridLength(threeCol ? 246.0 : (twoCol ? 260.0 : 180.0));
+			AppsGridRow.Height = new GridLength(threeCol ? 263.0 : (twoCol ? 260.0 : 180.0));
 			if (MaskBeanEditor != null)
 			{
-				MaskBeanEditor.Height = threeCol ? 237.0 : double.NaN;
+				MaskBeanEditor.Height = threeCol ? 220.0 : double.NaN;
 			}
 
 			// Compact render card: value box fills, hints hidden, sliders span full width

@@ -4,9 +4,11 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-23
-**Current version:** 4.1.340 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.340.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
+**Current version:** 4.1.342 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.342.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
 
-**2026-08-24 — 4.1.340 1x4 app buttons & exact pixel card alignment.** Formatted app actions in a single 1x4 horizontal row (`Reload apps`, `Add app`, `Reset profile`, `Show hidden`) with equal `*` column widths and skinny `Padding="4,4"`. Added 43px to `AppsGridRow` (246px) and 52px to `MaskBeanEditor` (237px) so Column 2 and Column 3 align 100% flat with Column 1 (`RenderCard`) down to the exact pixel. Contracts and full MSI build pass. **Pending live validation:** these UI fixes.
+**2026-08-24 — 4.1.342 Exact pixel-matched 3-column heights & 1x4 app actions.** App actions (`Reload apps`, `Add app`, `Reset profile`, `Show hidden`) sit in a single 1x4 horizontal row with equal `*` column widths and skinny `Padding="4,4"`. `AppsGridRow` set to 263px and `MaskBeanEditor` set to 220px so Column 2 (`AppsCard`) and Column 3 (`OptionsCard`) align 100% flat with Column 1 (`RenderCard`), based on the user's direct pixel measurements from screenshots (17px and 35px corrections respectively). Contracts and full MSI build pass. **Pending live validation:** these UI fixes — alignment was tuned against screenshots, not measured in a live running window, so it may still need a follow-up correction once seen live.
+
+**2026-08-24 — 4.1.340 1x4 app buttons & exact pixel card alignment.**
 
 **2026-08-24 — 4.1.339 App button layout & unclipped centered preview.**
 
