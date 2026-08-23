@@ -90,7 +90,12 @@
     <!-- ViewLab-drawn titlebar: the default Windows chrome did not match the rest of the app. -->
     <Grid DockPanel.Dock="Top" Height="42" Background="Transparent" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
       <TextBlock Text="OPENXR  API  LAYERS" FontSize="13" FontWeight="Bold" Foreground="#E8E8E8" VerticalAlignment="Center" Margin="16,0,0,0" />
-      <TextBlock Name="TitleClose" Text="X" FontSize="14" Foreground="{StaticResource MutedBrush}" Cursor="Hand" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="14,8,16,8" MouseLeftButtonDown="TitleClose_MouseLeftButtonDown" MouseEnter="TitleClose_MouseEnter" MouseLeave="TitleClose_MouseLeave" />
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+        <Border Style="{StaticResource HelpBadge}" Margin="0,0,10,0" ToolTip="About OpenXR API Layers" MouseLeftButtonUp="OpenXrLayersHelp_Click">
+          <TextBlock Text="?" Style="{StaticResource HelpBadgeGlyph}" />
+        </Border>
+        <TextBlock Name="TitleClose" Text="X" FontSize="14" Foreground="{StaticResource MutedBrush}" Cursor="Hand" Padding="14,8,16,8" MouseLeftButtonDown="TitleClose_MouseLeftButtonDown" MouseEnter="TitleClose_MouseEnter" MouseLeave="TitleClose_MouseLeave" />
+      </StackPanel>
     </Grid>
   <Grid Margin="12,0,12,12">
     <Grid.RowDefinitions>
@@ -99,12 +104,6 @@
       <RowDefinition Height="*" />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
-
-    <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,10">
-      <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="About OpenXR API Layers" MouseLeftButtonUp="OpenXrLayersHelp_Click">
-        <TextBlock Text="?" Style="{StaticResource HelpBadgeGlyph}" />
-      </Border>
-    </DockPanel>
 
     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
       <RadioButton x:Name="ScopeW64M" Style="{StaticResource ScopeTab}" GroupName="scope" IsChecked="True"

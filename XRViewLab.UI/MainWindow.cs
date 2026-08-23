@@ -383,6 +383,16 @@ public partial class MainWindow : Window
 			WindowStartupLocation = WindowStartupLocation.CenterOwner,
 			ShowInTaskbar = false, Content = shell
 		};
+		// The panel was declared in MainWindow.xaml and is now hosted in a separate Window. Copy the
+		// window-level control styles it depends on so Expander headers, CheckBoxes and sliders retain
+		// the ViewLab dark theme rather than falling back to WPF's black text/light slider defaults.
+		w.Resources[typeof(TextBlock)] = Resources[typeof(TextBlock)];
+		w.Resources[typeof(CheckBox)] = Resources[typeof(CheckBox)];
+		w.Resources[typeof(Slider)] = Resources[typeof(Slider)];
+		w.Resources[typeof(Expander)] = new Style(typeof(Expander))
+		{
+			Setters = { new Setter(Control.ForegroundProperty, new SolidColorBrush(Color.FromRgb(0xE8, 0xE8, 0xE8))) }
+		};
 		close.MouseLeftButtonDown += (_, ev) => { ev.Handled = true; w.Hide(); };
 		close.MouseEnter += (_, _) => close.Foreground = new SolidColorBrush(Color.FromRgb(0xEC, 0x30, 0x38));
 		close.MouseLeave += (_, _) => close.Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x8C, 0x90));
@@ -2041,7 +2051,7 @@ public partial class MainWindow : Window
 	{
 		// The card is a state indicator, not a warning. Enabled uses a restrained red tint;
 		// disabled remains the same neutral grey used by disabled sliders.
-		Color border = _viewlabEnabled ? Color.FromRgb(0x8F, 0x35, 0x3B) : Color.FromRgb(0x45, 0x47, 0x4B);
+		Color border = _viewlabEnabled ? Color.FromRgb(0xEC, 0x30, 0x38) : Color.FromRgb(0x45, 0x47, 0x4B);
 		Color bg     = _viewlabEnabled ? Color.FromRgb(0x2A, 0x10, 0x13) : Color.FromRgb(0x30, 0x32, 0x36);
 		Color fg     = _viewlabEnabled ? Color.FromRgb(0xF0, 0xB8, 0xBB) : Color.FromRgb(0x8A, 0x8C, 0x90);
 		EnabledBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(border, TimeSpan.FromSeconds(0.25)));

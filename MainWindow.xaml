@@ -1022,7 +1022,6 @@
                       <CheckBox Name="ObsMirrorBoundaryCheck" Content="Boundary Flash" Foreground="#A8A8A8" Margin="0,2,0,0" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="VIEWLAB MEDIA CAPTURE" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
-                      <TextBlock Text="ViewLab's own OBS source. Captures the ViewLab view including ViewLab overlays, ReShade and other OpenXR overlay layers, with eye selection, crop and a reinitialize button in the source's properties. Installs into OBS's obs-plugins4bit; no OBS process is launched or controlled." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
                       <StackPanel Orientation="Horizontal">
                         <Button Name="InstallViewLabMirrorPluginButton" Content="Install ViewLab Media Capture" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabMirrorPlugin_Click" />
                         <Button Name="UninstallViewLabMirrorPluginButton" Content="Uninstall" Padding="9,4" Margin="6,0,0,0" HorizontalAlignment="Left" Click="UninstallViewLabMirrorPlugin_Click" />
@@ -1155,12 +1154,21 @@
                     </DataGrid>
                     <TextBlock Name="AppsEmptyText" Text="No apps detected yet.&#x0a;Launch a VR game, reload apps, or add the game exe." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
                   </Grid>
-                  <WrapPanel Grid.Row="4">
-                    <Button Content="Reload apps" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ReloadApps_Click" />
-                    <Button Content="Add app" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="AddApp_Click" />
-                    <Button Content="Reset profile" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ResetApp_Click" />
-                    <ToggleButton Name="ShowHiddenAppsCheck" Content="Show hidden" Style="{StaticResource RedToggleButton}" Margin="0,0,8,0" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" ToolTip="Show applications you have hidden from this list." />
-                  </WrapPanel>
+                  <Grid Grid.Row="4">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="8" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="8" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="8" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" Content="Reload apps" Style="{StaticResource RedButton}" MinWidth="0" Padding="8,7" Click="ReloadApps_Click" />
+                    <Button Grid.Column="2" Content="Add app" Style="{StaticResource RedButton}" MinWidth="0" Padding="8,7" Click="AddApp_Click" />
+                    <Button Grid.Column="4" Content="Reset profile" Style="{StaticResource RedButton}" MinWidth="0" Padding="8,7" Click="ResetApp_Click" />
+                    <ToggleButton Name="ShowHiddenAppsCheck" Grid.Column="6" Content="Show hidden" Style="{StaticResource RedToggleButton}" MinWidth="0" Padding="8,7" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" ToolTip="Show applications you have hidden from this list." />
+                  </Grid>
                 </Grid>
               </Border>
               <TextBlock Name="ReShadeOpenXRHeader" Text="ReShade Remote" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />

@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.336 - 2026-08-24 (UI layout and popout follow-up)
+
+- **Restored the bright ViewLab-red enabled-card outline** while retaining its subdued wine-coloured background.
+- **App-list actions no longer wrap in the narrow three-column layout.** Reload apps, Add app, Reset profile, and Show hidden now divide the available row evenly and keep the same height.
+- **The Overlays popout now carries ViewLab's text, checkbox and slider styles.** Its overlay headings are readable and its sliders retain the dark ViewLab appearance.
+- **Moved ViewLab Media Capture's inline description to the OBS `?` help**, and placed the OpenXR API Layers `?` beside its title rather than in an empty content row.
+
 ## 4.1.334 - 2026-08-23 (UI follow-up fixes)
 
 - **The ViewLab status card is now a restrained state indicator.** Enabled uses a dark red tint rather than a solid warning-red panel; disabled remains neutral grey.
