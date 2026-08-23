@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.1.332 - 2026-08-23 (all per-app overlay changes apply live)
+
+- **Every per-app overlay change now applies live** — position, scale, opacity, enable, performance
+  trace visibility mode, graph mode, clock theme, notification duration, crosshair, all of it. 4.1.329
+  only covered preview drags; other controls still needed a game restart. The hook is now
+  `RecordOverlaySetting`, the single funnel all keyed per-app controls pass through, and
+  `PublishLiveState` resolves every overlay field through the per-app override before publishing.
+  The live view is dropped when the editor closes so it cannot bleed into global state.
+- **Added a notification test button to the per-app notifications section.** It publishes the app's
+  current notification settings first, then fires a synthetic card through the real queue, so per-app
+  placement and duration can be checked without waiting for a real Windows notification.
+
 ## 4.1.329 - 2026-08-23 (notification failsafe, live overlay dragging)
 
 - **Notifications can no longer get stuck in the headset.** A card was only ever retired when the

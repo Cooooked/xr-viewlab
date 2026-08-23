@@ -4,9 +4,9 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-23
-**Current version:** 4.1.329 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.329.msi` (SHA-256
-`8970D38AE95BE43775FFD310BDA70FB78D8E6FE28E277770848006A3F31A13F2`; contracts pass; full build 0 errors,
-3 pre-existing C4244 warnings; **notification failsafe and live per-app dragging not yet confirmed live**).
+**Current version:** 4.1.332 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.332.msi` (SHA-256
+`2A5C0BA00B64A69E478CC7AF5DA3BA5726E540A3DFB8017C8A4B898CB6AB31B4`; contracts pass; full build 0 errors,
+3 pre-existing C4244 warnings; **live per-app overlay editing and the per-app notification test button not yet confirmed live**).
 
 **2026-08-23 — VLMC overlay capture, OBS menu, spotter restore.**
 

@@ -478,8 +478,12 @@ Assert-Contains 'dllmain.cpp' 'return \(profileOverlayOverrideMask & bit\) == 0 
 # Only the LIVE-consume gates move to liveOwns (the '==0' form). The '!=0' form in session setup
 # applies the profile's own values and must keep reading the mask directly.
 Assert-NotContains 'dllmain.cpp' 'profileOverlayOverrideMask&\(1u<<\(uint32_t\)OverlayFeatureId::\w+\)\)==0' 'every live overlay gate goes through the shared liveOwns helper'
-Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'OverlayLivePreview\?\.Invoke' 'the per-app editor reports preview drags for live publishing'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'profileWindow.OverlayLivePreview = PublishProfileOverlayLive;' 'the per-app editor is wired to the live publisher'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'OverlayLiveChanged\(values, mask\);' 'the per-app editor publishes every overlay edit for live application'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'SetInheritCheckbox\(parts\[0\], false\);[\s\S]{0,120}PublishOverlayLive\(\);' 'every keyed per-app overlay control publishes live, not just preview drags'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'NotificationTestRequested' 'the per-app notification section can fire a synthetic test card'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'profileWindow.OverlayLiveChanged = ApplyProfileOverlayLive;' 'the per-app editor is wired to the live publisher'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ClearProfileOverlayLive\(\);' 'the per-app live view is dropped when the editor closes'
+Assert-Contains 'ProfileWindow.xaml' 'ProfileNotifyTestButton' 'the per-app notification section has a test button'
 # Item 19 follow-up: every iRacing cue control applies live, not only at session restart. The v12 tail
 # carries the numeric tuning and iracingFlags gains bit4 race start, bit5 rear closing, bit6 Grip-O-Bar.
 Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'iracingRaceStart \? 16u' 'live state publishes the race-start enable bit'

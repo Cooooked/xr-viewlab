@@ -539,6 +539,7 @@ public partial class ProfileWindow : Window
 		// Editing any control implies this overlay is now customised, so its inheritance box unticks.
 		SetInheritCheckbox(parts[0], false);
 		ApplyOverlayPreviewState();
+		PublishOverlayLive();
 	}
 
 	private void EnsureFeatureCustom(string feature)
@@ -841,7 +842,42 @@ public partial class ProfileWindow : Window
 	// Raised on every preview drag so the owner can push the placement into live state. Per-app
 	// overlay values are otherwise registry-only and the layer reads them once per session, which
 	// is why dragging here used to need a game restart to show up.
-	internal Action<string, double, double, double>? OverlayLivePreview;
+	internal Action<System.Collections.Generic.Dictionary<string, string>, uint>? OverlayLiveChanged;
+
+	// Must match OverlayFeatureId in dllmain.cpp.
+	private static uint FeatureBit(string feature) => feature switch
+	{
+		"hud" => 1u << 0, "trace" => 1u << 1, "clock" => 1u << 2,
+		"sticky" => 1u << 3, "crosshair" => 1u << 4, "notifications" => 1u << 5,
+		_ => 0u,
+	};
+
+	// Every per-app overlay edit funnels through here so the change shows in the headset and in
+	// ViewLab Media Capture immediately. Publishes the whole customised set rather than the one
+	// control that moved, because the layer needs the resolved values for the feature.
+	// Fires a synthetic notification through the real card queue using this app's settings, so the
+	// per-app placement and duration can be checked without waiting for a real Windows notification.
+	internal Action? NotificationTestRequested;
+
+	private void ProfileNotifyTest_Click(object sender, RoutedEventArgs e)
+	{
+		PublishOverlayLive();
+		NotificationTestRequested?.Invoke();
+	}
+
+	private void PublishOverlayLive()
+	{
+		if (!_initialized || OverlayLiveChanged is null) return;
+		var values = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		uint mask = 0;
+		foreach ((string key, string value) in _overlayOverrides.Values)
+		{
+			values[key] = value;
+			int split = key.IndexOf(':');
+			if (split > 0) mask |= FeatureBit(key.Substring(0, split));
+		}
+		OverlayLiveChanged(values, mask);
+	}
 
 	private void MaskBeanEditor_OverlayPreviewChanged(object? sender, OverlayPreviewChangedEventArgs e)
 	{
@@ -870,8 +906,7 @@ public partial class ProfileWindow : Window
 			else { note.Scale = e.Scale; _overlayOverrides.Set("sticky", prefix + "scale", e.Scale.ToString("0.###", CultureInfo.InvariantCulture)); }
 		}
 		ApplyOverlayPreviewState();
-		if (_overlayPlacements.TryGetValue(e.Id, out OverlayPlacementOverride placed))
-			OverlayLivePreview?.Invoke(e.Id, placed.X, placed.Y, placed.Scale);
+		PublishOverlayLive();
 	}
 
 	private void Cancel_Click(object sender, RoutedEventArgs e)
