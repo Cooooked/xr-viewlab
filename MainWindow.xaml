@@ -66,14 +66,14 @@
         <Setter Property="BorderBrush" Value="#EC3038" />
         <Setter Property="MinWidth" Value="112" />
       </Style>
-      <!-- Toggle-state twin of RedButton: sits inline with the plain red buttons. Off uses the same
-           neutral grey as the disabled sliders; on is ViewLab red. -->
+      <!-- Toggle-state twin of RedButton: it uses the same footprint so it stays inline with
+           the adjacent app-list actions. Off uses neutral grey; on is ViewLab red. -->
       <Style x:Key="RedToggleButton" TargetType="{x:Type ToggleButton}" BasedOn="{StaticResource {x:Type ToggleButton}}">
         <Setter Property="Background" Value="#303236" />
         <Setter Property="BorderBrush" Value="#45474B" />
         <Setter Property="Foreground" Value="#8A8C90" />
         <Setter Property="MinWidth" Value="112" />
-        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="Padding" Value="16,7" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Template">
           <Setter.Value>
@@ -385,14 +385,14 @@
             <StackPanel Name="LeftColumnPanel" Grid.Column="0" Grid.Row="0" Grid.RowSpan="8" VerticalAlignment="Top">
             <Border Name="EnabledCard" CornerRadius="4" BorderThickness="2" Padding="10,8" Margin="0,0,0,10">
               <Border.BorderBrush>
-                <SolidColorBrush x:Name="EnabledBorderBrush" Color="#C90012" />
+                <SolidColorBrush x:Name="EnabledBorderBrush" Color="#45474B" />
               </Border.BorderBrush>
               <Border.Background>
-                <SolidColorBrush x:Name="EnabledBgBrush" Color="#2A0008" />
+                <SolidColorBrush x:Name="EnabledBgBrush" Color="#303236" />
               </Border.Background>
               <TextBlock Name="EnabledStatusText" Text="VIEWLAB DISABLED" FontWeight="Bold" FontSize="14" HorizontalAlignment="Center" TextAlignment="Center" MouseLeftButtonUp="EnabledCard_Click" Cursor="Hand">
                 <TextBlock.Foreground>
-                  <SolidColorBrush x:Name="EnabledStatusFg" Color="#C90012" />
+                  <SolidColorBrush x:Name="EnabledStatusFg" Color="#8A8C90" />
                 </TextBlock.Foreground>
               </TextBlock>
             </Border>
@@ -423,14 +423,6 @@
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="2" />
                   <RowDefinition Height="Auto" />
-                  <RowDefinition Height="6" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="6" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="4" />
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="0" />
-                  <RowDefinition Height="0" />
                   <RowDefinition Height="6" />
                   <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
@@ -474,20 +466,6 @@
                 <Slider Name="MaskVerticalSlider" Visibility="Collapsed" Minimum="0.01" Maximum="1" ValueChanged="MaskSlider_Changed" />
                 <Slider Name="MaskHorizontalSlider" Visibility="Collapsed" Minimum="0.01" Maximum="1" ValueChanged="MaskSlider_Changed" />
                 <CheckBox Name="MaskRoundedCheck" Visibility="Collapsed" />
-                <TextBlock Text="Visor mask colour (RGB 0-255)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,8,0,2" ToolTip="Default is black. You can experiment with matching a streaming environment-blend key colour (true magenta is 255, 0, 255). All combinations are selectable; whether a streamer detects it is not guaranteed." />
-                <Grid Margin="0,0,0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
-                  <TextBlock Text="R" VerticalAlignment="Center"/><Slider Name="VisorColorRedSlider" Grid.Column="1" Minimum="0" Maximum="255" TickFrequency="1" IsSnapToTickEnabled="True" Tag="0" ValueChanged="VisorColorRgb_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Red 0-255. Right-click to reset."/><TextBlock Grid.Column="2" Text="{Binding ElementName=VisorColorRedSlider, Path=Value, StringFormat={}{0:0}}" TextAlignment="Right" VerticalAlignment="Center"/></Grid>
-                <Grid Margin="0,0,0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
-                  <TextBlock Text="G" VerticalAlignment="Center"/><Slider Name="VisorColorGreenSlider" Grid.Column="1" Minimum="0" Maximum="255" TickFrequency="1" IsSnapToTickEnabled="True" Tag="0" ValueChanged="VisorColorRgb_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Green 0-255. Right-click to reset."/><TextBlock Grid.Column="2" Text="{Binding ElementName=VisorColorGreenSlider, Path=Value, StringFormat={}{0:0}}" TextAlignment="Right" VerticalAlignment="Center"/></Grid>
-                <Grid Margin="0,0,0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
-                  <TextBlock Text="B" VerticalAlignment="Center"/><Slider Name="VisorColorBlueSlider" Grid.Column="1" Minimum="0" Maximum="255" TickFrequency="1" IsSnapToTickEnabled="True" Tag="0" ValueChanged="VisorColorRgb_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Blue 0-255. Right-click to reset."/><TextBlock Grid.Column="2" Text="{Binding ElementName=VisorColorBlueSlider, Path=Value, StringFormat={}{0:0}}" TextAlignment="Right" VerticalAlignment="Center"/></Grid>
-                <WrapPanel Margin="0,2,0,0">
-                  <Border Name="VisorColorPreview" Width="20" Height="20" Background="#000000" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,0,8,0" />
-                  <Button Content="Black" Padding="7,2" Margin="0,0,4,0" Click="VisorColorPreset_Click" Tag="0,0,0" />
-                  <Button Content="Magenta" Padding="7,2" Margin="0,0,4,0" Click="VisorColorPreset_Click" Tag="255,0,255" />
-                  <Button Content="Green" Padding="7,2" Margin="0,0,4,0" Click="VisorColorPreset_Click" Tag="0,255,0" />
-                  <Button Content="Cyan" Padding="7,2" Click="VisorColorPreset_Click" Tag="0,255,255" />
-                </WrapPanel>
               </StackPanel>
             </Border>
             </StackPanel>
@@ -619,6 +597,20 @@
                       <Slider Name="MaskOffsetXSlider" Grid.Row="6" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
                       <Slider Name="MaskOffsetYSlider" Grid.Row="7" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
                       </Grid>
+                      <TextBlock Text="Colour (RGB 0-255)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,8,0,2" ToolTip="Default is black. You can experiment with matching a streaming environment-blend key colour (true magenta is 255, 0, 255). All combinations are selectable; whether a streamer detects it is not guaranteed." />
+                      <Grid Margin="0,0,0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="R" VerticalAlignment="Center"/><Slider Name="VisorColorRedSlider" Grid.Column="1" Minimum="0" Maximum="255" TickFrequency="1" IsSnapToTickEnabled="True" Tag="0" ValueChanged="VisorColorRgb_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Red 0-255. Right-click to reset."/><TextBlock Grid.Column="2" Text="{Binding ElementName=VisorColorRedSlider, Path=Value, StringFormat={}{0:0}}" TextAlignment="Right" VerticalAlignment="Center"/></Grid>
+                      <Grid Margin="0,0,0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="G" VerticalAlignment="Center"/><Slider Name="VisorColorGreenSlider" Grid.Column="1" Minimum="0" Maximum="255" TickFrequency="1" IsSnapToTickEnabled="True" Tag="0" ValueChanged="VisorColorRgb_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Green 0-255. Right-click to reset."/><TextBlock Grid.Column="2" Text="{Binding ElementName=VisorColorGreenSlider, Path=Value, StringFormat={}{0:0}}" TextAlignment="Right" VerticalAlignment="Center"/></Grid>
+                      <Grid Margin="0,0,0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="B" VerticalAlignment="Center"/><Slider Name="VisorColorBlueSlider" Grid.Column="1" Minimum="0" Maximum="255" TickFrequency="1" IsSnapToTickEnabled="True" Tag="0" ValueChanged="VisorColorRgb_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Blue 0-255. Right-click to reset."/><TextBlock Grid.Column="2" Text="{Binding ElementName=VisorColorBlueSlider, Path=Value, StringFormat={}{0:0}}" TextAlignment="Right" VerticalAlignment="Center"/></Grid>
+                      <WrapPanel Margin="0,2,0,0">
+                        <Border Name="VisorColorPreview" Width="20" Height="20" Background="#000000" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="0,0,8,0" />
+                        <Button Content="Black" Padding="7,2" Margin="0,0,4,0" Click="VisorColorPreset_Click" Tag="0,0,0" />
+                        <Button Content="Magenta" Padding="7,2" Margin="0,0,4,0" Click="VisorColorPreset_Click" Tag="255,0,255" />
+                        <Button Content="Green" Padding="7,2" Margin="0,0,4,0" Click="VisorColorPreset_Click" Tag="0,255,0" />
+                        <Button Content="Cyan" Padding="7,2" Click="VisorColorPreset_Click" Tag="0,255,255" />
+                      </WrapPanel>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <StackPanel Name="CommonOverlaySettingsPanel">
                       <Expander IsExpanded="False">
@@ -1167,7 +1159,7 @@
                     <Button Content="Reload apps" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ReloadApps_Click" />
                     <Button Content="Add app" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="AddApp_Click" />
                     <Button Content="Reset profile" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ResetApp_Click" />
-                    <ToggleButton Name="ShowHiddenAppsCheck" Content="Show hidden" Style="{StaticResource RedToggleButton}" Margin="0,0,8,6" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" ToolTip="Show applications you have hidden from this list." />
+                    <ToggleButton Name="ShowHiddenAppsCheck" Content="Show hidden" Style="{StaticResource RedToggleButton}" Margin="0,0,8,0" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" ToolTip="Show applications you have hidden from this list." />
                   </WrapPanel>
                 </Grid>
               </Border>

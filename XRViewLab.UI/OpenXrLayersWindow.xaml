@@ -13,6 +13,24 @@
     <SolidColorBrush x:Key="AccentBrush" Color="#C90012" />
     <SolidColorBrush x:Key="MutedBrush" Color="#9A9A9A" />
 
+    <Style x:Key="HelpBadge" TargetType="Border">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="White" />
+      <Setter Property="BorderThickness" Value="1.2" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+    <Style x:Key="HelpBadgeGlyph" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
     <Style x:Key="RedButton" TargetType="Button">
       <Setter Property="Foreground" Value="#F0F0F0" />
       <Setter Property="Padding" Value="10,5" />
@@ -82,8 +100,11 @@
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
-    <TextBlock Grid.Row="0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,10"
-               Text="Every enabled layer injects into the frame path of every OpenXR app. Order is load order: the top entry wraps the ones below it. 64-bit and 32-bit apps read different lists." />
+    <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,10">
+      <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="About OpenXR API Layers" MouseLeftButtonUp="OpenXrLayersHelp_Click">
+        <TextBlock Text="?" Style="{StaticResource HelpBadgeGlyph}" />
+      </Border>
+    </DockPanel>
 
     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
       <RadioButton x:Name="ScopeW64M" Style="{StaticResource ScopeTab}" GroupName="scope" IsChecked="True"

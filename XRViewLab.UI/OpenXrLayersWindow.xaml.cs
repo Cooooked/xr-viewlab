@@ -89,18 +89,13 @@ public partial class OpenXrLayersWindow : Window
         Status(msg);
     }
 
-    // Asked once per window. Relaunches only this window elevated, so the user gets a single UAC
-    // prompt instead of having to close ViewLab and start the whole app as Administrator.
+    // Asked once per window. Relaunches only this window elevated, so Windows' UAC prompt is the
+    // single confirmation rather than being preceded by a redundant ViewLab dialog.
     private bool _elevationOffered;
     private void OfferElevation()
     {
         if (_elevationOffered || IsElevated()) return;
         _elevationOffered = true;
-        var answer = MessageBox.Show(this,
-            "Changing layers for all users needs Administrator permission.\n\n" +
-            "Reopen this window as Administrator now? ViewLab itself will stay open.",
-            "ViewLab", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (answer != MessageBoxResult.Yes) return;
         try
         {
             var exe = Environment.ProcessPath ?? throw new InvalidOperationException("ViewLab executable path is unavailable.");
@@ -119,6 +114,16 @@ public partial class OpenXrLayersWindow : Window
             // Most often the user simply declined the UAC prompt; keep the read-only view usable.
             Status("Could not start the elevated window: " + ex.Message);
         }
+    }
+
+    private void OpenXrLayersHelp_Click(object sender, MouseButtonEventArgs e)
+    {
+        BuiltInHelpWindow.Show(this, "OpenXR API Layers", new[]
+        {
+            new HelpSection("What layers are", "An OpenXR API layer sits between every OpenXR game and the VR runtime. An enabled layer can change, inspect, or add to the frame path for every OpenXR app on this computer."),
+            new HelpSection("Order and scope", "The list is load order: the top layer wraps the ones below it. Win64 and Win32 are separate lists. All users changes the machine-wide list and needs Administrator permission; This user changes only your Windows account."),
+            new HelpSection("Using this safely", "Enable or disable only layers you recognise. Reordering can change how two layers interact. Add registers an existing layer manifest; Remove unregisters it but does not delete its files. ViewLab's layer is normally left enabled.")
+        });
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

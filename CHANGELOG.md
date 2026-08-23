@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.1.334 - 2026-08-23 (UI follow-up fixes)
+
+- **The ViewLab status card is now a restrained state indicator.** Enabled uses a dark red tint rather than a solid warning-red panel; disabled remains neutral grey.
+- **Overlays text is readable again.** The separate Overlays window now supplies the app foreground colour to its rehosted controls.
+- **OpenXR Layers now opens straight to Windows UAC** when the selected all-users scope requires elevation. Its explanatory copy moved behind a new `?` help badge, keeping the window focused.
+- **Show hidden matches the other app-list buttons** in size and alignment.
+- **All visor-mask controls now live together in Overlays**, including colour and preset controls; the main window retains only the visual mask preview.
+- **The unused render-grid rows are gone**, removing the blank gap below the Top and Bottom sliders.
+
 ## 4.1.333 - 2026-08-23 (UI cleanup, notification resolution, elevation prompt)
 
 - **Split top/bottom no longer halves the crop each time it is toggled.** Top and Bottom are shares

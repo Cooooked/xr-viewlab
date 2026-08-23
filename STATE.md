@@ -4,9 +4,9 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-23
-**Current version:** 4.1.333 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.333.msi` (SHA-256
-`FF378BC1A0668F9FCCEBFD88881AC218D2779119142ED44F62B86ACEDF8D418F`; contracts pass; full build 0 errors,
-3 pre-existing C4244 warnings; **none of the 4.1.333 UI work confirmed live yet**).
+**Current version:** 4.1.334 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.334.msi` (contracts pass; full build 0 warnings / 0 errors; **not live-validated yet**).
+
+**2026-08-23 — 4.1.333 UI follow-up fixes.** Six reports from the first 4.1.333 UI build are resolved without changing feature scope: the enabled card uses a restrained dark-red state tint instead of a warning-red fill; the reparented Overlays window explicitly supplies the light foreground so its inherited text is no longer black-on-dark; visor-mask colour and preset controls joined the existing visor shape controls in Overlays, leaving only the preview on the main window; and orphaned RenderCard rows no longer leave a gap after the Top/Bottom sliders. The app-list Show hidden toggle now has the RedButton footprint and margin, so it aligns with Reload/Add/Reset. OpenXR Layers drops the redundant ViewLab Yes/No dialog and invokes Windows UAC directly for an all-users scope; its former grey explanation is now behind a `?` help badge. Contract suite and full MSI build passed. **Pending live validation:** all six layout/interaction fixes, especially visible text in Overlays, the direct-UAC flow, and complete visor-control placement.
 
 **2026-08-23 — VLMC overlay capture, OBS menu, spotter restore.**
 

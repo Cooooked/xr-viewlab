@@ -377,7 +377,9 @@ public partial class MainWindow : Window
 			MaxHeight = Math.Max(360, SystemParameters.WorkArea.Height - 64),
 			SizeToContent = SizeToContent.Height,
 			WindowStyle = WindowStyle.None, AllowsTransparency = true,
-			Background = Brushes.Transparent, ResizeMode = ResizeMode.NoResize,
+			Background = Brushes.Transparent,
+			Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0xE8, 0xE8)),
+			ResizeMode = ResizeMode.NoResize,
 			WindowStartupLocation = WindowStartupLocation.CenterOwner,
 			ShowInTaskbar = false, Content = shell
 		};
@@ -2037,11 +2039,11 @@ public partial class MainWindow : Window
 
 	private void UpdateEnabledBadge()
 	{
-		// On is ViewLab red; off is the same neutral grey the disabled sliders use, so the card reads
-		// as inactive rather than as an error.
-		Color border = _viewlabEnabled ? Color.FromRgb(0xEC, 0x30, 0x38) : Color.FromRgb(0x45, 0x47, 0x4B);
-		Color bg     = _viewlabEnabled ? Color.FromRgb(0xC9, 0x00, 0x12) : Color.FromRgb(0x30, 0x32, 0x36);
-		Color fg     = _viewlabEnabled ? Color.FromRgb(0xFF, 0xFF, 0xFF) : Color.FromRgb(0x8A, 0x8C, 0x90);
+		// The card is a state indicator, not a warning. Enabled uses a restrained red tint;
+		// disabled remains the same neutral grey used by disabled sliders.
+		Color border = _viewlabEnabled ? Color.FromRgb(0x8F, 0x35, 0x3B) : Color.FromRgb(0x45, 0x47, 0x4B);
+		Color bg     = _viewlabEnabled ? Color.FromRgb(0x2A, 0x10, 0x13) : Color.FromRgb(0x30, 0x32, 0x36);
+		Color fg     = _viewlabEnabled ? Color.FromRgb(0xF0, 0xB8, 0xBB) : Color.FromRgb(0x8A, 0x8C, 0x90);
 		EnabledBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(border, TimeSpan.FromSeconds(0.25)));
 		EnabledBgBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(bg, TimeSpan.FromSeconds(0.25)));
 		EnabledStatusFg.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(fg, TimeSpan.FromSeconds(0.25)));
