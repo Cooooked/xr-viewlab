@@ -19,6 +19,7 @@ internal sealed class NotificationSettings
     public bool Enabled;
     public double X = 0.98, Y = 0.98, Scale = 1.0, Opacity = 1.0;
     public double DurationMs = 3000;
+    public double Resolution = NotificationCardLayout.DefaultRasterQuality; // card sharpness
     public int MaxVisible = 3;
     public int Privacy;          // 0 full, 1 title only, 2 app only
     public int Theme;            // visual design: 0 classic, 1 compact banner, 2 minimal, 3 bold
@@ -525,7 +526,7 @@ internal sealed class NotificationService : IDisposable
         // Supersample: rasterise the logical layout at raster dimensions (physical scale x quality),
         // so enlarging the card allocates more source pixels instead of stretching a small bitmap.
         // Physical/displayed size is decoupled and unchanged (native derives it from notify_scale).
-        (int rw, int rh) = NotificationCardLayout.RasterDimensions(w, h, s.Scale);
+        (int rw, int rh) = NotificationCardLayout.RasterDimensions(w, h, s.Scale, s.Resolution);
         var rtb = new RenderTargetBitmap(rw, rh, 96.0 * rw / w, 96.0 * rh / h, PixelFormats.Pbgra32);
         rtb.Render(dv);
         var pbgra = new byte[rw * rh * 4];

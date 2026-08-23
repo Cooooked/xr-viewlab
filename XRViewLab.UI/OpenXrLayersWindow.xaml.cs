@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Diagnostics;
 using System.Security.Principal;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Controls;
 using System.Windows.Media;
 
@@ -77,9 +79,57 @@ public partial class OpenXrLayersWindow : Window
         foreach (var b in new[] { EnableBtn, DisableBtn, UpBtn, DownBtn, AddBtn, RemoveBtn }) b.IsEnabled = canEdit;
 
         var msg = $"{_rows.Count} layer(s) registered.";
-        if (!canEdit) msg += "  Editing this scope needs ViewLab to run as Administrator.";
+        if (!canEdit)
+        {
+            msg += "  Editing this scope needs Administrator.";
+            Status(msg);
+            OfferElevation();
+            return;
+        }
         Status(msg);
     }
+
+    // Asked once per window. Relaunches only this window elevated, so the user gets a single UAC
+    // prompt instead of having to close ViewLab and start the whole app as Administrator.
+    private bool _elevationOffered;
+    private void OfferElevation()
+    {
+        if (_elevationOffered || IsElevated()) return;
+        _elevationOffered = true;
+        var answer = MessageBox.Show(this,
+            "Changing layers for all users needs Administrator permission.\n\n" +
+            "Reopen this window as Administrator now? ViewLab itself will stay open.",
+            "ViewLab", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes) return;
+        try
+        {
+            var exe = Environment.ProcessPath ?? throw new InvalidOperationException("ViewLab executable path is unavailable.");
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                Arguments = "--openxr-layers",
+                UseShellExecute = true,
+                Verb = "runas",
+                WorkingDirectory = Path.GetDirectoryName(exe)!
+            });
+            Close();
+        }
+        catch (Exception ex)
+        {
+            // Most often the user simply declined the UAC prompt; keep the read-only view usable.
+            Status("Could not start the elevated window: " + ex.Message);
+        }
+    }
+
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == TitleClose) return;
+        if (e.ButtonState == MouseButtonState.Pressed) { try { DragMove(); } catch { } }
+    }
+
+    private void TitleClose_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) { e.Handled = true; Close(); }
+    private void TitleClose_MouseEnter(object sender, MouseEventArgs e) => TitleClose.Foreground = new SolidColorBrush(Color.FromRgb(0xEC, 0x30, 0x38));
+    private void TitleClose_MouseLeave(object sender, MouseEventArgs e) => TitleClose.Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x8C, 0x90));
 
     private void Status(string s) => StatusText.Text = s;
 

@@ -46,6 +46,59 @@ internal static class BuiltInHelpWindow
         new HelpSection("What ViewLab reads", "ViewLab only reads whether OBS is currently recording. A failed connection or authentication never activates the recording cue.")
     };
 
+    internal static readonly IReadOnlyList<HelpSection> EdgeMaskSections = new[]
+    {
+        new HelpSection("What this does", "Paints the outer edges of your view black. It hides the borders left behind when ViewLab crops the picture, so you see a clean edge instead of a hard line or flicker."),
+        new HelpSection("Does it cost performance?", "No. It only covers pixels that are already being drawn. It does not change how much the game renders, so it neither speeds anything up nor slows it down. Use the Vertical and Horizontal sliders on the main window if you want an actual performance saving."),
+        new HelpSection("Left/right and top/bottom", "Tick whichever edges look untidy in the headset. Most people either need both or neither. Masking only one side, or only one eye, is not offered because it does not display reliably."),
+        new HelpSection("Recenter foveated rendering", "Only matters if you use Split top and bottom with different values, so your view sits off-centre. Some headsets render the middle of the picture sharper than the edges. This re-aims each eye so that sharp area follows where you are actually looking. Takes effect the next time you start a game. If the world looks slightly tilted afterwards, turn it back off.")
+    };
+
+    internal static readonly IReadOnlyList<HelpSection> CalibrationSections = new[]
+    {
+        new HelpSection("What this is for", "Test patterns drawn straight into the picture your headset receives. They are measuring tools, not features to leave switched on. Use them to check that ViewLab's crop and mask line up with what you actually see, then switch them off."),
+        new HelpSection("How to use it", "Tick a pattern, put the headset on, and look at where the pattern sits relative to the edges of your view. If something is off, adjust the crop or mask sliders and look again."),
+        new HelpSection("Capturing images", "The capture button saves what the left eye is really being sent while a game is running, so you can compare it side by side on the desktop. Images and their details are saved under your local ViewLab folder in CalibrationCaptures."),
+        new HelpSection("Remember to turn them off", "Patterns stay visible in game while ticked. They are also visible in a recording unless you turn them off first.")
+    };
+
+    internal static readonly IReadOnlyList<HelpSection> PreviewGuidesSections = new[]
+    {
+        new HelpSection("What this does", "Adds guide lines to the picture on your monitor that shows the shape of your mask. It is a drawing aid only."),
+        new HelpSection("Nothing reaches the headset", "These guides never appear in the headset and never appear in a recording. They exist purely to help you line things up while you are setting the shape."),
+        new HelpSection("The options", "Circle guides show the round area a lens covers. Per-eye frames outline each eye separately. Optical centre marks the middle of each lens. IPD adjusts the spacing between the eyes in the preview to match your own, so the preview matches what you will see.")
+    };
+
+    internal static readonly IReadOnlyList<HelpSection> OverlaysSections = new[]
+    {
+        new HelpSection("What overlays are", "Small pieces of information ViewLab draws inside your headset on top of the game: a clock, performance figures, desktop notifications, notes, a crosshair and racing cues. Each one can be turned on or off on its own."),
+        new HelpSection("Moving and sizing them", "Every overlay has Position, Scale and Opacity. You can also drag them directly on the mask picture. Changes apply straight away in the headset, so you can leave a game running while you position things."),
+        new HelpSection("Clock", "A small clock card. Turning on the session timer adds a second line underneath showing how long you have been in VR."),
+        new HelpSection("Performance HUD and trace", "The HUD shows live figures such as frame rate and GPU load. The trace draws those figures as a moving graph. Both can be set to show all the time, or only when performance actually goes wrong, which keeps your view clear until something needs attention."),
+        new HelpSection("Crosshair", "A fixed aiming dot at the centre of your view, in the style of a Counter-Strike crosshair. It does not move or spread when you shoot. You can paste in a CS2 share code to copy a crosshair you already like."),
+        new HelpSection("Notifications", "Shows Windows notifications inside the headset so you do not have to take it off. Display duration sets how long each one stays. The app filter lets you limit it to only the apps you care about, and the privacy setting can hide message contents so only the app name shows."),
+        new HelpSection("Sticky notes", "Short pieces of text you pin inside your view, useful for reminders such as settings to try or a checklist."),
+        new HelpSection("iRacing cues", "Edge-of-vision signals driven by live iRacing telemetry: a glow on the side a car is alongside you, coloured flags, a race-start light and a rear-pressure cue. The test buttons let you check placement without being in a session."),
+        new HelpSection("Show or hide with a key", "Each overlay can be given a keyboard shortcut so you can hide and show it mid-game without opening ViewLab.")
+    };
+
+    internal static readonly IReadOnlyList<HelpSection> ObsCaptureSections = new[]
+    {
+        new HelpSection("What this is for", "Getting what you see in the headset into OBS, so you can stream or record it."),
+        new HelpSection("Show in OBS Mirror", "Chooses which ViewLab overlays appear in the recording. This is separate from what you see in the headset, so you can keep your HUD in VR but leave it out of the video, or the other way round."),
+        new HelpSection("ViewLab Media Capture", "ViewLab's own OBS source. Add it in OBS through Sources, then the plus button. Unlike a plain mirror it captures ViewLab's overlays, ReShade, and other headset overlays such as RaceLab and OpenKneeboard. In its properties you can pick which eye to capture, crop the edges, and press Reinitialize if the picture ever stops updating."),
+        new HelpSection("ViewLab Enhancer", "An OBS filter that adjusts how the picture looks: sharpness, colour, contrast and brightness. Add it to a source through that source's Filters menu. It changes the recording only, never the headset."),
+        new HelpSection("ViewLab Stabilizer", "A separate OBS filter that smooths out head movement, so a recording is less shaky and easier to watch. Also added through a source's Filters menu, and also affects the recording only."),
+        new HelpSection("Installing them", "The install buttons copy the plugins into OBS for you. Close OBS first, install, then start OBS again. Reinstall after updating ViewLab, because the plugins and ViewLab have to be the same version to talk to each other.")
+    };
+
+    internal static readonly IReadOnlyList<HelpSection> VrQuadSections = new[]
+    {
+        new HelpSection("What this is", "Controls for the floating panel ViewLab can show inside your headset, so you can read or adjust things without removing it."),
+        new HelpSection("Position and size", "Move the panel around you and set how large and how far away it sits. Put it somewhere you can glance at without it covering anything you need during play."),
+        new HelpSection("If you cannot find it", "Reset the position to bring it back in front of you. That is the quickest fix if you have moved it out of view.")
+    };
+
     internal static void Show(Window owner, string title, IReadOnlyList<HelpSection> sections)
     {
         var panel = new StackPanel { Margin = new Thickness(18) };

@@ -32,6 +32,16 @@ public class App : Application
 	[STAThread]
 	public static void Main(string[] args)
 	{
+		// Elevated OpenXR layers editor. Machine-wide layer registration lives under HKLM, so editing
+		// it needs Administrator. Rather than making the user close ViewLab and relaunch the whole app
+		// elevated, the layers window relaunches just itself through this verb behind a UAC prompt.
+		if (args.Length >= 1 && args[0].Equals("--openxr-layers", StringComparison.OrdinalIgnoreCase))
+		{
+			var elevatedApp = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
+			elevatedApp.Run(new OpenXrLayersWindow());
+			return;
+		}
+
 		if (args.Length >= 4 && args[0].Equals("--set-layer-enabled", StringComparison.OrdinalIgnoreCase))
 		{
 			bool enabled = args[1] == "1";

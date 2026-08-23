@@ -1,12 +1,12 @@
-# STATE — live project state
+﻿# STATE — live project state
 
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-23
-**Current version:** 4.1.332 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.332.msi` (SHA-256
-`2A5C0BA00B64A69E478CC7AF5DA3BA5726E540A3DFB8017C8A4B898CB6AB31B4`; contracts pass; full build 0 errors,
-3 pre-existing C4244 warnings; **live per-app overlay editing and the per-app notification test button not yet confirmed live**).
+**Current version:** 4.1.333 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.333.msi` (SHA-256
+`FF378BC1A0668F9FCCEBFD88881AC218D2779119142ED44F62B86ACEDF8D418F`; contracts pass; full build 0 errors,
+3 pre-existing C4244 warnings; **none of the 4.1.333 UI work confirmed live yet**).
 
 **2026-08-23 — VLMC overlay capture, OBS menu, spotter restore.**
 

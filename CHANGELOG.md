@@ -1,5 +1,32 @@
 # Changelog
 
+## 4.1.333 - 2026-08-23 (UI cleanup, notification resolution, elevation prompt)
+
+- **Split top/bottom no longer halves the crop each time it is toggled.** Top and Bottom are shares
+  that sum to the total, which is what the layer does, but the settings app stored the average when
+  split was on and the whole total in each half when it was off. A 0.038 total became 0.019, then
+  0.010. Both directions now match the layer.
+- **Notifications gain a Resolution control**, globally and per app, so cards can be drawn with more
+  pixels and look sharper. The supersampling was already there but fixed at one value.
+- **One "All overlays: size" slider** at the top of the Overlays menu scales every overlay at once,
+  on top of each overlay's own Scale.
+- **The OpenXR Layers window can elevate itself.** Editing machine-wide layers needs Administrator;
+  it now offers a prompt and reopens just that window elevated, instead of requiring ViewLab to be
+  closed and restarted as Administrator. Its title bar is also ViewLab-themed rather than the plain
+  Windows one.
+- **Overlays opens as a proper window** with ViewLab chrome and an X, like ReShade Remote, so it can
+  stay open while you position things and watch the headset.
+- **The Visor mask toggle and its shape sliders moved into the Overlays menu**, next to everything
+  else they affect.
+- **Submenu captions replaced by ? help windows.** Each submenu now has a help badge with plain,
+  beginner-facing explanations instead of dense inline text.
+- **Recenter foveated rendering moved into the Edge Masks menu** rather than sitting on the main
+  window.
+- The apps list lost its instruction caption (double-click still opens the per-app editor), Show
+  hidden became an inline toggle button beside the other app buttons, the ViewLab enable card and
+  that toggle now read red when on and neutral grey when off, and the toolbar buttons no longer
+  collide when they wrap onto a second row.
+
 ## 4.1.332 - 2026-08-23 (all per-app overlay changes apply live)
 
 - **Every per-app overlay change now applies live** — position, scale, opacity, enable, performance

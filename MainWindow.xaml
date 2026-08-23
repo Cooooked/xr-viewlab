@@ -66,6 +66,35 @@
         <Setter Property="BorderBrush" Value="#EC3038" />
         <Setter Property="MinWidth" Value="112" />
       </Style>
+      <!-- Toggle-state twin of RedButton: sits inline with the plain red buttons. Off uses the same
+           neutral grey as the disabled sliders; on is ViewLab red. -->
+      <Style x:Key="RedToggleButton" TargetType="{x:Type ToggleButton}" BasedOn="{StaticResource {x:Type ToggleButton}}">
+        <Setter Property="Background" Value="#303236" />
+        <Setter Property="BorderBrush" Value="#45474B" />
+        <Setter Property="Foreground" Value="#8A8C90" />
+        <Setter Property="MinWidth" Value="112" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type ToggleButton}">
+              <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                  <Setter TargetName="Chrome" Property="Background" Value="{StaticResource RedBrush}" />
+                  <Setter TargetName="Chrome" Property="BorderBrush" Value="#EC3038" />
+                  <Setter Property="Foreground" Value="White" />
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Chrome" Property="BorderBrush" Value="#FF6A70" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
       <!-- Shared small red position-reset button used identically by every overlay section. -->
       <Style x:Key="OverlayResetButton" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Background" Value="{StaticResource RedBrush}" />
@@ -423,7 +452,6 @@
                 <TextBlock Name="BottomHint" Grid.Row="14" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
                 <Slider Name="BottomSlider" Grid.Row="16" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="0.5" ValueChanged="RenderSlider_Changed" />
                 <TextBlock Name="CombinedHint" Grid.Row="18" Grid.ColumnSpan="5" Visibility="Collapsed" />
-                <CheckBox Name="FoveaCenterCheck" Grid.Row="20" Grid.ColumnSpan="5" Content="Recenter foveated rendering (split crop)" ToolTip="When Split top/bottom is uneven, re-aims each eye at the centre of the cropped view so the runtime's foveated (sharpest) region stays on what you actually see. Applies on the next game launch. On some titles the re-aim can read as a slight world tilt." Checked="FoveaCenterCheck_Changed" Unchecked="FoveaCenterCheck_Changed" />
               </Grid>
             </Border>
             <!-- Render Options: lives in LeftColumnPanel for single/two-col; moved to RightColumnPanel in 3-col by UpdateResponsiveLayout -->
@@ -432,48 +460,15 @@
               <StackPanel>
 
                 <WrapPanel>
-                  <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
-                  <Button Name="ReShadeButton" Content="ReShade ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
-                  <Button Name="PreviewButton" Content="Preview ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Global desktop-preview guide preferences." Click="PreviewButton_Click" />
-                  <Button Name="OverlaysButton" Content="Overlays ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Crosshair, desktop notifications, and future integrations." Click="OverlaysButton_Click" />
-                  <Button Name="ObsButton" Content="OBS ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="OBS mirror visibility, ViewLab Media Capture, Enhancer and Stabilizer." Click="ObsButton_Click" />
-                  <Button Name="OpenXrLayersButton" Content="OpenXR Layers ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Opens the OpenXR implicit layer manager: enable, disable and reorder the layers that inject into every VR app." Click="OpenXrLayers_Click" />
+                  <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
+                  <Button Name="ReShadeButton" Content="ReShade ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
+                  <Button Name="PreviewButton" Content="Preview ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Global desktop-preview guide preferences." Click="PreviewButton_Click" />
+                  <Button Name="OverlaysButton" Content="Overlays ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Crosshair, desktop notifications, and future integrations." Click="OverlaysButton_Click" />
+                  <Button Name="ObsButton" Content="OBS ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="OBS mirror visibility, ViewLab Media Capture, Enhancer and Stabilizer." Click="ObsButton_Click" />
+                  <Button Name="OpenXrLayersButton" Content="OpenXR Layers ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Opens the OpenXR implicit layer manager: enable, disable and reorder the layers that inject into every VR app." Click="OpenXrLayers_Click" />
                 </WrapPanel>
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
-                <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                 <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Binocular preview: the dotted outer reference is Quest 3 at Horizontal 1.00 / Vertical 1.00; the solid inner rectangle is the current post-crop area. Overlay replicas use their configured placement and uniform scale. Hover to inspect live full-lens and crop coordinates." />
-                <Grid Margin="0,0,0,0">
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="52" />
-                    <ColumnDefinition Width="*" />
-                  </Grid.ColumnDefinitions>
-                  <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="0" />
-                  </Grid.RowDefinitions>
-                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Size" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskSizeSlider" Grid.Row="0" Grid.Column="1" Minimum="0.1" Maximum="1" ValueChanged="MaskSizeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Scales the chosen Width and Height uniformly without changing their ratio." />
-                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Width" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskWidthSlider" Grid.Row="1" Grid.Column="1" Minimum="0.25" Maximum="2" Value="1" ValueChanged="MaskWidthSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Defines the visor shape width. Size scales it without changing its ratio to Height." />
-                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Height" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskHeightSlider" Grid.Row="2" Grid.Column="1" Minimum="0.25" Maximum="2" Value="1" ValueChanged="MaskHeightSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Defines the visor shape height. Size scales it without changing its ratio to Width." />
-                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskRoundnessSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
-                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Outer dip" VerticalAlignment="Center" FontSize="12" />
-                  <Slider Name="MaskApexYSlider" Grid.Row="4" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="MaskApexYSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Moves the outer visor curve apex vertically." />
-                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Nose" Visibility="Collapsed" />
-                  <Slider Name="MaskInnerLowerSlider" Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="0.666" Visibility="Collapsed" />
-				  <TextBlock Grid.Row="6" Grid.Column="0" Text="Nose Spread X" Visibility="Collapsed" />
-				  <Slider Name="MaskNoseSpreadXSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="0.5" Visibility="Collapsed" />
-                  <Slider Name="MaskOffsetXSlider" Grid.Row="6" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
-                  <Slider Name="MaskOffsetYSlider" Grid.Row="7" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
-                </Grid>
                 <TextBox Name="MaskVerticalBox" Visibility="Collapsed" />
                 <TextBox Name="MaskHorizontalBox" Visibility="Collapsed" />
                 <Slider Name="MaskVerticalSlider" Visibility="Collapsed" Minimum="0.01" Maximum="1" ValueChanged="MaskSlider_Changed" />
@@ -512,11 +507,16 @@
               <Popup Name="VisualMasksPopup" StaysOpen="False" AllowsTransparency="True">
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10">
                   <StackPanel>
-                    <TextBlock Text="EDGE MASK" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
-                    <TextBlock Text="Cover cropped borders with black without changing crop or render resolution." TextWrapping="Wrap" Width="260" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,7"/>
+                    <DockPanel LastChildFill="True">
+                      <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="What Edge Masks do" MouseLeftButtonUp="EdgeMaskHelp_Click">
+                        <TextBlock Text="?" Style="{StaticResource HelpBadgeGlyph}" />
+                      </Border>
+                      <TextBlock Text="EDGE MASK" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
+                    </DockPanel>
                     <CheckBox Name="HorizVisualMaskBothCheck" Content="Mask left and right crop" Foreground="#A8A8A8" Margin="0,0,0,5" ToolTip="Covers both horizontal crop borders in each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                     <CheckBox Name="VertVisualMaskBothCheck" Content="Mask top and bottom crop" Foreground="#A8A8A8" ToolTip="Covers both vertical crop borders in each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
-                    <TextBlock Text="One-sided and per-eye masking are omitted because this renderer does not support them reliably." TextWrapping="Wrap" Foreground="#777" FontSize="9" Margin="0,7,0,0" />
+                    <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
+                    <CheckBox Name="FoveaCenterCheck" Content="Recenter foveated rendering (split crop)" Foreground="#A8A8A8" Checked="FoveaCenterCheck_Changed" Unchecked="FoveaCenterCheck_Changed" ToolTip="When Split top/bottom is uneven, re-aims each eye at the centre of the cropped view so the runtime's foveated (sharpest) region stays on what you actually see. Applies on the next game launch. On some titles the re-aim can read as a slight world tilt." />
                   </StackPanel>
                 </Border>
               </Popup>
@@ -524,8 +524,12 @@
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" MaxHeight="500">
                   <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Width="280">
-                      <TextBlock Text="CALIBRATION PATTERNS" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
-                      <TextBlock Text="Drawn into the submitted eye image." TextWrapping="Wrap" Width="280" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,8" />
+                      <DockPanel LastChildFill="True">
+                        <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="What Calibration Patterns are for" MouseLeftButtonUp="CalibrationHelp_Click">
+                          <TextBlock Text="?" Style="{StaticResource HelpBadgeGlyph}" />
+                        </Border>
+                        <TextBlock Text="CALIBRATION PATTERNS" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      </DockPanel>
                       <CheckBox Name="CalGridCheck" Content="64 px texture grid" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Measures geometry and texture-edge distortion." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
                       <CheckBox Name="CalRulerCheck" Content="Pixel ruler" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Counts exact pixels in a capture." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
                       <CheckBox Name="CalGratingsCheck" Content="Resolution gratings" Foreground="#A8A8A8" Margin="0,0,0,3" ToolTip="Shows where 1, 2, and 4 pixel detail stops resolving." Checked="CalibrationCheck_Changed" Unchecked="CalibrationCheck_Changed" />
@@ -539,7 +543,6 @@
                       <Separator Margin="0,9,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <Button Name="RunCalibrationSuiteButton" Content="Run Calibration Suite (Experimental)" Style="{StaticResource RedButton}" Padding="9,4" Click="RunCalibrationSuite_Click" />
                       <Button Name="ReviewCalibrationPackButton" Content="Review capture pack" Padding="9,4" Margin="0,5,0,0" HorizontalAlignment="Left" Click="ReviewCalibrationPack_Click" ToolTip="Read-only check of the captured PNG/JSON pairs: completeness, dimensions, hashes, blank/suspicious detection and each pattern's diagnostic purpose. Never modifies the raw files." />
-                      <TextBlock Text="Captures each pattern from the real submitted left-eye image while a game is running. Images and metadata save under %LOCALAPPDATA%\XR ViewLab\CalibrationCaptures. Your previous calibration settings are restored afterwards." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" />
                     </StackPanel>
                   </ScrollViewer>
                 </Border>
@@ -547,8 +550,12 @@
               <Popup Name="PreviewPopup" StaysOpen="False" AllowsTransparency="True">
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10">
                   <StackPanel Width="280">
-                    <TextBlock Text="PREVIEW GUIDES" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
-                    <TextBlock Text="Global calibration helpers used by every desktop preview. They never change headset rendering." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,8" />
+                    <DockPanel LastChildFill="True">
+                      <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="What Preview Guides do" MouseLeftButtonUp="PreviewGuidesHelp_Click">
+                        <TextBlock Text="?" Style="{StaticResource HelpBadgeGlyph}" />
+                      </Border>
+                      <TextBlock Text="PREVIEW GUIDES" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,3" />
+                    </DockPanel>
                     <TextBlock Text="IPD (mm)" Foreground="#A8A8A8" Margin="0,0,0,2" />
                     <Grid Width="92" HorizontalAlignment="Left" Margin="0,0,0,7">
                       <Grid.ColumnDefinitions><ColumnDefinition Width="66"/><ColumnDefinition Width="26"/></Grid.ColumnDefinitions>
@@ -569,6 +576,50 @@
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" MaxHeight="560">
                   <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Name="OverlaysSettingsPanel" Width="300">
+                      <DockPanel LastChildFill="True" Margin="0,0,0,6">
+                        <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="What overlays are and how to place them" MouseLeftButtonUp="OverlaysHelp_Click">
+                          <TextBlock Text="?" Style="{StaticResource HelpBadgeGlyph}" />
+                        </Border>
+                        <TextBlock Text="OVERLAYS" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" />
+                      </DockPanel>
+                      <TextBlock Text="All overlays: size" Foreground="{StaticResource MutedBrush}" FontSize="10" ToolTip="Scales every overlay at once, on top of each overlay's own Scale slider." />
+                      <Slider Name="GlobalOverlayScaleSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="GlobalOverlayScale_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                      <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
+                      <TextBlock Text="VISOR MASK" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
+                      <Grid Margin="0,0,0,0">
+                      <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="52" />
+                      <ColumnDefinition Width="*" />
+                      </Grid.ColumnDefinitions>
+                      <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="0" />
+                      </Grid.RowDefinitions>
+                      <TextBlock Grid.Row="0" Grid.Column="0" Text="Size" VerticalAlignment="Center" FontSize="12" />
+                      <Slider Name="MaskSizeSlider" Grid.Row="0" Grid.Column="1" Minimum="0.1" Maximum="1" ValueChanged="MaskSizeSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Scales the chosen Width and Height uniformly without changing their ratio." />
+                      <TextBlock Grid.Row="1" Grid.Column="0" Text="Width" VerticalAlignment="Center" FontSize="12" />
+                      <Slider Name="MaskWidthSlider" Grid.Row="1" Grid.Column="1" Minimum="0.25" Maximum="2" Value="1" ValueChanged="MaskWidthSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Defines the visor shape width. Size scales it without changing its ratio to Height." />
+                      <TextBlock Grid.Row="2" Grid.Column="0" Text="Height" VerticalAlignment="Center" FontSize="12" />
+                      <Slider Name="MaskHeightSlider" Grid.Row="2" Grid.Column="1" Minimum="0.25" Maximum="2" Value="1" ValueChanged="MaskHeightSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Defines the visor shape height. Size scales it without changing its ratio to Width." />
+                      <TextBlock Grid.Row="3" Grid.Column="0" Text="Curve" VerticalAlignment="Center" FontSize="12" />
+                      <Slider Name="MaskRoundnessSlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="MaskRoundnessSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" />
+                      <TextBlock Grid.Row="4" Grid.Column="0" Text="Outer dip" VerticalAlignment="Center" FontSize="12" />
+                      <Slider Name="MaskApexYSlider" Grid.Row="4" Grid.Column="1" Minimum="-0.5" Maximum="0.5" ValueChanged="MaskApexYSlider_Changed" MouseRightButtonUp="MaskSliderReset_RightClick" ToolTip="Moves the outer visor curve apex vertically." />
+                      <TextBlock Grid.Row="5" Grid.Column="0" Text="Nose" Visibility="Collapsed" />
+                      <Slider Name="MaskInnerLowerSlider" Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="0.666" Visibility="Collapsed" />
+                      <TextBlock Grid.Row="6" Grid.Column="0" Text="Nose Spread X" Visibility="Collapsed" />
+                      <Slider Name="MaskNoseSpreadXSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="0.5" Visibility="Collapsed" />
+                      <Slider Name="MaskOffsetXSlider" Grid.Row="6" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
+                      <Slider Name="MaskOffsetYSlider" Grid.Row="7" Grid.Column="1" Minimum="-1" Maximum="1" Visibility="Collapsed" />
+                      </Grid>
+                      <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <StackPanel Name="CommonOverlaySettingsPanel">
                       <Expander IsExpanded="False">
                         <Expander.Header><DockPanel Width="275"><CheckBox Name="ClockWidgetEnabledCheck" Checked="ClockWidgetControl_Changed" Unchecked="ClockWidgetControl_Changed"/><TextBlock Text="Clock" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header>
@@ -585,7 +636,6 @@
                       </ComboBox>
                       <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
                       <ComboBox Name="ClockWidgetToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
-                      <TextBlock Text="A compact clock card. Enabling the session timer adds a separate elapsed-time lane beneath it." TextWrapping="Wrap" Width="280" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,2,0,4" />
                       <TextBlock Text="Position X" Foreground="{StaticResource MutedBrush}" FontSize="10" />
                       <Slider Name="ClockWidgetXSlider" Minimum="0" Maximum="1" Value="0.5" Tag="0.5" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Horizontal position in the shared binocular view. Right-click to reset." />
                       <TextBlock Text="Position Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
@@ -743,7 +793,6 @@
                       <Expander IsExpanded="False">
                         <Expander.Header><DockPanel Width="275"><CheckBox Name="CrosshairEnabledCheck" Checked="CrosshairEnabled_Changed" Unchecked="CrosshairEnabled_Changed"/><TextBlock Text="Crosshair" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header>
                         <StackPanel Margin="20,4,0,4">
-                      <TextBlock Text="A static, game-agnostic Counter-Strike crosshair at ViewLab's calibrated stereo centre. Dynamic spread/recoil are ignored." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,6" />
                       <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
                       <ComboBox Name="CrosshairToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
                       <ui:CrosshairPreview x:Name="CrosshairOverlayPreview" Height="120" Margin="0,6,0,2" />
@@ -790,7 +839,6 @@
                       <Expander IsExpanded="False">
                         <Expander.Header><DockPanel Width="275"><CheckBox Name="NotifyEnabledCheck" Checked="NotifyControl_Changed" Unchecked="NotifyControl_Changed"/><TextBlock Text="Notifications" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header>
                         <StackPanel Margin="20,4,0,4">
-                      <TextBlock Text="Mirrors supported Windows notifications into the visor. Collection/decoding run outside the render thread." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,6" />
                       <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
                       <ComboBox Name="NotifyToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
                       <TextBlock Name="NotifyStatusText" Text="" Foreground="{StaticResource MutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,2,0,0" />
@@ -808,6 +856,9 @@
                       <Slider Name="NotifyOpacitySlider" Minimum="0.1" Maximum="1" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <Button Content="Reset" Tag="notifications" Click="OverlayResetPosition_Click" Style="{StaticResource OverlayResetButton}" />
                       <TextBlock Text="Display duration (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <TextBlock Text="Resolution" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" ToolTip="How many pixels each notification card is drawn with. Higher looks sharper and uses a little more memory." />
+                      <Slider Name="NotifyResolutionSlider" Minimum="1" Maximum="3" Value="2" Tag="2" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                      <TextBlock Text="Display duration" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="NotifyDurationSlider" Minimum="500" Maximum="15000" Value="3000" Tag="3000" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Max visible" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="NotifyMaxSlider" Minimum="1" Maximum="6" Value="3" Tag="3" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
@@ -837,7 +888,6 @@
                             <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="OBS Recording Cue setup help" MouseLeftButtonUp="ObsHelp_Click">
                               <TextBlock Style="{StaticResource HelpBadgeGlyph}"/>
                             </Border>
-                            <TextBlock Text="Uses OBS WebSocket to detect when OBS is recording." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" VerticalAlignment="Center"/>
                           </DockPanel>
                           <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="72"/><ColumnDefinition Width="*"/><ColumnDefinition Width="48"/><ColumnDefinition Width="72"/></Grid.ColumnDefinitions>
@@ -862,7 +912,6 @@
                       <Expander IsExpanded="False">
                         <Expander.Header><DockPanel Width="275"><CheckBox Name="IRacingEnabledCheck" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed"/><TextBlock Text="iRacing Telemetry" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header>
                         <StackPanel Margin="20,4,0,4">
-                          <TextBlock Text="Optional shared-memory provider. The renderer receives generic ViewLab events only." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,0,0,4" />
                           <TextBlock Name="IRacingStatusText" Text="Disconnected" Foreground="{StaticResource MutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,0,0,6" />
 
                           <TextBlock Text="Lap Time Pop-up" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" />
@@ -961,10 +1010,14 @@
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12" MaxHeight="560">
                   <ScrollViewer>
                     <StackPanel Width="430">
-                      <TextBlock Text="OBS / CAPTURE" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                      <DockPanel LastChildFill="True">
+                        <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="How ViewLab works with OBS" MouseLeftButtonUp="ObsCaptureHelp_Click">
+                          <TextBlock Text="?" Style="{StaticResource HelpBadgeGlyph}" />
+                        </Border>
+                        <TextBlock Text="OBS / CAPTURE" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                      </DockPanel>
                       <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,0,0,6" />
                       <TextBlock Text="SHOW IN OBS MIRROR" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
-                      <TextBlock Text="Choose which ViewLab visuals are included in the OBS/mirror output. Headset visibility is unchanged." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
                       <CheckBox Name="ObsMirrorVisorCheck" Content="Visor Mask" Foreground="#A8A8A8" Margin="0,2,0,0" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
                       <CheckBox Name="ObsMirrorClockCheck" Content="Clock" Foreground="#A8A8A8" Margin="0,2,0,0" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
                       <CheckBox Name="ObsMirrorNotificationsCheck" Content="Notifications" Foreground="#A8A8A8" Margin="0,2,0,0" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
@@ -985,7 +1038,6 @@
                       <TextBlock Name="ViewLabMirrorPluginStatusText" Text="" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" />
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="VIEWLAB ENHANCER" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
-                      <TextBlock Text="Image adjustment only: colour grading and sharpening for a mirrored VR view. Add it via a source's Filters menu. Installs per user; no OBS process is launched or controlled." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
                       <StackPanel Orientation="Horizontal">
                         <Button Name="InstallViewLabEnhancerPluginButton" Content="Install ViewLab Enhancer" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabEnhancerPlugin_Click" />
                         <Button Name="UninstallViewLabEnhancerPluginButton" Content="Uninstall" Padding="9,4" Margin="6,0,0,0" HorizontalAlignment="Left" Visibility="Collapsed" Click="UninstallViewLabEnhancerPlugin_Click" />
@@ -993,7 +1045,6 @@
                       <TextBlock Name="ViewLabEnhancerPluginStatusText" Text="" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" />
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <TextBlock Text="VIEWLAB STABILIZER" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
-                      <TextBlock Text="Motion stabilization for a mirrored VR view: smooths head shake, roll and zoom. Add it via a source's Filters menu. Installs per user; no OBS process is launched or controlled." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
                       <StackPanel Orientation="Horizontal">
                         <Button Name="InstallViewLabStabilizerPluginButton" Content="Install ViewLab Stabilizer" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabStabilizerPlugin_Click" />
                         <Button Name="UninstallViewLabStabilizerPluginButton" Content="Uninstall" Padding="9,4" Margin="6,0,0,0" HorizontalAlignment="Left" Visibility="Collapsed" Click="UninstallViewLabStabilizerPlugin_Click" />
@@ -1007,7 +1058,12 @@
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12" MaxHeight="500">
                   <ScrollViewer>
                     <StackPanel>
-                      <TextBlock Text="VR QUAD" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                      <DockPanel LastChildFill="True">
+                        <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="What the VR Quad is" MouseLeftButtonUp="VrQuadHelp_Click">
+                          <TextBlock Text="?" Style="{StaticResource HelpBadgeGlyph}" />
+                        </Border>
+                        <TextBlock Text="VR QUAD" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                      </DockPanel>
                       <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,0,0,6" />
                       <TextBlock Text="POSITION" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4" />
                       <Grid HorizontalAlignment="Center" Margin="0,0,0,6">
@@ -1085,7 +1141,6 @@
                     <RowDefinition Height="7" />
                     <RowDefinition Height="Auto" />
                   </Grid.RowDefinitions>
-                  <TextBlock Text="Checked apps use ViewLab. Double-click for per-game customization." Foreground="{StaticResource MutedBrush}" />
                   <Grid Grid.Row="2">
                     <DataGrid Name="AppsGrid" IsReadOnly="False" CanUserResizeColumns="True" MouseDoubleClick="AppsGrid_DoubleClick" PreviewKeyDown="AppsGrid_KeyDown">
                       <DataGrid.Columns>
@@ -1112,7 +1167,7 @@
                     <Button Content="Reload apps" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ReloadApps_Click" />
                     <Button Content="Add app" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="AddApp_Click" />
                     <Button Content="Reset profile" Style="{StaticResource RedButton}" Margin="0,0,8,0" Click="ResetApp_Click" />
-                    <CheckBox Name="ShowHiddenAppsCheck" Content="Show hidden" VerticalAlignment="Center" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" />
+                    <ToggleButton Name="ShowHiddenAppsCheck" Content="Show hidden" Style="{StaticResource RedToggleButton}" Margin="0,0,8,6" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" ToolTip="Show applications you have hidden from this list." />
                   </WrapPanel>
                 </Grid>
               </Border>

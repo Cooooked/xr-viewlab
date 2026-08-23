@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -308,6 +308,7 @@ internal static class NotificationBrokerProgram
         Scale = ReadDouble("notify_scale", 1, 0.25, 3),
         Opacity = ReadDouble("notify_opacity", 1, 0.1, 1),
         DurationMs = ReadDouble("notify_duration_ms", 3000, 500, 15000),
+            Resolution = ReadDouble("notify_resolution", 2, 1, 3),
         MaxVisible = (int)ReadDouble("notify_max_visible", 3, 1, 6),
         Privacy = (int)ReadDouble("notify_privacy", 0, 0, 2),
         Theme = layoutTheme,

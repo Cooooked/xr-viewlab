@@ -27,7 +27,12 @@ internal static class NotificationCardLayout
     public const int LogicalMaxH = 96;
 
     // Raster-density policy.
-    public const double RasterQuality = 2.0;   // ~200% native linear density target
+    // Default raster density. The user can raise or lower this per profile with the notification
+    // Resolution slider; the slot is already sized for SupersampleCap, so nothing about the shared
+    // memory contract changes when it moves.
+    public const double DefaultRasterQuality = 2.0;   // ~200% native linear density target
+    public const double MinRasterQuality = 1.0;
+    public const double RasterQuality = DefaultRasterQuality; // retained for existing callers
     public const double SupersampleCap = 3.0;  // hard cap so the slot stays bounded (~7 MB / 6 cards)
 
     // Fixed shared-memory slot = logical max scaled by the supersample cap.
@@ -43,18 +48,25 @@ internal static class NotificationCardLayout
     // Supersample multiplier for a card displayed at the given physical scale. Grows with the
     // displayed size (so a larger card gets proportionally more source pixels) and the quality
     // multiplier, clamped to [1, SupersampleCap]. Independent of which theme/palette is used.
-    public static double RasterFactor(double displayScale)
+    public static double RasterFactor(double displayScale) => RasterFactor(displayScale, DefaultRasterQuality);
+
+    public static double RasterFactor(double displayScale, double quality)
     {
-        double f = displayScale * RasterQuality;
+        if (double.IsNaN(quality) || quality < MinRasterQuality) quality = MinRasterQuality;
+        if (quality > SupersampleCap) quality = SupersampleCap;
+        double f = displayScale * quality;
         if (double.IsNaN(f) || f < 1.0) return 1.0;
         return f > SupersampleCap ? SupersampleCap : f;
     }
 
     // Raster (source-pixel) dimensions for a logical footprint at a physical scale, bounded to the
     // slot. This is the size the card bitmap is actually rasterised at.
-    public static (int W, int H) RasterDimensions(int logicalW, int logicalH, double displayScale)
+    public static (int W, int H) RasterDimensions(int logicalW, int logicalH, double displayScale) =>
+        RasterDimensions(logicalW, logicalH, displayScale, DefaultRasterQuality);
+
+    public static (int W, int H) RasterDimensions(int logicalW, int logicalH, double displayScale, double quality)
     {
-        double f = RasterFactor(displayScale);
+        double f = RasterFactor(displayScale, quality);
         int w = Math.Min(SlotW, Math.Max(1, (int)Math.Round(logicalW * f)));
         int h = Math.Min(SlotH, Math.Max(1, (int)Math.Round(logicalH * f)));
         return (w, h);

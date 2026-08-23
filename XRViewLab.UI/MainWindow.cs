@@ -124,6 +124,8 @@ public partial class MainWindow : Window
 
 	// Feature 3: notifications
 	private const string NotifyDurationKey = "notify_duration_ms";
+	private const string NotifyResolutionKey = "notify_resolution";
+	private const string GlobalOverlayScaleKey = "overlay_global_scale";
 	private const string NotifyMaxKey = "notify_max_visible";
 	private const string NotifyPrivacyKey = "notify_privacy";
 	private const string NotifyShowIconKey = "notify_show_icon";
@@ -308,13 +310,89 @@ public partial class MainWindow : Window
 	private DateTime _overlaysPopupClosedAt = DateTime.MinValue;
 	private DateTime _obsPopupClosedAt = DateTime.MinValue;
 
+	// Overlays opens as a real window with ViewLab chrome and an X, like the ReShade Remote panel,
+	// rather than a popup that dismisses on any outside click — you need it open while dragging
+	// overlays and watching the headset. The panel itself is still declared in MainWindow.xaml and
+	// is re-parented into the window once, so every handler and control name keeps working.
+	private Window? _overlaysWindow;
 	private void OverlaysButton_Click(object sender, RoutedEventArgs e)
 	{
-		if ((DateTime.UtcNow - _overlaysPopupClosedAt).TotalMilliseconds < 200)
+		if (_overlaysWindow is { IsVisible: true })
+		{
+			_overlaysWindow.Activate();
 			return;
-		OverlaysPopup.PlacementTarget = (UIElement)sender;
-		OverlaysPopup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
-		OverlaysPopup.IsOpen = true;
+		}
+		if (_overlaysWindow is null) _overlaysWindow = BuildOverlaysWindow();
+		_overlaysWindow.Show();
+		_overlaysWindow.Activate();
+	}
+
+	private Window BuildOverlaysWindow()
+	{
+		// Detach the panel from the popup's ScrollViewer before re-hosting it.
+		if (OverlaysPopup.Child is Border { Child: ScrollViewer sv } && sv.Content is UIElement panel)
+			sv.Content = null;
+		else panel = OverlaysSettingsPanel;
+		OverlaysPopup.IsOpen = false;
+
+		var close = new TextBlock
+		{
+			Text = "X", FontSize = 14, Cursor = Cursors.Hand,
+			Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x8C, 0x90)),
+			HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+			Padding = new Thickness(14, 8, 16, 8)
+		};
+		var title = new TextBlock
+		{
+			Text = "OVERLAYS", FontSize = 13, FontWeight = FontWeights.Bold,
+			Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0xE8, 0xE8)),
+			VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0)
+		};
+		var bar = new Grid { Height = 42, Background = Brushes.Transparent };
+		bar.Children.Add(title);
+		bar.Children.Add(close);
+		DockPanel.SetDock(bar, Dock.Top);
+
+		var scroller = new ScrollViewer
+		{
+			VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+			HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+			Margin = new Thickness(12, 0, 12, 12),
+			Content = panel
+		};
+		var dock = new DockPanel { LastChildFill = true };
+		dock.Children.Add(bar);
+		dock.Children.Add(scroller);
+
+		var shell = new Border
+		{
+			Background = new SolidColorBrush(Color.FromRgb(0x0E, 0x0F, 0x11)),
+			BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3D, 0x42)),
+			BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = dock
+		};
+
+		var w = new Window
+		{
+			Title = "ViewLab Overlays", Owner = this, Width = 348,
+			MaxHeight = Math.Max(360, SystemParameters.WorkArea.Height - 64),
+			SizeToContent = SizeToContent.Height,
+			WindowStyle = WindowStyle.None, AllowsTransparency = true,
+			Background = Brushes.Transparent, ResizeMode = ResizeMode.NoResize,
+			WindowStartupLocation = WindowStartupLocation.CenterOwner,
+			ShowInTaskbar = false, Content = shell
+		};
+		close.MouseLeftButtonDown += (_, ev) => { ev.Handled = true; w.Hide(); };
+		close.MouseEnter += (_, _) => close.Foreground = new SolidColorBrush(Color.FromRgb(0xEC, 0x30, 0x38));
+		close.MouseLeave += (_, _) => close.Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x8C, 0x90));
+		bar.MouseLeftButtonDown += (_, ev) =>
+		{
+			if (!ReferenceEquals(ev.OriginalSource, close) && ev.ButtonState == MouseButtonState.Pressed)
+				try { w.DragMove(); } catch { }
+		};
+		// Hide rather than close, so the re-parented panel and its state survive reopening.
+		w.Closing += (_, ev) => { ev.Cancel = true; w.Hide(); };
+		Closed += (_, _) => { w.Closing -= null; w.Owner = null; w.Close(); };
+		return w;
 	}
 
 	// The OBS/capture controls have their own menu: mirror visibility, ViewLab Media Capture,
@@ -1396,6 +1474,8 @@ public partial class MainWindow : Window
 
 		// Feature 3: notifications
 		NotifyDurationSlider.Value = ReadRangeSetting(NotifyDurationKey, 3000.0, 500.0, 15000.0);
+		NotifyResolutionSlider.Value = ReadRangeSetting(NotifyResolutionKey, 2.0, 1.0, 3.0);
+		GlobalOverlayScaleSlider.Value = ReadRangeSetting(GlobalOverlayScaleKey, 1.0, 0.25, 3.0);
 		NotifyMaxSlider.Value = ReadRangeSetting(NotifyMaxKey, 3.0, 1.0, 6.0);
 		NotifyPrivacyCombo.SelectedIndex = (int)ReadRangeSetting(NotifyPrivacyKey, 0, 0, 2);
 		{
@@ -1957,9 +2037,11 @@ public partial class MainWindow : Window
 
 	private void UpdateEnabledBadge()
 	{
-		Color border = _viewlabEnabled ? Color.FromRgb(0x2A, 0x6A, 0x2A) : Color.FromRgb(0xC9, 0x00, 0x12);
-		Color bg     = _viewlabEnabled ? Color.FromRgb(0x0A, 0x1A, 0x0A) : Color.FromRgb(0x2A, 0x00, 0x08);
-		Color fg     = _viewlabEnabled ? Color.FromRgb(0x4D, 0xFF, 0x88) : Color.FromRgb(0xC9, 0x00, 0x12);
+		// On is ViewLab red; off is the same neutral grey the disabled sliders use, so the card reads
+		// as inactive rather than as an error.
+		Color border = _viewlabEnabled ? Color.FromRgb(0xEC, 0x30, 0x38) : Color.FromRgb(0x45, 0x47, 0x4B);
+		Color bg     = _viewlabEnabled ? Color.FromRgb(0xC9, 0x00, 0x12) : Color.FromRgb(0x30, 0x32, 0x36);
+		Color fg     = _viewlabEnabled ? Color.FromRgb(0xFF, 0xFF, 0xFF) : Color.FromRgb(0x8A, 0x8C, 0x90);
 		EnabledBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(border, TimeSpan.FromSeconds(0.25)));
 		EnabledBgBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(bg, TimeSpan.FromSeconds(0.25)));
 		EnabledStatusFg.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(fg, TimeSpan.FromSeconds(0.25)));
@@ -2668,6 +2750,18 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		_liveProfileOverrides.TryGetValue(key, out string? v) &&
 		int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i) ? i : fallback;
 
+	// One multiplier over every overlay's own Scale, so the whole set can be sized at once.
+	private void GlobalOverlayScale_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (_loading) return;
+		Directory.CreateDirectory(ConfigDirectory);
+		WritePrivateProfileString("Settings", GlobalOverlayScaleKey, GlobalOverlayScaleSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		PublishLiveState();
+		StatusText.Text = "Overlay size applied live.";
+	}
+
+	private double GlobalOverlayScale => GlobalOverlayScaleSlider is null ? 1.0 : GlobalOverlayScaleSlider.Value;
+
 	private void PublishLiveState()
 	{
 		uint mask = 0;
@@ -2685,13 +2779,13 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		// Overlay values, with any per-app override the profile editor has published taking priority.
 		bool pHudEnabled = LiveB("hud:hud_enabled", HudEnabledCheck.IsChecked == true);
 		double pHudX = LiveD("hud:hud_anchor_x", HudXSlider.Value), pHudY = LiveD("hud:hud_anchor_y", HudYSlider.Value);
-		double pHudScale = LiveD("hud:hud_scale", HudScaleSlider.Value);
+		double pHudScale = LiveD("hud:hud_scale", HudScaleSlider.Value) * GlobalOverlayScale;
 		double pHudSafe = LiveD("hud:hud_safe_margin", HudSafeMarginSlider.Value);
 		bool pHudAlarmOnly = LiveB("hud:hud_alarm_only", HudAlarmOnlyCheck.IsChecked == true);
 		double pHudHold = LiveD("hud:hud_alarm_hold_ms", ReadRangeSetting(HudAlarmHoldKey, 1500.0, 0.0, 10000.0));
 		int pTraceMode = LiveI("trace:hud_trace_visibility_mode", Math.Max(0, HudTraceVisibilityCombo.SelectedIndex));
 		double pTraceX = LiveD("trace:hud_trace_x", HudTraceXSlider.Value), pTraceY = LiveD("trace:hud_trace_y", HudTraceYSlider.Value);
-		double pTraceScale = LiveD("trace:hud_trace_scale", HudTraceScaleSlider.Value);
+		double pTraceScale = LiveD("trace:hud_trace_scale", HudTraceScaleSlider.Value) * GlobalOverlayScale;
 		double pTraceWidth = LiveD("trace:hud_trace_width", HudTraceWidthSlider.Value);
 		double pTraceHistory = LiveD("trace:hud_trace_history", HudTraceHistorySlider.Value);
 		double pTraceSens = LiveD("trace:hud_trace_sensitivity_ms", HudTraceSensitivitySlider.Value);
@@ -2709,7 +2803,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		bool pNotifyIcon = LiveB("notifications:notify_show_icon", NotifyShowIconCheck.IsChecked == true);
 		bool pNotifyImage = LiveB("notifications:notify_show_image", NotifyShowImageCheck.IsChecked == true);
 		double pNotifyX = LiveD("notifications:notify_x", NotifyXSlider.Value), pNotifyY = LiveD("notifications:notify_y", NotifyYSlider.Value);
-		double pNotifyScale = LiveD("notifications:notify_scale", NotifyScaleSlider.Value);
+		double pNotifyScale = LiveD("notifications:notify_scale", NotifyScaleSlider.Value) * GlobalOverlayScale;
 		double pNotifyOpacity = LiveD("notifications:notify_opacity", NotifyOpacitySlider.Value);
 		double pNotifyDuration = LiveD("notifications:notify_duration_ms", NotifyDurationSlider.Value);
 		int pNotifyMax = LiveI("notifications:notify_max_visible", (int)Math.Round(NotifyMaxSlider.Value));
@@ -2718,7 +2812,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		bool pClockTimer = LiveB("clock:clock_session_timer_enabled", ClockSessionTimerCheck.IsChecked == true);
 		bool pClock24 = LiveB("clock:clock_24_hour", Clock24HourCheck.IsChecked == true);
 		double pClockX = LiveD("clock:clock_widget_x", ClockWidgetXSlider.Value), pClockY = LiveD("clock:clock_widget_y", ClockWidgetYSlider.Value);
-		double pClockScale = LiveD("clock:clock_widget_scale", ClockWidgetScaleSlider.Value);
+		double pClockScale = LiveD("clock:clock_widget_scale", ClockWidgetScaleSlider.Value) * GlobalOverlayScale;
 		double pClockOpacity = LiveD("clock:clock_widget_opacity", ClockWidgetOpacitySlider.Value);
 		int pClockTheme = LiveI("clock:clock_widget_theme", Math.Max(0, ClockThemeCombo.SelectedIndex));
 		_liveState.Publish(mask,
@@ -2975,6 +3069,42 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if (ObsConnectionStatusText != null) ObsConnectionStatusText.Text = ObsIndicatorEnabledCheck.IsChecked == true ? "Connecting" : "Disconnected";
 	}
 
+	private void EdgeMaskHelp_Click(object sender, MouseButtonEventArgs e)
+	{
+		e.Handled = true;
+		BuiltInHelpWindow.Show(this, "Edge Masks", BuiltInHelpWindow.EdgeMaskSections);
+	}
+
+	private void CalibrationHelp_Click(object sender, MouseButtonEventArgs e)
+	{
+		e.Handled = true;
+		BuiltInHelpWindow.Show(this, "Calibration Patterns", BuiltInHelpWindow.CalibrationSections);
+	}
+
+	private void PreviewGuidesHelp_Click(object sender, MouseButtonEventArgs e)
+	{
+		e.Handled = true;
+		BuiltInHelpWindow.Show(this, "Preview Guides", BuiltInHelpWindow.PreviewGuidesSections);
+	}
+
+	private void OverlaysHelp_Click(object sender, MouseButtonEventArgs e)
+	{
+		e.Handled = true;
+		BuiltInHelpWindow.Show(this, "Overlays", BuiltInHelpWindow.OverlaysSections);
+	}
+
+	private void ObsCaptureHelp_Click(object sender, MouseButtonEventArgs e)
+	{
+		e.Handled = true;
+		BuiltInHelpWindow.Show(this, "OBS and Capture", BuiltInHelpWindow.ObsCaptureSections);
+	}
+
+	private void VrQuadHelp_Click(object sender, MouseButtonEventArgs e)
+	{
+		e.Handled = true;
+		BuiltInHelpWindow.Show(this, "VR Quad", BuiltInHelpWindow.VrQuadSections);
+	}
+
 	private void ObsHelp_Click(object sender, MouseButtonEventArgs e)
 	{
 		e.Handled = true;
@@ -3037,6 +3167,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		SaveCommonOverlaySettings("notifications");
 		var c = CultureInfo.InvariantCulture;
 		WritePrivateProfileString("Settings", NotifyDurationKey, NotifyDurationSlider.Value.ToString("0", c), ConfigPath);
+		WritePrivateProfileString("Settings", NotifyResolutionKey, NotifyResolutionSlider.Value.ToString("0.##", c), ConfigPath);
 		WritePrivateProfileString("Settings", NotifyMaxKey, Math.Round(NotifyMaxSlider.Value).ToString("0", c), ConfigPath);
 		WritePrivateProfileString("Settings", NotifyPrivacyKey, Math.Max(0, NotifyPrivacyCombo.SelectedIndex).ToString("0", c), ConfigPath);
 		WritePrivateProfileString("Settings", NotifyThemeKey, Math.Max(0, NotifyThemeCombo.SelectedIndex).ToString("0", c), ConfigPath);
@@ -3495,15 +3626,20 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			MessageBox.Show(this, "Enter render values from 0.00 to 1.00. Total and horizontal must be at least 0.01.", "ViewLab", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 			return;
 		}
+		// Top and Bottom are whole-screen shares that SUM to the total, which is exactly what the layer
+		// does: dllmain.cpp computes `totalTangent = topTangent + bottomTangent` in split mode and
+		// `topTangent = totalTangent * 0.5` outside it. Both branches here used to disagree with that —
+		// split-on stored the average instead of the sum, and split-off stored the whole total in each
+		// half — so every split toggle re-halved the crop (0.038 total became 0.019, then 0.01).
 		if (valueOrDefault)
 		{
-			value = Math.Clamp((value2 + value3) * 0.5, 0.01, 1.0);
+			value = Math.Clamp(value2 + value3, 0.01, 1.0);
 		}
 		else
 		{
 			value = Math.Clamp(value, 0.01, 1.0);
-			value2 = value;
-			value3 = value;
+			value2 = value * 0.5;
+			value3 = value * 0.5;
 		}
 		value4 = Math.Clamp(value4, 0.01, 1.0);
 		bool valueOrDefault2 = _viewlabEnabled;

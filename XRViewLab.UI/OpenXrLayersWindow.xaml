@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="OpenXR API Layers" Height="640" Width="900" MinHeight="480" MinWidth="720"
         WindowStartupLocation="CenterOwner"
-        Background="#0E0F11" Foreground="#E8E8E8"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" Foreground="#E8E8E8"
         FontFamily="Segoe UI" FontSize="12">
 
   <Window.Resources>
@@ -67,7 +67,14 @@
     </Style>
   </Window.Resources>
 
-  <Grid Margin="12">
+  <Border Background="#0E0F11" BorderBrush="{StaticResource BorderBrush2}" BorderThickness="1" CornerRadius="6">
+  <DockPanel LastChildFill="True">
+    <!-- ViewLab-drawn titlebar: the default Windows chrome did not match the rest of the app. -->
+    <Grid DockPanel.Dock="Top" Height="42" Background="Transparent" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+      <TextBlock Text="OPENXR  API  LAYERS" FontSize="13" FontWeight="Bold" Foreground="#E8E8E8" VerticalAlignment="Center" Margin="16,0,0,0" />
+      <TextBlock Name="TitleClose" Text="X" FontSize="14" Foreground="{StaticResource MutedBrush}" Cursor="Hand" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="14,8,16,8" MouseLeftButtonDown="TitleClose_MouseLeftButtonDown" MouseEnter="TitleClose_MouseEnter" MouseLeave="TitleClose_MouseLeave" />
+    </Grid>
+  <Grid Margin="12,0,12,12">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
@@ -168,4 +175,6 @@
     <TextBlock Grid.Row="3" x:Name="StatusText" Foreground="{StaticResource MutedBrush}"
                Margin="0,10,0,0" TextWrapping="Wrap" />
   </Grid>
+  </DockPanel>
+  </Border>
 </Window>

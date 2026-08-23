@@ -254,7 +254,10 @@ Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'Forefront_Internal\.exe' 'Forefron
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'w < 280\.0' 'mini layout waits for a genuinely narrow client width'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'w >= 720\.0' 'two-column layout has enough client width'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'w >= 1200\.0' 'three-column layout has enough client width'
-Assert-Contains 'MainWindow.xaml' 'Checked apps use ViewLab\. Double-click for per-game customization\.' 'applications instruction is concise'
+# The caption was removed for a cleaner list; the double-click affordance it described is still
+# there, so pin the behaviour rather than the sentence.
+Assert-Contains 'MainWindow.xaml' 'MouseDoubleClick="AppsGrid_DoubleClick"' 'double-click still opens the per-app editor'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'void AppsGrid_DoubleClick' 'the per-app editor double-click handler exists'
 Assert-Contains 'MainWindow.xaml' 'Name="CombinedHint"[^>]*Visibility="Collapsed"' 'redundant combined render-height hint is removed'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'CaptureMouse\(\);' 'preview captures mouse after pin hit'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'ReleaseMouseCapture\(\);' 'preview releases mouse capture on mouse-up'
@@ -531,7 +534,13 @@ Assert-Contains 'dllmain.cpp' "g_notify->version == 3" 'native consumes notify c
 Assert-Contains 'XRViewLab.UI\NotificationCardLayout.cs' 'SlotW = \(int\)\(LogicalMaxW \* SupersampleCap\)' 'UI notify slot is the logical max scaled by the supersample cap'
 Assert-Contains 'XRViewLab.UI\NotificationCardLayout.cs' 'RasterFactor\(double displayScale\)' 'shared raster-density policy scales source pixels by displayed size and quality'
 Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'private const uint Version = 3' 'UI publishes notify contract version 3'
-Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'RasterDimensions\(w, h, s\.Scale\)' 'card is rasterised at supersampled dimensions from the physical scale'
+# Raster density is now a user setting (the notification Resolution slider) rather than a fixed
+# constant, so the call carries the per-profile quality alongside the physical scale.
+Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'RasterDimensions\(w, h, s\.Scale, s\.Resolution\)' 'card is rasterised from the physical scale and the chosen resolution'
+Assert-Contains 'XRViewLab.UI\NotificationCardLayout.cs' 'RasterFactor\(double displayScale, double quality\)' 'raster density accepts a user-chosen quality'
+Assert-Contains 'MainWindow.xaml' 'Name="NotifyResolutionSlider"' 'notifications expose a resolution control'
+Assert-Contains 'ProfileWindow.xaml' 'notifications:notify_resolution' 'per-app notifications expose a resolution control'
+Assert-Contains 'MainWindow.xaml' 'Name="GlobalOverlayScaleSlider"' 'overlays expose one global size control'
 # Minimal notification matches Clock Minimal: transparent, surfaceless, drop-shadow text.
 Assert-Contains 'XRViewLab.UI\NotificationService.cs' 'DrawShadowedText' 'notification Minimal uses Clock-Minimal-style drop-shadow text'
 Assert-NotContains 'XRViewLab.UI\NotificationService.cs' 'Minimal: narrow square-cornered' 'the old boxed Minimal card design is gone'
@@ -889,7 +898,17 @@ Assert-Contains 'XRViewLab.UI\ObsRecordingProvider.cs' 'GetRecordStatus' 'indica
 Assert-Contains 'XRViewLab.UI\ObsRecordingProvider.cs' 'Local\\\\XRViewLabObsRecordingState' 'OBS state uses a dedicated broker-to-native mapping'
 Assert-Contains 'dllmain.cpp' 'ObsRecordingActive' 'native renderer consumes OBS recording state'
 Assert-Contains 'dllmain.cpp' 'Capture exclusion is unclaimed' 'native source preserves capture-exclusion caveat'
-Assert-Contains 'MainWindow.xaml' 'Uses OBS WebSocket to detect when OBS is recording\.' 'OBS setup uses the approved concise description'
+# Submenu captions were replaced by ? help windows for a cleaner UI. This section already had its
+# own help badge, so pin that the explanation is still reachable rather than pinning the sentence.
+Assert-Contains 'MainWindow.xaml' 'MouseLeftButtonUp=\"ObsHelp_Click\"' 'OBS Recording Cue keeps its help badge'
+Assert-Contains 'XRViewLab.UI\BuiltInHelpWindow.cs' 'ObsRecordingSections' 'OBS Recording Cue help content exists'
+# Every submenu carries a ? badge now, each backed by beginner-facing help content.
+Assert-Contains 'XRViewLab.UI\BuiltInHelpWindow.cs' 'EdgeMaskSections' 'Edge Masks help content exists'
+Assert-Contains 'XRViewLab.UI\BuiltInHelpWindow.cs' 'CalibrationSections' 'Calibration help content exists'
+Assert-Contains 'XRViewLab.UI\BuiltInHelpWindow.cs' 'PreviewGuidesSections' 'Preview Guides help content exists'
+Assert-Contains 'XRViewLab.UI\BuiltInHelpWindow.cs' 'OverlaysSections' 'Overlays help content exists'
+Assert-Contains 'XRViewLab.UI\BuiltInHelpWindow.cs' 'ObsCaptureSections' 'OBS and Capture help content exists'
+Assert-Contains 'XRViewLab.UI\BuiltInHelpWindow.cs' 'VrQuadSections' 'VR Quad help content exists'
 Assert-Contains 'MainWindow.xaml' 'Text="Host / IP"[\s\S]*Text="Port"[\s\S]*Text="Password"' 'OBS setup labels supported endpoint fields clearly'
 Assert-Contains 'MainWindow.xaml' 'MouseLeftButtonUp="ObsHelp_Click"' 'OBS setup exposes built-in help'
 Assert-NotContains 'MainWindow.xaml' 'Capture exclusion is unverified' 'obsolete OBS capture-exclusion warning is removed from the setup panel'
