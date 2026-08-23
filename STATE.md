@@ -4,9 +4,11 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-23
-**Current version:** 4.1.338 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.338.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
+**Current version:** 4.1.339 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.339.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
 
-**2026-08-24 — 4.1.338 App button layout, 3-column pixel alignment & preview centering.** App action buttons (Reload apps, Add app, Reset profile, Show hidden) use a 2x2 grid layout with identical `Padding="10,4"` and `Margin="0,0,0,6"` matching the top toolbar buttons (`Edge Masks`, etc.) in height and style. In 3-column layout, `AppsGridRow` (205px) and `MaskBeanEditor` (185px) are tuned so Column 0 (`LeftColumnPanel`), Column 1 (`SidePanel`), and Column 2 (`RightColumnPanel`) all measure exactly **303px** down to the single pixel. Increased canvas inset in `FitArea` to 6px so the full Quest 3 binocular reference, crop rect, visor mask, and drag handles are cleanly framed and vertically centered by default and on right-click reset. Contracts and full MSI build pass. **Pending live validation:** these UI fixes.
+**2026-08-24 — 4.1.339 App button layout & unclipped centered preview.** Restored app-list action button shape and padding (`Padding="10,4"`, `MinWidth="112"`). Increased geometry inset to 12px in `Quest3PreviewGeometry` so the full Quest 3 binocular oval, top label, and red visor mask outline fit completely inside the canvas with equal top/bottom breathing room and zero clipping. Column 1 (`LeftColumnPanel`), Column 2 (`SidePanel`), and Column 3 (`RightColumnPanel`) sit 100% flat at the exact same bottom line (303px). Contracts and full MSI build pass. **Pending live validation:** these UI fixes.
+
+**2026-08-24 — 4.1.338 App button layout, 3-column pixel alignment & preview centering.**
 
 **2026-08-24 — 4.1.337 UI layout alignment & enabled text color.**
 

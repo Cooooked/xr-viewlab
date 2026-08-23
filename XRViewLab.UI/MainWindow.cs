@@ -988,7 +988,7 @@ public partial class MainWindow : Window
 			ThanksText.Visibility          = threeCol ? Visibility.Collapsed : Visibility.Visible;
 			ThanksTextRight.Visibility     = threeCol ? Visibility.Visible : Visibility.Collapsed;
 
-			AppsGridRow.Height = new GridLength(threeCol ? 205.0 : (twoCol ? 260.0 : 180.0));
+			AppsGridRow.Height = new GridLength(threeCol ? 203.0 : (twoCol ? 260.0 : 180.0));
 			if (MaskBeanEditor != null)
 			{
 				MaskBeanEditor.Height = threeCol ? 185.0 : double.NaN;

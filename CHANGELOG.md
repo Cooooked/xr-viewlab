@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.1.339 - 2026-08-24 (App button layout & unclipped centered preview)
+
+- **Restored app-list action button shape and padding:** `Reload apps`, `Add app`, `Reset profile`, and `Show hidden` are restored to the exact same style, shape, and `Padding="10,4"` as `Edge Masks` and the toolbar buttons.
+- **Unclipped and centered preview:** Increased geometry inset to 12px in `Quest3PreviewGeometry` so the full Quest 3 binocular oval, top label, and red visor mask outline fit completely inside the canvas with equal top/bottom breathing room and zero clipping.
+- **Matched 3-column heights:** Column 1 (`RenderCard`), Column 2 (`AppsCard`), and Column 3 (`OptionsCard`) sit 100% flat at the exact same bottom line.
+
 ## 4.1.338 - 2026-08-24 (App button layout, 3-column pixel alignment & preview centering)
 
 - **Restored app-list action button sizing:** Reload apps, Add app, Reset profile, and Show hidden now use 2x2 grid layout with identical `Padding="10,4"` and `Margin="0,0,0,6"` matching the top toolbar buttons (`Edge Masks`, etc.) in height and style.

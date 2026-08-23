@@ -34,7 +34,7 @@ internal static class Quest3PreviewGeometry
         return new Size(width, width / CanvasAspect);
     }
 
-    internal static Rect FitArea(Size available, double inset = 6.0)
+    internal static Rect FitArea(Size available, double inset = 12.0)
     {
         double width = Math.Max(0.0, available.Width - inset * 2.0);
         double height = Math.Max(0.0, available.Height - inset * 2.0);
@@ -49,7 +49,7 @@ internal static class Quest3PreviewGeometry
     // it every element drawn in area coordinates: frames, crop, visor, guides, crosshair,
     // widgets and edge cues) is moved so the area centre sits at the requested
     // fraction of the viewport height. Translate only: size and internal layout never change.
-    internal static Rect FitAreaAtCentre(Size available, double viewportCentreY, double inset = 6.0)
+    internal static Rect FitAreaAtCentre(Size available, double viewportCentreY, double inset = 12.0)
     {
         Rect area = FitArea(available, inset);
         if (area.IsEmpty) return area;
