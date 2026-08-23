@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.340 - 2026-08-24 (1x4 app buttons & exact pixel card alignment)
+
+- **Formatted app actions in a single 1x4 horizontal row:** `Reload apps`, `Add app`, `Reset profile`, and `Show hidden` sit on one equal 4-column row (`Padding="4,4"`, `MinWidth="0"`) without wrapping or hanging buttons.
+- **Exact pixel-matched card heights:**
+  - Added 43px to `AppsGridRow` (246px) so `AppsCard` (Column 2) aligns 100% flat with `RenderCard` (Column 1).
+  - Added 52px to `MaskBeanEditor` (237px) so `OptionsCard` (Column 3) aligns 100% flat with Column 1 and Column 2, giving the Quest 3 preview canvas 52px extra vertical headroom to display unclipped and centered.
+
 ## 4.1.339 - 2026-08-24 (App button layout & unclipped centered preview)
 
 - **Restored app-list action button shape and padding:** `Reload apps`, `Add app`, `Reset profile`, and `Show hidden` are restored to the exact same style, shape, and `Padding="10,4"` as `Edge Masks` and the toolbar buttons.

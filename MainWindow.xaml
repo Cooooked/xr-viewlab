@@ -1155,12 +1155,21 @@
                     </DataGrid>
                     <TextBlock Name="AppsEmptyText" Text="No apps detected yet.&#x0a;Launch a VR game, reload apps, or add the game exe." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
                   </Grid>
-                  <WrapPanel Grid.Row="4">
-                    <Button Content="Reload apps" Style="{StaticResource RedButton}" Margin="0,0,8,6" Click="ReloadApps_Click" />
-                    <Button Content="Add app" Style="{StaticResource RedButton}" Margin="0,0,8,6" Click="AddApp_Click" />
-                    <Button Content="Reset profile" Style="{StaticResource RedButton}" Margin="0,0,8,6" Click="ResetApp_Click" />
-                    <ToggleButton Name="ShowHiddenAppsCheck" Content="Show hidden" Style="{StaticResource RedToggleButton}" Margin="0,0,8,6" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" ToolTip="Show applications you have hidden from this list." />
-                  </WrapPanel>
+                  <Grid Grid.Row="4">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="6" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="6" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="6" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" Content="Reload apps" Style="{StaticResource RedButton}" MinWidth="0" Padding="4,4" Click="ReloadApps_Click" />
+                    <Button Grid.Column="2" Content="Add app" Style="{StaticResource RedButton}" MinWidth="0" Padding="4,4" Click="AddApp_Click" />
+                    <Button Grid.Column="4" Content="Reset profile" Style="{StaticResource RedButton}" MinWidth="0" Padding="4,4" Click="ResetApp_Click" />
+                    <ToggleButton Name="ShowHiddenAppsCheck" Grid.Column="6" Content="Show hidden" Style="{StaticResource RedToggleButton}" MinWidth="0" Padding="4,4" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" ToolTip="Show applications you have hidden from this list." />
+                  </Grid>
                 </Grid>
               </Border>
               <TextBlock Name="ReShadeOpenXRHeader" Text="ReShade Remote" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />

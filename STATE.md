@@ -4,9 +4,11 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-23
-**Current version:** 4.1.339 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.339.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
+**Current version:** 4.1.340 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.340.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
 
-**2026-08-24 — 4.1.339 App button layout & unclipped centered preview.** Restored app-list action button shape and padding (`Padding="10,4"`, `MinWidth="112"`). Increased geometry inset to 12px in `Quest3PreviewGeometry` so the full Quest 3 binocular oval, top label, and red visor mask outline fit completely inside the canvas with equal top/bottom breathing room and zero clipping. Column 1 (`LeftColumnPanel`), Column 2 (`SidePanel`), and Column 3 (`RightColumnPanel`) sit 100% flat at the exact same bottom line (303px). Contracts and full MSI build pass. **Pending live validation:** these UI fixes.
+**2026-08-24 — 4.1.340 1x4 app buttons & exact pixel card alignment.** Formatted app actions in a single 1x4 horizontal row (`Reload apps`, `Add app`, `Reset profile`, `Show hidden`) with equal `*` column widths and skinny `Padding="4,4"`. Added 43px to `AppsGridRow` (246px) and 52px to `MaskBeanEditor` (237px) so Column 2 and Column 3 align 100% flat with Column 1 (`RenderCard`) down to the exact pixel. Contracts and full MSI build pass. **Pending live validation:** these UI fixes.
+
+**2026-08-24 — 4.1.339 App button layout & unclipped centered preview.**
 
 **2026-08-24 — 4.1.338 App button layout, 3-column pixel alignment & preview centering.**
 
