@@ -154,9 +154,26 @@ inline HudRowLayout SingleRowHudLayout(size_t count, float radius, float unit, f
 
 struct NotificationAnimation { float alpha = 0.f; float slide = 1.f; };
 
+// durationMs is a FAILSAFE, not the normal close path. The broker owns leaveTick and sets it when a
+// card's display duration expires; everything below only matters when that never arrives — the
+// broker was killed mid-session (an MSI upgrade does exactly that), stalled, or the write was
+// missed. Without it the card sits at full alpha forever and the only way to clear it is to end the
+// VR session, which is the "notification stuck in the headset" report.
+//
+// The grace period means the layer never competes with a healthy broker: normal cards still close on
+// the broker's own timing, and this only fires once the card has outlived its duration by a clear
+// margin. Passing 0 disables the failsafe and preserves the original broker-only behaviour.
 inline NotificationAnimation EvaluateNotificationAnimation(uint32_t now, uint32_t enterTick,
-    uint32_t leaveTick, uint32_t riseMs = 250, uint32_t leaveMs = 400) {
+    uint32_t leaveTick, uint32_t riseMs = 250, uint32_t leaveMs = 400, uint32_t durationMs = 0,
+    uint32_t graceMs = 1000) {
     NotificationAnimation result{1.f, 0.f};
+    if (leaveTick == 0 && durationMs != 0) {
+        // Unsigned arithmetic, so this stays correct across the 49.7-day GetTickCount64 low-word
+        // wrap. A zero or garbage enterTick yields a huge elapsed and expires at once, which is the
+        // safe direction: a card that closes early beats a card that can never be dismissed.
+        const uint32_t expireAfter = durationMs + graceMs;
+        if (now - enterTick >= expireAfter) leaveTick = enterTick + expireAfter;
+    }
     if (leaveTick != 0) {
         const float p = leaveMs == 0 ? 1.f : std::clamp(static_cast<float>(now - leaveTick) / static_cast<float>(leaveMs), 0.f, 1.f);
         result.alpha = 1.f - p; result.slide = p; return result;

@@ -1,5 +1,21 @@
 # Changelog
 
+## 4.1.329 - 2026-08-23 (notification failsafe, live overlay dragging)
+
+- **Notifications can no longer get stuck in the headset.** A card was only ever retired when the
+  notification broker stamped its leave timestamp. If that never arrived — the broker was killed
+  mid-session, stalled, or the write was missed — the card sat at full opacity until the VR session
+  ended. The configured **Display duration** is now also a hard failsafe in the layer: once a card
+  outlives it by a short grace margin, the layer fades it out itself. A healthy broker still owns
+  normal timing, so nothing closes earlier than before.
+- **Dragging an overlay in the per-app visor preview now applies live.** The per-app editor never
+  published to live state at all, and the layer additionally discarded live updates for any overlay
+  the running app's profile customised, because profile overrides are read once at session start.
+  Per-app placements are now published as authoritative and applied immediately, in the headset and
+  in ViewLab Media Capture. Global and per-app dragging both work live, whether or not the game uses
+  a profile.
+- Live-state contract v13 -> v14 (336 bytes).
+
 ## 4.1.325 - 2026-08-23 (VLMC overlay capture, OBS menu, spotter restore)
 
 - **ViewLab Media Capture now shows the overlay layers.** ReShade's in-HMD menu, OpenKneeboard

@@ -838,6 +838,11 @@ public partial class ProfileWindow : Window
 		_syncingControls = false;
 	}
 
+	// Raised on every preview drag so the owner can push the placement into live state. Per-app
+	// overlay values are otherwise registry-only and the layer reads them once per session, which
+	// is why dragging here used to need a game restart to show up.
+	internal Action<string, double, double, double>? OverlayLivePreview;
+
 	private void MaskBeanEditor_OverlayPreviewChanged(object? sender, OverlayPreviewChangedEventArgs e)
 	{
 		int index = _globalOverlayPreviews.FindIndex(item => item.Id == e.Id);
@@ -865,6 +870,8 @@ public partial class ProfileWindow : Window
 			else { note.Scale = e.Scale; _overlayOverrides.Set("sticky", prefix + "scale", e.Scale.ToString("0.###", CultureInfo.InvariantCulture)); }
 		}
 		ApplyOverlayPreviewState();
+		if (_overlayPlacements.TryGetValue(e.Id, out OverlayPlacementOverride placed))
+			OverlayLivePreview?.Invoke(e.Id, placed.X, placed.Y, placed.Scale);
 	}
 
 	private void Cancel_Click(object sender, RoutedEventArgs e)

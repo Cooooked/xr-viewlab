@@ -10,7 +10,7 @@ namespace XRViewLab.UI;
 internal sealed class LiveStateService : IDisposable
 {
     private const string Name = "Local\\XRViewLabLiveState";
-    private const int Size = 332;
+    private const int Size = 336;
     private const uint Magic = 0x534C4C56; // VLLS
     private MemoryMappedFile? _map;
     private MemoryMappedViewAccessor? _view;
@@ -20,7 +20,7 @@ internal sealed class LiveStateService : IDisposable
     {
         _map = MemoryMappedFile.CreateOrOpen(Name, Size, MemoryMappedFileAccess.ReadWrite);
         _view = _map.CreateViewAccessor(0, Size, MemoryMappedFileAccess.ReadWrite);
-        _view.Write(0, Magic); _view.Write(4, 13u); _view.Write(8, (uint)Size);
+        _view.Write(0, Magic); _view.Write(4, 14u); _view.Write(8, (uint)Size);
     }
 
     public void Publish(uint calibrationMask,
@@ -38,6 +38,7 @@ internal sealed class LiveStateService : IDisposable
         double notifyScale, double notifyOpacity, double notifyDurationMs, uint notifyMaxVisible, uint notifyPrivacy,
         bool iracingEnabled, bool iracingLapPopup, bool iracingSpotterGlow, bool iracingFlagBorder,
         bool iracingRaceStart, bool iracingRearClosing, bool iracingGripBar,
+        uint liveAuthoritativeMask,
         double irSpotterWidth, double irSpotterStrength, double irSpotterOpacity, double irSpotterFade, double irSpotterFadeInMs, double irSpotterFadeOutMs, uint irSpotterColor,
         double irFlagWidth, double irFlagOpacity,
         double irRaceStartRedOpacity, double irRaceStartGreenOpacity, double irRaceStartGreenMs, double irRaceStartThickness,
@@ -92,6 +93,7 @@ internal sealed class LiveStateService : IDisposable
         _view.Write(308, (float)irRaceStartGreenMs); _view.Write(312, (float)irRaceStartThickness);
         _view.Write(316, (float)irRearClosingOpacity); _view.Write(320, (float)irGripBarOpacity);
         _view.Write(324, (float)irSpotterFadeInMs); _view.Write(328, (float)irSpotterFadeOutMs);
+        _view.Write(332, liveAuthoritativeMask);
         Thread.MemoryBarrier();
         _view.Write(12, unchecked(++_generation));
     }

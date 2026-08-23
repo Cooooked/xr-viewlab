@@ -462,12 +462,24 @@ foreach ($key in @('hud_trace_x', 'hud_trace_y', 'hud_trace_scale', 'hud_trace_w
 }
 Assert-Contains 'MainWindow.xaml' 'Name="HudSafeMarginSlider"' 'HUD safe-margin control exists'
 Assert-Contains 'dllmain.cpp' 'hudClampToVisible' 'HUD clamps complete bounds to the visible eye rectangle'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 332' 'live state carries iRacing cue tuning, timing controls, OBS mirror controls and the visor colour'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 13u\)' 'live state contract is version 13'
-Assert-Contains 'dllmain.cpp' 'snapshot\.version != 13' 'DLL consumes live-state contract version 13'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 336' 'live state carries iRacing cue tuning, timing controls, OBS mirror controls and the visor colour'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 14u\)' 'live state contract is version 14'
+Assert-Contains 'dllmain.cpp' 'snapshot\.version != 14' 'DLL consumes live-state contract version 14'
 # Item 21: versioned visor colour field (0x00RRGGBB); default 0 = black.
 Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(268, visorColor & 0xFFFFFFu\)' 'live state publishes the visor colour'
-Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(LiveStateBlock\)==332' 'native live-state struct grew to the v13 size'
+Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(LiveStateBlock\)==336' 'native live-state struct grew to the v14 size'
+# v14: per-app profile overrides are read once at xrCreateSession, so the layer used to discard every
+# live update for a feature the running profile customised — dragging in the per-app editor's preview
+# only showed up after a game restart. The publisher now marks such values authoritative.
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(332, liveAuthoritativeMask\)' 'live state publishes the authoritative-overlay mask'
+Assert-Contains 'dllmain.cpp' 'uint32_t liveAuthoritativeMask;' 'native live-state struct carries the authoritative-overlay mask'
+Assert-Contains 'dllmain.cpp' 'g_liveAuthoritativeMask = stable.liveAuthoritativeMask;' 'native latches the authoritative-overlay mask each generation'
+Assert-Contains 'dllmain.cpp' 'return \(profileOverlayOverrideMask & bit\) == 0 \|\| \(g_liveAuthoritativeMask & bit\) != 0;' 'a profile override yields only to an authoritative live publish'
+# Only the LIVE-consume gates move to liveOwns (the '==0' form). The '!=0' form in session setup
+# applies the profile's own values and must keep reading the mask directly.
+Assert-NotContains 'dllmain.cpp' 'profileOverlayOverrideMask&\(1u<<\(uint32_t\)OverlayFeatureId::\w+\)\)==0' 'every live overlay gate goes through the shared liveOwns helper'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'OverlayLivePreview\?\.Invoke' 'the per-app editor reports preview drags for live publishing'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'profileWindow.OverlayLivePreview = PublishProfileOverlayLive;' 'the per-app editor is wired to the live publisher'
 # Item 19 follow-up: every iRacing cue control applies live, not only at session restart. The v12 tail
 # carries the numeric tuning and iracingFlags gains bit4 race start, bit5 rear closing, bit6 Grip-O-Bar.
 Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'iracingRaceStart \? 16u' 'live state publishes the race-start enable bit'

@@ -206,10 +206,10 @@ foreach ($contract in @(
     @{ Text=$preview; Pattern='SetCropVertical\(double top, double bottom\)'; Name='split crop preview state' },
     @{ Text=$geometry; Pattern='0\.5 \* \(1\.0 - topScale\)'; Name='top split control maps to the top half' },
     @{ Text=$geometry; Pattern='0\.5 \+ 0\.5 \* bottomScale'; Name='bottom split control maps to the bottom half' },
-    @{ Text=$main; Pattern='"iRACING TELEMETRY"[\s\S]*OverlayPreviewAnchor\.RenderEdge'; Name='iRacing preview uses the post-crop render boundary' },
+    # The iRacing and OBS visor-preview borders were deliberately removed in 4.1.316, so the two
+    # contracts pinning their preview anchors were retired with them. The RenderEdge machinery
+    # itself is still live and still guarded by the geometry contract below.
     @{ Text=$preview; Pattern='Anchor==OverlayPreviewAnchor\.RenderEdge[\s\S]*PreviewCropRect\(area\)'; Name='render-edge preview geometry follows current crop' },
-    @{ Text=$main; Pattern='"OBS RECORDING CUE"[\s\S]*OverlayPreviewAnchor\.RecordingRenderEdge'; Name='main OBS cue preview uses its post-crop anchor' },
-    @{ Text=$profile; Pattern='"OBS RECORDING CUE"[\s\S]*OverlayPreviewAnchor\.RecordingRenderEdge'; Name='profile OBS cue preview uses its post-crop anchor' },
     @{ Text=$preview; Pattern='Anchor==OverlayPreviewAnchor\.RecordingRenderEdge[\s\S]*OverlayPreviewGeometry\(item,crop'; Name='OBS cue border uses exact crop bounds' },
     @{ Text=$preview; Pattern='RecordingRenderEdge[\s\S]*rect\.Bottom-15/_viewZoom'; Name='OBS cue label is bottom-left' },
     # R55: Top/Bottom are whole-screen shares shown 1:1 with the stored value (0.15 vertical = 0.075 +
@@ -223,7 +223,8 @@ foreach ($contract in @(
     # the whole total in each made 0.153 vertical read back as 0.15/0.15 and would have doubled the crop
     # the moment split was ticked. Pinned on both the derive-on-load and the keep-in-sync paths.
     @{ Text=$main; Pattern='double num = value \* 0\.5;'; Name='split-off keeps Top/Bottom at half the total' },
-    @{ Text=$main; Pattern='TopBox\.Text = FormatScale\(value2\s*?
+    @{ Text=$main; Pattern='TopBox\.Text = FormatScale\(value2\s*
+?
 \s*\? Math\.Clamp\(ReadScaleSetting\("top_tangent"'; Name='split-off derives Top from the total instead of reading a stale stored share' },
     @{ Text=$profile; Pattern='SetCropVertical\(previewTop \* 2\.0, previewBottom \* 2\.0\)'; Name='profile preview keeps its half-relative input so the drawn crop is unchanged' },
     @{ Text=$native; Pattern='originalRightTan - \(originalRightTan - originalLeftTan\) \* horizontalScale'; Name='exact left outer crop' },

@@ -104,6 +104,23 @@ int main() {
     auto leave = EvaluateNotificationAnimation(2200, 1000, 2000);
     Check(leave.alpha > 0.49f && leave.alpha < 0.51f, "notification exit is independent of broker polling cadence");
 
+    // Failsafe close. A card whose leaveTick never arrives (broker killed, stalled, or the write
+    // missed) used to stay at full alpha forever — the "notification stuck in the headset" report.
+    auto stuckForever = EvaluateNotificationAnimation(999999, 1000, 0, 250, 400, 0);
+    Check(stuckForever.alpha == 1.f, "with the failsafe disabled a card without leaveTick never closes");
+    auto withinDuration = EvaluateNotificationAnimation(3000, 1000, 0, 250, 400, 3000);
+    Check(withinDuration.alpha == 1.f, "a card inside its display duration is untouched by the failsafe");
+    auto insideGrace = EvaluateNotificationAnimation(4500, 1000, 0, 250, 400, 3000);
+    Check(insideGrace.alpha == 1.f, "the grace period leaves a healthy broker's own close unchallenged");
+    auto forcedMidFade = EvaluateNotificationAnimation(5200, 1000, 0, 250, 400, 3000);
+    Check(forcedMidFade.alpha > 0.49f && forcedMidFade.alpha < 0.51f,
+        "past duration plus grace the card fades out rather than popping");
+    auto forcedGone = EvaluateNotificationAnimation(999999, 1000, 0, 250, 400, 3000);
+    Check(forcedGone.alpha == 0.f && forcedGone.slide == 1.f, "the failsafe always reaches fully closed");
+    // A zero/garbage enterTick must expire immediately, never survive as a permanent card.
+    auto garbageEnter = EvaluateNotificationAnimation(500000, 0, 0, 250, 400, 3000);
+    Check(garbageEnter.alpha == 0.f, "a card with no usable enterTick closes instead of sticking");
+
     Check(!LatchTopmostDemand(false, false), "single projection retains direct backend");
     Check(LatchTopmostDemand(false, true), "distinct application layer demands Topmost");
     Check(LatchTopmostDemand(true, false), "Topmost demand remains latched for the session");
@@ -175,7 +192,10 @@ int main() {
     using namespace viewlab::racing;
     const float vw = 2000.f;
     Check(SpotterWidthPx(0.20, vw) > SpotterWidthPx(0.10, vw), "spotter: increasing width widens the glow");
-    Check(SpotterWidthPx(1.0, vw) <= vw * 0.35f + 0.01f, "spotter: width is clamped to a safe maximum");
+    // 0.70 is the shipped ceiling: it matches IRacingSpotterWidthSlider's Maximum and the clamp the
+    // layer applies in both LoadConfig and ConsumeLiveState. Raised from 0.35 when the slider range
+    // was widened; keep all four in step or the top of the slider silently stops doing anything.
+    Check(SpotterWidthPx(1.0, vw) <= vw * 0.70f + 0.01f, "spotter: width is clamped to a safe maximum");
     Check(SpotterBase(0.9, 1.0) > SpotterBase(0.4, 1.0), "spotter: increasing opacity raises base intensity");
     Check(SpotterBase(0.6, 1.5) > SpotterBase(0.6, 1.0), "spotter: increasing strength raises base intensity");
     const float inwardInner = 0.5f / kSpotterBands; // brightest band for the left edge (near outer edge)

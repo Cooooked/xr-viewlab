@@ -205,6 +205,12 @@ public partial class MainWindow : Window
 
 	private bool _syncingControls;
 	private bool _applyingOverlayPreviewEdit;
+	// Live values pushed by the per-app profile editor while its preview is being dragged, plus the
+	// OverlayFeatureId bits telling the layer to honour them over the app's own profile overrides.
+	// Without this the layer discards live updates for any feature the running profile customises,
+	// because it only reads profile overrides once at session creation.
+	private readonly Dictionary<string,(double X,double Y,double Scale)> _liveProfileOverlay = new();
+	private uint _liveAuthoritativeMask;
 
 	private bool _optionsInRightPanel;
 
@@ -2621,6 +2627,31 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		SaveCommonOverlaySettings(id); PublishLiveState(); StatusText.Text = $"{id} position reset.";
 	}
 
+	// Must match OverlayFeatureId in dllmain.cpp: Hud=0, Trace=1, Clock=2, StickyNote=3,
+	// Crosshair=4, Notifications=5.
+	private static uint OverlayFeatureBit(string id) => id switch
+	{
+		"hud" => 1u << 0, "trace" => 1u << 1, "clock" => 1u << 2,
+		"sticky" => 1u << 3, "crosshair" => 1u << 4, "notifications" => 1u << 5,
+		_ => 0u,
+	};
+
+	// Called by ProfileWindow as its preview is dragged, so a per-app placement shows in the
+	// headset and in ViewLab Media Capture immediately instead of at the next game restart.
+	internal void PublishProfileOverlayLive(string id, double x, double y, double scale)
+	{
+		uint bit = OverlayFeatureBit(id);
+		if (bit == 0) return;
+		_liveProfileOverlay[id] = (x, y, scale);
+		_liveAuthoritativeMask |= bit;
+		PublishLiveState();
+	}
+
+	// The per-app editor's value for this overlay when it has published one, otherwise the global
+	// slider value.
+	private (double X, double Y, double Scale) LiveOverlay(string id, double x, double y, double scale) =>
+		_liveProfileOverlay.TryGetValue(id, out var v) ? v : (x, y, scale);
+
 	private void PublishLiveState()
 	{
 		uint mask = 0;
@@ -2635,13 +2666,17 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		uint graphChannels=0; for(int i=0;i<graphChecks.Length;++i)if(graphChecks[i].IsChecked==true)graphChannels|=1u<<i;
 		HudWidgetOption sysWidget = _hudWidgets.First(widget => widget.Id == "sys");
 		_telemetryConfig.Publish(_hudWidgets, _hudWidgets.Count, sysWidget.Warning, sysWidget.Critical);
+		var ovHud = LiveOverlay("hud", HudXSlider.Value, HudYSlider.Value, HudScaleSlider.Value);
+		var ovTrace = LiveOverlay("trace", HudTraceXSlider.Value, HudTraceYSlider.Value, HudTraceScaleSlider.Value);
+		var ovNotify = LiveOverlay("notifications", NotifyXSlider.Value, NotifyYSlider.Value, NotifyScaleSlider.Value);
+		var ovClock = LiveOverlay("clock", ClockWidgetXSlider.Value, ClockWidgetYSlider.Value, ClockWidgetScaleSlider.Value);
 		_liveState.Publish(mask,
 			MaskEnabledCheck.IsChecked == true, !ReadBoolSetting(OverlayForceDirectKey, false), MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
 			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, FixedInnerBridgeWidth,
 			FixedInnerBridgeRise, FixedInnerBridgePeakX, FixedInnerBridgeSteepness, MaskNoseSpreadXSlider.Value,
-			HudEnabledCheck.IsChecked == true, Math.Max(0, HudTraceVisibilityCombo.SelectedIndex), HudXSlider.Value, HudYSlider.Value, HudScaleSlider.Value,
+			HudEnabledCheck.IsChecked == true, Math.Max(0, HudTraceVisibilityCombo.SelectedIndex), ovHud.X, ovHud.Y, ovHud.Scale,
 			HudSafeMarginSlider.Value, true /* clamp-to-visible is an always-on default (no user control) */, HudAlarmOnlyCheck.IsChecked == true,
-			HudTraceSensitivitySlider.Value, HudTraceXSlider.Value, HudTraceYSlider.Value, HudTraceScaleSlider.Value,
+			HudTraceSensitivitySlider.Value, ovTrace.X, ovTrace.Y, ovTrace.Scale,
 			HudTraceWidthSlider.Value, HudTraceHistorySlider.Value, ReadRangeSetting(HudAlarmHoldKey, 1500.0, 0.0, 10000.0),
 			widgetMask, widgetOrder, graphChannels, (uint)Math.Max(0,HudGraphModeCombo.SelectedIndex),
 			_boundaryDragActive,
@@ -2649,17 +2684,18 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			_crosshair.Size, _crosshair.Gap, _crosshair.Thickness, _crosshair.OutlineThickness, _crosshair.Alpha, _crosshair.VrScale, _crosshair.ColorRgb,
 			CrosshairOffsetXSlider.Value, CrosshairOffsetYSlider.Value,
 			NotifyEnabledCheck.IsChecked == true, NotifyShowIconCheck.IsChecked == true, NotifyShowImageCheck.IsChecked == true,
-			NotifyXSlider.Value, NotifyYSlider.Value, NotifyScaleSlider.Value, NotifyOpacitySlider.Value, NotifyDurationSlider.Value,
+			ovNotify.X, ovNotify.Y, ovNotify.Scale, NotifyOpacitySlider.Value, NotifyDurationSlider.Value,
 			(uint)Math.Round(NotifyMaxSlider.Value), (uint)Math.Max(0, NotifyPrivacyCombo.SelectedIndex),
 			IRacingEnabledCheck.IsChecked == true, IRacingLapPopupCheck.IsChecked == true,
 			IRacingSpotterGlowCheck.IsChecked == true, IRacingFlagBorderCheck.IsChecked == true,
 			IRacingRaceStartCheck.IsChecked == true, IRacingRearClosingCheck.IsChecked == true, IRacingGripBarCheck.IsChecked == true,
+			_liveAuthoritativeMask,
 			IRacingSpotterWidthSlider.Value, IRacingSpotterStrengthSlider.Value, IRacingSpotterOpacitySlider.Value, IRacingSpotterFadeSlider.Value, IRacingSpotterFadeInSlider.Value, IRacingSpotterFadeOutSlider.Value, CurrentIRacingSpotterColor(),
 			IRacingFlagWidthSlider.Value, IRacingFlagOpacitySlider.Value,
 			IRacingRaceStartRedOpacitySlider.Value, IRacingRaceStartGreenOpacitySlider.Value, IRacingRaceStartGreenMsSlider.Value, IRacingRaceStartThicknessSlider.Value,
 			IRacingRearClosingOpacitySlider.Value, IRacingGripBarOpacitySlider.Value,
 			ClockWidgetEnabledCheck.IsChecked==true,ClockSessionTimerCheck.IsChecked==true,Clock24HourCheck.IsChecked==true,
-			ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,ClockWidgetScaleSlider.Value,ClockWidgetOpacitySlider.Value,(uint)Math.Max(0,ClockThemeCombo.SelectedIndex),(uint)Math.Max(0,ClockPaletteCombo.SelectedIndex),
+			ovClock.X,ovClock.Y,ovClock.Scale,ClockWidgetOpacitySlider.Value,(uint)Math.Max(0,ClockThemeCombo.SelectedIndex),(uint)Math.Max(0,ClockPaletteCombo.SelectedIndex),
 			new[]{OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudTraceToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(ClockWidgetToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(StickyNoteToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(CrosshairToggleKeyCombo.SelectedIndex),OverlaySettingsCatalog.VirtualKeyFromComboIndex(NotifyToggleKeyCombo.SelectedIndex)},
 			CurrentObsMirrorVisibilityMask(),
 			CurrentVisorMaskColor());
@@ -4076,6 +4112,9 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		{
 			Owner = this
 		};
+		// Live-preview per-app placements while the editor is open. The layer honours these over the
+		// app's own profile overrides only because they are published as authoritative.
+		profileWindow.OverlayLivePreview = PublishProfileOverlayLive;
 		if (profileWindow.ShowDialog() == true)
 		{
 			if (profileWindow.HiddenChanged)
