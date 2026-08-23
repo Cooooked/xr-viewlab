@@ -222,15 +222,31 @@ Copy-Item -Path $ObsPluginDll -Destination "$ObsPluginPublishDir\" -Force
 Copy-Item -Path (Join-Path $Root "ViewLabMirrorPlugin\LICENSE") -Destination (Join-Path $ObsPluginPublishDir "LICENSE.txt") -Force
 Copy-Item -Path (Join-Path $Root "ViewLabMirrorPlugin\README.md") -Destination "$ObsPluginPublishDir\" -Force
 
-Write-Host "Building ViewLab Stabilizer OBS filter (x64)..."
+Write-Host "Building ViewLab Enhancer OBS filter (x64)..."
+$EnhancerPluginProject = Join-Path $Root "ViewLabEnhancerFilter\ViewLabEnhancerFilter.vcxproj"
+$EnhancerPluginDll = Join-Path $Root "ViewLabEnhancerFilter\x64\$Configuration\viewlab-enhancer.dll"
+if (Test-Path $EnhancerPluginDll) { Remove-Item -Force $EnhancerPluginDll }
+Invoke-Native $MSBuild $EnhancerPluginProject /p:Configuration=$Configuration /p:Platform=x64 /m
+if (!(Test-Path $EnhancerPluginDll)) { throw "ViewLab Enhancer OBS filter was not produced at $EnhancerPluginDll" }
+Copy-Item -Path $EnhancerPluginDll -Destination "$ObsPluginPublishDir\" -Force
+Copy-Item -Path (Join-Path $Root "ViewLabEnhancerFilter\LICENSE") -Destination (Join-Path $ObsPluginPublishDir "LICENSE-enhancer.txt") -Force
+Copy-Item -Path (Join-Path $Root "ViewLabEnhancerFilter\README.md") -Destination (Join-Path $ObsPluginPublishDir "README-enhancer.md") -Force
+
+Write-Host "Building ViewLab Stabilizer OBS filter (LVK 1.2.2, x64)..."
 $StabPluginProject = Join-Path $Root "ViewLabStabilizerFilter\ViewLabStabilizerFilter.vcxproj"
 $StabPluginDll = Join-Path $Root "ViewLabStabilizerFilter\x64\$Configuration\viewlab-stabilizer.dll"
 if (Test-Path $StabPluginDll) { Remove-Item -Force $StabPluginDll }
 Invoke-Native $MSBuild $StabPluginProject /p:Configuration=$Configuration /p:Platform=x64 /m
 if (!(Test-Path $StabPluginDll)) { throw "ViewLab Stabilizer OBS filter was not produced at $StabPluginDll" }
 Copy-Item -Path $StabPluginDll -Destination "$ObsPluginPublishDir\" -Force
-Copy-Item -Path (Join-Path $Root "ViewLabStabilizerFilter\LICENSE") -Destination (Join-Path $ObsPluginPublishDir "LICENSE-stabilizer.txt") -Force
+Copy-Item -Path (Join-Path $Root "ViewLabStabilizerFilter\deps\opencv\bin\opencv_world470.dll") -Destination "$ObsPluginPublishDir\" -Force
+Copy-Item -Path (Join-Path $Root "ViewLabStabilizerFilter\LICENSE-LiveVisionKit.txt") -Destination (Join-Path $ObsPluginPublishDir "LICENSE-stabilizer.txt") -Force
 Copy-Item -Path (Join-Path $Root "ViewLabStabilizerFilter\README.md") -Destination (Join-Path $ObsPluginPublishDir "README-stabilizer.md") -Force
+$StabEffectPublishDir = Join-Path $ObsPluginPublishDir "data\obs-plugins\viewlab-stabilizer\effects"
+New-Item -ItemType Directory -Path $StabEffectPublishDir -Force | Out-Null
+foreach ($EffectName in @("fsr.effect", "ffx_a_mod.h", "ffx_fsr1_mod.h")) {
+    Copy-Item -Path (Join-Path $Root "ViewLabStabilizerFilter\upstream\LiveVisionKit\OBS\Data\effects\$EffectName") -Destination $StabEffectPublishDir -Force
+}
 
 Write-Host "Building OpenXR API layer (x64)..."
 $Dll64Expected = Join-Path $Root "x64\$Configuration\XR_APILAYER_cooooked_xrviewlab.dll"

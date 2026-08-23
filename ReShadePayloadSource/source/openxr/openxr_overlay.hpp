@@ -94,6 +94,34 @@ namespace reshade::openxr
 	static constexpr uint32_t XR_MODE_GAMEPLAY = 0;
 	static constexpr uint32_t XR_MODE_TUNING   = 1;
 
+	// ── Global hotkeys ──────────────────────────────────────────────────────
+	//
+	// ReShade's own shortcut handling cannot serve this payload. runtime.cpp
+	// only creates an input object when !_is_vr, and this build runs purely as
+	// an OpenXR implicit layer, so _input is null and every shortcut behind
+	// "if (_input != nullptr)" is unreachable — menu key included.
+	//
+	// RegisterHotKey is process-wide and delivered to the preview window's
+	// message loop, which does exist, so it works with the game focused and
+	// needs no add-on and no second injection surface.
+	enum class hotkey_action
+	{
+		toggle_effects,
+		next_preset,
+		previous_preset,
+		toggle_menu,
+		count
+	};
+
+	uint32_t hotkey_get(hotkey_action action);            // 0 = unbound
+	void     hotkey_set(hotkey_action action, uint32_t virtual_key);
+	bool     hotkey_consume(hotkey_action action);        // edge-triggered
+
+	// Whether the menu hotkey also shows/hides the desktop preview window, or
+	// only the in-HMD quad. ViewLab's own checkbox always drives both.
+	bool     menu_hotkey_includes_desktop();
+	void     set_menu_hotkey_includes_desktop(bool include);
+
 	void                 control_init();
 	void                 control_shutdown();
 	bool                 control_is_tuning();

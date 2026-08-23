@@ -65,3 +65,9 @@ Tests/NotificationFixture/package-build/
 # Preserve documentation
 !.gitignore
 !agents.md
+
+# Scratch copy of an abandoned capture experiment (reference only, see STATE.md)
+.capture-work-backup/
+# Vendored OpenCV + OBS headers for the Stabilizer; opencv_world470.lib is excluded by *.lib
+# above, so committing these would not make a clean clone buildable anyway.
+ViewLabStabilizerFilter/deps/

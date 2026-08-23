@@ -159,6 +159,16 @@ typedef bool (*fn_obs_data_get_bool)(obs_data_t *data, const char *name);
 typedef void (*fn_obs_data_set_default_bool)(obs_data_t *data, const char *name, bool val);
 typedef obs_property_t *(*fn_obs_properties_add_float_slider)(obs_properties_t *props,
     const char *name, const char *description, double min, double max, double step);
+/* Bind a texture to an effect parameter WITHOUT an sRGB decode, draw a sub-rectangle of a
+ * texture, and add a clickable button property. Needed for the ViewLab Media Capture source:
+ * colour correction, crop, and the Reinitialize button respectively. */
+typedef void (*fn_gs_effect_set_texture)(gs_eparam_t *param, gs_texture_t *val);
+typedef void (*fn_gs_draw_sprite_subregion)(gs_texture_t *tex, uint32_t flip, uint32_t x,
+    uint32_t y, uint32_t cx, uint32_t cy);
+typedef bool (*obs_property_clicked_t)(obs_properties_t *props, obs_property_t *property,
+    void *data);
+typedef obs_property_t *(*fn_obs_properties_add_button)(obs_properties_t *props,
+    const char *name, const char *text, obs_property_clicked_t callback);
 typedef obs_property_t *(*fn_obs_properties_add_bool)(obs_properties_t *props, const char *name,
     const char *description);
 

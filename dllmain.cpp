@@ -3,6 +3,10 @@
 #include "RenderPolicy.h"
 #include "RacingCueGeometry.h"
 #include "ProjectionTopology.h"
+#include <DirectXMath.h>
+// Declarations only — D3DCompile itself stays dynamically resolved (see InitD3D11MaskRenderer
+// and EnsureVlmcQuadFx); this is included for the D3DCOMPILE_* flag constants.
+#include <d3dcompiler.h>
 #include "ViewLabBridge/BridgeCore.h"
 #include "ClockWidget.h"
 #include "StickyNote.h"
@@ -332,6 +336,9 @@ double iracingRearClosingOpacity = 0.9;
 bool iracingGripBar = false;
 double iracingGripBarOpacity = 0.9;
 double iracingSpotterWidth = 0.12, iracingSpotterStrength = 1.0, iracingSpotterOpacity = 0.65, iracingSpotterFade = 1.8;
+// Optional presentation-only ramp for the spotter glow. Both default to 0 ms, which is an
+// instant on/off envelope — byte-identical to the behaviour before the sliders existed.
+double iracingSpotterFadeInMs = 0.0, iracingSpotterFadeOutMs = 0.0;
 double iracingFlagWidth = 0.018, iracingFlagOpacity = 0.60;
 uint32_t iracingSpotterColor = 0xFF4500;
 struct HudTrackedFrame {
@@ -716,10 +723,10 @@ struct LiveStateBlock {
     uint32_t irSpotterColor;  // 0x00RRGGBB
     float irFlagWidth, irFlagOpacity;
     float irRaceStartRedOpacity, irRaceStartGreenOpacity, irRaceStartGreenMs, irRaceStartThickness;
-    float irRearClosingOpacity, irGripBarOpacity;
+    float irRearClosingOpacity, irGripBarOpacity, irSpotterFadeInMs, irSpotterFadeOutMs;
 };
 #pragma pack(pop)
-static_assert(sizeof(LiveStateBlock)==324,"live state v12 contract size");
+static_assert(sizeof(LiveStateBlock)==332,"live state v13 contract size");
 constexpr uint32_t kLiveStateMagic = 0x534C4C56; // VLLS
 HANDLE g_liveStateMap = nullptr;
 const LiveStateBlock* g_liveState = nullptr;
@@ -821,12 +828,29 @@ struct RacingStateBlock {
 #pragma pack(pop)
 static_assert(sizeof(RacingStateBlock)==68,"Racing state contract size");
 HANDLE g_racingMap=nullptr; const RacingStateBlock* g_racing=nullptr; RacingStateBlock g_racingStable{}; uint32_t g_racingGeneration=0; uint64_t g_racingNextConnectTick=0;
+
+// Spotter fade envelope. Presentation only: it scales the drawn alpha and never affects which side
+// detection reports. g_spotterVisualState latches the last active side so the glow can fade OUT on
+// the correct edge after the provider has already cleared spotterState. With both timings at 0 the
+// envelope collapses to a hard 0/1 step, which is exactly the pre-slider behaviour.
+uint32_t g_spotterVisualState=0; bool g_spotterTargetActive=false; uint64_t g_spotterTransitionTick=0;
+float g_spotterTransitionStart=0.0f; float g_spotterEnvelope=0.0f;
+void UpdateSpotterEnvelope(){
+    const bool target=g_racingStable.spotterState!=0; const uint64_t now=GetTickCount64();
+    if(target) g_spotterVisualState=g_racingStable.spotterState;
+    if(target!=g_spotterTargetActive){g_spotterTargetActive=target;g_spotterTransitionTick=now;g_spotterTransitionStart=g_spotterEnvelope;}
+    const double duration=target?iracingSpotterFadeInMs:iracingSpotterFadeOutMs;
+    if(duration<=0.0){g_spotterEnvelope=target?1.0f:0.0f;return;}
+    const float progress=std::clamp((float)((double)(now-g_spotterTransitionTick)/duration),0.0f,1.0f);
+    g_spotterEnvelope=target?g_spotterTransitionStart+(1.0f-g_spotterTransitionStart)*progress
+                            :g_spotterTransitionStart*(1.0f-progress);
+}
 void ConsumeRacingState(){
     if(!g_racing){const uint64_t now=GetTickCount64();if(now<g_racingNextConnectTick)return;g_racingNextConnectTick=now+1000;g_racingMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabRacingState");if(g_racingMap)g_racing=(const RacingStateBlock*)MapViewOfFile(g_racingMap,FILE_MAP_READ,0,0,sizeof(RacingStateBlock));}
     if(!g_racing||g_racing->magic!=kRacingMagic||g_racing->version!=2||g_racing->size!=sizeof(RacingStateBlock)||g_racing->generation==g_racingGeneration)return;
     const RacingStateBlock snapshot=*g_racing;MemoryBarrier();if(snapshot.generation!=g_racing->generation)return;g_racingStable=snapshot;g_racingGeneration=snapshot.generation;
 }
-void DisconnectRacingState(){if(g_racing)UnmapViewOfFile(g_racing);if(g_racingMap)CloseHandle(g_racingMap);g_racing=nullptr;g_racingMap=nullptr;g_racingStable={};g_racingGeneration=0;g_racingNextConnectTick=0;}
+void DisconnectRacingState(){if(g_racing)UnmapViewOfFile(g_racing);if(g_racingMap)CloseHandle(g_racingMap);g_racing=nullptr;g_racingMap=nullptr;g_racingStable={};g_racingGeneration=0;g_racingNextConnectTick=0;g_spotterVisualState=0;g_spotterTargetActive=false;g_spotterTransitionTick=0;g_spotterTransitionStart=0.0f;g_spotterEnvelope=0.0f;}
 
 #pragma pack(push,4)
 struct StickyNoteLiveRecord { uint32_t enabled; float x,y,scale,opacity; uint32_t theme; wchar_t text[120]; };
@@ -850,7 +874,7 @@ void ConsumeLiveState() {
     ConsumeStickyNoteState();
     if (!g_liveState) { ConnectLiveState(); if (!g_liveState) return; }
     const LiveStateBlock snapshot = *g_liveState;
-    if (snapshot.magic != kLiveStateMagic || snapshot.version != 12 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
+    if (snapshot.magic != kLiveStateMagic || snapshot.version != 13 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
     MemoryBarrier();
     const LiveStateBlock stable = *g_liveState;
     if (stable.generation != snapshot.generation) return;
@@ -890,8 +914,9 @@ void ConsumeLiveState() {
     if(!profileIRacingFeatureOverride){
         iracingEnabled = (stable.iracingFlags & 1u) != 0; iracingLapPopup = (stable.iracingFlags & 2u) != 0;iracingSpotterGlow = (stable.iracingFlags & 4u) != 0; iracingFlagBorder = (stable.iracingFlags & 8u) != 0;
         iracingRaceStart = (stable.iracingFlags & 16u) != 0; iracingRearClosing = (stable.iracingFlags & 32u) != 0; iracingGripBar = (stable.iracingFlags & 64u) != 0;
-        iracingSpotterWidth = std::clamp((double)stable.irSpotterWidth, 0.03, 0.35); iracingSpotterStrength = std::clamp((double)stable.irSpotterStrength, 0.1, 2.0);
-        iracingSpotterOpacity = std::clamp((double)stable.irSpotterOpacity, 0.05, 1.0); iracingSpotterFade = std::clamp((double)stable.irSpotterFade, 0.25, 4.0);
+        iracingSpotterWidth = std::clamp((double)stable.irSpotterWidth, 0.03, 0.70); iracingSpotterStrength = std::clamp((double)stable.irSpotterStrength, 0.1, 4.0);
+        iracingSpotterOpacity = std::clamp((double)stable.irSpotterOpacity, 0.05, 2.0); iracingSpotterFade = std::clamp((double)stable.irSpotterFade, 0.25, 4.0);
+        iracingSpotterFadeInMs = std::clamp((double)stable.irSpotterFadeInMs, 0.0, 2000.0); iracingSpotterFadeOutMs = std::clamp((double)stable.irSpotterFadeOutMs, 0.0, 3000.0);
         iracingSpotterColor = stable.irSpotterColor & 0xFFFFFFu;
         iracingFlagWidth = std::clamp((double)stable.irFlagWidth, 0.003, 0.12); iracingFlagOpacity = std::clamp((double)stable.irFlagOpacity, 0.05, 1.0);
         iracingRaceStartRedOpacity = std::clamp((double)stable.irRaceStartRedOpacity, 0.05, 1.0); iracingRaceStartGreenOpacity = std::clamp((double)stable.irRaceStartGreenOpacity, 0.05, 1.0);
@@ -936,6 +961,10 @@ PFN_xrCreateSession nextXrCreateSession = nullptr;
 PFN_xrDestroySession nextXrDestroySession = nullptr;
 PFN_xrEndSession nextXrEndSession = nullptr;
 PFN_xrLocateViews nextXrLocateViews = nullptr;
+// Captured, never hooked: the VLMC overlay compositor resolves each quad layer's reference
+// space into the projection layer's space. Resolved explicitly at session creation rather than
+// from application xrGetInstanceProcAddr traffic, matching the other core entry points.
+PFN_xrLocateSpace nextXrLocateSpace = nullptr;
 PFN_xrEnumerateViewConfigurationViews nextXrEnumerateViewConfigurationViews = nullptr;
 PFN_xrGetVisibilityMaskKHR nextXrGetVisibilityMaskKHR = nullptr;
 PFN_xrWaitFrame nextXrWaitFrame = nullptr;
@@ -1836,6 +1865,7 @@ XrQuaternionf MultiplyQuaternion(const XrQuaternionf& a, const XrQuaternionf& b)
         a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z});
 }
 
+void ReleaseVlmcQuadFx(); // VLMC overlay compositor resources, defined with the VLMC producer
 void ReleaseD3D11MaskRenderer() {
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
     const XrSession releasedSession = g_d3d11Mask.session;
@@ -1851,6 +1881,7 @@ void ReleaseD3D11MaskRenderer() {
     if (g_d3d11Mask.dss)     { g_d3d11Mask.dss->Release();     g_d3d11Mask.dss = nullptr; }
     if (g_d3d11Mask.bs)      { g_d3d11Mask.bs->Release();      g_d3d11Mask.bs = nullptr; }
     if (g_d3d11Mask.bsOpaque){ g_d3d11Mask.bsOpaque->Release(); g_d3d11Mask.bsOpaque = nullptr; }
+    ReleaseVlmcQuadFx();
     if (g_d3d11Mask.rs)      { g_d3d11Mask.rs->Release();      g_d3d11Mask.rs = nullptr; }
     if (g_d3d11Mask.calibrationRs) { g_d3d11Mask.calibrationRs->Release(); g_d3d11Mask.calibrationRs = nullptr; }
     if (g_d3d11Mask.layout)  { g_d3d11Mask.layout->Release();  g_d3d11Mask.layout = nullptr; }
@@ -3382,7 +3413,11 @@ void DrawViewLabOverlaysToTexture(
     const bool wantTraceMarker=IncludesMirrorFeature(featureMask, MirrorTrace) && markerNumber!=0 && markerUntil>GetTickCount64();
     const bool wantCrosshair = IncludesMirrorFeature(featureMask, MirrorCrosshair) && crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair) && crosshairAlpha > 0.001f;
     ConsumeRacingState();
-    const bool wantSpotter = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingSpotterGlow) || (g_racingStable.presentationFlags & 1u)) && g_racingStable.spotterState != 0;
+    UpdateSpotterEnvelope();
+    const bool spotterEnabled = ((iracingEnabled && iracingSpotterGlow) || (g_racingStable.presentationFlags & 1u)) != 0;
+    // Keep drawing while the envelope is still decaying, so a fade-out completes after the provider
+    // has already cleared spotterState. With fade timings at 0 this reduces to spotterState != 0.
+    const bool wantSpotter = IncludesMirrorFeature(featureMask, MirrorRacingCues) && spotterEnabled && (g_spotterTargetActive || g_spotterEnvelope > 0.001f);
     const bool wantFlag = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
     // Race-start border light: reserved0 carries the latched phase (1 waiting/red, 2 started/green).
     const bool wantRaceStart = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingRaceStart) || (g_racingStable.presentationFlags & 8u)) && g_racingStable.reserved0 != 0;
@@ -3569,11 +3604,11 @@ void DrawViewLabOverlaysToTexture(
     // never the inner edge of the right eye, so the cue reads as true peripheral vision, not a
     // symmetric band duplicated into both eyes.
     if (wantSpotter) {
-        const uint32_t state=g_racingStable.spotterState;
+        const uint32_t state=g_spotterVisualState;
         const bool left=(state==1||state==3||state==4) && eye.viewIndex==0;
         const bool right=(state==2||state==3||state==5) && eye.viewIndex==1;
         const float cr=((iracingSpotterColor>>16)&255)/255.f,cg=((iracingSpotterColor>>8)&255)/255.f,cb=(iracingSpotterColor&255)/255.f;
-        const float width=viewlab::racing::SpotterWidthPx(iracingSpotterWidth,w),step=width/(float)viewlab::racing::kSpotterBands,base=viewlab::racing::SpotterBase(iracingSpotterOpacity,iracingSpotterStrength);
+        const float width=viewlab::racing::SpotterWidthPx(iracingSpotterWidth,w),step=width/(float)viewlab::racing::kSpotterBands,base=std::clamp(viewlab::racing::SpotterBase(iracingSpotterOpacity,iracingSpotterStrength)*g_spotterEnvelope,0.0f,1.0f);
         for(int i=0;i<viewlab::racing::kSpotterBands;++i){
             const float inward=(i+.5f)/(float)viewlab::racing::kSpotterBands;
             if(left){const float a=viewlab::racing::SpotterBandAlpha(base,inward,iracingSpotterFade,true);rectFill(l+i*step,(float)t,l+(i+1)*step,(float)bb_,cr,cg,cb,a);flushFlat(cr,cg,cb,a);}
@@ -4571,6 +4606,25 @@ void ProcessCalibrationCaptureRequest() {
     }).detach();
 }
 
+// ── Overlay quad layers submitted ABOVE ViewLab in the API layer chain ──────────────────────
+//
+// ViewLab is registered last, so it sits closest to the runtime and xrEndFrame reaches it only
+// after ReShade, OpenKneeboard and RaceLab have already added their quads to frameEndInfo->layers.
+// The projection layer ViewLab captures therefore already contains ReShade's effect output and
+// ViewLab's own direct-drawn overlays, but the quad layers are separate composition layers that
+// the runtime — not the game — composites, so they never appear in a plain projection copy.
+// OXRMC shows them because it draws every submitted layer it is handed; VLMC now does the same.
+struct SubmittedQuad {
+    XrSwapchain swapchain = XR_NULL_HANDLE;
+    XrRect2Di rect{};
+    uint32_t arrayIndex = 0;
+    XrPosef pose{};
+    XrExtent2Df size{};
+    XrEyeVisibility eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    XrSpace space = XR_NULL_HANDLE; // the quad's own reference space, resolved at draw time
+};
+std::vector<SubmittedQuad> g_submittedQuads; // guarded by g_swapchainMutex
+
 // ---- ViewLab Media Capture (VLMC) producer ------------------------------------------------
 // Publishes the final submitted eye (game pixels PLUS every ViewLab feature) into a shared,
 // triple-buffered ring of D3D11 textures plus a control block that the VLMC OBS source
@@ -4586,18 +4640,19 @@ struct ViewLabMirrorSurface {
     uint32_t displayIndex;    // 0..2: index of the last completed ring texture
     uint32_t width, height;   // dimensions of every ring texture
     uint32_t format;          // DXGI_FORMAT of the ring textures
-    uint32_t eyeMode;         // mode actually published this frame (0 left, 1 right, 2 SbS)
+    uint32_t eyeMode;         // mode actually published this frame (0 left, 1 right)
     uint64_t heartbeatTick;   // GetTickCount64 stamped every produced frame
     uint64_t sharedHandle[3]; // legacy D3D11 shared handles of the ring textures
     uint32_t requestedEyeMode;     // v2: consumer writes the eye mode the user selected
     uint32_t consumerHeartbeatTick;// v2: low32 GetTickCount64 the OBS source stamps each render
+    uint32_t requestedShowOverlays;// v3: composite quad layers submitted above ViewLab
 };
 #pragma pack(pop)
-static_assert(sizeof(ViewLabMirrorSurface) == 72, "VLMC mirror surface contract size (v2)");
+static_assert(sizeof(ViewLabMirrorSurface) == 76, "VLMC mirror surface contract size (v3)");
 
 static const wchar_t* kViewLabMirrorSurfaceName = L"Local\\XRViewLabMirrorSurface";
 static const uint32_t kViewLabMirrorMagic = 0x534D4C56u; // 'VLMS'
-static const uint32_t kViewLabMirrorVersion = 2u;
+static const uint32_t kViewLabMirrorVersion = 3u;
 
 HANDLE g_vlmcMap = nullptr;
 ViewLabMirrorSurface* g_vlmcSurface = nullptr;
@@ -4608,7 +4663,42 @@ DXGI_FORMAT g_vlmcRingFmt = DXGI_FORMAT_UNKNOWN;
 uint32_t g_vlmcFrameNumber = 0;
 std::atomic<bool> g_vlmcConnectedLogged{false};
 
+// Private staging target. Every VLMC frame is assembled here and then blitted into the shared
+// ring in ONE CopyResource, so the OBS consumer can never sample a half-built frame.
+//
+// This mirrors OXRMC's _compositorTexture + copyToMirror() and exists for the same reason. The
+// shared textures carry legacy handles with no keyed mutex, so there is no cross-device sync
+// with OBS at all. Assembling directly in a shared slot (eye blit, then ViewLab overlays, then
+// quad layers, as separate GPU work) let OBS observe the state between the blit and the draws:
+// the base image looked stable because the blit fills the whole surface at once, while the
+// overlays flickered because they land afterwards. A 120 Hz producer also laps a 3-slot ring
+// against a 60 Hz consumer, so it overwrites the slot OBS is mid-read on.
+// The staging texture must be TYPELESS. ViewLab's shared draw helpers create their render target
+// view with the NON-sRGB format (GetNonSRGBFormat), while the ring itself is a concrete _SRGB
+// format, and reinterpreting a fully-typed resource is illegal: measured as
+// CreateRenderTargetView hr=0x80070057 (E_INVALIDARG) rtvFormat=28 texFormat=29, which silently
+// dropped the visor and notification draws. The shared ring textures get away with it only
+// because MISC_SHARED resources are driver-backed by a typeless allocation; a private texture has
+// no such leniency. TYPELESS makes both the UNORM view (ViewLab overlays) and the _SRGB view
+// (quad compositing, which needs the encode on write) legal by the rules rather than by luck.
+static DXGI_FORMAT VlmcTypelessFor(DXGI_FORMAT fmt) {
+    switch (fmt) {
+    case DXGI_FORMAT_R8G8B8A8_UNORM:
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:      return DXGI_FORMAT_R8G8B8A8_TYPELESS;
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:      return DXGI_FORMAT_B8G8R8A8_TYPELESS;
+    case DXGI_FORMAT_B8G8R8X8_UNORM:
+    case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:      return DXGI_FORMAT_B8G8R8X8_TYPELESS;
+    case DXGI_FORMAT_R10G10B10A2_UNORM:        return DXGI_FORMAT_R10G10B10A2_TYPELESS;
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:       return DXGI_FORMAT_R16G16B16A16_TYPELESS;
+    default:                                   return fmt; // already typeless, or not remappable
+    }
+}
+
+ID3D11Texture2D* g_vlmcCompositor = nullptr;
+
 void ReleaseViewLabMirrorRing() {
+    if (g_vlmcCompositor) { g_vlmcCompositor->Release(); g_vlmcCompositor = nullptr; }
     for (int i = 0; i < 3; ++i) {
         if (g_vlmcRing[i]) g_vlmcRing[i]->Release();
         g_vlmcRing[i] = nullptr; g_vlmcRingHandle[i] = 0;
@@ -4622,6 +4712,8 @@ void DisconnectViewLabMirror() {
     if (g_vlmcMap) CloseHandle(g_vlmcMap);
     g_vlmcSurface = nullptr; g_vlmcMap = nullptr;
     g_vlmcFrameNumber = 0; g_vlmcConnectedLogged.store(false);
+    // Drop the quad snapshot too: its swapchain handles belong to the session going away.
+    { std::lock_guard<std::mutex> lk(g_swapchainMutex); g_submittedQuads.clear(); }
 }
 
 // Create (once) the shared control block. The producer owns it, so it is created read/write.
@@ -4664,6 +4756,13 @@ bool EnsureViewLabMirrorRing(uint32_t width, uint32_t height, DXGI_FORMAT fmt) {
         if (!shared) { ReleaseViewLabMirrorRing(); return false; }
         g_vlmcRingHandle[i] = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(shared));
     }
+    D3D11_TEXTURE2D_DESC cd{};
+    cd.Width = width; cd.Height = height; cd.MipLevels = 1; cd.ArraySize = 1;
+    cd.Format = VlmcTypelessFor(fmt); cd.SampleDesc.Count = 1; cd.Usage = D3D11_USAGE_DEFAULT;
+    cd.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    if (FAILED(g_d3d11Mask.device->CreateTexture2D(&cd, nullptr, &g_vlmcCompositor)) || !g_vlmcCompositor) {
+        ReleaseViewLabMirrorRing(); return false;
+    }
     g_vlmcRingW = width; g_vlmcRingH = height; g_vlmcRingFmt = fmt;
     // Publish geometry + handles before any displayIndex references them.
     g_vlmcSurface->width = width; g_vlmcSurface->height = height;
@@ -4672,6 +4771,29 @@ bool EnsureViewLabMirrorRing(uint32_t width, uint32_t height, DXGI_FORMAT fmt) {
     for (int i = 0; i < 3; ++i) g_vlmcSurface->sharedHandle[i] = g_vlmcRingHandle[i];
     MemoryBarrier();
     return true;
+}
+
+
+// Snapshots this frame's quad layers. Called from xrEndFrame before the frame passes down the
+// chain, while frameEndInfo is still valid; the draw happens later off this copy.
+static void RecordSubmittedQuads(const XrFrameEndInfo* frameEndInfo) {
+    std::lock_guard<std::mutex> lk(g_swapchainMutex);
+    g_submittedQuads.clear();
+    if (!frameEndInfo || !frameEndInfo->layers) return;
+    for (uint32_t i = 0; i < frameEndInfo->layerCount; ++i) {
+        const XrCompositionLayerBaseHeader* header = frameEndInfo->layers[i];
+        if (!header || header->type != XR_TYPE_COMPOSITION_LAYER_QUAD) continue;
+        const auto* q = reinterpret_cast<const XrCompositionLayerQuad*>(header);
+        SubmittedQuad out;
+        out.swapchain = q->subImage.swapchain;
+        out.rect = q->subImage.imageRect;
+        out.arrayIndex = q->subImage.imageArrayIndex;
+        out.pose = q->pose;
+        out.size = q->size;
+        out.eyeVisibility = q->eyeVisibility;
+        out.space = q->space;
+        g_submittedQuads.push_back(out);
+    }
 }
 
 // Finds the submitted texture for a projection view index (0 left, 1 right) and AddRefs it into
@@ -4727,17 +4849,409 @@ static void VlmcComposeEye(ID3D11Texture2D* dst, DXGI_FORMAT ringFormat, const E
             nullptr, false, true, obsMirrorVisibilityMask);
 }
 
+// ── Overlay quad compositor ─────────────────────────────────────────────────────────────────
+//
+// Ported from OpenXR-Layer-OBSMirror (Jabbah), MIT licence, file
+// XR_APILAYER_NOVENDOR_OBSMirror/dx11mirror.cpp: d3dXrProjection, quad_vs_code, quad_ps_code,
+// quad_verts/quad_inds and the Blend() overload taking an XrCompositionLayerQuad. A quad is a
+// world-anchored rectangle in metres, so it can only be placed by drawing it as real 3D geometry:
+// world matrix from the quad's pose and size, view matrix from the captured eye's pose, projection
+// from that eye's FOV, and xrLocateSpace to resolve the quad's own reference space into the
+// projection layer's space (overlays are variously view-locked or world-locked).
+//
+// Two deliberate deviations from the original, both forced by where VLMC runs:
+//   1. OXRMC owns a dedicated D3D11 device, so it can leave pipeline state dirty. ViewLab draws on
+//      the GAME's immediate context, so this saves and restores every slot it touches and reuses
+//      the renderer's existing rasterizer/depth/blend/sampler states — the same discipline the
+//      other ViewLab draw paths use. Rasterizer state matters: it carries CULL_NONE, without which
+//      the quad's winding can be culled by whatever the game happened to leave bound.
+//   2. OXRMC's pixel shader carries a smoothstep blend band used only to seam its two eyes
+//      together in side-by-side. VLMC writes one eye per ring texture, so that term is always a
+//      no-op and is dropped rather than carried as a permanently-zero constant buffer.
+struct VlmcQuadFx {
+    ID3D11VertexShader* vs = nullptr;
+    ID3D11PixelShader* ps = nullptr;
+    ID3D11InputLayout* layout = nullptr;
+    ID3D11Buffer* vb = nullptr;   // dynamic: UVs rewritten per quad
+    ID3D11Buffer* ib = nullptr;
+    ID3D11Buffer* cb = nullptr;   // world + viewproj
+    bool ready = false;
+    bool failed = false;
+};
+VlmcQuadFx g_vlmcQuadFx;
+
+struct VlmcQuadTransformCB { DirectX::XMFLOAT4X4 world; DirectX::XMFLOAT4X4 viewproj; };
+struct VlmcQuadVertex { float x, y, z, w; float u, v; };
+
+// OXRMC quad_verts / quad_inds, unchanged. Unit quad centred on the origin in the XY plane.
+static const VlmcQuadVertex kVlmcQuadVerts[4] = {
+    { -0.5f,  0.5f, 0.f, 1.f,  0.f, 0.f },
+    { -0.5f, -0.5f, 0.f, 1.f,  0.f, 1.f },
+    {  0.5f,  0.5f, 0.f, 1.f,  1.f, 0.f },
+    {  0.5f, -0.5f, 0.f, 1.f,  1.f, 1.f },
+};
+static const uint16_t kVlmcQuadInds[6] = { 2, 1, 0, 2, 3, 1 };
+
+// OXRMC quad_vs_code, unchanged (row-vector convention; matrices uploaded transposed and compiled
+// with D3DCOMPILE_PACK_MATRIX_COLUMN_MAJOR, exactly as the original does).
+static const char* kVlmcQuadVS =
+    "cbuffer TransformBuffer : register(b0) {\n"
+    "  float4x4 world;\n"
+    "  float4x4 viewproj;\n"
+    "};\n"
+    "struct vsIn { float4 pos : POSITION; float2 tex : TEXCOORD0; };\n"
+    "struct psIn { float4 pos : SV_POSITION; float2 tex : TEXCOORD0; };\n"
+    "psIn main(vsIn input) {\n"
+    "  psIn output;\n"
+    "  output.pos = mul(mul(input.pos, world), viewproj);\n"
+    "  output.tex = input.tex;\n"
+    "  return output;\n"
+    "}\n";
+
+// OXRMC quad_ps_code minus the side-by-side seam blend (see deviation 2 above). Texture2DArray
+// covers both plain and array quad swapchains through a single one-slice SRV, which replaces
+// OXRMC's separate quad_array_ps_code path.
+static const char* kVlmcQuadPS =
+    "Texture2DArray shaderTexture : register(t0);\n"
+    "SamplerState SampleType : register(s0);\n"
+    "struct psIn { float4 pos : SV_POSITION; float2 tex : TEXCOORD0; };\n"
+    "float4 main(psIn inputPS) : SV_TARGET {\n"
+    "  return shaderTexture.Sample(SampleType, float3(inputPS.tex, 0));\n"
+    "}\n";
+
+void ReleaseVlmcQuadFx() {
+    if (g_vlmcQuadFx.cb)     { g_vlmcQuadFx.cb->Release();     g_vlmcQuadFx.cb = nullptr; }
+    if (g_vlmcQuadFx.ib)     { g_vlmcQuadFx.ib->Release();     g_vlmcQuadFx.ib = nullptr; }
+    if (g_vlmcQuadFx.vb)     { g_vlmcQuadFx.vb->Release();     g_vlmcQuadFx.vb = nullptr; }
+    if (g_vlmcQuadFx.layout) { g_vlmcQuadFx.layout->Release(); g_vlmcQuadFx.layout = nullptr; }
+    if (g_vlmcQuadFx.ps)     { g_vlmcQuadFx.ps->Release();     g_vlmcQuadFx.ps = nullptr; }
+    if (g_vlmcQuadFx.vs)     { g_vlmcQuadFx.vs->Release();     g_vlmcQuadFx.vs = nullptr; }
+    g_vlmcQuadFx = VlmcQuadFx{};
+}
+
+static bool EnsureVlmcQuadFx() {
+    if (g_vlmcQuadFx.ready) return true;
+    if (g_vlmcQuadFx.failed || !g_d3d11Mask.device) return false;
+
+    typedef HRESULT(WINAPI* PFN_D3DCompile)(
+        LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*,
+        LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**);
+    HMODULE dxcLib = LoadLibraryA("d3dcompiler_47.dll");
+    if (!dxcLib) dxcLib = LoadLibraryA("d3dcompiler_46.dll");
+    if (!dxcLib) { g_vlmcQuadFx.failed = true; return false; }
+    auto D3DCompileFn = reinterpret_cast<PFN_D3DCompile>(GetProcAddress(dxcLib, "D3DCompile"));
+    if (!D3DCompileFn) { FreeLibrary(dxcLib); g_vlmcQuadFx.failed = true; return false; }
+
+    // OXRMC compiles with column-major packing; the C++ side uploads transposed matrices to match.
+    const UINT kFlags = D3DCOMPILE_PACK_MATRIX_COLUMN_MAJOR | D3DCOMPILE_ENABLE_STRICTNESS;
+    ID3DBlob* vsb = nullptr; ID3DBlob* psb = nullptr; ID3DBlob* err = nullptr;
+    HRESULT hr = D3DCompileFn(kVlmcQuadVS, std::strlen(kVlmcQuadVS), "VlmcQuadVS", nullptr, nullptr,
+                              "main", "vs_4_0", kFlags, 0, &vsb, &err);
+    if (FAILED(hr)) {
+        Log("VLMC overlay: quad VS compile failed hr=0x%08X %s\n", static_cast<unsigned>(hr),
+            err ? static_cast<const char*>(err->GetBufferPointer()) : "?");
+        if (err) err->Release();
+        FreeLibrary(dxcLib); g_vlmcQuadFx.failed = true; return false;
+    }
+    if (err) { err->Release(); err = nullptr; }
+    hr = D3DCompileFn(kVlmcQuadPS, std::strlen(kVlmcQuadPS), "VlmcQuadPS", nullptr, nullptr,
+                      "main", "ps_4_0", kFlags, 0, &psb, &err);
+    if (FAILED(hr)) {
+        Log("VLMC overlay: quad PS compile failed hr=0x%08X %s\n", static_cast<unsigned>(hr),
+            err ? static_cast<const char*>(err->GetBufferPointer()) : "?");
+        if (err) err->Release();
+        vsb->Release(); FreeLibrary(dxcLib); g_vlmcQuadFx.failed = true; return false;
+    }
+    if (err) { err->Release(); err = nullptr; }
+
+    bool ok = SUCCEEDED(g_d3d11Mask.device->CreateVertexShader(
+        vsb->GetBufferPointer(), vsb->GetBufferSize(), nullptr, &g_vlmcQuadFx.vs));
+    ok = ok && SUCCEEDED(g_d3d11Mask.device->CreatePixelShader(
+        psb->GetBufferPointer(), psb->GetBufferSize(), nullptr, &g_vlmcQuadFx.ps));
+
+    const D3D11_INPUT_ELEMENT_DESC il[] = {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+    };
+    ok = ok && SUCCEEDED(g_d3d11Mask.device->CreateInputLayout(
+        il, 2, vsb->GetBufferPointer(), vsb->GetBufferSize(), &g_vlmcQuadFx.layout));
+    vsb->Release(); psb->Release(); FreeLibrary(dxcLib);
+
+    D3D11_BUFFER_DESC vbd{};
+    vbd.Usage = D3D11_USAGE_DYNAMIC; vbd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    vbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE; vbd.ByteWidth = sizeof(kVlmcQuadVerts);
+    D3D11_SUBRESOURCE_DATA vsd{}; vsd.pSysMem = kVlmcQuadVerts;
+    ok = ok && SUCCEEDED(g_d3d11Mask.device->CreateBuffer(&vbd, &vsd, &g_vlmcQuadFx.vb));
+
+    D3D11_BUFFER_DESC ibd{};
+    ibd.Usage = D3D11_USAGE_IMMUTABLE; ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    ibd.ByteWidth = sizeof(kVlmcQuadInds);
+    D3D11_SUBRESOURCE_DATA isd{}; isd.pSysMem = kVlmcQuadInds;
+    ok = ok && SUCCEEDED(g_d3d11Mask.device->CreateBuffer(&ibd, &isd, &g_vlmcQuadFx.ib));
+
+    D3D11_BUFFER_DESC cbd{};
+    cbd.Usage = D3D11_USAGE_DEFAULT; cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.ByteWidth = sizeof(VlmcQuadTransformCB);
+    ok = ok && SUCCEEDED(g_d3d11Mask.device->CreateBuffer(&cbd, nullptr, &g_vlmcQuadFx.cb));
+
+    if (!ok) {
+        Log("VLMC overlay: quad resource creation failed\n");
+        ReleaseVlmcQuadFx();
+        g_vlmcQuadFx.failed = true;
+        return false;
+    }
+    g_vlmcQuadFx.ready = true;
+    Log("VLMC overlay: quad compositor ready\n");
+    return true;
+}
+
+// OXRMC GetFormatInfo, reduced to the sRGB/linear choice it drives. 8-bit swapchain formats hold
+// sRGB-encoded bytes, so they are sampled through an _SRGB view to decode; wider formats already
+// hold linear values. Returns DXGI_FORMAT_UNKNOWN to fall back to the texture's own format.
+static DXGI_FORMAT VlmcQuadSrvFormat(DXGI_FORMAT texFormat) {
+    switch (texFormat) {
+    case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+    case DXGI_FORMAT_R8G8B8A8_UNORM:
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:      return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:      return DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+    case DXGI_FORMAT_B8G8R8X8_TYPELESS:
+    case DXGI_FORMAT_B8G8R8X8_UNORM:
+    case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:      return DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
+    case DXGI_FORMAT_R10G10B10A2_TYPELESS:     return DXGI_FORMAT_R10G10B10A2_UNORM;
+    case DXGI_FORMAT_R16G16B16A16_TYPELESS:    return DXGI_FORMAT_R16G16B16A16_FLOAT;
+    default:                                   return DXGI_FORMAT_UNKNOWN;
+    }
+}
+
+// Draws every quad layer submitted above ViewLab into the captured eye's ring texture.
+// layerSpace/displayTime come from the submitted projection layer: eye.pose is expressed in that
+// space, so quads must be resolved into it too (this is exactly what OXRMC passes as viewSpace).
+static void VlmcDrawSubmittedQuads(ID3D11Texture2D* dst, DXGI_FORMAT ringFormat, const EyeView& eye,
+                                   uint32_t w, uint32_t h,
+                                   XrSpace layerSpace, XrTime displayTime) {
+    std::vector<SubmittedQuad> quads;
+    {
+        std::lock_guard<std::mutex> lk(g_swapchainMutex);
+        quads = g_submittedQuads;
+    }
+    if (quads.empty() || !EnsureVlmcQuadFx()) return;
+    if (!g_d3d11Mask.calibrationRs || !g_d3d11Mask.dss || !g_d3d11Mask.bs ||
+        !g_d3d11Mask.linearSampler) return;
+
+    // dst is TYPELESS, so the view format must be named. Use the _SRGB view for 8-bit formats so
+    // the pixel shader's linear output is encoded on write and matches the raw-copied eye pixels.
+    D3D11_RENDER_TARGET_VIEW_DESC rtvDesc{};
+    const DXGI_FORMAT rtvFormat = VlmcQuadSrvFormat(ringFormat);
+    rtvDesc.Format = (rtvFormat != DXGI_FORMAT_UNKNOWN) ? rtvFormat : ringFormat;
+    rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+    rtvDesc.Texture2D.MipSlice = 0;
+    ID3D11RenderTargetView* rtv = nullptr;
+    const HRESULT rtvHr = g_d3d11Mask.device->CreateRenderTargetView(dst, &rtvDesc, &rtv);
+    if (FAILED(rtvHr) || !rtv) {
+        static std::atomic<bool> logged{false};
+        if (!logged.exchange(true))
+            Log("VLMC overlay: quad RTV creation failed hr=0x%08X rtvFormat=%d ringFormat=%d\n",
+                static_cast<unsigned>(rtvHr), static_cast<int>(rtvDesc.Format),
+                static_cast<int>(ringFormat));
+        return;
+    }
+
+    ID3D11DeviceContext* ctx = g_d3d11Mask.context;
+
+    // Save every pipeline slot this draw touches — see deviation 1 above.
+    ID3D11RenderTargetView* sRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+    ID3D11DepthStencilView* sDSV = nullptr;
+    ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, &sDSV);
+    UINT sVPCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    D3D11_VIEWPORT sVPs[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE];
+    ctx->RSGetViewports(&sVPCount, sVPs);
+    UINT sScissorCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    D3D11_RECT sScissors[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE];
+    ctx->RSGetScissorRects(&sScissorCount, sScissors);
+    ID3D11RasterizerState* sRS = nullptr; ctx->RSGetState(&sRS);
+    ID3D11BlendState* sBS = nullptr; FLOAT sBF[4] = {}; UINT sSM = 0;
+    ctx->OMGetBlendState(&sBS, sBF, &sSM);
+    ID3D11DepthStencilState* sDSS = nullptr; UINT sSRef = 0;
+    ctx->OMGetDepthStencilState(&sDSS, &sSRef);
+    ID3D11VertexShader* sVS = nullptr; ctx->VSGetShader(&sVS, nullptr, nullptr);
+    ID3D11PixelShader* sPS = nullptr; ctx->PSGetShader(&sPS, nullptr, nullptr);
+    ID3D11Buffer* sVSCB = nullptr; ctx->VSGetConstantBuffers(0, 1, &sVSCB);
+    ID3D11ShaderResourceView* sSRV = nullptr; ctx->PSGetShaderResources(0, 1, &sSRV);
+    ID3D11SamplerState* sSmp = nullptr; ctx->PSGetSamplers(0, 1, &sSmp);
+    ID3D11InputLayout* sLayout = nullptr; ctx->IAGetInputLayout(&sLayout);
+    D3D11_PRIMITIVE_TOPOLOGY sTopo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+    ctx->IAGetPrimitiveTopology(&sTopo);
+    ID3D11Buffer* sVB = nullptr; UINT sStride = 0, sOff = 0;
+    ctx->IAGetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
+    ID3D11Buffer* sIB = nullptr; DXGI_FORMAT sIBFmt = DXGI_FORMAT_UNKNOWN; UINT sIBOff = 0;
+    ctx->IAGetIndexBuffer(&sIB, &sIBFmt, &sIBOff);
+
+    const UINT stride = sizeof(VlmcQuadVertex), offset = 0;
+    const float blendFactor[4] = { 1.f, 1.f, 1.f, 1.f };
+    ctx->OMSetRenderTargets(1, &rtv, nullptr);
+    D3D11_VIEWPORT vp{ 0.f, 0.f, static_cast<float>(w), static_cast<float>(h), 0.f, 1.f };
+    ctx->RSSetViewports(1, &vp);
+    D3D11_RECT sc{ 0, 0, static_cast<LONG>(w), static_cast<LONG>(h) };
+    ctx->RSSetScissorRects(1, &sc);
+    ctx->RSSetState(g_d3d11Mask.calibrationRs);
+    ctx->OMSetDepthStencilState(g_d3d11Mask.dss, 0);
+    ctx->OMSetBlendState(g_d3d11Mask.bs, blendFactor, 0xffffffff);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->IASetInputLayout(g_vlmcQuadFx.layout);
+    ctx->IASetIndexBuffer(g_vlmcQuadFx.ib, DXGI_FORMAT_R16_UINT, 0);
+    ctx->IASetVertexBuffers(0, 1, &g_vlmcQuadFx.vb, &stride, &offset);
+    ctx->VSSetShader(g_vlmcQuadFx.vs, nullptr, 0);
+    ctx->PSSetShader(g_vlmcQuadFx.ps, nullptr, 0);
+    ctx->PSSetSamplers(0, 1, &g_d3d11Mask.linearSampler);
+    ctx->VSSetConstantBuffers(0, 1, &g_vlmcQuadFx.cb);
+
+    // OXRMC d3dXrProjection / mat_view, using the captured eye's own FOV and pose. The ring holds
+    // exactly this eye's submitted sub-image, so the quad scale needs no compositor-width ratio.
+    const DirectX::XMMATRIX proj = DirectX::XMMatrixPerspectiveOffCenterRH(
+        0.05f * std::tanf(eye.fov.angleLeft), 0.05f * std::tanf(eye.fov.angleRight),
+        0.05f * std::tanf(eye.fov.angleDown), 0.05f * std::tanf(eye.fov.angleUp), 0.05f, 100.f);
+    const DirectX::XMMATRIX view = DirectX::XMMatrixInverse(nullptr,
+        DirectX::XMMatrixAffineTransformation(DirectX::g_XMOne, DirectX::g_XMZero,
+            DirectX::XMLoadFloat4(reinterpret_cast<const DirectX::XMFLOAT4*>(&eye.pose.orientation)),
+            DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&eye.pose.position))));
+
+    for (const SubmittedQuad& q : quads) {
+        // Honour per-eye overlays: skip a quad addressed to the eye we are not capturing.
+        if (q.eyeVisibility == XR_EYE_VISIBILITY_LEFT && eye.viewIndex != 0) continue;
+        if (q.eyeVisibility == XR_EYE_VISIBILITY_RIGHT && eye.viewIndex != 1) continue;
+
+        ID3D11Texture2D* src = nullptr;
+        {
+            std::lock_guard<std::mutex> lk(g_swapchainMutex);
+            auto it = g_swapchains.find(q.swapchain);
+            if (it == g_swapchains.end()) continue;
+            const TrackedSwapchain& ts = it->second;
+            if (ts.lastAcquiredIndex >= ts.textures.size()) continue;
+            src = ts.textures[ts.lastAcquiredIndex];
+            if (src) src->AddRef(); // hold it alive outside the map lock
+        }
+        if (!src) continue;
+
+        D3D11_TEXTURE2D_DESC sd{};
+        src->GetDesc(&sd);
+        if (sd.Width == 0 || sd.Height == 0 || sd.SampleDesc.Count != 1) { src->Release(); continue; }
+
+        // One-slice Texture2DArray view: covers plain and array quad swapchains alike, and picks
+        // the sRGB/linear interpretation the way OXRMC's GetFormatInfo does.
+        D3D11_SHADER_RESOURCE_VIEW_DESC svd{};
+        const DXGI_FORMAT srvFormat = VlmcQuadSrvFormat(sd.Format);
+        svd.Format = (srvFormat != DXGI_FORMAT_UNKNOWN) ? srvFormat : sd.Format;
+        svd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+        svd.Texture2DArray.MostDetailedMip = 0;
+        svd.Texture2DArray.MipLevels = 1;
+        svd.Texture2DArray.FirstArraySlice = (q.arrayIndex < sd.ArraySize) ? q.arrayIndex : 0;
+        svd.Texture2DArray.ArraySize = 1;
+        ID3D11ShaderResourceView* srv = nullptr;
+        if (FAILED(g_d3d11Mask.device->CreateShaderResourceView(src, &svd, &srv)) || !srv) {
+            src->Release();
+            continue;
+        }
+
+        // UVs for the quad's sub-image rect within its swapchain texture (OXRMC srcStart/srcEnd).
+        const float u0 = static_cast<float>(q.rect.offset.x) / static_cast<float>(sd.Width);
+        const float u1 = static_cast<float>(q.rect.offset.x + q.rect.extent.width) / static_cast<float>(sd.Width);
+        const float v0 = static_cast<float>(q.rect.offset.y) / static_cast<float>(sd.Height);
+        const float v1 = static_cast<float>(q.rect.offset.y + q.rect.extent.height) / static_cast<float>(sd.Height);
+        VlmcQuadVertex verts[4];
+        std::memcpy(verts, kVlmcQuadVerts, sizeof(verts));
+        verts[0].u = u0; verts[0].v = v0;
+        verts[1].u = u0; verts[1].v = v1;
+        verts[2].u = u1; verts[2].v = v0;
+        verts[3].u = u1; verts[3].v = v1;
+        D3D11_MAPPED_SUBRESOURCE m{};
+        if (SUCCEEDED(ctx->Map(g_vlmcQuadFx.vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+            std::memcpy(m.pData, verts, sizeof(verts));
+            ctx->Unmap(g_vlmcQuadFx.vb, 0);
+        }
+
+        // OXRMC mat_model: scale by the quad's size in metres, then its pose.
+        const DirectX::XMFLOAT4 scale{ q.size.width, q.size.height, 1.f, 1.f };
+        DirectX::XMMATRIX world = DirectX::XMMatrixAffineTransformation(
+            DirectX::XMLoadFloat4(&scale), DirectX::g_XMZero,
+            DirectX::XMLoadFloat4(reinterpret_cast<const DirectX::XMFLOAT4*>(&q.pose.orientation)),
+            DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&q.pose.position)));
+
+        // OXRMC mat_space: resolve the quad's reference space into the projection layer's space.
+        // Skipping this puts view-locked overlays in world coordinates and vice versa.
+        if (nextXrLocateSpace && q.space != XR_NULL_HANDLE && layerSpace != XR_NULL_HANDLE &&
+            q.space != layerSpace) {
+            XrSpaceLocation loc{ XR_TYPE_SPACE_LOCATION };
+            if (XR_SUCCEEDED(nextXrLocateSpace(q.space, layerSpace, displayTime, &loc)) &&
+                (loc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) &&
+                (loc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)) {
+                const DirectX::XMMATRIX space = DirectX::XMMatrixAffineTransformation(
+                    DirectX::g_XMOne, DirectX::g_XMZero,
+                    DirectX::XMLoadFloat4(reinterpret_cast<const DirectX::XMFLOAT4*>(&loc.pose.orientation)),
+                    DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&loc.pose.position)));
+                world = DirectX::XMMatrixMultiply(world, space);
+            }
+        }
+
+        VlmcQuadTransformCB cb{};
+        DirectX::XMStoreFloat4x4(&cb.world, DirectX::XMMatrixTranspose(world));
+        DirectX::XMStoreFloat4x4(&cb.viewproj, DirectX::XMMatrixTranspose(view * proj));
+        ctx->UpdateSubresource(g_vlmcQuadFx.cb, 0, nullptr, &cb, 0, 0);
+        ctx->PSSetShaderResources(0, 1, &srv);
+        ctx->DrawIndexed(6, 0, 0);
+
+        // Unbind before releasing so the SRV is not left bound to a destroyed view.
+        ID3D11ShaderResourceView* nullSrv = nullptr;
+        ctx->PSSetShaderResources(0, 1, &nullSrv);
+        srv->Release();
+        src->Release();
+    }
+
+    // Restore the game's pipeline, then drop the AddRef each Get* took.
+    ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, sDSV);
+    if (sVPCount) ctx->RSSetViewports(sVPCount, sVPs);
+    if (sScissorCount) ctx->RSSetScissorRects(sScissorCount, sScissors);
+    ctx->RSSetState(sRS);
+    ctx->OMSetBlendState(sBS, sBF, sSM);
+    ctx->OMSetDepthStencilState(sDSS, sSRef);
+    ctx->VSSetShader(sVS, nullptr, 0);
+    ctx->PSSetShader(sPS, nullptr, 0);
+    ctx->VSSetConstantBuffers(0, 1, &sVSCB);
+    ctx->PSSetShaderResources(0, 1, &sSRV);
+    ctx->PSSetSamplers(0, 1, &sSmp);
+    ctx->IASetInputLayout(sLayout);
+    ctx->IASetPrimitiveTopology(sTopo);
+    ctx->IASetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
+    ctx->IASetIndexBuffer(sIB, sIBFmt, sIBOff);
+    for (ID3D11RenderTargetView* r : sRTVs) if (r) r->Release();
+    if (sDSV) sDSV->Release();
+    if (sRS) sRS->Release();
+    if (sBS) sBS->Release();
+    if (sDSS) sDSS->Release();
+    if (sVS) sVS->Release();
+    if (sPS) sPS->Release();
+    if (sVSCB) sVSCB->Release();
+    if (sSRV) sSRV->Release();
+    if (sSmp) sSmp->Release();
+    if (sLayout) sLayout->Release();
+    if (sVB) sVB->Release();
+    if (sIB) sIB->Release();
+    rtv->Release();
+}
+
 // Called at xrEndFrame after the submitted textures hold the frame's complete direct-drawn
 // content (same capture point the calibration suite uses). Publishes the eye(s) the consumer
-// requested (0 left, 1 right, 2 side-by-side) into the next ring slot, compositing overlays and
+// requested (0 left, 1 right) into the next ring slot, compositing overlays and
 // falling back to left when the requested eye is unavailable.
 void ProduceViewLabMirrorFrame() {
     if (!g_d3d11Mask.initialized || !g_d3d11Mask.device || !g_d3d11Mask.context ||
         g_rendererDeviceLost.load(std::memory_order_acquire)) return;
     if (!EnsureViewLabMirrorSurface()) return;
 
+    // Left or right only. Side-by-side is gone; a stale 2 in the shared block falls back to left.
     uint32_t requested = g_vlmcSurface->requestedEyeMode;
-    if (requested > 2) requested = 0;
+    if (requested > 1) requested = 0;
 
     // Primary eye: right for mode 1, otherwise left.
     ID3D11Texture2D* tex0 = nullptr; EyeView eye0{}; int64_t fmt0 = 0;
@@ -4747,51 +5261,47 @@ void ProduceViewLabMirrorFrame() {
         if (primaryView == 1 && AcquireSubmittedEye(0, &tex0, &eye0, &fmt0, &allViews)) requested = 0;
         else return;
     }
-    // Second eye only for side-by-side; degrade to single left if the right eye is absent.
-    ID3D11Texture2D* tex1 = nullptr; EyeView eye1{}; int64_t fmt1 = 0;
-    if (requested == 2 && !AcquireSubmittedEye(1, &tex1, &eye1, &fmt1, nullptr)) requested = 0;
 
     const uint32_t w0 = static_cast<uint32_t>((std::max)(0, eye0.rect.extent.width));
     const uint32_t h0 = static_cast<uint32_t>((std::max)(0, eye0.rect.extent.height));
-    if (w0 == 0 || h0 == 0) { tex0->Release(); if (tex1) tex1->Release(); return; }
+    if (w0 == 0 || h0 == 0) { tex0->Release(); return; }
     D3D11_TEXTURE2D_DESC d0{}; tex0->GetDesc(&d0);
     const DXGI_FORMAT ringFormat = ResolveCaptureReadFormat(fmt0, d0.Format);
 
-    uint32_t outW = w0, outH = h0, w1 = 0, h1 = 0;
-    if (requested == 2 && tex1) {
-        w1 = static_cast<uint32_t>((std::max)(0, eye1.rect.extent.width));
-        h1 = static_cast<uint32_t>((std::max)(0, eye1.rect.extent.height));
-        if (w1 == 0 || h1 == 0) { requested = 0; tex1->Release(); tex1 = nullptr; }
-        else { outW = w0 + w1; outH = (std::max)(h0, h1); }
-    }
+    const uint32_t outW = w0, outH = h0;
 
     // EnsureViewLabMirrorRing publishes the geometry + shared handles so the OBS source can
     // connect even before it starts rendering. Only the expensive per-frame GPU work below is
     // gated on a live consumer: the source stamps consumerHeartbeatTick each render, so when no
     // source is capturing we skip the copy/composite/Flush entirely (no game-thread GPU cost).
-    if (!EnsureViewLabMirrorRing(outW, outH, ringFormat)) { tex0->Release(); if (tex1) tex1->Release(); return; }
+    if (!EnsureViewLabMirrorRing(outW, outH, ringFormat)) { tex0->Release(); return; }
     const uint32_t nowTick = static_cast<uint32_t>(GetTickCount64());
     const uint32_t consumerTick = g_vlmcSurface->consumerHeartbeatTick;
     if (consumerTick == 0 || (nowTick - consumerTick) > 2000u) {
-        tex0->Release(); if (tex1) tex1->Release();
+        tex0->Release();
         g_vlmcConnectedLogged.store(false);
         return;
     }
     const uint32_t nextIndex = (g_vlmcFrameNumber + 1) % 3;
-    ID3D11Texture2D* dst = g_vlmcRing[nextIndex];
+    // Assemble off-screen; the shared slot is written once, below.
+    ID3D11Texture2D* dst = g_vlmcCompositor;
 
     // Overlay link off (no features selected) → pure game-frame mirror: copy only, no draw
     // passes. This is the OXRMC-equivalent fallback for maximum fidelity / minimum overhead.
     const bool composite = (obsMirrorVisibilityMask != 0);
     VlmcCopyEye(dst, 0, tex0, eye0, d0.MipLevels, w0, h0);
     if (composite) VlmcComposeEye(dst, ringFormat, eye0, 0, w0, h0, allViews);
+    // Quad layers submitted above ViewLab go on last, over the game frame, ReShade's output and
+    // ViewLab's own overlays — the same order the runtime composites them in the headset.
+    if (g_vlmcSurface->requestedShowOverlays)
+        VlmcDrawSubmittedQuads(dst, ringFormat, eye0, w0, h0,
+                               g_primaryProjectionContext.space,
+                               g_primaryProjectionContext.displayTime);
     tex0->Release();
-    if (requested == 2 && tex1) {
-        D3D11_TEXTURE2D_DESC d1{}; tex1->GetDesc(&d1);
-        VlmcCopyEye(dst, w0, tex1, eye1, d1.MipLevels, w1, h1);
-        if (composite) VlmcComposeEye(dst, ringFormat, eye1, w0, w1, h1, allViews);
-        tex1->Release();
-    }
+
+    // The frame is complete: hand it to the shared ring as one blit. Everything the consumer can
+    // see therefore transitions atomically from the previous frame to this one.
+    g_d3d11Mask.context->CopyResource(g_vlmcRing[nextIndex], g_vlmcCompositor);
     g_d3d11Mask.context->Flush();
 
     // Publish the completed slot: eyeMode/displayIndex only after Flush so the consumer never
@@ -5362,10 +5872,12 @@ void LoadConfig() {
     iracingRearClosingOpacity = std::clamp(ReadDoubleSetting(L"iracing_rear_closing_opacity", 0.9), 0.05, 1.0);
     iracingGripBar = ReadBoolSetting(L"iracing_grip_bar", false);
     iracingGripBarOpacity = std::clamp(ReadDoubleSetting(L"iracing_grip_bar_opacity", 0.9), 0.05, 1.0);
-    iracingSpotterWidth = std::clamp(ReadDoubleSetting(L"iracing_spotter_width", 0.12), 0.03, 0.35);
-    iracingSpotterStrength = std::clamp(ReadDoubleSetting(L"iracing_spotter_strength", 1.0), 0.1, 2.0);
-    iracingSpotterOpacity = std::clamp(ReadDoubleSetting(L"iracing_spotter_opacity", 0.65), 0.05, 1.0);
+    iracingSpotterWidth = std::clamp(ReadDoubleSetting(L"iracing_spotter_width", 0.12), 0.03, 0.70);
+    iracingSpotterStrength = std::clamp(ReadDoubleSetting(L"iracing_spotter_strength", 1.0), 0.1, 4.0);
+    iracingSpotterOpacity = std::clamp(ReadDoubleSetting(L"iracing_spotter_opacity", 0.65), 0.05, 2.0);
     iracingSpotterFade = std::clamp(ReadDoubleSetting(L"iracing_spotter_fade", 1.8), 0.25, 4.0);
+    iracingSpotterFadeInMs = std::clamp(ReadDoubleSetting(L"iracing_spotter_fade_in_ms", 0.0), 0.0, 2000.0);
+    iracingSpotterFadeOutMs = std::clamp(ReadDoubleSetting(L"iracing_spotter_fade_out_ms", 0.0), 0.0, 3000.0);
     iracingSpotterColor = static_cast<uint32_t>(ReadDoubleSetting(L"iracing_spotter_color", (double)0xFF4500)) & 0xFFFFFFu;
     iracingFlagWidth = std::clamp(ReadDoubleSetting(L"iracing_flag_width", 0.018), 0.003, 0.12);
     iracingFlagOpacity = std::clamp(ReadDoubleSetting(L"iracing_flag_opacity", 0.60), 0.05, 1.0);
@@ -5986,6 +6498,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
             nextXrCreateReferenceSpace=reinterpret_cast<PFN_xrCreateReferenceSpace>(createReferenceSpaceFn);
         if (XR_SUCCEEDED(nextXrGetInstanceProcAddr(instance,"xrDestroySpace",&destroySpaceFn)))
             nextXrDestroySpace=reinterpret_cast<PFN_xrDestroySpace>(destroySpaceFn);
+        PFN_xrVoidFunction locateSpaceFn=nullptr;
+        if (XR_SUCCEEDED(nextXrGetInstanceProcAddr(instance,"xrLocateSpace",&locateSpaceFn)))
+            nextXrLocateSpace=reinterpret_cast<PFN_xrLocateSpace>(locateSpaceFn);
     }
 
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
@@ -6251,6 +6766,13 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     // xrReleaseSwapchainImage, which runs earlier in the frame loop, so the layout
     // captured here is consumed by the NEXT frame's release. Layout is stable frame to
     // frame. Not gated on the visibility-mask path — the D3D11 visor runs regardless.
+    // Snapshot the overlay quads submitted by every API layer above ViewLab (ReShade's VR
+    // menu, OpenKneeboard, RaceLab), but only while an OBS source is actually asking for them.
+    // requestedShowOverlays is written by the VLMC consumer, so with no source connected this
+    // costs one pointer test per frame and never takes the swapchain lock.
+    if (g_vlmcSurface && g_vlmcSurface->requestedShowOverlays)
+        RecordSubmittedQuads(frameEndInfo);
+
     if (enabled && AnyDirectOverlay() &&
         g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
         bool foundProj = false;

@@ -725,3 +725,40 @@ also used cropped dimensions, so extreme crops could alter otherwise independent
 preview layout/hit-testing uses the full reference area, native ordinary overlays use `FullLens`, and full-widget
 clamps/caps use projected full-lens bounds. Crop remains a coverage boundary. Contracts pin FullLens anchors,
 crop-independent preview sizing, full-bounds caps and an unclamped full-space crosshair target.
+
+## R23 - A raw sRGB OBS shared texture must not be decoded twice (4.1.290-317; fixed 2026-08-23)
+
+**What:** ViewLab Media Capture was dramatically darker than the established OpenXR Mirror Capture
+source. Raising Gamma far beyond a normal grade made the scene visible, but necessarily spoiled its
+colours. In a simultaneous top/bottom comparison, the ViewLab pixels followed the known-good pixels
+to approximately the power of 2.36—the signature of an extra sRGB decode. Live logs supplied the
+matching resource evidence: the known-good source published DXGI format 28 (`R8G8B8A8_UNORM`), while
+VLMC published format 29 (`R8G8B8A8_UNORM_SRGB`).
+
+**Why:** `ProduceViewLabMirrorFrame` reused `ResolveCaptureReadFormat`, which deliberately preserves
+an application's concrete sRGB swapchain format. `CopySubresourceRegion` is a raw compatible-format
+copy, so the shared ring already contained the display-encoded source bytes. Publishing that ring as
+`_SRGB` made OBS's shared-texture draw decode those bytes again, crushing dark and mid-tone values.
+The Enhancer was downstream of the error and could only grade the already damaged values.
+
+**Never again:** the OBS source detects the two supported shared `_SRGB` formats and uses a dedicated
+effect to re-encode the automatically decoded linear sample exactly once before OBS receives it.
+This is consumer-side capture policy only; do not change the game's swapchain, direct visor drawing,
+ordered compositor layers, or the Enhancer's neutral-grade contract. Contract tests pin the format
+gate, correction effect and activation diagnostic.
+
+## R24 - Stabilizer analysis must retain a usable short axis (4.1.289-317; fixed 2026-08-23)
+
+**What:** the ViewLab Enhancer loaded, rendered its image adjustments and exposed all stabilization
+controls, but stabilization made no correction on a 3072x656 ViewLab Media Capture source. Removing
+and re-adding the filter could not help because the failure was inside motion analysis.
+
+**Why:** `stab_ensure_analysis` fixed analysis width at 192 pixels and derived height from the source
+aspect ratio. The panoramic source therefore became 192x41, while the 10-pixel feature half-block and
+14-pixel search radius require more than 51 pixels on each axis. The size guard rejected every frame
+before `stab_estimate`, without a diagnostic.
+
+**Never again:** analysis uses one aspect-preserving scale and expands the long axis until both axes
+have room for the matcher margins and two separated feature rows/columns. The 3072x656 source becomes
+338x72 rather than 192x41. OBS logs the selected analysis geometry and the first valid motion estimate;
+contracts pin the minimum-axis invariant, panoramic scale and activation diagnostic.

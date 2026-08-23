@@ -144,6 +144,8 @@ public partial class MainWindow : Window
 	private const string IRacingSpotterStrengthKey = "iracing_spotter_strength";
 	private const string IRacingSpotterOpacityKey = "iracing_spotter_opacity";
 	private const string IRacingSpotterFadeKey = "iracing_spotter_fade";
+	private const string IRacingSpotterFadeInKey = "iracing_spotter_fade_in_ms";
+	private const string IRacingSpotterFadeOutKey = "iracing_spotter_fade_out_ms";
 	private const string IRacingSpotterColorKey = "iracing_spotter_color";
 	private const string IRacingFlagWidthKey = "iracing_flag_width";
 	private const string IRacingFlagOpacityKey = "iracing_flag_opacity";
@@ -275,6 +277,7 @@ public partial class MainWindow : Window
 		LoadAppProfiles();
 		VersionText.Text = CurrentVersion;
 		RefreshViewLabMirrorPluginStatus();
+		RefreshViewLabEnhancerPluginStatus();
 		RefreshViewLabStabilizerPluginStatus();
 		UpdateResponsiveLayout();
 		UpdateFooterLayout();
@@ -282,6 +285,7 @@ public partial class MainWindow : Window
 		CalibrationPopup.Closed += (_, _) => _calibrationPopupClosedAt = DateTime.UtcNow;
 		PreviewPopup.Closed += (_, _) => _previewPopupClosedAt = DateTime.UtcNow;
 		OverlaysPopup.Closed += (_, _) => _overlaysPopupClosedAt = DateTime.UtcNow;
+		ObsPopup.Closed += (_, _) => _obsPopupClosedAt = DateTime.UtcNow;
 		_xrPollTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
 		_xrPollTimer.Tick += XrPollTimer_Tick;
 		_xrPollTimer.Start();
@@ -296,6 +300,7 @@ public partial class MainWindow : Window
 	private DateTime _calibrationPopupClosedAt = DateTime.MinValue;
 	private DateTime _previewPopupClosedAt = DateTime.MinValue;
 	private DateTime _overlaysPopupClosedAt = DateTime.MinValue;
+	private DateTime _obsPopupClosedAt = DateTime.MinValue;
 
 	private void OverlaysButton_Click(object sender, RoutedEventArgs e)
 	{
@@ -304,6 +309,35 @@ public partial class MainWindow : Window
 		OverlaysPopup.PlacementTarget = (UIElement)sender;
 		OverlaysPopup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
 		OverlaysPopup.IsOpen = true;
+	}
+
+	// The OBS/capture controls have their own menu: mirror visibility, ViewLab Media Capture,
+	// and the two independent OBS filters (Enhancer, Stabilizer).
+	private void ObsButton_Click(object sender, RoutedEventArgs e)
+	{
+		if ((DateTime.UtcNow - _obsPopupClosedAt).TotalMilliseconds < 200)
+			return;
+		RefreshViewLabMirrorPluginStatus();
+		RefreshViewLabEnhancerPluginStatus();
+		RefreshViewLabStabilizerPluginStatus();
+		ObsPopup.PlacementTarget = (UIElement)sender;
+		ObsPopup.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+		ObsPopup.IsOpen = true;
+	}
+
+	private OpenXrLayersWindow? _layersWindow;
+	private void OpenXrLayers_Click(object sender, RoutedEventArgs e)
+	{
+		if (_layersWindow is null || !_layersWindow.IsLoaded)
+		{
+			_layersWindow = new OpenXrLayersWindow { Owner = this };
+			_layersWindow.Closed += (_, _) => _layersWindow = null;
+			_layersWindow.Show();
+		}
+		else
+		{
+			_layersWindow.Activate();
+		}
 	}
 
 	private void VisualMasksButton_Click(object sender, RoutedEventArgs e)
@@ -1391,10 +1425,12 @@ public partial class MainWindow : Window
 		IRacingFlagBorderCheck.IsChecked = ReadBoolSetting(IRacingFlagBorderKey, false);
 		IRacingFuelWarningCheck.IsChecked = ReadBoolSetting(IRacingFuelWarningKey, false);
 		IRacingFuelWarningThresholdSlider.Value = ReadRangeSetting(IRacingFuelWarningThresholdKey, 10.0, 1.0, 50.0);
-		IRacingSpotterWidthSlider.Value = ReadRangeSetting(IRacingSpotterWidthKey, 0.12, 0.03, 0.35);
-		IRacingSpotterStrengthSlider.Value = ReadRangeSetting(IRacingSpotterStrengthKey, 1.0, 0.1, 2.0);
-		IRacingSpotterOpacitySlider.Value = ReadRangeSetting(IRacingSpotterOpacityKey, 0.65, 0.05, 1.0);
+		IRacingSpotterWidthSlider.Value = ReadRangeSetting(IRacingSpotterWidthKey, 0.12, 0.03, 0.70);
+		IRacingSpotterStrengthSlider.Value = ReadRangeSetting(IRacingSpotterStrengthKey, 1.0, 0.1, 4.0);
+		IRacingSpotterOpacitySlider.Value = ReadRangeSetting(IRacingSpotterOpacityKey, 0.65, 0.05, 2.0);
 		IRacingSpotterFadeSlider.Value = ReadRangeSetting(IRacingSpotterFadeKey, 1.8, 0.25, 4.0);
+		IRacingSpotterFadeInSlider.Value = ReadRangeSetting(IRacingSpotterFadeInKey, 0.0, 0.0, 2000.0);
+		IRacingSpotterFadeOutSlider.Value = ReadRangeSetting(IRacingSpotterFadeOutKey, 0.0, 0.0, 3000.0);
 		uint spotterColor = (uint)ReadRangeSetting(IRacingSpotterColorKey, 0xFF4500, 0, 0xFFFFFF);
 		SyncIRacingSpotterColorControls(spotterColor);
 		IRacingFlagWidthSlider.Value = ReadRangeSetting(IRacingFlagWidthKey, 0.018, 0.003, 0.12);
@@ -2270,78 +2306,78 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	// ViewLab Enhancer OBS filter — same install flow as the Mirror plugin: the bundled DLL is
 	// copied into OBS's install obs-plugins\64bit folder (the location OBS actually scans) via the
 	// generic elevated --install-obs-plugin self-relaunch. OBS is never launched or controlled.
-	private static string? ViewLabStabilizerPluginTargetPath
+	// ViewLab ships two independent OBS filters and they must stay distinct: the Enhancer does
+	// image adjustment only (colour grading, sharpening) and the Stabilizer does motion smoothing.
+	// They previously shared one code path that installed viewlab-stabilizer.dll under the Enhancer's
+	// name, so the Enhancer section installed, updated and reported the Stabilizer. One parameterised
+	// implementation now serves both, keyed on the DLL each one actually ships.
+	private static string? ObsFilterTargetPath(string fileName)
 	{
-		get
-		{
-			string? obs = TryFindObsInstallDirectory();
-			return obs == null ? null : Path.Combine(obs, "obs-plugins", "64bit", "viewlab-stabilizer.dll");
-		}
+		string? obs = TryFindObsInstallDirectory();
+		return obs == null ? null : Path.Combine(obs, "obs-plugins", "64bit", fileName);
 	}
 
-	private static string? ViewLabStabilizerPluginBundledPath
+	private static string? ObsFilterBundledPath(string fileName)
 	{
-		get
-		{
-			string local = Path.Combine(ProcessDirectory, "ObsPlugin", "viewlab-stabilizer.dll");
-			if (File.Exists(local)) return local;
-			string installed = Path.Combine(ProgramFilesInstallDirectory, "ObsPlugin", "viewlab-stabilizer.dll");
-			return File.Exists(installed) ? installed : null;
-		}
+		string local = Path.Combine(ProcessDirectory, "ObsPlugin", fileName);
+		if (File.Exists(local)) return local;
+		string installed = Path.Combine(ProgramFilesInstallDirectory, "ObsPlugin", fileName);
+		return File.Exists(installed) ? installed : null;
 	}
 
-	private void RefreshViewLabStabilizerPluginStatus()
+	private void RefreshObsFilterStatus(string displayName, string fileName, Button? installButton,
+		Button? uninstallButton, TextBlock? statusText)
 	{
-		if (ViewLabStabilizerPluginStatusText == null || InstallViewLabStabilizerPluginButton == null) return;
+		if (statusText == null || installButton == null) return;
 		// The Uninstall button is only meaningful once the DLL is actually present where OBS scans.
 		void SetUninstall(bool enabled)
 		{
-			if (UninstallViewLabStabilizerPluginButton == null) return;
-			UninstallViewLabStabilizerPluginButton.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
-			UninstallViewLabStabilizerPluginButton.IsEnabled = enabled;
+			if (uninstallButton == null) return;
+			uninstallButton.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+			uninstallButton.IsEnabled = enabled;
 		}
-		string? bundled = ViewLabStabilizerPluginBundledPath;
+		string? bundled = ObsFilterBundledPath(fileName);
 		if (bundled == null)
 		{
-			InstallViewLabStabilizerPluginButton.IsEnabled = false;
+			installButton.IsEnabled = false;
 			SetUninstall(false);
-			ViewLabStabilizerPluginStatusText.Text = "Bundled plugin payload not found (ObsPlugin\\viewlab-stabilizer.dll). Reinstall ViewLab to restore it.";
+			statusText.Text = $"Bundled plugin payload not found (ObsPlugin\\{fileName}). Reinstall ViewLab to restore it.";
 			return;
 		}
-		string? target = ViewLabStabilizerPluginTargetPath;
+		string? target = ObsFilterTargetPath(fileName);
 		if (target == null)
 		{
-			InstallViewLabStabilizerPluginButton.IsEnabled = false;
-			InstallViewLabStabilizerPluginButton.Content = "Install ViewLab Enhancer";
+			installButton.IsEnabled = false;
+			installButton.Content = "Install " + displayName;
 			SetUninstall(false);
-			ViewLabStabilizerPluginStatusText.Text = "OBS Studio was not found. Install OBS first, then reopen this to install the filter.";
+			statusText.Text = "OBS Studio was not found. Install OBS first, then reopen this to install the filter.";
 			return;
 		}
-		InstallViewLabStabilizerPluginButton.IsEnabled = true;
+		installButton.IsEnabled = true;
 		if (!File.Exists(target))
 		{
-			InstallViewLabStabilizerPluginButton.Content = "Install ViewLab Enhancer";
+			installButton.Content = "Install " + displayName;
 			SetUninstall(false);
-			ViewLabStabilizerPluginStatusText.Text = "Not installed (OBS will not show the filter until you install it here).";
+			statusText.Text = "Not installed (OBS will not show the filter until you install it here).";
 			return;
 		}
 		// Installed: offer Uninstall alongside Reinstall/Update.
 		SetUninstall(true);
 		bool upToDate = TryFileSha256(bundled) is string bundledHash &&
 			TryFileSha256(target) == bundledHash;
-		InstallViewLabStabilizerPluginButton.Content = upToDate ? "Reinstall ViewLab Enhancer" : "Update ViewLab Enhancer";
-		ViewLabStabilizerPluginStatusText.Text = upToDate
+		installButton.Content = (upToDate ? "Reinstall " : "Update ") + displayName;
+		statusText.Text = upToDate
 			? "Installed and up to date: " + target
 			: "Installed but OUTDATED — click to update, then restart OBS.";
 	}
 
-	private void UninstallViewLabStabilizerPlugin_Click(object sender, RoutedEventArgs e)
+	private void UninstallObsFilter(string displayName, string fileName, Action refresh)
 	{
-		string? target = ViewLabStabilizerPluginTargetPath;
+		string? target = ObsFilterTargetPath(fileName);
 		if (target == null || !File.Exists(target))
 		{
-			StatusText.Text = "ViewLab Enhancer is not installed in OBS.";
-			RefreshViewLabStabilizerPluginStatus();
+			StatusText.Text = displayName + " is not installed in OBS.";
+			refresh();
 			return;
 		}
 		try
@@ -2359,25 +2395,25 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			helper?.WaitForExit();
 			bool ok = helper is { ExitCode: 0 } && !File.Exists(target);
 			StatusText.Text = ok
-				? "ViewLab Enhancer removed from OBS. Restart OBS to unload it."
+				? displayName + " removed from OBS. Restart OBS to unload it."
 				: "Uninstall did not complete — administrator approval is required, and OBS must be closed if it locks the file.";
 		}
 		catch (Exception ex)
 		{
 			StatusText.Text = "Filter uninstall failed: " + ex.Message;
 		}
-		RefreshViewLabStabilizerPluginStatus();
+		refresh();
 	}
 
-	private void InstallViewLabStabilizerPlugin_Click(object sender, RoutedEventArgs e)
+	private void InstallObsFilter(string displayName, string fileName, Action refresh)
 	{
-		string? bundled = ViewLabStabilizerPluginBundledPath;
+		string? bundled = ObsFilterBundledPath(fileName);
 		if (bundled == null)
 		{
-			StatusText.Text = "ViewLab Enhancer payload is missing from this installation.";
+			StatusText.Text = displayName + " payload is missing from this installation.";
 			return;
 		}
-		string? target = ViewLabStabilizerPluginTargetPath;
+		string? target = ObsFilterTargetPath(fileName);
 		if (target == null)
 		{
 			StatusText.Text = "OBS Studio was not found; install OBS first.";
@@ -2397,15 +2433,41 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			helper?.WaitForExit();
 			bool ok = helper is { ExitCode: 0 } && TryFileSha256(bundled) is string h && TryFileSha256(target) == h;
 			StatusText.Text = ok
-				? "ViewLab Enhancer installed into OBS. Restart OBS, then add it via a source's Filters → 'ViewLab Enhancer'."
+				? $"{displayName} installed into OBS. Restart OBS, then add it via a source's Filters → '{displayName}'."
 				: "Filter install did not complete — administrator approval is required, and OBS must be closed if it locks the file.";
 		}
 		catch (Exception ex)
 		{
 			StatusText.Text = "Filter install failed: " + ex.Message;
 		}
-		RefreshViewLabStabilizerPluginStatus();
+		refresh();
 	}
+
+	private const string ViewLabEnhancerDisplayName = "ViewLab Enhancer";
+	private const string ViewLabEnhancerFileName = "viewlab-enhancer.dll";
+	private const string ViewLabStabilizerDisplayName = "ViewLab Stabilizer";
+	private const string ViewLabStabilizerFileName = "viewlab-stabilizer.dll";
+
+	private void RefreshViewLabEnhancerPluginStatus() => RefreshObsFilterStatus(
+		ViewLabEnhancerDisplayName, ViewLabEnhancerFileName, InstallViewLabEnhancerPluginButton,
+		UninstallViewLabEnhancerPluginButton, ViewLabEnhancerPluginStatusText);
+
+	private void RefreshViewLabStabilizerPluginStatus() => RefreshObsFilterStatus(
+		ViewLabStabilizerDisplayName, ViewLabStabilizerFileName, InstallViewLabStabilizerPluginButton,
+		UninstallViewLabStabilizerPluginButton, ViewLabStabilizerPluginStatusText);
+
+	private void InstallViewLabEnhancerPlugin_Click(object sender, RoutedEventArgs e) => InstallObsFilter(
+		ViewLabEnhancerDisplayName, ViewLabEnhancerFileName, RefreshViewLabEnhancerPluginStatus);
+
+	private void UninstallViewLabEnhancerPlugin_Click(object sender, RoutedEventArgs e) => UninstallObsFilter(
+		ViewLabEnhancerDisplayName, ViewLabEnhancerFileName, RefreshViewLabEnhancerPluginStatus);
+
+	private void InstallViewLabStabilizerPlugin_Click(object sender, RoutedEventArgs e) => InstallObsFilter(
+		ViewLabStabilizerDisplayName, ViewLabStabilizerFileName, RefreshViewLabStabilizerPluginStatus);
+
+	private void UninstallViewLabStabilizerPlugin_Click(object sender, RoutedEventArgs e) => UninstallObsFilter(
+		ViewLabStabilizerDisplayName, ViewLabStabilizerFileName, RefreshViewLabStabilizerPluginStatus);
+
 
 	private void ReviewCalibrationPack_Click(object sender, RoutedEventArgs e)
 	{
@@ -2592,7 +2654,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			IRacingEnabledCheck.IsChecked == true, IRacingLapPopupCheck.IsChecked == true,
 			IRacingSpotterGlowCheck.IsChecked == true, IRacingFlagBorderCheck.IsChecked == true,
 			IRacingRaceStartCheck.IsChecked == true, IRacingRearClosingCheck.IsChecked == true, IRacingGripBarCheck.IsChecked == true,
-			IRacingSpotterWidthSlider.Value, IRacingSpotterStrengthSlider.Value, IRacingSpotterOpacitySlider.Value, IRacingSpotterFadeSlider.Value, CurrentIRacingSpotterColor(),
+			IRacingSpotterWidthSlider.Value, IRacingSpotterStrengthSlider.Value, IRacingSpotterOpacitySlider.Value, IRacingSpotterFadeSlider.Value, IRacingSpotterFadeInSlider.Value, IRacingSpotterFadeOutSlider.Value, CurrentIRacingSpotterColor(),
 			IRacingFlagWidthSlider.Value, IRacingFlagOpacitySlider.Value,
 			IRacingRaceStartRedOpacitySlider.Value, IRacingRaceStartGreenOpacitySlider.Value, IRacingRaceStartGreenMsSlider.Value, IRacingRaceStartThicknessSlider.Value,
 			IRacingRearClosingOpacitySlider.Value, IRacingGripBarOpacitySlider.Value,
@@ -2613,8 +2675,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if(includeDisabled||ClockWidgetEnabledCheck.IsChecked==true)items.Add(new("clock",ClockSessionTimerCheck.IsChecked==true?"CLOCK + TIMER":"CLOCK",ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,0,ClockSessionTimerCheck.IsChecked==true?1:0,ClockWidgetScaleSlider.Value,ClockWidgetScaleSlider.Minimum,ClockWidgetScaleSlider.Maximum,ClockWidgetOpacitySlider.Value,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Clock,Math.Max(0,ClockThemeCombo.SelectedIndex)));
 		if(includeDisabled||StickyNoteEnabledCheck.IsChecked==true)for(int i=0;i<_stickyNotes.Count;++i){var n=_stickyNotes[i];if(n.Enabled&&!string.IsNullOrWhiteSpace(n.Text))items.Add(new($"sticky:{i}",$"NOTE {i+1}",n.X,n.Y,.12,.12,n.Scale,.5,2.5,n.Opacity,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Sticky,n.Theme));}
 		if(includeDisabled||NotifyEnabledCheck.IsChecked==true)items.Add(new("notifications","NOTIFICATION",NotifyXSlider.Value,NotifyYSlider.Value,.28,.12,NotifyScaleSlider.Value,NotifyScaleSlider.Minimum,NotifyScaleSlider.Maximum,NotifyOpacitySlider.Value,OverlayPreviewAnchor.BottomRight,OverlayPreviewStyle.Notification,Math.Max(0,NotifyThemeCombo.SelectedIndex)));
-		if(includeFeatureModules&&ObsIndicatorEnabledCheck.IsChecked==true)items.Add(new(string.Empty,"OBS RECORDING CUE",.5,.5,1,1,1,1,1,ObsIndicatorOpacitySlider.Value,OverlayPreviewAnchor.RecordingRenderEdge,OverlayPreviewStyle.System));
-		if(includeFeatureModules&&(IRacingLapPopupCheck.IsChecked==true||IRacingSpotterGlowCheck.IsChecked==true||IRacingFlagBorderCheck.IsChecked==true||IRacingRaceStartCheck.IsChecked==true||IRacingRearClosingCheck.IsChecked==true||IRacingGripBarCheck.IsChecked==true))items.Add(new(string.Empty,"iRACING TELEMETRY",.5,.5,1,1,1,1,1,.7,OverlayPreviewAnchor.RenderEdge,OverlayPreviewStyle.System));
 		return items;
 	}
 
@@ -2662,12 +2722,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		if(MaskBeanEditor==null)return;
 		MaskBeanEditor.SetOverlayPreviews(BuildOverlayPreviewItems());MaskBeanEditor.SetCrosshair(_crosshair,CrosshairEnabledCheck.IsChecked==true,CrosshairOffsetXSlider.Value,CrosshairOffsetYSlider.Value);
-		// Representative "active" states so the user sees each cue's real shape when it is enabled.
-		int raceStart = IRacingRaceStartCheck.IsChecked==true ? 2 : 0;
-		double rearWidth = IRacingRearClosingCheck.IsChecked==true ? 0.6 : 0.0;
-		int gripDir = IRacingGripBarCheck.IsChecked==true ? 1 : 0;
-		double gripSev = IRacingGripBarCheck.IsChecked==true ? 0.6 : 0.0;
-		MaskBeanEditor.SetIRacingCuePreview(raceStart, rearWidth, gripDir, gripSev);
 	}
 
 	private void MaskBeanEditor_OverlayPreviewChanged(object? sender,OverlayPreviewChangedEventArgs e)
@@ -2978,6 +3032,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", IRacingSpotterStrengthKey, IRacingSpotterStrengthSlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", IRacingSpotterOpacityKey, IRacingSpotterOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", IRacingSpotterFadeKey, IRacingSpotterFadeSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingSpotterFadeInKey, IRacingSpotterFadeInSlider.Value.ToString("0", c), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingSpotterFadeOutKey, IRacingSpotterFadeOutSlider.Value.ToString("0", c), ConfigPath);
 		WritePrivateProfileString("Settings", IRacingFlagWidthKey, IRacingFlagWidthSlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", IRacingFlagOpacityKey, IRacingFlagOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", IRacingLapDurationKey, IRacingLapDurationSlider.Value.ToString("0", c), ConfigPath);
@@ -3146,20 +3202,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 
 
 	private ReShadeRemoteWindow? _reshadeRemote;
-	private DiagMonWindow? _diagMonWindow;
-	private void OpenDiagMon_Click(object sender, RoutedEventArgs e)
-	{
-		if (_diagMonWindow == null)
-		{
-			_diagMonWindow = new DiagMonWindow { Owner = this };
-			_diagMonWindow.Closed += (_, _) => _diagMonWindow = null;
-			_diagMonWindow.Show();
-		}
-		else
-		{
-			_diagMonWindow.Activate();
-		}
-	}
 	private void OpenReShadeRemote_Click(object sender, RoutedEventArgs e)
 	{
 		if (_reshadeRemote == null)

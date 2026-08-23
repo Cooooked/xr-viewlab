@@ -19,6 +19,7 @@
 #include "com_ptr.hpp"
 #include "platform_utils.hpp"
 #include "reshade_api_object_impl.hpp"
+#include <Windows.h> // shared-memory effect control
 #include <set>
 #include <cmath> // std::abs, std::fmod
 #include <cctype> // std::toupper
@@ -624,6 +625,17 @@ void reshade::runtime::on_present()
 
 	// Desktop runtime skips effects in Gameplay mode — VR runtime always runs.
 	// Always allow initial load to finish so the loading bar doesn't stall forever.
+	// Global hotkeys arrive on the preview window's message loop, but effects
+	// and preset switching must be applied on the render thread.
+	if (reshade::openxr::hotkey_consume(reshade::openxr::hotkey_action::toggle_effects))
+		_effects_enabled = !_effects_enabled;
+	if (reshade::openxr::hotkey_consume(reshade::openxr::hotkey_action::next_preset))
+		switch_to_next_preset(_current_preset_path.parent_path(), false);
+	if (reshade::openxr::hotkey_consume(reshade::openxr::hotkey_action::previous_preset))
+		switch_to_next_preset(_current_preset_path.parent_path(), true);
+
+	zyb_poll_effect_control();
+
 	const bool allow_desktop_effects = _is_vr || reshade::openxr::control_is_tuning();
 	if (allow_desktop_effects || is_loading())
 		update_effects();
@@ -3218,6 +3230,163 @@ void reshade::runtime::destroy_texture(texture &tex)
 	for (const api::resource_view uav : tex.uav)
 		_device->destroy_resource_view(uav);
 	tex.uav.clear();
+}
+
+
+// ---------------------------------------------------------------------------
+// External effect control (ZYB)
+//
+// This payload runs only as an OpenXR implicit layer. There is no desktop
+// runtime and no window, so runtime::_input is null in VR and ReShade's
+// technique shortcut keys can never fire, however the key is generated. The
+// in-HMD menu has the same limitation for the same reason.
+//
+// External control therefore needs a windowless channel. ViewLab already uses
+// shared memory for its menu contract; this is a deliberately separate block so
+// the existing ViewLab layout guard and struct are untouched.
+//
+// Writer sets matrix_on, or bumps flash_sequence to fire one pulse. ReShade
+// applies it on the next presented frame and publishes a heartbeat so the
+// writer can confirm the payload is live before trusting a request.
+// ---------------------------------------------------------------------------
+namespace
+{
+	struct zyb_effect_block
+	{
+		uint32_t version;        // must be 1
+		uint32_t size;           // sizeof(zyb_effect_block) — layout guard
+		uint32_t matrix_on;      // 0 = off, 1 = on (level, not edge)
+		uint32_t flash_sequence; // bump to fire one self-clearing pulse
+		uint32_t heartbeat;      // incremented by ReShade every frame it reads
+		uint32_t reserved[11];
+	};
+
+	constexpr wchar_t ZYB_EFFECT_SHMEM_NAME[] = L"Local\\ZYBEffectControl";
+	constexpr uint32_t ZYB_EFFECT_VERSION = 1;
+
+	HANDLE s_zyb_mapping = nullptr;
+	zyb_effect_block *s_zyb_block = nullptr;
+	bool s_zyb_connect_attempted = false;
+	uint32_t s_zyb_last_flash_sequence = 0;
+	uint32_t s_zyb_last_matrix_on = 0;
+	std::chrono::steady_clock::time_point s_zyb_flash_started;
+	bool s_zyb_flash_active = false;
+}
+
+void reshade::runtime::zyb_poll_effect_control()
+{
+	// Only the VR runtime renders effects in this payload, and techniques
+	// cannot be resolved while a reload is in flight.
+	if (!_is_vr || is_loading() || _techniques.empty())
+		return;
+
+	if (!s_zyb_connect_attempted)
+	{
+		s_zyb_connect_attempted = true;
+
+		// Create rather than open: whichever side starts first owns creation,
+		// so the control channel does not depend on launch order.
+		s_zyb_mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
+			0, sizeof(zyb_effect_block), ZYB_EFFECT_SHMEM_NAME);
+		if (s_zyb_mapping != nullptr)
+			s_zyb_block = static_cast<zyb_effect_block *>(
+				MapViewOfFile(s_zyb_mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(zyb_effect_block)));
+
+		if (s_zyb_block != nullptr)
+		{
+			if (s_zyb_block->version != ZYB_EFFECT_VERSION)
+			{
+				s_zyb_block->version = ZYB_EFFECT_VERSION;
+				s_zyb_block->size = sizeof(zyb_effect_block);
+			}
+
+			// Adopt the current sequence so a stale value left by a previous
+			// session cannot fire a flash the moment the game starts.
+			s_zyb_last_flash_sequence = s_zyb_block->flash_sequence;
+
+			log::message(log::level::info, "ZYB effect control connected.");
+		}
+	}
+
+	if (s_zyb_block == nullptr)
+		return;
+
+	s_zyb_block->heartbeat++;
+
+	const uint32_t matrix_on = s_zyb_block->matrix_on;
+	const uint32_t flash_sequence = s_zyb_block->flash_sequence;
+	const bool fire_flash = flash_sequence != s_zyb_last_flash_sequence;
+
+	// Edge-triggered, not level-held.
+	//
+	// Driving the technique to match matrix_on every frame meant any manual
+	// toggle (overlay checkbox, hotkey) was overwritten on the very next
+	// frame, so Matrix appeared permanently stuck off. Only act when the
+	// request actually changes, and leave the technique alone otherwise.
+	const bool matrix_changed = matrix_on != s_zyb_last_matrix_on;
+	s_zyb_last_matrix_on = matrix_on;
+
+	for (technique &tech : _techniques)
+	{
+		if (tech.name == "ZYB_Matrix")
+		{
+			if (matrix_changed && (matrix_on != 0) != tech.enabled)
+			{
+				if (matrix_on != 0)
+					enable_technique(tech);
+				else
+					disable_technique(tech);
+			}
+		}
+		else if (tech.name == "ZYB_VRFlash")
+		{
+			if (fire_flash)
+			{
+				// Re-arm from cold: enable_technique reloads time_left from the
+				// timeout annotation, so a repeat request gets a full pulse
+				// rather than inheriting a part-expired one.
+				disable_technique(tech);
+				enable_technique(tech);
+				s_zyb_flash_started = std::chrono::steady_clock::now();
+				s_zyb_flash_active = true;
+			}
+
+			// Feed the shader its own elapsed time.
+			//
+			// A pixel shader has no memory, so the pulse needs an external
+			// clock. ReShade's "timeleft" source does not exist in this build,
+			// so the shader had no way to know how far through the pulse it
+			// was and could only hard-cut. Publishing elapsed seconds here
+			// gives it a real ramp, and works identically however the
+			// technique was switched on.
+			// Adopt an activation we did not initiate — overlay checkbox, or any
+			// other route — so a hand-toggled flash still gets a real ramp
+			// instead of rendering with a stale elapsed value.
+			if (tech.enabled && !s_zyb_flash_active)
+			{
+				s_zyb_flash_started = std::chrono::steady_clock::now();
+				s_zyb_flash_active = true;
+			}
+
+			if (s_zyb_flash_active)
+			{
+				if (!tech.enabled)
+				{
+					s_zyb_flash_active = false;
+				}
+				else if (const api::effect_uniform_variable progress =
+						find_uniform_variable("ZYB_VRFlash.fx", "FlashElapsed");
+					progress != 0)
+				{
+					const float elapsed = std::chrono::duration<float>(
+						std::chrono::steady_clock::now() - s_zyb_flash_started).count();
+					set_uniform_value_float(progress, &elapsed, 1, 0);
+				}
+			}
+		}
+	}
+
+	s_zyb_last_flash_sequence = flash_sequence;
 }
 
 void reshade::runtime::enable_technique(technique &tech)

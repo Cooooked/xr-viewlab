@@ -3,8 +3,124 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-07-25
-**Current version:** 4.1.311 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.311.msi` (size 149,454,848 bytes; SHA-256
+**Updated:** 2026-08-23
+**Current version:** 4.1.328 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.328.msi` (SHA-256
+`9F2A304483E94698013B4781DC179B05C47A25221793D0141872ECCC938016AF`; contracts pass; full build 0 errors,
+3 pre-existing C4244 warnings; **overlay flicker fix not yet confirmed live**).
+
+**2026-08-23 — VLMC overlay capture, OBS menu, spotter restore.**
+
+**First: the tree was desynced and that was the actual bug behind the "spotter is broken" report.**
+`dllmain.cpp` alone had been reverted to git HEAD (4.1.311) while every other file carried later work.
+`LiveStateService.cs` publishes `LiveStateBlock` **v13 / 332 bytes**; the reverted layer accepted only
+**v12 / 324**, so `ConsumeLiveState` rejected *every* live-state update. That kills the whole live channel,
+not just the spotter. Fixed minimally: the layer consumes v13 and reads `irSpotterFadeInMs` /
+`irSpotterFadeOutMs`. The spotter width/strength/opacity clamps were also stale (0.35/2.0/1.0) against
+shipped sliders of 0.70/4.0/2.0 and a shared `RacingCueGeometry.h` cap of 0.70, so the top half of all
+three sliders did nothing; they now match. A fade envelope applies the two timing sliders — both default
+to 0 ms, which is a hard on/off step, i.e. byte-identical to the previous behaviour.
+
+**`.capture-work-backup/` is reference only, NOT a restoration source.** It holds an earlier experimental
+capture attempt. It was NOT applied. Two defects in it are worth keeping on record because they will be
+re-derived otherwise:
+  1. Its `xrGetInstanceProcAddr` change inserted an `xrLocateSpace` branch that swallowed the
+     `xrLocateViews` branch's body, leaving **xrLocateViews unhooked** and **xrLocateSpace pointing at
+     the xrLocateViews hook** — a signature mismatch on a call every VR app makes constantly. The
+     current code resolves `xrLocateSpace` explicitly in `xrCreateSession` beside
+     `xrCreateReferenceSpace`/`xrDestroySpace`, so no such branch exists. Contract-pinned both ways.
+  2. Its quad draw set viewport, scissor and blend but never bound a rasterizer or depth-stencil state,
+     inheriting whatever the game left bound — including a cull mode that can discard the quad winding.
+
+**VLMC overlay quad compositing (the capture feature itself).** ReShade's in-HMD menu, OpenKneeboard and
+RaceLab are `XR_TYPE_COMPOSITION_LAYER_QUAD` layers. The runtime composites those separately from the
+projection layer, so copying the eye texture can never include them — this is why OXRMC showed them and
+VLMC did not. ViewLab is registered last in the implicit layer chain, so `xrEndFrame` already hands it
+every quad submitted above it; no layer reordering is needed. `RecordSubmittedQuads` snapshots them while
+`frameEndInfo` is valid and `VlmcDrawSubmittedQuads` draws them into the captured eye, ported from
+OpenXR-Layer-OBSMirror (MIT) `dx11mirror.cpp` `Blend()`: `XMMatrixPerspectiveOffCenterRH` from the eye's
+FOV, view from the eye pose, world from the quad pose/size, and `xrLocateSpace` to resolve each quad's
+reference space into the projection layer's space (skipping that misplaces view-locked overlays).
+**Key difference from OXRMC:** OXRMC owns a dedicated D3D11 device; ViewLab draws on the *game's*
+immediate context, so the draw binds known rasterizer/depth/blend/sampler states and restores every slot
+it borrows. Gated on the consumer's `requestedShowOverlays`.
+
+**Publishing stays BEFORE `nextXrEndFrame` — the post-chain approach is rejected, not pending.** 4.1.318
+claimed to publish after the chain returns to catch ReShade's final pass; that is not in the tree and must
+not be reintroduced blindly: by then the frame is submitted and the runtime owns the swapchain textures,
+and touching them there warped and mis-scaled the headset render. ReShade still reaches the capture
+because it substitutes its own swapchain into the submitted projection layer and the topology is rebuilt
+from `frameEndInfo` each frame. **Unvalidated:** the original SweetFX ASCII/Matrix/VR-Flash black-capture
+report is NOT addressed by this change and needs live retest.
+
+**Shared contract v2 → v3 (72 → 76 bytes), adding `requestedShowOverlays`.** The layer and the OBS plugin
+must be installed together; shipping one without the other stops VLMC connecting at all.
+
+**OBS consumer.** New "Display overlay layers" checkbox, four percentage crop sliders using OXRMC's crop
+maths (drawn via `gs_draw_sprite_subregion`, with `get_width`/`get_height` reporting the cropped size), and
+a Reinitialize button. Colour: the ring is a byte copy of already display-encoded pixels, so sampling it as
+sRGB decoded twice and the capture was far too dark; the source re-encodes those formats once and forces
+alpha to 1.0 because ReShade fullscreen effects may leave alpha undefined. Side-by-side removed end to end.
+
+**OBS UI.** A dedicated OBS menu with four sections: Show in OBS Mirror, ViewLab Media Capture, ViewLab
+Enhancer, ViewLab Stabilizer. **The Enhancer was wired to the Stabilizer** — its section installed, updated
+and reported `viewlab-stabilizer.dll` under the Enhancer's name, and `Product.wxs` never shipped
+`viewlab-enhancer.dll` at all, so a corrected button would have reported a missing payload. One
+parameterised install/uninstall/status path now serves both filters, keyed on the DLL each actually ships,
+and the MSI carries both. The Enhancer contract's forbidden pattern was also over-broad: it banned the word
+"stabilization", which failed on the Enhancer's own comment saying stabilization lives elsewhere; it now
+matches implementation constructs (`stab_[a-z]`, `cv::`, `calcOpticalFlow`) instead.
+
+**Overlay flicker (reported after the first build, fixed here).** ViewLab's corner masks AND the
+RaceLab quad flickered in OBS while the base image stayed stable; OXRMC showed no flicker. Cause: VLMC
+assembled each frame *inside the shared ring slot* — eye blit, then ViewLab overlays, then quad layers,
+as separate GPU work. The shared textures use legacy handles with no keyed mutex, so there is no
+synchronisation with OBS at all, and OBS could sample after the blit and before the draws: a frame with
+the overlays missing. The base image looked stable precisely because the eye blit fills the whole
+surface in one operation, which is why only the overlays flickered and why both kinds flickered
+together. A 120 Hz producer also laps a 3-slot ring against a 60 Hz consumer. Fix, taken from OXRMC:
+assemble in a private `g_vlmcCompositor` texture and publish with a single `CopyResource` into the ring
+(OXRMC's `_compositorTexture` + `copyToMirror()`; note OXRMC uses only ONE shared texture and still does
+not flicker, which confirms the ring was never what mattered). Contract-pinned.
+
+**Follow-up defect from that fix (4.1.328): the staging texture must be TYPELESS.** First cut created it
+with the ring's concrete `_SRGB` format, and ALL ViewLab overlays vanished from the capture. Measured,
+not guessed: `d3d11 mask DIAG: FAIL CreateRenderTargetView hr=0x80070057 rtvFormat=28 texFormat=29`,
+logged 2 ms before the first publish, i.e. inside the first `VlmcComposeEye`. `DrawVisorBorderToTexture`
+and `DrawCalibrationPatternsToTexture` deliberately build their RTV with the NON-sRGB format
+(`GetNonSRGBFormat`), and reinterpreting a fully-typed resource is illegal. The shared ring had tolerated
+exactly the same call because `MISC_SHARED` resources are driver-backed by a typeless allocation — a
+private texture gets no such leniency, so the bug only appeared once compositing moved off the ring.
+The staging texture is now `VlmcTypelessFor(fmt)`, which makes the UNORM view (ViewLab overlays) and the
+_SRGB view (quad compositing, which needs the encode on write) both legal; the quad RTV names its format
+explicitly since a null desc is invalid on a typeless resource. Contract-pinned.
+
+**Still to validate live (all of it):** overlays visible in OBS for both eyes and correctly placed, ReShade
+menu and effects, colour, crop, reinitialize, spotter glow, and that the quad draw leaves the game's
+rendering untouched.
+
+**Previous current version:** 4.1.316 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.316.msi` (size 149,458,944 bytes; SHA-256
+`5D0A07919B65B990773B920B77EDF0D0CEA449DA16505EBDB29F791296BCA53A`). **iRacing cue presentation was retuned and
+obsolete UI surfaces were removed without changing backend detection or compatibility policy.** The spotter now has
+larger Width/Strength/Opacity maxima, configurable fade-in/out timing, and the rear-closing cue is rendered as paired
+bottom-edge glows expanding inward from the corners. The Calibration and DiagMon launchers were removed; Draw in Void
+and Grip-O-Bar controls remain hidden so existing configs still load; iRacing and OBS visor-preview borders were removed.
+Contracts pass and the full build produced a validated MSI. **Not yet in-headset validated.**
+**OBS plugin-only build — 2026-08-23 (no ViewLab version bump or MSI):** Two live OBS defects were
+repaired. (1) ViewLab Media Capture was far darker than OpenXR Mirror Capture because its raw copied
+sRGB bytes were decoded a second time. The consumer now re-encodes supported shared sRGB formats once;
+the user confirmed the corrected colour in OBS. (2) Enhancer stabilization silently did nothing on
+the 3072x656 panoramic capture: the fixed 192-pixel analysis width produced a 41-pixel height, smaller
+than the block/search margins, so `stab_ensure_analysis` rejected every frame. Analysis scaling now
+preserves square pixels while guaranteeing enough room for separated feature rows on both axes; this
+source uses 338x72. Both plugins rebuilt independently with 0 warnings / 0 errors and contracts pass.
+Live OBS evidence records `stabilization analysis ready (source=3072x656, analysis=338x72)` followed by
+`stabilization motion tracking active`. Staged payload:
+`F:\AI-Projects\ViewLab\dist\ViewLab-OBS-plugins-2026-08-23.zip` (SHA-256
+`25B7D3707B93FECD915D531B18369E8D4CB94CB33BF47FC0F985C77C510650D8`); mirror DLL SHA-256
+`6C1CFCD689BF4B7BCC54F9F1CFE5F12AF3F23BD3FE438B5D69D140FC1734C844`; Enhancer DLL SHA-256
+`ED3BC8ADAA30FB0F567CB18DD90EDCACBCF18B2532BC24D070C1C432E9D12E56`. The staged DLL, ViewLab's
+bundled copy and OBS's installed target match. Final visual stabilization judgement remains user-led.
+**Prior version:** 4.1.311 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.311.msi` (size 149,454,848 bytes; SHA-256
 `33942DE4B2672A01CC3EF4F584EA9BA0D686E95823BED6940FE465E88C67B6D8`). **iRacing spotter glow was drawn into both eyes
 per side, and its inward fade was visibly blocky (8 flat bands).** User report ("peripheral spotter glow is not
 supposed to affect both eyes — it's supposed to affect the left of the left eye or the right of the right eye")

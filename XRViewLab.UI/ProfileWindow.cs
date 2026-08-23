@@ -349,13 +349,6 @@ public partial class ProfileWindow : Window
 					note.Opacity, OverlayPreviewAnchor.Centre, OverlayPreviewStyle.Sticky, note.Theme));
 			}
 		}
-		if (OverlayBool("obs", "obs_indicator_enabled"))
-		{
-			double opacity = double.TryParse(_globalOverlaySettings.Get("obs", "obs_indicator_opacity"),
-				NumberStyles.Float, CultureInfo.InvariantCulture, out double configuredOpacity) ? configuredOpacity : .72;
-			items.Add(new OverlayPreviewItem(string.Empty, "OBS RECORDING CUE", .5, .5, 1, 1, 1, 1, 1,
-				opacity, OverlayPreviewAnchor.RecordingRenderEdge, OverlayPreviewStyle.System));
-		}
 		MaskBeanEditor.SetOverlayPreviews(items);
 		OverlayPlacementOverride crosshair = _overlayPlacements.TryGetValue("crosshair", out OverlayPlacementOverride custom)
 			? custom : new OverlayPlacementOverride(_globalCrosshairX, _globalCrosshairY, _globalCrosshair.VrScale);

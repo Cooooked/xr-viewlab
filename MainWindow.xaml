@@ -434,10 +434,10 @@
                 <WrapPanel>
                   <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
                   <Button Name="ReShadeButton" Content="ReShade ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
-                  <Button Name="CalibrationButton" Content="Calibration ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Texture-pixel diagnostics for stream, colour, and frame quality." Click="CalibrationButton_Click" />
                   <Button Name="PreviewButton" Content="Preview ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Global desktop-preview guide preferences." Click="PreviewButton_Click" />
                   <Button Name="OverlaysButton" Content="Overlays ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Crosshair, desktop notifications, and future integrations." Click="OverlaysButton_Click" />
-                  <Button Name="DiagMonButton" Content="DiagMon ▾" Style="{StaticResource RedButton}" Padding="10,4" ToolTip="Start and stop application-agnostic performance captures, review session history, and export analysis evidence." Click="OpenDiagMon_Click" />
+                  <Button Name="ObsButton" Content="OBS ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="OBS mirror visibility, ViewLab Media Capture, Enhancer and Stabilizer." Click="ObsButton_Click" />
+                  <Button Name="OpenXrLayersButton" Content="OpenXR Layers ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,0" ToolTip="Opens the OpenXR implicit layer manager: enable, disable and reorder the layers that inject into every VR app." Click="OpenXrLayers_Click" />
                 </WrapPanel>
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
                 <CheckBox Name="MaskEnabledCheck" Content="Visor mask" Foreground="#A8A8A8" Margin="0,0,0,6" ToolTip="Draws a ViewLab-owned rounded visor." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
@@ -520,7 +520,7 @@
                   </StackPanel>
                 </Border>
               </Popup>
-              <Popup Name="CalibrationPopup" StaysOpen="False" AllowsTransparency="True">
+              <Popup Name="CalibrationPopup" Visibility="Collapsed" StaysOpen="False" AllowsTransparency="True">
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" MaxHeight="500">
                   <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Width="280">
@@ -873,13 +873,17 @@
                           <TextBlock Text="Peripheral Spotter Glow" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
                           <CheckBox Name="IRacingSpotterGlowCheck" Content="Enable peripheral spotter glow" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
                           <TextBlock Text="Glow width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
-                          <Slider Name="IRacingSpotterWidthSlider" Minimum="0.03" Maximum="0.35" Value="0.12" Tag="0.12" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <Slider Name="IRacingSpotterWidthSlider" Minimum="0.03" Maximum="0.70" Value="0.12" Tag="0.12" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                           <TextBlock Text="Glow strength" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
-                          <Slider Name="IRacingSpotterStrengthSlider" Minimum="0.1" Maximum="2" Value="1" Tag="1" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <Slider Name="IRacingSpotterStrengthSlider" Minimum="0.1" Maximum="4" Value="1" Tag="1" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                           <TextBlock Text="Glow opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
-                          <Slider Name="IRacingSpotterOpacitySlider" Minimum="0.05" Maximum="1" Value="0.65" Tag="0.65" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <Slider Name="IRacingSpotterOpacitySlider" Minimum="0.05" Maximum="2" Value="0.65" Tag="0.65" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                           <TextBlock Text="Inward fade" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingSpotterFadeSlider" Minimum="0.25" Maximum="4" Value="1.8" Tag="1.8" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <TextBlock Text="Fade-In Time (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingSpotterFadeInSlider" Minimum="0" Maximum="2000" Value="0" Tag="0" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Time for the glow to reach full strength after activation. Right-click to reset." />
+                          <TextBlock Text="Fade-Out Time (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingSpotterFadeOutSlider" Minimum="0" Maximum="3000" Value="0" Tag="0" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Time for the glow to disappear after deactivation. Right-click to reset." />
                           <TextBlock Text="Glow colour (RGB)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1" />
                           <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
@@ -924,15 +928,15 @@
                           <Slider Name="IRacingRaceStartGreenOpacitySlider" Minimum="0.05" Maximum="1" Value="0.8" Tag="0.8" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
 
                           <TextBlock Text="Rear-Closing Pressure Cue" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
-                          <CheckBox Name="IRacingRearClosingCheck" Content="Enable rear-closing glow" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="A narrow top-centre glow that warns when the nearest car behind is rapidly gaining. Closer = wider, faster closing = brighter. Clears once a car draws alongside, when the left/right spotter takes over. No approach side is inferred." />
+                          <CheckBox Name="IRacingRearClosingCheck" Content="Enable rear-closing glow" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Paired bottom-edge glows warn when the nearest car behind is rapidly gaining. Closer = wider inward expansion, faster closing = brighter. Clears once a car draws alongside, when the left/right spotter takes over. No approach side is inferred." />
                           <TextBlock Text="Glow opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingRearClosingOpacitySlider" Minimum="0.05" Maximum="1" Value="0.9" Tag="0.9" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
 
-                          <TextBlock Text="Grip-O-Bar" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
-                          <CheckBox Name="IRacingGripBarCheck" Content="Enable Grip-O-Bar" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="A lower-left/right peripheral bar showing whole-car grip loss: it compares actual yaw with a per-car calibrated expected yaw plus lateral slip. Yellow/orange/red by severity. Needs per-car calibration (built up automatically while driving cleanly); it never claims an individual tyre." />
-                          <TextBlock Text="Bar opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
-                          <Slider Name="IRacingGripBarOpacitySlider" Minimum="0.05" Maximum="1" Value="0.9" Tag="0.9" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
-                          <Button Name="IRacingGripResetButton" Content="Reset grip calibration" Padding="8,2" Margin="0,4,0,0" HorizontalAlignment="Left" Click="IRacingGripReset_Click" ToolTip="Clears the accumulated per-car grip calibration so it re-learns from scratch." />
+                          <TextBlock Visibility="Collapsed" Text="Grip-O-Bar" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
+                          <CheckBox Name="IRacingGripBarCheck" Visibility="Collapsed" Content="Enable Grip-O-Bar" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="A lower-left/right peripheral bar showing whole-car grip loss: it compares actual yaw with a per-car calibrated expected yaw plus lateral slip. Yellow/orange/red by severity. Needs per-car calibration (built up automatically while driving cleanly); it never claims an individual tyre." />
+                          <TextBlock Visibility="Collapsed" Text="Bar opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingGripBarOpacitySlider" Visibility="Collapsed" Minimum="0.05" Maximum="1" Value="0.9" Tag="0.9" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <Button Name="IRacingGripResetButton" Visibility="Collapsed" Content="Reset grip calibration" Padding="8,2" Margin="0,4,0,0" HorizontalAlignment="Left" Click="IRacingGripReset_Click" ToolTip="Clears the accumulated per-car grip calibration so it re-learns from scratch." />
 
                           <TextBlock Text="Low Fuel Warning" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
                           <CheckBox Name="IRacingFuelWarningCheck" Content="Enable low fuel warning card" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Fires once per crossing below the threshold, from the SDK's FuelLevelPct — absent on cars/tracks that don't report it." />
@@ -946,9 +950,19 @@
                       </Expander>
 
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
-                      <CheckBox Name="ExperimentalDrawInVoidCheck" Content="Experimental: Draw in Void" Foreground="#C08A2A" Checked="ExperimentalDrawInVoid_Changed" Unchecked="ExperimentalDrawInVoid_Changed" ToolTip="Persists a future rendering-route request. No outside-crop renderer is implemented yet; off preserves the current path exactly." />
+                      <CheckBox Name="ExperimentalDrawInVoidCheck" Visibility="Collapsed" Content="Experimental: Draw in Void" Foreground="#C08A2A" Checked="ExperimentalDrawInVoid_Changed" Unchecked="ExperimentalDrawInVoid_Changed" ToolTip="Persists a future rendering-route request. No outside-crop renderer is implemented yet; off preserves the current path exactly." />
 
-                      <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
+                      </StackPanel>
+                    </StackPanel>
+                  </ScrollViewer>
+                </Border>
+              </Popup>
+              <Popup Name="ObsPopup" StaysOpen="False" AllowsTransparency="True">
+                <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12" MaxHeight="560">
+                  <ScrollViewer>
+                    <StackPanel Width="430">
+                      <TextBlock Text="OBS / CAPTURE" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,6" />
+                      <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,0,0,6" />
                       <TextBlock Text="SHOW IN OBS MIRROR" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
                       <TextBlock Text="Choose which ViewLab visuals are included in the OBS/mirror output. Headset visibility is unchanged." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
                       <CheckBox Name="ObsMirrorVisorCheck" Content="Visor Mask" Foreground="#A8A8A8" Margin="0,2,0,0" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
@@ -962,22 +976,29 @@
                       <CheckBox Name="ObsMirrorRacingCheck" Content="iRacing Telemetry" Foreground="#A8A8A8" Margin="0,2,0,0" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
                       <CheckBox Name="ObsMirrorBoundaryCheck" Content="Boundary Flash" Foreground="#A8A8A8" Margin="0,2,0,0" Checked="ObsMirrorVisibility_Changed" Unchecked="ObsMirrorVisibility_Changed" />
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
-                      <TextBlock Text="VIEWLAB MEDIA CAPTURE OBS PLUGIN" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
-                      <TextBlock Text="ViewLab's own OBS source (ViewLab Media Capture) plus a colour/smoothing filter (ViewLab Media Filter). Installs into OBS's obs-plugins\64bit; no OBS process is launched or controlled. Uninstall removes it cleanly if you prefer direct capture." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
+                      <TextBlock Text="VIEWLAB MEDIA CAPTURE" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <TextBlock Text="ViewLab's own OBS source. Captures the ViewLab view including ViewLab overlays, ReShade and other OpenXR overlay layers, with eye selection, crop and a reinitialize button in the source's properties. Installs into OBS's obs-plugins4bit; no OBS process is launched or controlled." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
                       <StackPanel Orientation="Horizontal">
-                        <Button Name="InstallViewLabMirrorPluginButton" Content="Install ViewLab Media Capture Plugin" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabMirrorPlugin_Click" />
+                        <Button Name="InstallViewLabMirrorPluginButton" Content="Install ViewLab Media Capture" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabMirrorPlugin_Click" />
                         <Button Name="UninstallViewLabMirrorPluginButton" Content="Uninstall" Padding="9,4" Margin="6,0,0,0" HorizontalAlignment="Left" Click="UninstallViewLabMirrorPlugin_Click" />
                       </StackPanel>
                       <TextBlock Name="ViewLabMirrorPluginStatusText" Text="" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" />
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
-                      <TextBlock Text="VIEWLAB ENHANCER OBS FILTER" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
-                      <TextBlock Text="Stabilizes (shake, roll and zoom) and colour-grades a mirrored VR view for a watchable capture. Add it via a source's Filters menu (works on the ViewLab Mirror Capture or OpenXR Mirror Capture source). Installs per user; no OBS process is launched or controlled." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
+                      <TextBlock Text="VIEWLAB ENHANCER" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <TextBlock Text="Image adjustment only: colour grading and sharpening for a mirrored VR view. Add it via a source's Filters menu. Installs per user; no OBS process is launched or controlled." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
                       <StackPanel Orientation="Horizontal">
-                        <Button Name="InstallViewLabStabilizerPluginButton" Content="Install ViewLab Enhancer" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabStabilizerPlugin_Click" />
+                        <Button Name="InstallViewLabEnhancerPluginButton" Content="Install ViewLab Enhancer" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabEnhancerPlugin_Click" />
+                        <Button Name="UninstallViewLabEnhancerPluginButton" Content="Uninstall" Padding="9,4" Margin="6,0,0,0" HorizontalAlignment="Left" Visibility="Collapsed" Click="UninstallViewLabEnhancerPlugin_Click" />
+                      </StackPanel>
+                      <TextBlock Name="ViewLabEnhancerPluginStatusText" Text="" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" />
+                      <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
+                      <TextBlock Text="VIEWLAB STABILIZER" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,3" />
+                      <TextBlock Text="Motion stabilization for a mirrored VR view: smooths head shake, roll and zoom. Add it via a source's Filters menu. Installs per user; no OBS process is launched or controlled." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,0,0,4" />
+                      <StackPanel Orientation="Horizontal">
+                        <Button Name="InstallViewLabStabilizerPluginButton" Content="Install ViewLab Stabilizer" Padding="9,4" HorizontalAlignment="Left" Click="InstallViewLabStabilizerPlugin_Click" />
                         <Button Name="UninstallViewLabStabilizerPluginButton" Content="Uninstall" Padding="9,4" Margin="6,0,0,0" HorizontalAlignment="Left" Visibility="Collapsed" Click="UninstallViewLabStabilizerPlugin_Click" />
                       </StackPanel>
                       <TextBlock Name="ViewLabStabilizerPluginStatusText" Text="" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0" />
-                      </StackPanel>
                     </StackPanel>
                   </ScrollViewer>
                 </Border>

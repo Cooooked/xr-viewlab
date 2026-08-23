@@ -19,7 +19,7 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
     <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
   </PropertyGroup>
@@ -31,19 +31,44 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <WarningLevel>Level4</WarningLevel>
-      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreaded</RuntimeLibrary>
+      <WarningLevel>Level3</WarningLevel>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <AdditionalIncludeDirectories>$(ProjectDir)upstream\LiveVisionKit;$(ProjectDir)deps\opencv\include;$(ProjectDir)deps\obs\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;VERSION=&quot;1.2.2-viewlab&quot;;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebugDLL</RuntimeLibrary>
       <Optimization Condition="'$(Configuration)'=='Release'">MaxSpeed</Optimization>
+      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(ProjectDir)deps;$(ProjectDir)deps\opencv\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>obs.lib;opencv_world470.lib;d3d11.lib;dxgi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="viewlab-stabilizer.c" />
-    <ClInclude Include="obs_filter_abi.h" />
+    <ClCompile Include="viewlab-stabilizer-module.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\Math\BoundingQuad.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\Math\Homography.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\Vision\FrameTracker.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\Vision\GridDetector.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\OBS\Effects\DefaultEffect.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\OBS\Effects\FSREffect.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\OBS\Interop\FrameBuffer.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\OBS\Interop\FrameIngest.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\OBS\Interop\InteropContext.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\OBS\Interop\VisionFilter.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\OBS\Plugin\Stabilisation\VSFilter.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\OBS\Plugin\Stabilisation\VSSource.cpp" />
+    <ClCompile Include="upstream\LiveVisionKit\OBS\Utility\Graphics.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="upstream\LiveVisionKit\OBS\Data\effects\fsr.effect" />
+    <None Include="upstream\LiveVisionKit\OBS\Data\effects\ffx_a_mod.h" />
+    <None Include="upstream\LiveVisionKit\OBS\Data\effects\ffx_fsr1_mod.h" />
+    <None Include="LICENSE-LiveVisionKit.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

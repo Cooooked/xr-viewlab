@@ -10,6 +10,103 @@
 #include <cstring>
 #include <cmath>
 
+// ── Preview window state persistence ───────────────────────────────────────
+//
+// The control block is volatile shared memory. It only lives while some
+// process holds a handle, so once both the game and ViewLab exit it is gone
+// and the next launch recreates it "fresh". Previously that path hardcoded
+// the window flags back to their defaults, which is why borderless and
+// always-on-top were forgotten between sessions. Persist them next to the
+// quad transform, which already survives restarts, and restore them instead.
+namespace
+{
+	constexpr wchar_t WINDOW_STATE_FILE[]    = L"C:\\ProgramData\\ReShade\\openxr_quad_transform.ini";
+	constexpr wchar_t WINDOW_STATE_SECTION[] = L"Window";
+
+	uint32_t window_state_get(const wchar_t *key, uint32_t fallback)
+	{
+		return static_cast<uint32_t>(GetPrivateProfileIntW(WINDOW_STATE_SECTION, key, static_cast<INT>(fallback), WINDOW_STATE_FILE));
+	}
+
+	// Global menu hotkey.
+	//
+	// ReShade's own shortcut handling cannot serve this: the payload runs only
+	// as an OpenXR implicit layer, so the VR runtime has no window and no input
+	// object, and the Home key is never seen. RegisterHotKey is process-wide
+	// and delivered to this preview window's message loop, which does have one,
+	// so it works whether the game or the desktop has focus.
+	// One RegisterHotKey id per action, in a private range for this process.
+	constexpr int HOTKEY_ID_BASE = 0x5A59;
+	constexpr size_t HOTKEY_COUNT = static_cast<size_t>(reshade::openxr::hotkey_action::count);
+
+	const wchar_t *const HOTKEY_INI_KEYS[HOTKEY_COUNT] = {
+		L"hotkey_toggle_effects",
+		L"hotkey_next_preset",
+		L"hotkey_previous_preset",
+		L"hotkey_toggle_menu",
+	};
+
+	// Only the menu has a default. Leaving the rest unbound avoids silently
+	// stealing keys the sim already uses.
+	// Only the menu has a default. RegisterHotKey takes a key process-wide, so
+	// defaulting the effects to F4/F5 would silently swallow iRacing's own
+	// black-box keys. Left unbound; pick them in the overlay menu.
+	const uint32_t HOTKEY_DEFAULTS[HOTKEY_COUNT] = { 0, 0, 0, VK_HOME };
+
+	std::atomic<uint32_t> s_hotkey_vk[HOTKEY_COUNT];
+	std::atomic<bool>     s_hotkey_fired[HOTKEY_COUNT];
+	uint32_t              s_hotkey_registered[HOTKEY_COUNT] = {};
+	std::atomic<bool>     s_hotkey_loaded{ false };
+
+	// Desktop preview visibility is tracked separately from the in-HMD quad so
+	// the menu hotkey can target the headset alone. ViewLab writing
+	// menu_visible still drives both, which is what its checkbox implies.
+	std::atomic<bool>     s_menu_hotkey_desktop{ true };
+	uint32_t              s_desktop_menu_visible = 1;
+	uint32_t              s_last_ctrl_menu_visible = UINT32_MAX;
+
+	void hotkey_load_once()
+	{
+		if (s_hotkey_loaded.exchange(true))
+			return;
+		for (size_t i = 0; i < HOTKEY_COUNT; ++i)
+			s_hotkey_vk[i].store(window_state_get(HOTKEY_INI_KEYS[i], HOTKEY_DEFAULTS[i]));
+		s_menu_hotkey_desktop.store(window_state_get(L"hotkey_menu_desktop", 1) != 0);
+	}
+
+	// Re-registers only what actually changed, so this is cheap to call on the
+	// existing 33 ms window tick and picks up edits made from the menu.
+	void hotkey_sync_registrations(HWND hwnd)
+	{
+		for (size_t i = 0; i < HOTKEY_COUNT; ++i)
+		{
+			const uint32_t want = s_hotkey_vk[i].load();
+			if (want == s_hotkey_registered[i])
+				continue;
+
+			if (s_hotkey_registered[i] != 0)
+				UnregisterHotKey(hwnd, HOTKEY_ID_BASE + static_cast<int>(i));
+
+			if (want != 0 && !RegisterHotKey(hwnd, HOTKEY_ID_BASE + static_cast<int>(i), 0, want))
+			{
+				reshade::log::message(reshade::log::level::warning,
+					"Could not register a ReShade hotkey; another application may already own that key.");
+				s_hotkey_registered[i] = 0;
+				continue;
+			}
+
+			s_hotkey_registered[i] = want;
+		}
+	}
+
+	void window_state_set(const wchar_t *key, uint32_t value)
+	{
+		wchar_t buffer[16];
+		swprintf_s(buffer, L"%u", value);
+		WritePrivateProfileStringW(WINDOW_STATE_SECTION, key, buffer, WINDOW_STATE_FILE);
+	}
+}
+
 #ifndef SRCCOPY
 #define SRCCOPY 0x00CC0020
 #endif
@@ -157,8 +254,42 @@ namespace
 			return hit;
 		}
 
+		case WM_HOTKEY:
+		{
+			const size_t index = static_cast<size_t>(static_cast<int>(wp) - HOTKEY_ID_BASE);
+			if (index >= HOTKEY_COUNT)
+				break;
+
+			if (index == static_cast<size_t>(reshade::openxr::hotkey_action::toggle_menu))
+			{
+				// Toggle the shared flag rather than local state, so ReShade,
+				// the desktop preview and ViewLab's checkbox all agree.
+				if (s_ctrl && s_ctrl->version == 1)
+				{
+					const uint32_t next = s_ctrl->menu_visible ? 0u : 1u;
+					s_ctrl->menu_visible = next;
+					s_ctrl->revision++;
+					// Our own write: record it so the tick does not mistake it
+					// for ViewLab changing the setting.
+					s_last_ctrl_menu_visible = next;
+					if (s_menu_hotkey_desktop.load())
+						s_desktop_menu_visible = next;
+					window_state_set(L"menu_visible", next);
+				}
+			}
+			else
+			{
+				// Effects and preset switching must happen on the render
+				// thread, so leave an edge for runtime::on_present to pick up.
+				s_hotkey_fired[index].store(true);
+			}
+			return 0;
+		}
+
 		case WM_TIMER:
 		{
+			hotkey_sync_registrations(hwnd);
+
 			// Apply control-block window flags
 			if (!s_ctrl || s_ctrl->version != 1 || s_ctrl->size != sizeof(reshade::openxr::XRControlBlock))
 				break;
@@ -184,6 +315,7 @@ namespace
 						SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
 				}
 				s_preview.applied_headless = s_ctrl->win_headless;
+				window_state_set(L"headless", s_ctrl->win_headless);
 			}
 
 			// Always on top
@@ -192,13 +324,21 @@ namespace
 				const HWND z_order = s_ctrl->win_always_on_top ? HWND_TOPMOST : HWND_NOTOPMOST;
 				SetWindowPos(hwnd, z_order, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 				s_preview.applied_always_on_top = s_ctrl->win_always_on_top;
+				window_state_set(L"always_on_top", s_ctrl->win_always_on_top);
 			}
 
 			// Hide preview window when Desktop VR Menu is disabled
-			if (s_preview.applied_visible != s_ctrl->menu_visible)
+			// ViewLab changing menu_visible drives both surfaces.
+			if (s_ctrl->menu_visible != s_last_ctrl_menu_visible)
 			{
-				ShowWindow(hwnd, s_ctrl->menu_visible ? SW_SHOW : SW_HIDE);
-				s_preview.applied_visible = s_ctrl->menu_visible;
+				s_last_ctrl_menu_visible = s_ctrl->menu_visible;
+				s_desktop_menu_visible = s_ctrl->menu_visible;
+			}
+
+			if (s_preview.applied_visible != s_desktop_menu_visible)
+			{
+				ShowWindow(hwnd, s_desktop_menu_visible ? SW_SHOW : SW_HIDE);
+				s_preview.applied_visible = s_desktop_menu_visible;
 			}
 
 			if (s_preview.applied_edit_mode != s_ctrl->quad_edit_mode)
@@ -380,6 +520,9 @@ namespace
 			DestroyWindow(hwnd);
 			return 0;
 		case WM_DESTROY:
+			for (size_t i = 0; i < HOTKEY_COUNT; ++i)
+				if (s_hotkey_registered[i] != 0)
+					UnregisterHotKey(hwnd, HOTKEY_ID_BASE + static_cast<int>(i)), s_hotkey_registered[i] = 0;
 			PostQuitMessage(0);
 			return 0;
 		}
@@ -417,6 +560,9 @@ namespace
 			// Show immediately if menu_visible is already set (ViewLab connected first)
 			if (s_ctrl && s_ctrl->version == 1 && s_ctrl->menu_visible)
 				ShowWindow(hwnd, SW_SHOW);
+			hotkey_load_once();
+			hotkey_sync_registrations(hwnd);
+
 			SetTimer(hwnd, 1, 33, nullptr);
 			MSG msg = {};
 			while (GetMessage(&msg, nullptr, 0, 0))
@@ -581,10 +727,10 @@ void reshade::openxr::control_init()
 		s_ctrl->size               = sizeof(XRControlBlock);
 		s_ctrl->xr_mode            = XR_MODE_GAMEPLAY;
 		s_ctrl->revision           = 0;
-		s_ctrl->win_headless       = 0;
-		s_ctrl->win_always_on_top  = 0;
-		s_ctrl->win_snap_cursor    = 0;
-		s_ctrl->menu_visible       = 1;
+		s_ctrl->win_headless       = window_state_get(L"headless", 0);
+		s_ctrl->win_always_on_top  = window_state_get(L"always_on_top", 0);
+		s_ctrl->win_snap_cursor    = 0; // transient: deliberately not persisted
+		s_ctrl->menu_visible       = window_state_get(L"menu_visible", 1);
 		s_ctrl->quad_edit_mode     = 0;
 		s_ctrl->heartbeat          = 0;
 		s_ctrl->quad_pos_x         = 0.0f;
@@ -618,4 +764,37 @@ reshade::openxr::XRControlBlock* reshade::openxr::control_block()
 	if (!s_ctrl || s_ctrl->version != 1 || s_ctrl->size != sizeof(XRControlBlock))
 		return nullptr;
 	return s_ctrl;
+}
+
+uint32_t reshade::openxr::hotkey_get(hotkey_action action)
+{
+	hotkey_load_once();
+	return s_hotkey_vk[static_cast<size_t>(action)].load();
+}
+
+void reshade::openxr::hotkey_set(hotkey_action action, uint32_t virtual_key)
+{
+	hotkey_load_once();
+	const size_t index = static_cast<size_t>(action);
+	s_hotkey_vk[index].store(virtual_key);
+	window_state_set(HOTKEY_INI_KEYS[index], virtual_key);
+	// The window tick re-registers; no cross-thread window calls needed here.
+}
+
+bool reshade::openxr::hotkey_consume(hotkey_action action)
+{
+	return s_hotkey_fired[static_cast<size_t>(action)].exchange(false);
+}
+
+bool reshade::openxr::menu_hotkey_includes_desktop()
+{
+	hotkey_load_once();
+	return s_menu_hotkey_desktop.load();
+}
+
+void reshade::openxr::set_menu_hotkey_includes_desktop(bool include)
+{
+	hotkey_load_once();
+	s_menu_hotkey_desktop.store(include);
+	window_state_set(L"hotkey_menu_desktop", include ? 1u : 0u);
 }

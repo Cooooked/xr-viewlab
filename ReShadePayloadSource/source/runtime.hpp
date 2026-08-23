@@ -189,6 +189,10 @@ namespace reshade
 		bool create_texture(texture &texture);
 		void destroy_texture(texture &texture);
 
+		// Applies external effect requests delivered through shared memory.
+		// The OpenXR layer has no window, so keyboard shortcuts cannot reach it.
+		void zyb_poll_effect_control();
+
 		void enable_technique(technique &technique);
 		void disable_technique(technique &technique);
 

@@ -158,8 +158,9 @@ Assert-Contains 'XRViewLab.UI\CalibrationSuite.cs' 'IOpenXrLeftEyeCaptureBackend
 Assert-Contains 'XRViewLab.UI\CalibrationSuite.cs' '"01-texture-grid"[\s\S]*"10-motion-strip"' 'calibration suite pins exactly ten named patterns'
 Assert-Contains 'XRViewLab.UI\CalibrationSuite.cs' 'finally[\s\S]*applyMaskAsync\(originalMask\)' 'calibration suite always restores the original state'
 Assert-Contains 'XRViewLab.UI\CalibrationSuite.cs' 'No images were generated' 'unavailable capture never creates fake images'
-Assert-Contains 'MainWindow.xaml' 'Content="Experimental: Draw in Void"' 'future Draw in Void flag is clearly experimental'
-Assert-Contains 'MainWindow.xaml' 'Name="DiagMonButton" Content="DiagMon [^\"]+"' 'DiagMon launcher uses the compact label and chevron'
+Assert-Contains 'MainWindow.xaml' 'Name="ExperimentalDrawInVoidCheck" Visibility="Collapsed"' 'legacy Draw in Void control remains hidden for config compatibility'
+Assert-NotContains 'MainWindow.xaml' 'Name="DiagMonButton"' 'DiagMon launcher is removed from the main UI'
+Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'OpenDiagMon_Click|_diagMonWindow' 'DiagMon launcher functions are removed from the main UI'
 Assert-Contains 'ProfileWindow.xaml' 'Text="Nose" Visibility="Collapsed"' 'profile nose controls remain serialized but hidden'
 
 # ---- Overlays menu organisation ---------------------------------------------------
@@ -169,6 +170,11 @@ Assert-Contains 'MainWindow.xaml' 'Text="Lap Time Pop-up"[\s\S]*Text="Peripheral
 foreach ($slider in @('IRacingLapDurationSlider','IRacingSpotterWidthSlider','IRacingSpotterStrengthSlider','IRacingSpotterOpacitySlider','IRacingSpotterFadeSlider','IRacingFlagWidthSlider','IRacingFlagOpacitySlider','IRacingFuelWarningThresholdSlider')) {
 	Assert-Contains 'MainWindow.xaml' ('<TextBlock Text="[^"]+"[^>]*/>\s*<Slider Name="{0}"' -f $slider) "$slider has its own immediately preceding label"
 }
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterWidthSlider"[^>]*Maximum="0\.70"' 'spotter width maximum is raised for visible peripheral coverage'
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterStrengthSlider"[^>]*Maximum="4"' 'spotter strength maximum is raised for visible peripheral coverage'
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterOpacitySlider"[^>]*Maximum="2"' 'spotter opacity maximum is raised for visible peripheral coverage'
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterFadeInSlider"' 'spotter fade-in timing control exists'
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterFadeOutSlider"' 'spotter fade-out timing control exists'
 Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterRedSlider"[\s\S]*Name="IRacingSpotterGreenSlider"[\s\S]*Name="IRacingSpotterBlueSlider"' 'iRacing spotter exposes an RGB colour picker'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'IRacingSpotterRgb_Changed[\s\S]*IRacingSpotterColorKey' 'RGB picker persists through the existing telemetry colour key'
 Assert-Contains 'MainWindow.xaml' 'Presentation tests \(no live connection required\)[\s\S]*IRacingTestLeft_Click[\s\S]*IRacingTestBlue_Click' 'iRacing presentation tests remain available without a connection'
@@ -176,9 +182,8 @@ Assert-Contains 'MainWindow.xaml' 'Text="Performance Trace"[\s\S]*</Expander>\s*
 Assert-Contains 'MainWindow.xaml' 'Text="Performance HUD"' 'HUD is presented as Performance HUD'
 Assert-Contains 'ProfileWindow.xaml' 'Text="Performance HUD"' 'per-app HUD uses the corrected name'
 $overlayMenu = Get-Content -LiteralPath (Join-Path $Root 'MainWindow.xaml') -Raw
-$drawInVoidOffset = $overlayMenu.IndexOf('Name="ExperimentalDrawInVoidCheck"', [StringComparison]::Ordinal)
 $obsMirrorOffset = $overlayMenu.IndexOf('Text="SHOW IN OBS MIRROR"', [StringComparison]::Ordinal)
-if ($drawInVoidOffset -lt 0 -or $obsMirrorOffset -le $drawInVoidOffset) { throw 'Contract failed: Show in OBS Mirror must be the final overlays section' }
+if ($obsMirrorOffset -lt 0) { throw 'Contract failed: Show in OBS Mirror section is missing' }
 foreach ($check in @('ObsMirrorVisorCheck','ObsMirrorClockCheck','ObsMirrorNotificationsCheck','ObsMirrorHudCheck','ObsMirrorTraceCheck','ObsMirrorCrosshairCheck','ObsMirrorStickyCheck','ObsMirrorRecordingCueCheck','ObsMirrorRacingCheck','ObsMirrorBoundaryCheck')) {
 	if ($overlayMenu.IndexOf(('Name="{0}"' -f $check), $obsMirrorOffset, [StringComparison]::Ordinal) -lt 0) { throw "Contract failed: final mirror section is missing $check" }
 }
@@ -457,18 +462,22 @@ foreach ($key in @('hud_trace_x', 'hud_trace_y', 'hud_trace_scale', 'hud_trace_w
 }
 Assert-Contains 'MainWindow.xaml' 'Name="HudSafeMarginSlider"' 'HUD safe-margin control exists'
 Assert-Contains 'dllmain.cpp' 'hudClampToVisible' 'HUD clamps complete bounds to the visible eye rectangle'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 324' 'live state carries iRacing cue tuning, OBS mirror controls and the visor colour'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 12u\)' 'live state contract is version 12'
-Assert-Contains 'dllmain.cpp' 'snapshot\.version != 12' 'DLL consumes live-state contract version 12'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 332' 'live state carries iRacing cue tuning, timing controls, OBS mirror controls and the visor colour'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 13u\)' 'live state contract is version 13'
+Assert-Contains 'dllmain.cpp' 'snapshot\.version != 13' 'DLL consumes live-state contract version 13'
 # Item 21: versioned visor colour field (0x00RRGGBB); default 0 = black.
 Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(268, visorColor & 0xFFFFFFu\)' 'live state publishes the visor colour'
-Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(LiveStateBlock\)==324' 'native live-state struct grew to the v12 size'
+Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(LiveStateBlock\)==332' 'native live-state struct grew to the v13 size'
 # Item 19 follow-up: every iRacing cue control applies live, not only at session restart. The v12 tail
 # carries the numeric tuning and iracingFlags gains bit4 race start, bit5 rear closing, bit6 Grip-O-Bar.
 Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'iracingRaceStart \? 16u' 'live state publishes the race-start enable bit'
 Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(320, \(float\)irGripBarOpacity\)' 'live state publishes the grip-bar opacity at the v12 tail'
 Assert-Contains 'dllmain.cpp' 'iracingGripBar = \(stable\.iracingFlags & 64u\) != 0' 'native consumes the live grip-bar enable bit'
 Assert-Contains 'dllmain.cpp' 'iracingSpotterFade = std::clamp\(\(double\)stable\.irSpotterFade' 'native consumes live spotter tuning'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'IRacingSpotterFadeInKey = "iracing_spotter_fade_in_ms"' 'UI persists spotter fade-in timing'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'IRacingSpotterFadeOutKey = "iracing_spotter_fade_out_ms"' 'UI persists spotter fade-out timing'
+Assert-Contains 'dllmain.cpp' 'iracingSpotterFadeInMs = std::clamp\(\(double\)stable\.irSpotterFadeInMs' 'native consumes live spotter fade-in timing'
+Assert-Contains 'dllmain.cpp' 'iracingSpotterFadeOutMs = std::clamp\(\(double\)stable\.irSpotterFadeOutMs' 'native consumes live spotter fade-out timing'
 Assert-Contains 'dllmain.cpp' 'iracingRearClosingOpacity = std::clamp\(\(double\)stable\.irRearClosingOpacity' 'native consumes live rear-closing opacity'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'CurrentIRacingSpotterColor\(\)' 'UI publishes the live spotter colour'
 Assert-Contains 'dllmain.cpp' 'cbuffer VisorColor : register\(b0\)' 'visor pixel shader reads the colour constant buffer'
@@ -549,10 +558,10 @@ Assert-Contains 'dllmain.cpp' 'g_boundaryReleaseTick = GetTickCount64' 'boundary
 Assert-Contains 'dllmain.cpp' 'BoundaryFlashActive' 'boundary flash gates its own draw'
 Assert-Contains 'MainWindow.xaml' 'Thumb.DragStarted="BoundaryDrag_Start"' 'HUD/trace layout sliders raise the boundary-flash drag signal'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' '_boundaryDragActive = true' 'UI sets the drag-active flag while dragging layout controls'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"iRACING TELEMETRY"[\s\S]*OverlayPreviewAnchor\.RenderEdge' 'iRacing preview uses the post-crop boundary rather than the full-lens guide'
+Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'OverlayPreviewItem[^\r\n]*iRACING TELEMETRY' 'iRacing telemetry preview border is removed from the visor preview'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'Anchor==OverlayPreviewAnchor\.RenderEdge[\s\S]*PreviewCropRect\(area\)' 'render-edge feature previews follow the current crop rectangle'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"OBS RECORDING CUE"[\s\S]*OverlayPreviewAnchor\.RecordingRenderEdge' 'main OBS preview follows the post-crop boundary'
-Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' '"OBS RECORDING CUE"[\s\S]*OverlayPreviewAnchor\.RecordingRenderEdge' 'per-app OBS preview follows the post-crop boundary'
+Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'OverlayPreviewItem[^\r\n]*OBS RECORDING CUE' 'main OBS recording cue preview border is removed'
+Assert-NotContains 'XRViewLab.UI\ProfileWindow.cs' 'OverlayPreviewItem[^\r\n]*OBS RECORDING CUE' 'per-app OBS recording cue preview border is removed'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'Anchor==OverlayPreviewAnchor\.RecordingRenderEdge[\s\S]*OverlayPreviewGeometry\(item,crop' 'OBS preview uses exact crop bounds'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'RecordingRenderEdge[\s\S]*rect\.Bottom-15/_viewZoom' 'OBS preview label remains distinct at bottom-left'
 Assert-Contains 'XRViewLab.UI\Quest3PreviewGeometry.cs' 'ResolveFullLens\(Rect area[\s\S]*ApplyFullLensDrag\(Rect area' 'forward and inverse preview transforms share the full-lens rectangle'
@@ -938,6 +947,7 @@ Assert-IniValue 'clock_widget_palette' '2'
 Assert-IniValue 'notify_palette' '0'
 # Item 19: iRacing cue geometry is single-source (shared header) so behavioral tests prove controls change output.
 Assert-Contains 'dllmain.cpp' 'viewlab::racing::SpotterWidthPx\(iracingSpotterWidth,w\)' 'native spotter width uses the shared cue-geometry header'
+Assert-Contains 'RacingCueGeometry.h' 'viewW \* 0\.70f' 'spotter width geometry permits the raised maximum'
 Assert-Contains 'dllmain.cpp' 'viewlab::racing::SpotterBase\(iracingSpotterOpacity,iracingSpotterStrength\)' 'native spotter intensity uses the shared cue-geometry header'
 Assert-Contains 'dllmain.cpp' 'viewlab::racing::SpotterBandAlpha\(base,inward,iracingSpotterFade,true\)' 'native spotter fade uses the shared cue-geometry header'
 Assert-Contains 'dllmain.cpp' 'viewlab::racing::FlagBorderThickness\(iracingFlagWidth,minDim\)' 'native flag border uses the shared cue-geometry header'
@@ -947,12 +957,11 @@ Assert-Contains 'dllmain.cpp' 'viewlab::racing::GripSeverityBand\(sev\)' 'native
 Assert-Contains 'Tests\RenderPolicyFixtures.cpp' 'spotter: increasing width widens the glow' 'behavioral audit proves spotter controls change geometry'
 # Items 4/5/6: the three new iRacing cues have real desktop previews whose geometry matches the native
 # renderer (not just a generic edge placeholder).
-Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'void DrawIRacingCuePreviews\(DrawingContext dc, Rect crop\)' 'iRacing cues have a real preview renderer'
-Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'halfW=\(0\.10\+0\.30\*_rearClosingPreview\)\*w\*0\.5' 'rear-closing preview width uses the native 0.10+0.30 mapping'
+Assert-NotContains 'XRViewLab.UI\BeanMaskEditor.cs' 'DrawIRacingCuePreviews|SetIRacingCuePreview|_raceStartPreview|_rearClosingPreview' 'iRacing cue rectangles are absent from the desktop visor preview'
 Assert-Contains 'RacingCueGeometry.h' '0\.10 \+ 0\.30 \* width01' 'rear-closing native width uses the same 0.10+0.30 mapping (shared header)'
-Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'barW=\(0\.10\+0\.35\*sev\)\*w\*0\.5' 'grip preview bar width uses the native 0.10+0.35 mapping'
+Assert-NotContains 'XRViewLab.UI\BeanMaskEditor.cs' 'barW=\(0\.10\+0\.35\*sev\)\*w\*0\.5' 'grip preview bar is removed from the desktop visor preview'
 Assert-Contains 'RacingCueGeometry.h' '0\.10 \+ 0\.35 \* severity01' 'grip native bar width uses the same 0.10+0.35 mapping (shared header)'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'MaskBeanEditor\.SetIRacingCuePreview\(raceStart, rearWidth' 'main editor drives the real iRacing cue previews'
+Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'SetIRacingCuePreview|raceStart = IRacingRaceStartCheck|rearWidth = IRacingRearClosingCheck' 'main editor does not inject iRacing cue rectangles into the preview'
 # Item 5: Race-start border light wired end-to-end (provider -> racing state -> native render + settings).
 Assert-Contains 'XRViewLab.UI\ViewLabEvents.cs' 'RaceStart,' 'race-start event kind exists'
 Assert-Contains 'XRViewLab.UI\IRacingCues.cs' 'internal static class RaceStartFlags' 'race-start phase mapping is a shared testable helper'
@@ -981,21 +990,83 @@ Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(4, 2u\)' 'ra
 Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(RacingStateBlock\)==68' 'native racing state struct grew to v2 (68 bytes)'
 Assert-Contains 'dllmain.cpp' 'g_racing->version!=2' 'native consumes racing state version 2'
 Assert-Contains 'dllmain.cpp' 'const bool wantGripBar = IncludesMirrorFeature' 'native gates the grip bar on enable + mirror feature'
-Assert-Contains 'MainWindow.xaml' 'Name="IRacingGripBarCheck"' 'grip-o-bar enable control is present'
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingGripBarCheck" Visibility="Collapsed"' 'legacy grip-o-bar control remains hidden for config compatibility'
 # ViewLab Media Capture (VLMC): OBS identity is unique and does not collide with the third-party source.
 Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "viewlab_media_capture"' 'VLMC OBS source uses a unique stable source id'
 Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'return "ViewLab Media Capture"' 'VLMC OBS source display name is the final product name'
 Assert-NotContains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'info\.id = "openxr' 'VLMC OBS source does not reuse the OpenXR Mirror Capture id'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' "add the 'ViewLab Media Capture' source" 'UI instructs the user to add the correctly-named source'
-# VLMC eye-mode contract (v2). Colour/enhancement lives in the separate ViewLab Enhancer filter.
-Assert-Contains 'ViewLabMirrorPlugin\viewlab_mirror_contract.h' '#define VIEWLAB_MIRROR_VERSION 2u' 'VLMC shared surface contract is v2 (adds the eye-mode request channel)'
+# VLMC eye-mode + overlay contract (v3). Colour/enhancement lives in the separate ViewLab Enhancer filter.
+Assert-Contains 'ViewLabMirrorPlugin\viewlab_mirror_contract.h' '#define VIEWLAB_MIRROR_VERSION 3u' 'VLMC shared surface contract is v3 (adds the overlay-layer request channel)'
 Assert-NotContains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'viewlab_media_filter_register' 'the redundant in-module media filter was removed (Enhancer is the one filter)'
+Assert-Contains 'ViewLabEnhancerFilter\viewlab-enhancer.c' 'info\.id = "viewlab_enhancer"' 'Enhancer preserves its stable OBS source id and existing scene settings'
+# Matches stabilization IMPLEMENTATION, not the word: the Enhancer's header comment and OBS
+# description both mention stabilization precisely to say it lives in the Stabilizer filter,
+# and PowerShell -match is case-insensitive, so a bare 'stabilization' failed on that prose.
+Assert-NotContains 'ViewLabEnhancerFilter\viewlab-enhancer.c' 'stab_[a-z]|motion tracking active|cv::|calcOpticalFlow' 'Enhancer contains image adjustment only'
+Assert-Contains 'ViewLabStabilizerFilter\upstream\LiveVisionKit\OBS\Plugin\Stabilisation\VSSource.cpp' 'config\.id = "viewlab_stabilizer"' 'LVK stabilization is exposed as a separate ViewLab filter'
+Assert-Contains 'ViewLabStabilizerFilter\upstream\LiveVisionKit\Vision\FrameTracker.cpp' 'cv::calcOpticalFlowPyrLK' 'ViewLab Stabilizer retains LVK optical-flow tracking'
+Assert-Contains 'ViewLabStabilizerFilter\upstream\LiveVisionKit\Vision\FrameTracker.cpp' 'cv::estimateAffinePartial2D' 'ViewLab Stabilizer retains LVK affine motion estimation'
+Assert-Contains 'ViewLabStabilizerFilter\upstream\LiveVisionKit\Vision\FrameTracker.cpp' 'cv::findHomography' 'ViewLab Stabilizer retains LVK homography motion estimation'
+Assert-Contains 'ViewLabStabilizerFilter\upstream\LiveVisionKit\OBS\Plugin\Stabilisation\VSFilter.cpp' 'cv::getGaussianKernel' 'ViewLab Stabilizer retains LVK buffered Gaussian trajectory smoothing'
+Assert-Contains 'ViewLabStabilizerFilter\viewlab-stabilizer-module.cpp' 'LiveVisionKit 1\.2\.2 \(faff156\)' 'ViewLab Stabilizer pins the tested LVK release'
+Assert-Contains 'ViewLabStabilizerFilter\ViewLabStabilizerFilter.vcxproj' 'opencv_world470\.lib' 'ViewLab Stabilizer links the matching OpenCV 4.7 runtime'
 Assert-Contains 'ViewLabMirrorPlugin\viewlab_mirror_contract.h' 'uint32_t requestedEyeMode;' 'VLMC contract carries the consumer->producer requested eye mode'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab_mirror_contract.h' 'uint32_t requestedShowOverlays;' 'VLMC contract carries the consumer->producer overlay-layer request'
+# ViewLab sits last in the layer chain, so xrEndFrame hands it every quad layer submitted above it
+# (ReShade's VR menu, OpenKneeboard, RaceLab). Those are separate composition layers the runtime
+# composites, so a plain projection copy misses them; VLMC draws them the way OXRMC's Blend() does.
+Assert-Contains 'dllmain.cpp' 'void RecordSubmittedQuads\(const XrFrameEndInfo\* frameEndInfo\)' 'VLMC snapshots the quad layers submitted above ViewLab'
+Assert-Contains 'dllmain.cpp' 'RecordSubmittedQuads\(frameEndInfo\);' 'quad snapshot runs while frameEndInfo is still valid'
+Assert-Contains 'dllmain.cpp' 'void VlmcDrawSubmittedQuads' 'VLMC composites the submitted quad layers into the captured eye'
+Assert-Contains 'dllmain.cpp' 'XMMatrixPerspectiveOffCenterRH' 'quad projection matches the OXRMC d3dXrProjection construction'
+Assert-Contains 'dllmain.cpp' 'nextXrLocateSpace\(q\.space, layerSpace, displayTime, &loc\)' 'quad reference spaces are resolved into the projection layer space'
+Assert-Contains 'dllmain.cpp' 'nextXrLocateSpace=reinterpret_cast<PFN_xrLocateSpace>\(locateSpaceFn\)' 'xrLocateSpace is resolved explicitly at session creation, not from application traffic'
+# The xrLocateViews branch must keep its own hook assignment. Adding an xrLocateSpace branch here
+# once swallowed it, leaving xrLocateViews unhooked AND xrLocateSpace pointing at the xrLocateViews
+# hook. xrLocateSpace is captured at session creation instead, so no such branch may exist.
+Assert-Contains 'dllmain.cpp' 'nextXrLocateViews = reinterpret_cast<PFN_xrLocateViews>\(\*function\);\s*
+?
+\s*\*function = reinterpret_cast<PFN_xrVoidFunction>\(XRViewLab_xrLocateViews\);' 'the xrLocateViews branch still installs the xrLocateViews hook'
+Assert-NotContains 'dllmain.cpp' 'strcmp\(name, "xrLocateSpace"\)' 'xrLocateSpace is never dispatched through a xrGetInstanceProcAddr branch'
+# The draw runs on the GAME's immediate context, so it must restore the pipeline it borrows —
+# including the rasterizer state, whose CULL_NONE the quad winding depends on.
+Assert-Contains 'dllmain.cpp' 'ctx->RSSetState\(g_d3d11Mask.calibrationRs\);' 'quad draw binds a known rasterizer state rather than inheriting the game''s'
+Assert-Contains 'dllmain.cpp' 'ctx->RSSetState\(sRS\);' 'quad draw restores the game rasterizer state'
+Assert-Contains 'dllmain.cpp' 'ctx->OMSetDepthStencilState\(sDSS, sSRef\);' 'quad draw restores the game depth-stencil state'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'show_overlays' 'VLMC OBS source exposes the overlay-layer toggle'
 Assert-Contains 'dllmain.cpp' 'void ProduceViewLabMirrorFrame\(\)' 'ViewLab layer implements the VLMC producer'
-Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(ViewLabMirrorSurface\) == 72' 'VLMC producer struct matches the v2 72-byte contract'
+Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(ViewLabMirrorSurface\) == 76' 'VLMC producer struct matches the v3 76-byte contract'
+# The shared ring is a byte-for-byte copy. Sampling its concrete _SRGB resource decodes the
+# already encoded values (measured as an approximately 2.36 power darkening), so the OBS source
+# re-encodes those formats exactly once before handing the values to OBS's scene pipeline.
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'VIEWLAB_SRGB_REENCODE_EFFECT' 'VLMC OBS source owns an explicit sRGB re-encode effect'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'viewlab_mirror_format_is_srgb\(snapshot\.format\)' 'VLMC applies colour correction only to shared sRGB formats'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'correcting double sRGB decode' 'VLMC logs when the capture colour correction is active'
+# Side-by-side was removed: one eye per ring texture, so the consumer offers left/right only.
+Assert-NotContains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'Both eyes' 'VLMC eye selector no longer offers side-by-side'
+Assert-Contains 'dllmain.cpp' 'if \(requested > 1\) requested = 0;' 'VLMC producer clamps the eye request to left/right'
+# Crop and reinitialize, ported from the OXRMC OBS plugin.
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'viewlab_mirror_recompute_crop' 'VLMC OBS source implements the OXRMC percentage crop'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'p_gs_draw_sprite_subregion' 'VLMC draws only the cropped subregion'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'ctx->crop_w \? ctx->crop_w : ctx->width' 'VLMC reports the cropped width to OBS'
+Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'viewlab_mirror_reinit_clicked' 'VLMC OBS source exposes a reinitialize button'
 # VLMC optimizations: OXRMC-equivalent passthrough when overlays off, and no work without a live consumer.
 Assert-Contains 'dllmain.cpp' 'const bool composite = \(obsMirrorVisibilityMask != 0\)' 'VLMC skips all overlay draws when the mirror mask is empty (OXRMC-equivalent passthrough)'
 Assert-Contains 'dllmain.cpp' '\(nowTick - consumerTick\) > 2000u' 'VLMC producer only does per-frame GPU work while an OBS source is live'
+# The shared ring textures use legacy handles with no keyed mutex, so OBS has no synchronisation
+# with the game device. Assembling a frame directly in a shared slot let OBS sample between the eye
+# blit and the later overlay/quad draws, which read as flickering overlays over a stable image.
+# Assemble in the private compositor, then publish with one CopyResource (OXRMC's copyToMirror).
+Assert-Contains 'dllmain.cpp' 'ID3D11Texture2D\* dst = g_vlmcCompositor;' 'VLMC assembles each frame in a private staging texture'
+Assert-Contains 'dllmain.cpp' 'CopyResource\(g_vlmcRing\[nextIndex\], g_vlmcCompositor\);' 'VLMC publishes the finished frame to the shared ring in a single blit'
+# The staging texture must be TYPELESS. ViewLab's shared draw helpers build their RTV with the
+# non-sRGB format while the ring is concrete _SRGB; reinterpreting a fully-typed resource is illegal
+# (measured: CreateRenderTargetView hr=0x80070057 rtvFormat=28 texFormat=29) and silently dropped the
+# visor and notification draws. The shared ring tolerated it only because MISC_SHARED resources are
+# driver-backed by a typeless allocation.
+Assert-Contains 'dllmain.cpp' 'cd.Format = VlmcTypelessFor\(fmt\);' 'VLMC staging texture is typeless so both the UNORM and sRGB views are legal'
+Assert-Contains 'dllmain.cpp' 'rtvDesc.Format = \(rtvFormat != DXGI_FORMAT_UNKNOWN\) \? rtvFormat : ringFormat;' 'quad compositing names its render target view format explicitly'
 Assert-Contains 'ViewLabMirrorPlugin\viewlab-mirror.c' 'consumerHeartbeatTick = \(uint32_t\)GetTickCount64\(\)' 'VLMC OBS source stamps a consumer heartbeat each render'
 # VLMC plugin can be uninstalled from the ViewLab UI if the user prefers direct capture.
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'UninstallViewLabMirrorPlugin_Click' 'UI exposes an uninstall action for the VLMC OBS plugin'

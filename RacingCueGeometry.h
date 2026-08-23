@@ -17,7 +17,7 @@ constexpr int kSpotterBands = 32;
 
 // Spotter glow: total band width in pixels grows with the configured width, clamped to a safe range.
 inline float SpotterWidthPx(double spotterWidth, float viewW) {
-    return std::clamp(static_cast<float>(spotterWidth) * viewW, 8.f, viewW * 0.35f);
+    return std::clamp(static_cast<float>(spotterWidth) * viewW, 8.f, viewW * 0.70f);
 }
 // Base intensity is opacity x strength (both raise brightness).
 inline float SpotterBase(double opacity, double strength) {
@@ -29,7 +29,7 @@ inline float SpotterBandAlpha(float base, float inward, double fade, bool left) 
     return base * powf(left ? 1.f - inward : inward, static_cast<float>(fade));
 }
 
-// Rear-closing top-centre glow: half-width grows with proximity (0..1).
+// Rear-closing bottom-edge glow: each side's inward half-width grows with proximity (0..1).
 inline float RearGlowHalfWidth(double width01, float viewW) {
     return static_cast<float>(0.10 + 0.30 * width01) * viewW * 0.5f;
 }

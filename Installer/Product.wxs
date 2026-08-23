@@ -3,7 +3,7 @@
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
      xmlns:iis="http://schemas.microsoft.com/wix/IIsExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.311"
+           Language="1033" Version="4.1.328"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -168,12 +168,18 @@
               <File Id="ViewLabMirrorPluginDll" Source="..\ViewLabMirrorPlugin\x64\Release\viewlab-mirror.dll" Name="viewlab-mirror.dll" KeyPath="yes"/>
               <File Id="ViewLabMirrorPluginLicense" Source="..\ViewLabMirrorPlugin\LICENSE" Name="LICENSE.txt"/>
               <File Id="ViewLabMirrorPluginReadme" Source="..\ViewLabMirrorPlugin\README.md" Name="README.md"/>
+              <File Id="ViewLabEnhancerPluginDll" Source="..\ViewLabEnhancerFilter\x64\Release\viewlab-enhancer.dll" Name="viewlab-enhancer.dll"/>
+              <File Id="ViewLabEnhancerPluginLicense" Source="..\ViewLabEnhancerFilter\LICENSE" Name="LICENSE-enhancer.txt"/>
+              <File Id="ViewLabEnhancerPluginReadme" Source="..\ViewLabEnhancerFilter\README.md" Name="README-enhancer.md"/>
               <File Id="ViewLabStabilizerPluginDll" Source="..\ViewLabStabilizerFilter\x64\Release\viewlab-stabilizer.dll" Name="viewlab-stabilizer.dll"/>
-              <File Id="ViewLabStabilizerPluginLicense" Source="..\ViewLabStabilizerFilter\LICENSE" Name="LICENSE-stabilizer.txt"/>
+              <File Id="ViewLabStabilizerPluginLicense" Source="..\ViewLabStabilizerFilter\LICENSE-LiveVisionKit.txt" Name="LICENSE-stabilizer.txt"/>
               <File Id="ViewLabStabilizerPluginReadme" Source="..\ViewLabStabilizerFilter\README.md" Name="README-stabilizer.md"/>
               <RemoveFile Id="RemoveViewLabMirrorPluginDll" Name="viewlab-mirror.dll" On="uninstall"/>
               <RemoveFile Id="RemoveViewLabMirrorPluginLicense" Name="LICENSE.txt" On="uninstall"/>
               <RemoveFile Id="RemoveViewLabMirrorPluginReadme" Name="README.md" On="uninstall"/>
+              <RemoveFile Id="RemoveViewLabEnhancerPluginDll" Name="viewlab-enhancer.dll" On="uninstall"/>
+              <RemoveFile Id="RemoveViewLabEnhancerPluginLicense" Name="LICENSE-enhancer.txt" On="uninstall"/>
+              <RemoveFile Id="RemoveViewLabEnhancerPluginReadme" Name="README-enhancer.md" On="uninstall"/>
               <RemoveFile Id="RemoveViewLabStabilizerPluginDll" Name="viewlab-stabilizer.dll" On="uninstall"/>
               <RemoveFile Id="RemoveViewLabStabilizerPluginLicense" Name="LICENSE-stabilizer.txt" On="uninstall"/>
               <RemoveFile Id="RemoveViewLabStabilizerPluginReadme" Name="README-stabilizer.md" On="uninstall"/>

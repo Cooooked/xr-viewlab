@@ -13,12 +13,10 @@ source) via its Filters menu.
 
 ## Architecture
 
-- `viewlab-mirror.c` — the OBS module: registers the capture source and (via
-  `viewlab_media_filter.c`) the media filter. Every libobs function is resolved at runtime from
-  the `obs.dll` already loaded in the OBS process, so the plugin builds with MSVC alone — no OBS
-  SDK checkout, no import library, no version-pinned link dependency.
-- `viewlab_media_filter.c` — the effect-based video filter. Its OBS effect is compiled from an
-  embedded string at create time, so no external `.effect` data file ships.
+- `viewlab-mirror.c` — the OBS module: registers the capture source through the stable source ABI.
+  Every libobs function is resolved at runtime from the `obs.dll` already loaded in the OBS process,
+  so the plugin builds with MSVC alone — no OBS SDK checkout, import library or version-pinned link
+  dependency.
 - `obs_abi.h` — minimal transcription of the libobs C ABI used (the `obs_source_info` layout
   plus the source/filter/effect entry points), from obs-studio (GPL-2.0-or-later).
   `obs_register_source_s` receives our struct size and libobs copies the compatible prefix.
@@ -30,6 +28,11 @@ source) via its Filters menu.
   `requestedEyeMode`: the OBS source writes the user's selected eye (left / right /
   side-by-side) and the producer publishes that eye, falling back to left on mono titles.
 
+The ring is a raw copy of the submitted eye. When it arrives as a concrete sRGB resource, D3D
+decodes it while OBS samples it even though its bytes already contain display-encoded game values.
+The source detects those formats and re-encodes sampled RGB exactly once with a small embedded
+effect. UNORM inputs keep the normal OBS draw path.
+
 ## Build
 
 MSBuild x64 Release: `msbuild ViewLabMirrorPlugin.vcxproj /p:Configuration=Release /p:Platform=x64`
@@ -39,7 +42,8 @@ MSBuild x64 Release: `msbuild ViewLabMirrorPlugin.vcxproj /p:Configuration=Relea
 
 ViewLab's `Install ViewLab Media Capture Plugin` button copies the bundled DLL into the OBS
 install's `obs-plugins\64bit` folder (the location current OBS actually scans). Restart OBS,
-then add the **ViewLab Media Capture** source and/or the **ViewLab Media Filter**.
+then add the **ViewLab Media Capture** source. Add the separate **ViewLab Enhancer** through that
+source's Filters menu when wanted.
 
 ## Provenance and licence
 

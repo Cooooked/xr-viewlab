@@ -458,6 +458,53 @@ void reshade::runtime::draw_gui_vr_overlay_settings()
 		reshade::openxr::set_overlay_transform_active(t);
 
 	ImGui::Spacing();
+	ImGui::SeparatorText("Global Hotkeys");
+	ImGui::TextWrapped(
+		"These are registered with Windows rather than handled by ReShade, because this payload "
+		"runs only as an OpenXR layer and ReShade's own shortcuts need a desktop runtime. They work "
+		"with the game focused and are remembered between sessions.");
+
+	// A picker rather than a click-to-capture box: capture needs a live
+	// reshade::input, which does not exist on the VR runtime.
+	struct key_choice { const char *label; unsigned int vk; };
+	static const key_choice choices[] = {
+		{ "(none)", 0 },
+		{ "Home", VK_HOME }, { "End", VK_END },
+		{ "Insert", VK_INSERT }, { "Delete", VK_DELETE },
+		{ "Page Up", VK_PRIOR }, { "Page Down", VK_NEXT },
+		{ "Pause", VK_PAUSE }, { "Scroll Lock", VK_SCROLL },
+		{ "F1", VK_F1 }, { "F2", VK_F2 }, { "F3", VK_F3 }, { "F4", VK_F4 },
+		{ "F5", VK_F5 }, { "F6", VK_F6 }, { "F7", VK_F7 }, { "F8", VK_F8 },
+		{ "F9", VK_F9 }, { "F10", VK_F10 }, { "F11", VK_F11 }, { "F12", VK_F12 },
+		{ "F13", VK_F13 }, { "F14", VK_F14 }, { "F15", VK_F15 }, { "F16", VK_F16 },
+	};
+
+	const auto draw_hotkey = [](const char *label, reshade::openxr::hotkey_action action) {
+		const unsigned int current = reshade::openxr::hotkey_get(action);
+		const char *preview = "(none)";
+		for (const key_choice &c : choices)
+			if (c.vk == current) { preview = c.label; break; }
+
+		if (ImGui::BeginCombo(label, preview))
+		{
+			for (const key_choice &c : choices)
+				if (ImGui::Selectable(c.label, c.vk == current))
+					reshade::openxr::hotkey_set(action, c.vk);
+			ImGui::EndCombo();
+		}
+	};
+
+	draw_hotkey("Toggle menu##hk_menu",      reshade::openxr::hotkey_action::toggle_menu);
+	bool menu_includes_desktop = reshade::openxr::menu_hotkey_includes_desktop();
+	if (ImGui::Checkbox("Also toggle desktop menu##hk_menu_desktop", &menu_includes_desktop))
+		reshade::openxr::set_menu_hotkey_includes_desktop(menu_includes_desktop);
+	ImGui::SetItemTooltip("Off: the hotkey shows and hides only the in-HMD menu, leaving the desktop window as it is.");
+
+	draw_hotkey("Toggle effects##hk_fx",     reshade::openxr::hotkey_action::toggle_effects);
+	draw_hotkey("Next preset##hk_next",      reshade::openxr::hotkey_action::next_preset);
+	draw_hotkey("Previous preset##hk_prev",  reshade::openxr::hotkey_action::previous_preset);
+
+	ImGui::Spacing();
 	ImGui::SeparatorText("Desktop Preview Window");
 	ImGui::TextWrapped("Resize the 'ReShade VR Overlay' window freely — it locks to the correct 4:3 aspect ratio automatically.");
 }

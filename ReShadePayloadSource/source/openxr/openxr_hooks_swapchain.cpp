@@ -602,6 +602,19 @@ XrResult XRAPI_CALL xrEndFrame(XrSession session, const XrFrameEndInfo *frameEnd
 		}
 	}
 
+	// ViewLab owns in-HMD menu visibility.
+	//
+	// overlay_visible is otherwise only ever set by set_overlay_visible_active,
+	// which is driven by the Home key. This payload runs purely as an OpenXR
+	// implicit layer, so the VR runtime has no window and no input object: that
+	// key can never arrive and the quad could never be shown. ViewLab already
+	// publishes the user's choice as menu_visible, so honour it here.
+	if (const reshade::openxr::XRControlBlock *const ctrl = reshade::openxr::control_block())
+	{
+		if (ctrl->version == 1)
+			data.overlay_visible = (ctrl->menu_visible != 0);
+	}
+
 	// Submit quad layer to HMD only when overlay is visible
 	if (data.overlay_swapchain != XR_NULL_HANDLE && data.overlay_visible &&
 		data.overlay_texture != 0 && data.swapchain_impl != nullptr &&

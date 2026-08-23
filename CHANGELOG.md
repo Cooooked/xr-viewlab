@@ -1,5 +1,75 @@
 # Changelog
 
+## 4.1.325 - 2026-08-23 (VLMC overlay capture, OBS menu, spotter restore)
+
+- **ViewLab Media Capture now shows the overlay layers.** ReShade's in-HMD menu, OpenKneeboard
+  and RaceLab are submitted as OpenXR quad layers, which the runtime composites separately from
+  the projection layer, so copying the eye texture alone could never include them. ViewLab is
+  registered last in the layer chain and is therefore handed all of them; VLMC now draws them
+  into the captured eye using the compositing method from OpenXR-Layer-OBSMirror (MIT). A
+  "Display overlay layers" checkbox in the source properties turns it off for a clean game frame.
+- **Crop and Reinitialize in the source properties.** Four percentage sliders (top/bottom/left/
+  right) using OXRMC's crop maths, and a Reinitialize button that drops and re-opens the shared
+  surface. Crop is applied OBS-side only; the headset image is untouched.
+- **Capture colour matches the expected OpenXR capture output.** The shared ring is a byte copy of
+  already display-encoded pixels, so sampling it as sRGB decoded them a second time and the
+  capture came out far too dark. The source now re-encodes those formats exactly once, and forces
+  alpha to 1.0 because ReShade fullscreen effects may leave it undefined.
+- **Fixed flickering ViewLab and third-party overlays in the capture.** The frame was assembled
+  directly inside the shared texture OBS reads, as an eye blit followed by separate overlay and quad
+  draws. Those shared textures have no keyed mutex, so OBS could sample after the blit but before
+  the draws and get a frame with the overlays missing — the base image looked stable because the
+  blit fills the surface at once. Each frame is now assembled in a private staging texture and
+  handed to the shared ring in one copy, so the capture only ever transitions between whole frames.
+- **Fixed ViewLab overlays disappearing from the capture** (regression from the flicker fix above). The
+  staging texture was created with a fully-typed sRGB format, but ViewLab's overlay draws build their
+  render target view with the non-sRGB format, which is an illegal reinterpretation of a typed resource
+  and failed silently. The shared ring had tolerated it only because shared resources are driver-backed
+  by a typeless allocation. The staging texture is now typeless.
+- **Side-by-side capture removed.** One eye per ring texture; the selector offers left or right.
+- **Reverted: publishing after the downstream chain returns.** The previous entry claimed this
+  shipped. It does not, and the approach is recorded as rejected: by the time `nextXrEndFrame`
+  returns the frame is submitted and the runtime owns the swapchain textures, and touching them
+  there warped and mis-scaled the headset render. ReShade still reaches the capture because it
+  substitutes its own swapchain into the submitted projection layer.
+- **iRacing spotter glow works again.** The UI publishes live-state v13 (332 bytes) but the layer
+  still accepted only v12 (324), so it rejected *every* live-state update and no iRacing cue could
+  render. The layer now consumes v13, including the spotter fade-in/fade-out timings, and the
+  spotter width/strength/opacity clamps match the shipped slider ranges instead of silently
+  ignoring the top half of each.
+- **OBS controls moved into their own menu** with four sections: Show in OBS Mirror, ViewLab Media
+  Capture, ViewLab Enhancer and ViewLab Stabilizer.
+- **The Enhancer no longer behaves like the Stabilizer.** Its section installed, updated and
+  reported `viewlab-stabilizer.dll` under the Enhancer's name, and the installer never shipped
+  `viewlab-enhancer.dll` at all. Each filter now has its own section wired to its own payload, and
+  the MSI ships both.
+
+## Unreleased - 2026-08-23 (OBS capture colour and panoramic stabilization)
+
+- **ViewLab Media Capture no longer crushes dark and mid-tone detail.** Its shared texture was
+  published as sRGB even though the copied game pixels were already sRGB-encoded, so OBS decoded
+  them a second time. The OBS source now detects that shared format and re-encodes the sampled
+  linear values exactly once before handing them to OBS, restoring the original capture values.
+  The Enhancer can stay neutral; extreme Gamma compensation—and the colour damage it caused—is no
+  longer required.
+- **Enhancer stabilization now operates on panoramic ViewLab captures.** A fixed 192-pixel analysis
+  width reduced a 3072x656 source to only 41 pixels high, leaving insufficient room for its motion
+  blocks and search radius; every frame was silently rejected. Analysis now scales both dimensions
+  together and guarantees a usable short axis, preserving correct translation/rotation geometry.
+  OBS logs the chosen analysis size and the first successfully tracked motion frame.
+
+## 4.1.316 - 2026-08-12
+
+- **The iRacing spotter glow is substantially more visible.** Width now reaches 0.70, strength 4.0,
+  and opacity 2.0, while the inward fade remains intact. Fade-In Time and Fade-Out Time controls
+  separately tune activation and deactivation without changing telemetry detection.
+- **Rear-closing pressure is now a paired bottom-edge cue.** The top-centre glow was replaced by
+  left and right bottom-edge glows that expand inward with proximity and brighten with closing rate.
+- **Removed obsolete UI surfaces.** The Calibration and DiagMon launchers are gone, Draw in Void and
+  Grip-O-Bar controls are hidden for config compatibility, and iRacing/OBS visor-preview borders are
+  no longer shown; the desktop preview no longer draws any of those cue rectangles. Backend providers
+  and legacy config loading remain unchanged.
+
 ## 4.1.311 - 2026-07-25
 
 - **The iRacing spotter glow no longer lights up both eyes for a one-sided warning.** A car on your
