@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.337 - 2026-08-24 (UI layout alignment & enabled text color)
+
+- **Restored bright ViewLab red status text** (`VIEWLAB ENABLED`) when ViewLab is enabled.
+- **Centered toolbar buttons** (Edge Masks, ReShade, Preview, Overlays, OBS, OpenXR Layers) in OptionsCard across wide views.
+- **Fixed app-list button sizing and text clipping:** removed forced column stretching; buttons now size naturally to fit cleanly on one row in 3-column mode without wrapping or clipping text.
+- **Exact pixel-level 3-column height matching:** in 3-column layout, `AppsGridRow` and `MaskBeanEditor` heights are tuned so Column 0, Column 1, and Column 2 match in total vertical length down to the exact pixel (303px).
+
 ## 4.1.336 - 2026-08-24 (UI layout and popout follow-up)
 
 - **Restored the bright ViewLab-red enabled-card outline** while retaining its subdued wine-coloured background.

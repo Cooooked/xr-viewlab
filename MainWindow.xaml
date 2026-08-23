@@ -385,14 +385,14 @@
             <StackPanel Name="LeftColumnPanel" Grid.Column="0" Grid.Row="0" Grid.RowSpan="8" VerticalAlignment="Top">
             <Border Name="EnabledCard" CornerRadius="4" BorderThickness="2" Padding="10,8" Margin="0,0,0,10">
               <Border.BorderBrush>
-                <SolidColorBrush x:Name="EnabledBorderBrush" Color="#45474B" />
+                <SolidColorBrush x:Name="EnabledBorderBrush" Color="#EC3038" />
               </Border.BorderBrush>
               <Border.Background>
-                <SolidColorBrush x:Name="EnabledBgBrush" Color="#303236" />
+                <SolidColorBrush x:Name="EnabledBgBrush" Color="#2A1013" />
               </Border.Background>
               <TextBlock Name="EnabledStatusText" Text="VIEWLAB DISABLED" FontWeight="Bold" FontSize="14" HorizontalAlignment="Center" TextAlignment="Center" MouseLeftButtonUp="EnabledCard_Click" Cursor="Hand">
                 <TextBlock.Foreground>
-                  <SolidColorBrush x:Name="EnabledStatusFg" Color="#8A8C90" />
+                  <SolidColorBrush x:Name="EnabledStatusFg" Color="#EC3038" />
                 </TextBlock.Foreground>
               </TextBlock>
             </Border>
@@ -451,7 +451,7 @@
             <Border Name="OptionsCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,0">
               <StackPanel>
 
-                <WrapPanel>
+                <WrapPanel HorizontalAlignment="Center">
                   <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
                   <Button Name="ReShadeButton" Content="ReShade ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
                   <Button Name="PreviewButton" Content="Preview ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Global desktop-preview guide preferences." Click="PreviewButton_Click" />
@@ -1154,21 +1154,12 @@
                     </DataGrid>
                     <TextBlock Name="AppsEmptyText" Text="No apps detected yet.&#x0a;Launch a VR game, reload apps, or add the game exe." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
                   </Grid>
-                  <Grid Grid.Row="4">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="8" />
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="8" />
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="8" />
-                      <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0" Content="Reload apps" Style="{StaticResource RedButton}" MinWidth="0" Padding="8,7" Click="ReloadApps_Click" />
-                    <Button Grid.Column="2" Content="Add app" Style="{StaticResource RedButton}" MinWidth="0" Padding="8,7" Click="AddApp_Click" />
-                    <Button Grid.Column="4" Content="Reset profile" Style="{StaticResource RedButton}" MinWidth="0" Padding="8,7" Click="ResetApp_Click" />
-                    <ToggleButton Name="ShowHiddenAppsCheck" Grid.Column="6" Content="Show hidden" Style="{StaticResource RedToggleButton}" MinWidth="0" Padding="8,7" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" ToolTip="Show applications you have hidden from this list." />
-                  </Grid>
+                  <WrapPanel Grid.Row="4">
+                    <Button Content="Reload apps" Style="{StaticResource RedButton}" MinWidth="0" Padding="7,4" Margin="0,0,6,6" Click="ReloadApps_Click" />
+                    <Button Content="Add app" Style="{StaticResource RedButton}" MinWidth="0" Padding="7,4" Margin="0,0,6,6" Click="AddApp_Click" />
+                    <Button Content="Reset profile" Style="{StaticResource RedButton}" MinWidth="0" Padding="7,4" Margin="0,0,6,6" Click="ResetApp_Click" />
+                    <ToggleButton Name="ShowHiddenAppsCheck" Content="Show hidden" Style="{StaticResource RedToggleButton}" MinWidth="0" Padding="7,4" Margin="0,0,6,6" Checked="ShowHiddenApps_Changed" Unchecked="ShowHiddenApps_Changed" ToolTip="Show applications you have hidden from this list." />
+                  </WrapPanel>
                 </Grid>
               </Border>
               <TextBlock Name="ReShadeOpenXRHeader" Text="ReShade Remote" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />

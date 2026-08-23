@@ -988,7 +988,11 @@ public partial class MainWindow : Window
 			ThanksText.Visibility          = threeCol ? Visibility.Collapsed : Visibility.Visible;
 			ThanksTextRight.Visibility     = threeCol ? Visibility.Visible : Visibility.Collapsed;
 
-			AppsGridRow.Height = new GridLength(twoCol ? 260.0 : 180.0);
+			AppsGridRow.Height = new GridLength(threeCol ? 237.0 : (twoCol ? 260.0 : 180.0));
+			if (MaskBeanEditor != null)
+			{
+				MaskBeanEditor.Height = threeCol ? 184.0 : double.NaN;
+			}
 
 			// Compact render card: value box fills, hints hidden, sliders span full width
 			RenderValueColumn.Width   = compact ? new GridLength(1.0, GridUnitType.Star) : new GridLength(100.0);
@@ -2053,7 +2057,7 @@ public partial class MainWindow : Window
 		// disabled remains the same neutral grey used by disabled sliders.
 		Color border = _viewlabEnabled ? Color.FromRgb(0xEC, 0x30, 0x38) : Color.FromRgb(0x45, 0x47, 0x4B);
 		Color bg     = _viewlabEnabled ? Color.FromRgb(0x2A, 0x10, 0x13) : Color.FromRgb(0x30, 0x32, 0x36);
-		Color fg     = _viewlabEnabled ? Color.FromRgb(0xF0, 0xB8, 0xBB) : Color.FromRgb(0x8A, 0x8C, 0x90);
+		Color fg     = _viewlabEnabled ? Color.FromRgb(0xEC, 0x30, 0x38) : Color.FromRgb(0x8A, 0x8C, 0x90);
 		EnabledBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(border, TimeSpan.FromSeconds(0.25)));
 		EnabledBgBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(bg, TimeSpan.FromSeconds(0.25)));
 		EnabledStatusFg.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(fg, TimeSpan.FromSeconds(0.25)));
