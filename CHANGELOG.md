@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.1.338 - 2026-08-24 (App button layout, 3-column pixel alignment & preview centering)
+
+- **Restored app-list action button sizing:** Reload apps, Add app, Reset profile, and Show hidden now use 2x2 grid layout with identical `Padding="10,4"` and `Margin="0,0,0,6"` matching the top toolbar buttons (`Edge Masks`, etc.) in height and style.
+- **Pixel-perfect 3-column height alignment:** In 3-column layout, `AppsGridRow` (205px) and `MaskBeanEditor` (185px) are tuned so Column 0 (`LeftColumnPanel`), Column 1 (`SidePanel`), and Column 2 (`RightColumnPanel`) all measure exactly **303px** down to the single pixel.
+- **Auto-centered visor mask preview:** Increased canvas inset to 6px so the full Quest 3 binocular reference, crop rect, visor mask, and drag handles are cleanly framed and vertically centered by default and on right-click reset.
+
 ## 4.1.337 - 2026-08-24 (UI layout alignment & enabled text color)
 
 - **Restored bright ViewLab red status text** (`VIEWLAB ENABLED`) when ViewLab is enabled.

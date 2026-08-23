@@ -4,9 +4,11 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-23
-**Current version:** 4.1.337 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.337.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
+**Current version:** 4.1.338 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.338.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
 
-**2026-08-24 — 4.1.337 UI layout alignment & enabled text color.** Restored bright ViewLab red status text (`VIEWLAB ENABLED`) when ViewLab is enabled. Toolbar buttons in OptionsCard are centered across wide views. App-list buttons size naturally to fit cleanly on one row in 3-column mode without wrapping or clipping text. In 3-column layout, `AppsGridRow` and `MaskBeanEditor` heights are tuned so Column 0, Column 1, and Column 2 match in total vertical length down to the exact pixel (303px). Contracts and full MSI build pass. **Pending live validation:** these UI fixes.
+**2026-08-24 — 4.1.338 App button layout, 3-column pixel alignment & preview centering.** App action buttons (Reload apps, Add app, Reset profile, Show hidden) use a 2x2 grid layout with identical `Padding="10,4"` and `Margin="0,0,0,6"` matching the top toolbar buttons (`Edge Masks`, etc.) in height and style. In 3-column layout, `AppsGridRow` (205px) and `MaskBeanEditor` (185px) are tuned so Column 0 (`LeftColumnPanel`), Column 1 (`SidePanel`), and Column 2 (`RightColumnPanel`) all measure exactly **303px** down to the single pixel. Increased canvas inset in `FitArea` to 6px so the full Quest 3 binocular reference, crop rect, visor mask, and drag handles are cleanly framed and vertically centered by default and on right-click reset. Contracts and full MSI build pass. **Pending live validation:** these UI fixes.
+
+**2026-08-24 — 4.1.337 UI layout alignment & enabled text color.**
 
 **2026-08-24 — 4.1.336 UI layout and popout follow-up.**
 
