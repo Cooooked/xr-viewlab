@@ -395,3 +395,36 @@ which rewrites only the affected key. Per-app overrides are never rewritten — 
 Rejected: a second `diagnostics_enabled` key (dual-key drift, and it would orphan the existing per-app
 `overlay_override_trace__performance_trace_recording`), stopping the collector mid-session on overlay toggles,
 and removing the broker's login autostart (notifications must work without the settings app open).
+
+## D35 — Forced SPS is draw translation behind ViewLabBridge, not OpenXR image merging (2026-08-25)
+
+Forced SPS remains an opt-in research project until it proves that it can remove duplicated game-side work.
+An OpenXR API layer observes poses, swapchains and submitted projection images, but it does not own the scene
+graph or the D3D11 draws that produced those images. Combining or copying completed eye textures therefore
+cannot reduce the second CPU traversal and must not be described as SPS.
+
+The only accepted implementation boundary is a separately compiled stereo-draw translator behind
+`ViewLabBridge`. The first route to investigate is translation of an application's already-existing SPS
+contract into vendor-neutral D3D11 instanced stereo: two view/projection matrices, instanced draws and a
+two-slice colour/depth target. D3D11 supports array-slice selection through `SV_RenderTargetArrayIndex`, with
+a geometry-shader fallback when the adapter cannot emit the index from an earlier shader stage. NVIDIA SPS is
+not itself vendor-neutral: its documented path requires SPS-aware shaders and NVIDIA simultaneous
+multi-projection hardware. Assetto Corsa CSP's public `USE_VS_INSTANCING` setting is evidence that a software
+integration can choose the standard instancing route, but CSP's engine/shader control is a capability ViewLab
+must first establish rather than assume.
+
+iRacing is the first validation target, not a compatibility allowlist. User-selected per-app opt-in may decide
+whether the experiment is requested; only observed graphics capabilities, shader contracts, target topology
+and side-effect analysis may decide whether a pass is eligible. Unknown or ambiguous work remains ordinary
+stereo. No executable name may make a pass safe.
+
+Fallback is fail-closed. Pass-local fallback is permitted only when the translator still has enough source
+information to emit both ordinary eye draws. If enabling a native one-pass path means the application never
+emits the second eye, a later failure cannot transparently restore it; eligibility must be settled before the
+first affected draw, otherwise the entire translator is refused for that session and ordinary stereo is used
+after restart. Mono, stale-eye and mixed translated/untranslated output are forbidden.
+
+Because the viable routes require in-process D3D11 or NVAPI interception and iRacing uses Epic Easy Anti-Cheat,
+no protected-session test or distributable iRacing integration proceeds without written acceptance from the
+relevant vendor(s). Public-interface research and a synthetic D3D11 harness may proceed independently. Binary
+patching, private-interface reverse engineering, and generic post-hoc eye-pass merging are rejected.

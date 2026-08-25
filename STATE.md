@@ -3,8 +3,52 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-08-23
+**Updated:** 2026-08-25
 **Current version:** 4.1.343 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.343.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
+
+**2026-08-25 — Forced SPS accepted as a gated feasibility project (proposal only; no implementation).**
+The product goal is an opt-in, AMD-compatible stereo-draw translation path that can reduce duplicated
+CPU scene traversal, draw submission and geometry work, with iRacing as the first validation target.
+Application identity may select the user's opt-in profile, but it must never select compatibility policy:
+pass eligibility remains capability-, shader- and render-state-driven in accordance with ViewLab's universal
+compatibility rule.
+
+The existing OpenXR layer is not sufficient on its own. It sees view poses, swapchains and submitted eye
+textures, but only after the game has issued its D3D11 work. Combining those finished textures cannot recover
+the CPU/draw-call saving. Assetto Corsa CSP is useful feasibility evidence, not a drop-in method: its public
+configuration describes vertex-shader instancing and its release notes report halving draw calls, but CSP is
+integrated deeply enough to control the game's draw and shader path. ViewLab does not currently have that
+boundary.
+
+The leading research route is therefore to investigate whether iRacing's existing NVIDIA SPS path exposes a
+small, documented NVAPI/shader/resource contract that can be translated to standard D3D11 instanced stereo
+(`Draw*Instanced`, two view/projection matrices and a two-slice render-target/depth array). This work belongs
+behind the separately compiled `ViewLabBridge` boundary; the native OpenXR product path remains direct and
+unchanged. A generic “notice two completed eye passes and merge them afterwards” path is rejected because it
+cannot remove the game-side second traversal.
+
+Stage gates, in order:
+
+1. Obtain written iRacing/Easy Anti-Cheat acceptance for any in-process D3D11/NVAPI interception before
+   protected-session testing. Until then, research is limited to public interfaces, a synthetic D3D11 harness
+   and non-protected applications; no online or account-bearing iRacing experiment is authorised.
+2. Prove vendor-neutral two-view D3D11 instancing in a synthetic harness, including asymmetric FOV, array
+   render/depth targets, MSAA, existing instanced draws, geometry/tessellation shaders, UAV side effects and
+   image-parity captures.
+3. Determine from documented/public interfaces or vendor cooperation whether the existing iRacing SPS path
+   can be enabled and translated without binary modification or private-interface reverse engineering. If it
+   cannot, stop: a generic post-hoc OpenXR implementation would not meet the feature claim.
+4. Add an observation-only classifier before any draw suppression. Eligibility must prove paired view
+   transforms, compatible shader stages/resources and side-effect safety. Unknown means normal stereo.
+5. Only then add opt-in translation and benchmark CPU frame time, render-thread time, submitted draw count,
+   GPU time and pixel/stereo parity against ordinary stereo and NVIDIA SPS where available.
+
+Automatic fallback remains a release requirement, but its honest granularity depends on the translation
+boundary. A pass may fall back only when ViewLab still possesses enough information to emit both ordinary eye
+draws. If the game's SPS path has already omitted the second pass, ViewLab cannot conjure it after a translation
+failure; the safe behaviour is to reject the translator before the first affected draw and use ordinary stereo
+for the session/restart. No build may submit a mono, stale or partly translated eye merely to preserve frame
+rate. There is no UI, config key, installer payload or MSI change yet, so version 4.1.343 remains current.
 
 **2026-08-24 — 4.1.343 Restored single/mini-column card gap.** Single-column and mini (narrow-window) mode had zero gap between `RenderCard` and `OptionsCard` — the two cards touched directly, a regression from earlier 3-column alignment work that zeroed `RenderCard`'s bottom margin. Restored to `0,0,0,10`. `OptionsCard` moves to a separate panel entirely in two/three-column mode, so this only affects single/mini layout; two/three-column unaffected. Contracts and full MSI build pass. **Pending live validation.**
 
