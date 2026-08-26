@@ -10,6 +10,7 @@ internal sealed class StickyNoteOption : INotifyPropertyChanged
     private string _text = string.Empty;
     private double _x = .78, _y = .22, _scale = 1, _opacity = .85;
     private int _theme;
+    private int _design;
 
     public int Number { get => _number; set { _number = value; Changed(); Changed(nameof(Title)); } }
     public string Title => $"Note {Number}";
@@ -20,6 +21,7 @@ internal sealed class StickyNoteOption : INotifyPropertyChanged
     public double Scale { get => _scale; set { _scale = value; Changed(); } }
     public double Opacity { get => _opacity; set { _opacity = value; Changed(); } }
     public int Theme { get => _theme; set { _theme = value; Changed(); } }
+    public int Design { get => _design; set { _design = value; Changed(); } }
 
     public event PropertyChangedEventHandler? PropertyChanged;
     private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

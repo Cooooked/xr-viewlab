@@ -1,9 +1,9 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
      xmlns:iis="http://schemas.microsoft.com/wix/IIsExtension">
   <Product Id="*" Name="ViewLab"
-           Language="1033" Version="4.1.343"
+           Language="1033" Version="4.1.345"
            Manufacturer="cooooked"
            UpgradeCode="1FD1263B-D12E-46C8-9B07-D0F4C1E7AD87">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -125,6 +125,8 @@
           <Component Id="LayerFiles" Guid="A3E0E51C-45C2-45AA-B458-2F37F261C40A" Win64="yes">
             <File Id="LayerDll" Source="..\x64\Release\XR_APILAYER_cooooked_xrviewlab.dll" Name="XR_APILAYER_cooooked_xrviewlab.dll"/>
             <File Id="LayerJson" Source="..\XR_APILAYER_cooooked_xrviewlab.json" Name="XR_APILAYER_cooooked_xrviewlab.json"/>
+            <File Id="CaveatFont" Source="..\ThirdParty\Caveat\Caveat-Bold.ttf" Name="Caveat-Bold.ttf"/>
+            <File Id="CaveatFontLicense" Source="..\ThirdParty\Caveat\OFL.txt" Name="Caveat-OFL.txt"/>
             <RemoveFile Id="RemoveLayerDll" Name="XR_APILAYER_cooooked_xrviewlab.dll" On="uninstall"/>
             <RemoveFile Id="RemoveLayerJson" Name="XR_APILAYER_cooooked_xrviewlab.json" On="uninstall"/>
             <RemoveFile Id="RemoveLogFile" Name="xr-viewlab.log" On="uninstall"/>
@@ -231,6 +233,8 @@
           <Component Id="LayerFiles32" Guid="5F8AE758-6D85-4A0C-9D1B-1849B7F1ED55" Win64="no">
             <File Id="Layer32Dll" Source="..\Release\XR_APILAYER_cooooked_xrviewlab32.dll" Name="XR_APILAYER_cooooked_xrviewlab32.dll"/>
             <File Id="Layer32Json" Source="..\XR_APILAYER_cooooked_xrviewlab32.json" Name="XR_APILAYER_cooooked_xrviewlab32.json"/>
+            <File Id="CaveatFont32" Source="..\ThirdParty\Caveat\Caveat-Bold.ttf" Name="Caveat-Bold.ttf"/>
+            <File Id="CaveatFontLicense32" Source="..\ThirdParty\Caveat\OFL.txt" Name="Caveat-OFL.txt"/>
             <RemoveFile Id="RemoveLayer32Dll" Name="XR_APILAYER_cooooked_xrviewlab32.dll" On="uninstall"/>
             <RemoveFile Id="RemoveLayer32Json" Name="XR_APILAYER_cooooked_xrviewlab32.json" On="uninstall"/>
             <RemoveFolder Id="RemoveInstallDir32FromLayerFiles" On="uninstall"/>

@@ -12,7 +12,7 @@ internal sealed class StickyNoteLiveStateService : IDisposable
     internal const int MaxNotes = 8;
     internal const int MaxText = 120;
     private const int HeaderSize = 20;
-    private const int RecordSize = 264;
+    private const int RecordSize = 268;
     private const int Size = HeaderSize + MaxNotes * RecordSize;
     private const uint Magic = 0x314E5356; // VSN1
     private readonly MemoryMappedFile _map = MemoryMappedFile.CreateOrOpen("Local\\XRViewLabStickyNotes", Size, MemoryMappedFileAccess.ReadWrite);
@@ -22,7 +22,7 @@ internal sealed class StickyNoteLiveStateService : IDisposable
     public StickyNoteLiveStateService()
     {
         _view = _map.CreateViewAccessor(0, Size, MemoryMappedFileAccess.ReadWrite);
-        _view.Write(0, Magic); _view.Write(4, 1u); _view.Write(8, (uint)Size);
+        _view.Write(0, Magic); _view.Write(4, 2u); _view.Write(8, (uint)Size);
     }
 
     public void Publish(bool enabled, IReadOnlyList<StickyNoteOption> notes)
@@ -37,8 +37,9 @@ internal sealed class StickyNoteLiveStateService : IDisposable
             _view.Write(offset + 4, (float)(note?.X ?? 0)); _view.Write(offset + 8, (float)(note?.Y ?? 0));
             _view.Write(offset + 12, (float)(note?.Scale ?? 1)); _view.Write(offset + 16, (float)(note?.Opacity ?? 0));
             _view.Write(offset + 20, (uint)Math.Clamp(note?.Theme ?? 0, 0, 4));
+            _view.Write(offset + 24, (uint)Math.Clamp(note?.Design ?? 0, 0, 1));
             string text = Normalize(note?.Text);
-            for (int c = 0; c < MaxText; ++c) _view.Write(offset + 24 + c * 2, c < text.Length ? text[c] : '\0');
+            for (int c = 0; c < MaxText; ++c) _view.Write(offset + 28 + c * 2, c < text.Length ? text[c] : '\0');
         }
         Thread.MemoryBarrier();
         _view.Write(12, unchecked(++_generation));

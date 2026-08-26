@@ -314,6 +314,12 @@ native renderer, and migrates the former single note into slot zero. This supers
 UI absence leaves INI startup values operational. Notification themes remain in the off-render-thread card
 compositor; HUD symbol selection rides the existing telemetry catalogue per widget.
 
+Sticky-note visual style is independent from paper colour. Missing style data selects the original 8-bit
+renderer so existing notes do not change on upgrade; notes created after the style control exists default to
+HD Paper. HD Paper remains native and self-contained when the settings app is closed: the layer composes a
+bounded 1024-square Caveat surface off the OpenXR render thread, uploads an immutable mipmapped texture, and
+degrades only that note to 8-bit when the font, rasterisation or texture capability is unavailable.
+
 ## D30 - The visor preview edits the shared overlay model (2026-07-15)
 
 The visor canvas is an input surface over `OverlaySettingsCatalog`, not a second layout system. Each

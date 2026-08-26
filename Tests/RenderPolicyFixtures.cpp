@@ -4,11 +4,13 @@
 #include "../ClockWidget.h"
 #include "../NetworkProbe.h"
 #include "../StickyNote.h"
+#include "../StickyNoteHdRenderer.h"
 #include "../OverlayCompositeModel.h"
 #include "../ViewLabBridge/BridgeCore.h"
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <filesystem>
 
 static void Check(bool value, const char* message) {
     if (!value) { std::cerr << "FAIL: " << message << '\n'; std::exit(1); }
@@ -49,6 +51,14 @@ int main() {
     Check(note.count>=2&&note.lines[0]=="BRING FUEL", "sticky note wraps words and normalizes case");
     const auto clipped=viewlab::sticky_note::Wrap(std::wstring(140,L'X'),10);
     Check(clipped.count==4&&clipped.lines[3].substr(clipped.lines[3].size()-3)=="...", "sticky note is bounded to four lines");
+    std::filesystem::path caveatFont = "ThirdParty/Caveat/Caveat-Bold.ttf";
+    if (!std::filesystem::exists(caveatFont)) caveatFont = std::filesystem::path(__FILE__).parent_path().parent_path() / "ThirdParty/Caveat/Caveat-Bold.ttf";
+    viewlab::sticky_note::HdSurface hdNote; std::string hdError;
+    Check(viewlab::sticky_note::RenderHdSurface(L"Remember the headset cable", 0, caveatFont, hdNote, hdError), "HD sticky note composes from the bundled handwriting font");
+    Check(hdNote.mips.size()==11&&hdNote.mips.front().width==1024&&hdNote.mips.back().width==1, "HD sticky note supplies a complete 1024-to-1 mip chain");
+    const auto& hdPixels=hdNote.mips.front().rgba;
+    Check(hdPixels[3]==0&&hdPixels[(512u*1024u+512u)*4u+3u]>250, "HD sticky note keeps transparent padding and opaque paper coverage");
+    Check(viewlab::sticky_note::HdContentHash(L"A",0)!=viewlab::sticky_note::HdContentHash(L"B",0)&&viewlab::sticky_note::HdContentHash(L"A",0)!=viewlab::sticky_note::HdContentHash(L"A",1), "HD sticky note cache key includes text and paper colour");
     viewlab::network::Window network;
     auto net = network.Record(true, 20); net = network.Record(true, 30);
     Check(net.pingMs == 30 && net.lossPercent == 0 && net.jitterMs == 10, "network probe reports RTT, loss and jitter truthfully");

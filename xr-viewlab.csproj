@@ -59,6 +59,8 @@
     <EmbeddedResource Include="config\factory-baseline-v4.1.255.json" />
     <None Include="ThirdParty\PresentMon\PresentMon-2.4.1-x64.exe" Link="PresentMon-2.4.1-x64.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="ThirdParty\PresentMon\LICENSE.txt" Link="PresentMon-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="ThirdParty\Caveat\Caveat-Bold.ttf" Link="Caveat-Bold.ttf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="ThirdParty\Caveat\OFL.txt" Link="Caveat-OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="RemoveLegacyReShadeMenuHelper" AfterTargets="Build;Publish">
     <Delete Files="$(TargetDir)reshade-vr-menu.exe" TreatErrorsAsWarnings="true" />

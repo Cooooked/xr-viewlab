@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.345 - 2026-08-27 (Sticky-note visual themes and HD Paper)
+
+- Added an independent per-note **Style** choice. Existing and unversioned notes retain the exact **8-bit** renderer; newly added notes default to **HD Paper**. Paper colour remains a separate Classic yellow/Rose/Mint/Sky/Paper choice in both global and per-app editors.
+- HD Paper is a native 1024×1024 composition with anti-aliased Caveat Bold handwriting, adaptive word wrapping, procedural paper grain and shading, an adhesive band, irregular edges, a folded corner, soft depth and a complete alpha-aware mip chain. It is rendered as a filtered textured quad rather than integer rectangles.
+- CPU composition runs in bounded per-note workers rather than the OpenXR render thread. The immutable texture is uploaded when ready and cached by text plus colour; position, scale and opacity changes do not rerasterise it. A missing font or graphics resource falls back only that note to 8-bit and records the reason.
+- Bumped the dedicated sticky-note live mapping to v2 for the per-note style field. INI, live editing, global settings, per-app overrides, installer payloads, contracts and deterministic native fixtures carry the new field and bundled OFL font together.
+
 ## 4.1.343 - 2026-08-24 (Restored single/mini-column card gap)
 
 - **Single-column and mini (narrow-window) mode had zero gap between `RenderCard` and `OptionsCard`** — the two cards touched directly. `RenderCard`'s bottom margin was set to `0,0,0,0` during earlier alignment work; restored to `0,0,0,10` so the two cards have their normal 10px gap again. `OptionsCard` moves to a separate panel entirely in two/three-column mode, so this only affects single/mini layout.

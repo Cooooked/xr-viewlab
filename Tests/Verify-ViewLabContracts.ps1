@@ -887,6 +887,16 @@ Assert-Contains 'dllmain.cpp' 'if\(down&&!feature\.keyDown\)' 'shared overlay bi
 Assert-Contains 'dllmain.cpp' 'viewlab::sticky_note::Wrap' 'native note uses bounded tested wrapping'
 Assert-Contains 'MainWindow.xaml' 'MaxLength="120"' 'sticky note inputs are short and bounded'
 Assert-Contains 'XRViewLab.UI\StickyNoteLiveStateService.cs' 'MaxNotes = 8' 'sticky note collection is explicitly bounded'
+Assert-Contains 'XRViewLab.UI\StickyNoteLiveStateService.cs' '_view\.Write\(4, 2u\)' 'sticky note live contract is versioned for the style field'
+Assert-Contains 'MainWindow.xaml' 'Text="Note theme"[\s\S]*StickyNoteStyles[\s\S]*Text="Paper colour"' 'sticky note theme and paper colour are independent controls'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'sticky_note_\{i\}_style' 'UI loads sticky note style independently from paper colour'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'p\+"style"' 'UI persists sticky note style'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'prefix \+ "style"' 'per-app profiles persist sticky note style'
+Assert-Contains 'dllmain.cpp' 'StickyNoteDesign::HdPaper' 'native layer selects the HD Paper renderer'
+Assert-Contains 'dllmain.cpp' 'StopStickyHdRenderJobs' 'HD note CPU composition is bounded and joined at renderer teardown'
+Assert-Contains 'StickyNoteHdRenderer.h' 'kHdSurfaceSize = 1024' 'HD note surface is authored at 1024 square'
+Assert-Contains 'StickyNoteHdRenderer.cpp' 'STB_TRUETYPE_IMPLEMENTATION' 'HD note uses anti-aliased TrueType rasterisation'
+Assert-Contains 'Installer\Product.wxs' 'Caveat-Bold\.ttf' 'installer carries the handwriting font beside the native layer'
 Assert-NotContains 'dllmain.cpp' 'NotifyCardBlock.*sticky|sticky.*NotifyCardBlock' 'sticky note must not enter the notification queue'
 
 # OBS indication uses GetRecordStatus, not process presence, and makes no capture-exclusion claim.

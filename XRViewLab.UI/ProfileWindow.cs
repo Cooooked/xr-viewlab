@@ -97,7 +97,8 @@ public partial class ProfileWindow : Window
 	private readonly OverlayProfileOverrides _overlayOverrides;
 	private readonly ObservableCollection<HudWidgetOption> _profileHudWidgets = new();
 	private readonly ObservableCollection<StickyNoteOption> _profileStickyNotes = new();
-	public IReadOnlyList<string> StickyNoteThemes { get; } = new[] { "Graphite", "Paper", "OLED", "Amber", "Mint" };
+	public IReadOnlyList<string> StickyNoteThemes { get; } = new[] { "Classic yellow", "Rose", "Mint", "Sky", "Paper" };
+	public IReadOnlyList<string> StickyNoteStyles { get; } = new[] { "8-bit", "HD Paper" };
 
 	// In-memory boxes feed the legacy mask_vertical/horizontal calculation (not shown in UI).
 	private readonly TextBox MaskVerticalBox = new() { Text = "1" };
@@ -404,7 +405,8 @@ public partial class ProfileWindow : Window
 		return new StickyNoteOption { Number = source.Number, Enabled = OverlayBool("sticky", prefix + "enabled", source.Enabled),
 			Text = OverlayValue("sticky", prefix + "text", source.Text), X = OverlayDouble("sticky", prefix + "x", source.X),
 			Y = OverlayDouble("sticky", prefix + "y", source.Y), Scale = OverlayDouble("sticky", prefix + "scale", source.Scale),
-			Opacity = OverlayDouble("sticky", prefix + "opacity", source.Opacity), Theme = (int)OverlayDouble("sticky", prefix + "theme", source.Theme) };
+			Opacity = OverlayDouble("sticky", prefix + "opacity", source.Opacity), Theme = (int)OverlayDouble("sticky", prefix + "theme", source.Theme),
+			Design = (int)OverlayDouble("sticky", prefix + "style", source.Design) };
 	}
 
 	private void LoadOverlayControls()
@@ -618,13 +620,13 @@ public partial class ProfileWindow : Window
 			_overlayOverrides.Set("sticky", prefix + "enabled", note.Enabled ? "1" : "0"); _overlayOverrides.Set("sticky", prefix + "text", note.Text);
 			_overlayOverrides.Set("sticky", prefix + "x", note.X.ToString("0.###", CultureInfo.InvariantCulture)); _overlayOverrides.Set("sticky", prefix + "y", note.Y.ToString("0.###", CultureInfo.InvariantCulture));
 			_overlayOverrides.Set("sticky", prefix + "scale", note.Scale.ToString("0.###", CultureInfo.InvariantCulture)); _overlayOverrides.Set("sticky", prefix + "opacity", note.Opacity.ToString("0.###", CultureInfo.InvariantCulture));
-			_overlayOverrides.Set("sticky", prefix + "theme", note.Theme.ToString(CultureInfo.InvariantCulture));
+			_overlayOverrides.Set("sticky", prefix + "theme", note.Theme.ToString(CultureInfo.InvariantCulture)); _overlayOverrides.Set("sticky", prefix + "style", note.Design.ToString(CultureInfo.InvariantCulture));
 		}
 		ApplyOverlayPreviewState();
 	}
 	private void ProfileSticky_Changed(object sender, RoutedEventArgs e) => RecordStickyNotes();
 	private void ProfileStickySlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => RecordStickyNotes();
-	private void ProfileStickyAdd_Click(object sender, RoutedEventArgs e) { if (_profileStickyNotes.Count >= StickyNoteLiveStateService.MaxNotes) return; _profileStickyNotes.Add(new StickyNoteOption { Number = _profileStickyNotes.Count + 1 }); RecordStickyNotes(); }
+	private void ProfileStickyAdd_Click(object sender, RoutedEventArgs e) { if (_profileStickyNotes.Count >= StickyNoteLiveStateService.MaxNotes) return; _profileStickyNotes.Add(new StickyNoteOption { Number = _profileStickyNotes.Count + 1, Design = 1 }); RecordStickyNotes(); }
 	private void ProfileStickyRemove_Click(object sender, RoutedEventArgs e) { if (sender is Button b && b.CommandParameter is StickyNoteOption note) { _profileStickyNotes.Remove(note); RecordStickyNotes(); } }
 
 	private void UpdateHideShowButton()

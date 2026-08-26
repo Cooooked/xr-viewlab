@@ -137,13 +137,13 @@
       "keywords": ["clock", "local time", "VR session", "session timer", "elapsed", "visor widget"]
     },
     "stickyNoteWidget": {
-      "what": "Bounded collection of independently configured square native visor notes with a shared visibility bind",
-      "files": ["StickyNote.h", "dllmain.cpp", "MainWindow.xaml", "XRViewLab.UI/MainWindow.cs", "XRViewLab.UI/StickyNoteModels.cs", "XRViewLab.UI/StickyNoteLiveStateService.cs", "xr-viewlab.ini"],
-      "symbols": ["viewlab::sticky_note::Wrap", "stickyNoteEnabled", "g_stickyNoteVisible", "DrawViewLabOverlaysToTexture", "XRViewLab_xrWaitFrame", "StickyNote_Changed"],
+      "what": "Bounded collection of independently styled 8-bit or HD Paper native visor notes with a shared visibility bind",
+      "files": ["StickyNote.h", "StickyNoteHdRenderer.h", "StickyNoteHdRenderer.cpp", "ThirdParty/Caveat/Caveat-Bold.ttf", "dllmain.cpp", "MainWindow.xaml", "ProfileWindow.xaml", "XRViewLab.UI/MainWindow.cs", "XRViewLab.UI/ProfileWindow.cs", "XRViewLab.UI/StickyNoteModels.cs", "XRViewLab.UI/StickyNoteLiveStateService.cs", "xr-viewlab.ini"],
+      "symbols": ["viewlab::sticky_note::Wrap", "viewlab::sticky_note::RenderHdSurface", "viewlab::sticky_note::HdContentHash", "EnsureStickyHdTexture", "StopStickyHdRenderJobs", "stickyNoteEnabled", "g_stickyNoteVisible", "DrawViewLabOverlaysToTexture", "XRViewLab_xrWaitFrame", "StickyNote_Changed"],
       "tests": ["Tests/RenderPolicyFixtures.cpp", "Tests/Invoke-RenderPolicyFixtures.ps1", "Tests/Verify-ViewLabContracts.ps1"],
       "docs": ["docs/ARCHITECTURE.md", "docs/CONFIG.md", "docs/DECISIONS.md#d18"],
-      "invariants": ["at most eight notes", "each input is capped at 120 characters and native output at four lines", "each note owns enable theme position scale and opacity", "legacy single-note settings migrate to slot zero", "visibility bind is rising-edge triggered", "notes never enter notification shared memory", "both eyes use the common shared-tangent Direct/Topmost overlay path"],
-      "keywords": ["sticky note", "visor note", "reminder", "show hide bind", "overlay"]
+      "invariants": ["at most eight notes", "each input is capped at 120 characters", "each note owns enable style paper colour position scale and opacity", "missing style preserves the original 8-bit renderer and newly created notes default to HD Paper", "HD Paper composition is 1024 square with alpha-aware mips and never blocks the OpenXR render thread", "HD failures degrade only the affected note to 8-bit", "legacy single-note settings migrate to slot zero", "visibility bind is rising-edge triggered", "notes never enter notification shared memory", "both eyes use the common shared-tangent Direct/Topmost overlay path"],
+      "keywords": ["sticky note", "HD Paper", "8-bit", "Caveat", "handwriting", "visor note", "reminder", "show hide bind", "overlay"]
     },
     "obsRecordingIndicator": {
       "what": "Optional subtle native recording cue driven by authenticated real OBS WebSocket recording state",

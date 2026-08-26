@@ -124,6 +124,7 @@
     <ClInclude Include="pch.h" />
     <ClInclude Include="HardwareTelemetry.h" />
     <ClInclude Include="RenderPolicy.h" />
+    <ClInclude Include="StickyNoteHdRenderer.h" />
     <ClInclude Include="loader_interfaces.h" />
   </ItemGroup>
   <ItemGroup>
@@ -133,6 +134,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="HardwareTelemetry.cpp" />
+    <ClCompile Include="StickyNoteHdRenderer.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="pch.cpp"><PrecompiledHeader>Create</PrecompiledHeader></ClCompile>
   </ItemGroup>

@@ -10,6 +10,7 @@
 #include "ViewLabBridge/BridgeCore.h"
 #include "ClockWidget.h"
 #include "StickyNote.h"
+#include "StickyNoteHdRenderer.h"
 #include <io.h>
 
 namespace {
@@ -289,7 +290,8 @@ std::atomic<uint64_t> g_clockSessionStartTick{0};
 
 // ---- Bounded sticky-note visor collection ----
 bool stickyNoteEnabled=false;
-struct StickyNoteConfig { bool enabled=true; double x=.78,y=.22,scale=1.0,opacity=.85; uint32_t theme=0; std::wstring text; };
+enum class StickyNoteDesign : uint32_t { Pixel=0, HdPaper=1 };
+struct StickyNoteConfig { bool enabled=true; double x=.78,y=.22,scale=1.0,opacity=.85; uint32_t theme=0; StickyNoteDesign design=StickyNoteDesign::Pixel; std::wstring text; };
 constexpr size_t kStickyNoteMax=8;
 std::array<StickyNoteConfig,kStickyNoteMax> stickyNotes{};
 size_t stickyNoteCount=0;
@@ -870,18 +872,18 @@ void ConsumeRacingState(){
 void DisconnectRacingState(){if(g_racing)UnmapViewOfFile(g_racing);if(g_racingMap)CloseHandle(g_racingMap);g_racing=nullptr;g_racingMap=nullptr;g_racingStable={};g_racingGeneration=0;g_racingNextConnectTick=0;g_spotterVisualState=0;g_spotterTargetActive=false;g_spotterTransitionTick=0;g_spotterTransitionStart=0.0f;g_spotterEnvelope=0.0f;}
 
 #pragma pack(push,4)
-struct StickyNoteLiveRecord { uint32_t enabled; float x,y,scale,opacity; uint32_t theme; wchar_t text[120]; };
+struct StickyNoteLiveRecord { uint32_t enabled; float x,y,scale,opacity; uint32_t theme,design; wchar_t text[120]; };
 struct StickyNoteLiveBlock { uint32_t magic,version,size,generation,enabled; StickyNoteLiveRecord notes[kStickyNoteMax]; };
 #pragma pack(pop)
-static_assert(sizeof(StickyNoteLiveRecord)==264&&sizeof(StickyNoteLiveBlock)==2132,"sticky note live contract size");
+static_assert(sizeof(StickyNoteLiveRecord)==268&&sizeof(StickyNoteLiveBlock)==2164,"sticky note live contract size");
 HANDLE g_stickyNoteMap=nullptr;const StickyNoteLiveBlock* g_stickyNoteState=nullptr;uint32_t g_stickyNoteGeneration=0;uint64_t g_stickyNoteNextConnectTick=0;
 void ConsumeStickyNoteState(){
     if(!g_stickyNoteState){const uint64_t now=GetTickCount64();if(now<g_stickyNoteNextConnectTick)return;g_stickyNoteNextConnectTick=now+1000;g_stickyNoteMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabStickyNotes");if(g_stickyNoteMap)g_stickyNoteState=(const StickyNoteLiveBlock*)MapViewOfFile(g_stickyNoteMap,FILE_MAP_READ,0,0,sizeof(StickyNoteLiveBlock));}
-    if(!g_stickyNoteState||g_stickyNoteState->magic!=0x314E5356u||g_stickyNoteState->version!=1||g_stickyNoteState->size!=sizeof(StickyNoteLiveBlock)||g_stickyNoteState->generation==g_stickyNoteGeneration)return;
+    if(!g_stickyNoteState||g_stickyNoteState->magic!=0x314E5356u||g_stickyNoteState->version!=2||g_stickyNoteState->size!=sizeof(StickyNoteLiveBlock)||g_stickyNoteState->generation==g_stickyNoteGeneration)return;
     const StickyNoteLiveBlock snapshot=*g_stickyNoteState;MemoryBarrier();if(snapshot.generation!=g_stickyNoteState->generation)return;
     if(!liveOwns(OverlayFeatureId::StickyNote)){g_stickyNoteGeneration=snapshot.generation;return;}
     if(liveOwns(OverlayFeatureId::StickyNote))stickyNoteEnabled=snapshot.enabled!=0;stickyNoteCount=0;
-    for(size_t i=0;i<kStickyNoteMax;++i){const auto&r=snapshot.notes[i];size_t length=0;while(length<std::size(r.text)&&r.text[length])++length;if(length==0&&!r.enabled)continue;auto&n=stickyNotes[stickyNoteCount++];n.enabled=r.enabled!=0;if((profileStickyOverlayOverrideMask&(1u<<i))==0){n.x=std::clamp((double)r.x,0.0,1.0);n.y=std::clamp((double)r.y,0.0,1.0);n.scale=std::clamp((double)r.scale,.5,2.5);}n.opacity=std::clamp((double)r.opacity,.1,1.0);n.theme=std::clamp(r.theme,0u,4u);n.text.assign(r.text,length);}
+    for(size_t i=0;i<kStickyNoteMax;++i){const auto&r=snapshot.notes[i];size_t length=0;while(length<std::size(r.text)&&r.text[length])++length;if(length==0&&!r.enabled)continue;auto&n=stickyNotes[stickyNoteCount++];n.enabled=r.enabled!=0;if((profileStickyOverlayOverrideMask&(1u<<i))==0){n.x=std::clamp((double)r.x,0.0,1.0);n.y=std::clamp((double)r.y,0.0,1.0);n.scale=std::clamp((double)r.scale,.5,2.5);}n.opacity=std::clamp((double)r.opacity,.1,1.0);n.theme=std::clamp(r.theme,0u,4u);n.design=static_cast<StickyNoteDesign>(std::clamp(r.design,0u,1u));n.text.assign(r.text,length);}
     g_stickyNoteGeneration=snapshot.generation;
 }
 void DisconnectStickyNoteState(){if(g_stickyNoteState)UnmapViewOfFile(g_stickyNoteState);if(g_stickyNoteMap)CloseHandle(g_stickyNoteMap);g_stickyNoteState=nullptr;g_stickyNoteMap=nullptr;g_stickyNoteGeneration=0;g_stickyNoteNextConnectTick=0;}
@@ -1199,8 +1201,8 @@ struct D3D11MaskState {
     ID3D11Buffer* calibrationColorCb = nullptr;
     ID3D11Buffer* visorColorCb = nullptr;
     ID3D11PixelShader* overlayPs = nullptr;
-    // Textured path — used only for pre-composited notification cards. Samples a per-slot RGBA
-    // texture and multiplies by a straight-alpha tint (for the animated fade).
+    // Textured path — shared by pre-composited notification cards and HD sticky notes. It samples
+    // straight-alpha RGBA and multiplies alpha by a per-draw tint.
     ID3D11PixelShader* texturedPs = nullptr;
     ID3D11Buffer* tintCb = nullptr;
     ID3D11SamplerState* linearSampler = nullptr;
@@ -1208,6 +1210,10 @@ struct D3D11MaskState {
     ID3D11ShaderResourceView* notifySrv[kNotifyMaxCards] = {};
     uint32_t notifyTexSerial[kNotifyMaxCards] = {}; // last uploaded contentSerial per slot
     uint32_t notifyTexId[kNotifyMaxCards] = {};      // last card id occupying each slot
+    ID3D11Texture2D* stickyHdTex[kStickyNoteMax] = {};
+    ID3D11ShaderResourceView* stickyHdSrv[kStickyNoteMax] = {};
+    uint64_t stickyHdHash[kStickyNoteMax] = {};
+    bool stickyHdFailed[kStickyNoteMax] = {};
     ID3D11InputLayout* layout = nullptr;
     ID3D11Buffer* vb = nullptr;
     ID3D11RasterizerState* rs = nullptr;
@@ -1226,6 +1232,28 @@ struct D3D11MaskState {
 };
 
 D3D11MaskState g_d3d11Mask;
+
+// CPU paper composition is deliberately off the OpenXR render thread. A 1024-square anti-aliased
+// surface is expensive enough to miss several VR frames; only the small immutable D3D upload is
+// performed when the worker result is ready. Jobs are bounded one-per-note and joined on teardown.
+struct StickyHdRenderJob {
+    std::mutex mutex;
+    std::thread worker;
+    bool running = false;
+    bool ready = false;
+    uint64_t hash = 0;
+    viewlab::sticky_note::HdSurface surface;
+    std::string error;
+};
+StickyHdRenderJob g_stickyHdJobs[kStickyNoteMax];
+
+void StopStickyHdRenderJobs() {
+    for (auto& job : g_stickyHdJobs) {
+        if (job.worker.joinable()) job.worker.join();
+        std::lock_guard<std::mutex> lock(job.mutex);
+        job.running = false; job.ready = false; job.hash = 0; job.surface.mips.clear(); job.error.clear();
+    }
+}
 
 bool RendererDeviceHealthy(const char* stage) {
     if (g_rendererDeviceLost.load(std::memory_order_acquire)) return false;
@@ -1886,6 +1914,7 @@ XrQuaternionf MultiplyQuaternion(const XrQuaternionf& a, const XrQuaternionf& b)
 void ReleaseVlmcQuadFx(); // VLMC overlay compositor resources, defined with the VLMC producer
 void ReleaseD3D11MaskRenderer() {
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
+    StopStickyHdRenderJobs();
     const XrSession releasedSession = g_d3d11Mask.session;
     {
         std::lock_guard<std::mutex> lk(g_swapchainMutex);
@@ -1910,6 +1939,10 @@ void ReleaseD3D11MaskRenderer() {
     for (uint32_t i = 0; i < kNotifyMaxCards; ++i) {
         if (g_d3d11Mask.notifySrv[i]) { g_d3d11Mask.notifySrv[i]->Release(); g_d3d11Mask.notifySrv[i] = nullptr; }
         if (g_d3d11Mask.notifyTex[i]) { g_d3d11Mask.notifyTex[i]->Release(); g_d3d11Mask.notifyTex[i] = nullptr; }
+    }
+    for (size_t i = 0; i < kStickyNoteMax; ++i) {
+        if (g_d3d11Mask.stickyHdSrv[i]) { g_d3d11Mask.stickyHdSrv[i]->Release(); g_d3d11Mask.stickyHdSrv[i] = nullptr; }
+        if (g_d3d11Mask.stickyHdTex[i]) { g_d3d11Mask.stickyHdTex[i]->Release(); g_d3d11Mask.stickyHdTex[i] = nullptr; }
     }
     if (g_d3d11Mask.linearSampler) { g_d3d11Mask.linearSampler->Release(); g_d3d11Mask.linearSampler = nullptr; }
     if (g_d3d11Mask.tintCb)  { g_d3d11Mask.tintCb->Release();  g_d3d11Mask.tintCb = nullptr; }
@@ -3403,6 +3436,75 @@ ID3D11ShaderResourceView* EnsureNotifyCardTexture(uint32_t slot, const NotifyCar
     return g_d3d11Mask.notifySrv[slot];
 }
 
+ID3D11ShaderResourceView* EnsureStickyHdTexture(size_t slot, const StickyNoteConfig& note) {
+    if (slot >= kStickyNoteMax || !g_d3d11Mask.device || note.design != StickyNoteDesign::HdPaper) return nullptr;
+    const uint64_t hash = viewlab::sticky_note::HdContentHash(note.text, note.theme);
+    if (g_d3d11Mask.stickyHdHash[slot] == hash)
+        return g_d3d11Mask.stickyHdFailed[slot] ? nullptr : g_d3d11Mask.stickyHdSrv[slot];
+
+    auto& job = g_stickyHdJobs[slot];
+    viewlab::sticky_note::HdSurface surface; std::string error; bool resultReady = false;
+    {
+        std::lock_guard<std::mutex> lock(job.mutex);
+        if (job.running) return nullptr;
+        if (job.ready && job.hash == hash) {
+            surface = std::move(job.surface); error = std::move(job.error); job.ready = false; resultReady = true;
+        } else if (job.ready) {
+            job.surface.mips.clear(); job.error.clear(); job.ready = false;
+        }
+    }
+    if (job.worker.joinable()) job.worker.join();
+    if (!resultReady) {
+        const std::wstring text = note.text; const uint32_t palette = note.theme; const auto fontPath = layerDirectory / L"Caveat-Bold.ttf";
+        {
+            std::lock_guard<std::mutex> lock(job.mutex); job.hash = hash; job.running = true;
+        }
+        try {
+            job.worker = std::thread([&job, hash, text, palette, fontPath] {
+                viewlab::sticky_note::HdSurface rendered; std::string renderError;
+                viewlab::sticky_note::RenderHdSurface(text, palette, fontPath, rendered, renderError);
+                std::lock_guard<std::mutex> lock(job.mutex);
+                if (job.hash == hash) { job.surface = std::move(rendered); job.error = std::move(renderError); job.ready = true; }
+                job.running = false;
+            });
+        } catch (...) {
+            std::lock_guard<std::mutex> lock(job.mutex); job.running = false; job.error = "render worker could not start";
+            g_d3d11Mask.stickyHdHash[slot] = hash; g_d3d11Mask.stickyHdFailed[slot] = true;
+            Log("sticky note HD: slot %zu could not start render worker; using 8-bit fallback\n", slot);
+        }
+        return nullptr;
+    }
+
+    if (g_d3d11Mask.stickyHdSrv[slot]) { g_d3d11Mask.stickyHdSrv[slot]->Release(); g_d3d11Mask.stickyHdSrv[slot] = nullptr; }
+    if (g_d3d11Mask.stickyHdTex[slot]) { g_d3d11Mask.stickyHdTex[slot]->Release(); g_d3d11Mask.stickyHdTex[slot] = nullptr; }
+    g_d3d11Mask.stickyHdHash[slot] = hash; g_d3d11Mask.stickyHdFailed[slot] = true;
+    if (surface.mips.empty()) {
+        Log("sticky note HD: slot %zu fell back to 8-bit (%s)\n", slot, error.empty() ? "render failed" : error.c_str());
+        return nullptr;
+    }
+    std::vector<D3D11_SUBRESOURCE_DATA> initial(surface.mips.size());
+    for (size_t i = 0; i < surface.mips.size(); ++i) {
+        initial[i].pSysMem = surface.mips[i].rgba.data();
+        initial[i].SysMemPitch = surface.mips[i].width * 4;
+    }
+    D3D11_TEXTURE2D_DESC td{}; td.Width = surface.mips[0].width; td.Height = surface.mips[0].height;
+    td.MipLevels = static_cast<UINT>(surface.mips.size()); td.ArraySize = 1; td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    td.SampleDesc.Count = 1; td.Usage = D3D11_USAGE_IMMUTABLE; td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    HRESULT hr = g_d3d11Mask.device->CreateTexture2D(&td, initial.data(), &g_d3d11Mask.stickyHdTex[slot]);
+    if (FAILED(hr) || !g_d3d11Mask.stickyHdTex[slot]) {
+        Log("sticky note HD: slot %zu texture create failed hr=0x%08X; using 8-bit fallback\n", slot, static_cast<unsigned>(hr));
+        return nullptr;
+    }
+    hr = g_d3d11Mask.device->CreateShaderResourceView(g_d3d11Mask.stickyHdTex[slot], nullptr, &g_d3d11Mask.stickyHdSrv[slot]);
+    if (FAILED(hr) || !g_d3d11Mask.stickyHdSrv[slot]) {
+        Log("sticky note HD: slot %zu SRV create failed hr=0x%08X; using 8-bit fallback\n", slot, static_cast<unsigned>(hr));
+        g_d3d11Mask.stickyHdTex[slot]->Release(); g_d3d11Mask.stickyHdTex[slot] = nullptr; return nullptr;
+    }
+    g_d3d11Mask.stickyHdFailed[slot] = false;
+    Log("sticky note HD: slot %zu cached at %ux%u with %zu mip levels\n", slot, td.Width, td.Height, surface.mips.size());
+    return g_d3d11Mask.stickyHdSrv[slot];
+}
+
 // Feature 1 (render-boundary flash), 2 (crosshair), and 3 (notification cards). These share one
 // alpha-blended pass and are anchored, like the HUD, in the shared tangent-space binocular overlap
 // so they fuse cleanly in both eyes. Uses the visor colour+alpha PS for flat geometry and the
@@ -3669,6 +3771,28 @@ void DrawViewLabOverlaysToTexture(
     if(wantSticky) for(size_t noteIndex=0;noteIndex<stickyNoteCount;++noteIndex){
         const auto& note=stickyNotes[noteIndex];if(!note.enabled||note.text.empty()||note.opacity<=.001)continue;
         const auto& stickyNoteText=note.text;const double stickyNoteX=note.x,stickyNoteY=note.y,stickyNoteScale=note.scale,stickyNoteOpacity=note.opacity;
+        if(note.design==StickyNoteDesign::HdPaper&&g_d3d11Mask.texturedPs&&g_d3d11Mask.linearSampler&&g_d3d11Mask.tintCb){
+            if(ID3D11ShaderResourceView* srv=EnsureStickyHdTexture(noteIndex,note)){
+                const float pxPerTanX=stereo?w/(sR-sL):w*.5f,pxPerTanY=stereo?h/(sU-sD):h*.5f;
+                const float cardTan=(float)stickyNoteScale*(2.f/1080.f)*202.f;
+                const float sharedW=fullRight-fullLeft,sharedH=fullBottom-fullTop;
+                const float cardW=std::clamp(cardTan*pxPerTanX,96.f,sharedW*.60f),cardH=std::clamp(cardTan*pxPerTanY,96.f,sharedH*.60f);
+                float cx=anchorX(stickyNoteX),cy=anchorY(stickyNoteY);
+                cx=sharedW>cardW?std::clamp(cx,fullLeft+cardW*.5f,fullRight-cardW*.5f):(fullLeft+fullRight)*.5f;
+                cy=sharedH>cardH?std::clamp(cy,fullTop+cardH*.5f,fullBottom-cardH*.5f):(fullTop+fullBottom)*.5f;
+                const float x0=cx-cardW*.5f,y0=cy-cardH*.5f,x1=cx+cardW*.5f,y1=cy+cardH*.5f;
+                float tint[4]={1.f,1.f,1.f,(float)stickyNoteOpacity};D3D11_MAPPED_SUBRESOURCE tm{};
+                if(SUCCEEDED(g_d3d11Mask.context->Map(g_d3d11Mask.tintCb,0,D3D11_MAP_WRITE_DISCARD,0,&tm))){
+                    memcpy(tm.pData,tint,sizeof(tint));g_d3d11Mask.context->Unmap(g_d3d11Mask.tintCb,0);
+                    g_d3d11Mask.context->VSSetShader(g_d3d11Mask.vs,nullptr,0);g_d3d11Mask.context->PSSetShader(g_d3d11Mask.texturedPs,nullptr,0);
+                    g_d3d11Mask.context->PSSetConstantBuffers(0,1,&g_d3d11Mask.tintCb);g_d3d11Mask.context->PSSetSamplers(0,1,&g_d3d11Mask.linearSampler);g_d3d11Mask.context->PSSetShaderResources(0,1,&srv);
+                    VisorVertex q[6];auto V=[&](float px,float py,float u,float v){VisorVertex vv{};vv.x=ndcX(px);vv.y=ndcY(py);vv.r=u;vv.g=v;vv.alpha=1.f;return vv;};
+                    q[0]=V(x0,y0,0,0);q[1]=V(x1,y0,1,0);q[2]=V(x1,y1,1,1);q[3]=V(x0,y0,0,0);q[4]=V(x1,y1,1,1);q[5]=V(x0,y1,0,1);
+                    D3D11_MAPPED_SUBRESOURCE m{};if(SUCCEEDED(g_d3d11Mask.context->Map(g_d3d11Mask.vb,0,D3D11_MAP_WRITE_DISCARD,0,&m))){memcpy(m.pData,q,sizeof(q));g_d3d11Mask.context->Unmap(g_d3d11Mask.vb,0);g_d3d11Mask.context->Draw(6,0);}
+                    ID3D11ShaderResourceView* nullSrv=nullptr;g_d3d11Mask.context->PSSetShaderResources(0,1,&nullSrv);continue;
+                }
+            }
+        }
         const auto wrapped=viewlab::sticky_note::Wrap(stickyNoteText);if(wrapped.count){
         const float pxPerTanX=stereo?w/(sR-sL):w*.5f,pxPerTanY=stereo?h/(sU-sD):h*.5f;
         const float ref=(float)stickyNoteScale*(2.f/1080.f),gx=(std::max)(1.f,floorf(ref*pxPerTanX*1.65f+.5f)),gy=(std::max)(1.f,floorf(ref*pxPerTanY*1.65f+.5f));
@@ -5852,8 +5976,8 @@ void LoadConfig() {
     clockWidgetOpacity = std::clamp(ReadDoubleSetting(L"clock_widget_opacity", 0.82), 0.10, 1.0);
     stickyNoteEnabled=ReadBoolSetting(L"sticky_note_enabled",false);stickyNoteCount=0;
     const std::wstring noteCountText=ReadStringSetting(L"sticky_note_count",L"");
-    if(noteCountText.empty()){auto&n=stickyNotes[0];n.enabled=true;n.text=ReadStringSetting(L"sticky_note_text",L"");n.x=std::clamp(ReadDoubleSetting(L"sticky_note_x",.78),0.0,1.0);n.y=std::clamp(ReadDoubleSetting(L"sticky_note_y",.22),0.0,1.0);n.scale=std::clamp(ReadDoubleSetting(L"sticky_note_scale",1.0),.5,2.5);n.opacity=std::clamp(ReadDoubleSetting(L"sticky_note_opacity",.85),.1,1.0);n.theme=0;stickyNoteCount=1;}
-    else {const int count=std::clamp(_wtoi(noteCountText.c_str()),0,(int)kStickyNoteMax);for(int i=0;i<count;++i){wchar_t key[80]{};auto&n=stickyNotes[stickyNoteCount++];swprintf_s(key,L"sticky_note_%d_enabled",i);n.enabled=ReadBoolSetting(key,true);swprintf_s(key,L"sticky_note_%d_text",i);n.text=ReadStringSetting(key,L"");swprintf_s(key,L"sticky_note_%d_x",i);n.x=std::clamp(ReadDoubleSetting(key,.78),0.0,1.0);swprintf_s(key,L"sticky_note_%d_y",i);n.y=std::clamp(ReadDoubleSetting(key,.22),0.0,1.0);swprintf_s(key,L"sticky_note_%d_scale",i);n.scale=std::clamp(ReadDoubleSetting(key,1),.5,2.5);swprintf_s(key,L"sticky_note_%d_opacity",i);n.opacity=std::clamp(ReadDoubleSetting(key,.85),.1,1.0);swprintf_s(key,L"sticky_note_%d_theme",i);n.theme=(uint32_t)std::clamp(ReadDoubleSetting(key,0),0.0,4.0);}}
+    if(noteCountText.empty()){auto&n=stickyNotes[0];n.enabled=true;n.text=ReadStringSetting(L"sticky_note_text",L"");n.x=std::clamp(ReadDoubleSetting(L"sticky_note_x",.78),0.0,1.0);n.y=std::clamp(ReadDoubleSetting(L"sticky_note_y",.22),0.0,1.0);n.scale=std::clamp(ReadDoubleSetting(L"sticky_note_scale",1.0),.5,2.5);n.opacity=std::clamp(ReadDoubleSetting(L"sticky_note_opacity",.85),.1,1.0);n.theme=0;n.design=StickyNoteDesign::Pixel;stickyNoteCount=1;}
+    else {const int count=std::clamp(_wtoi(noteCountText.c_str()),0,(int)kStickyNoteMax);for(int i=0;i<count;++i){wchar_t key[80]{};auto&n=stickyNotes[stickyNoteCount++];swprintf_s(key,L"sticky_note_%d_enabled",i);n.enabled=ReadBoolSetting(key,true);swprintf_s(key,L"sticky_note_%d_text",i);n.text=ReadStringSetting(key,L"");swprintf_s(key,L"sticky_note_%d_x",i);n.x=std::clamp(ReadDoubleSetting(key,.78),0.0,1.0);swprintf_s(key,L"sticky_note_%d_y",i);n.y=std::clamp(ReadDoubleSetting(key,.22),0.0,1.0);swprintf_s(key,L"sticky_note_%d_scale",i);n.scale=std::clamp(ReadDoubleSetting(key,1),.5,2.5);swprintf_s(key,L"sticky_note_%d_opacity",i);n.opacity=std::clamp(ReadDoubleSetting(key,.85),.1,1.0);swprintf_s(key,L"sticky_note_%d_theme",i);n.theme=(uint32_t)std::clamp(ReadDoubleSetting(key,0),0.0,4.0);swprintf_s(key,L"sticky_note_%d_style",i);n.design=static_cast<StickyNoteDesign>((uint32_t)std::clamp(ReadDoubleSetting(key,0),0.0,1.0));}}
     const int legacyStickyNoteToggleKey=(int)std::clamp(ReadDoubleSetting(L"sticky_note_toggle_vk",VK_F7),1.0,255.0);
     constexpr const wchar_t* overlayToggleKeys[] = {
         L"overlay_hud_toggle_vk",L"overlay_trace_toggle_vk",L"overlay_clock_toggle_vk",
@@ -6150,10 +6274,10 @@ void LoadConfig() {
         if(ReadProfileDouble(L"overlay_override_sticky__sticky_note_count",profileStickyCount)){
             profileOverlayOverrideMask|=1u<<(uint32_t)OverlayFeatureId::StickyNote;stickyNoteCount=(size_t)std::clamp(std::round(profileStickyCount),0.0,(double)kStickyNoteMax);
             for(size_t i=0;i<stickyNoteCount;++i){
-                wchar_t enabledKey[128]{},textKey[128]{},xKey[128]{},yKey[128]{},scaleKey[128]{},opacityKey[128]{},themeKey[128]{};
-                swprintf_s(enabledKey,L"overlay_override_sticky__sticky_note_%zu_enabled",i);swprintf_s(textKey,L"overlay_override_sticky__sticky_note_%zu_text",i);swprintf_s(xKey,L"overlay_override_sticky__sticky_note_%zu_x",i);swprintf_s(yKey,L"overlay_override_sticky__sticky_note_%zu_y",i);swprintf_s(scaleKey,L"overlay_override_sticky__sticky_note_%zu_scale",i);swprintf_s(opacityKey,L"overlay_override_sticky__sticky_note_%zu_opacity",i);swprintf_s(themeKey,L"overlay_override_sticky__sticky_note_%zu_theme",i);
+                wchar_t enabledKey[128]{},textKey[128]{},xKey[128]{},yKey[128]{},scaleKey[128]{},opacityKey[128]{},themeKey[128]{},styleKey[128]{};
+                swprintf_s(enabledKey,L"overlay_override_sticky__sticky_note_%zu_enabled",i);swprintf_s(textKey,L"overlay_override_sticky__sticky_note_%zu_text",i);swprintf_s(xKey,L"overlay_override_sticky__sticky_note_%zu_x",i);swprintf_s(yKey,L"overlay_override_sticky__sticky_note_%zu_y",i);swprintf_s(scaleKey,L"overlay_override_sticky__sticky_note_%zu_scale",i);swprintf_s(opacityKey,L"overlay_override_sticky__sticky_note_%zu_opacity",i);swprintf_s(themeKey,L"overlay_override_sticky__sticky_note_%zu_theme",i);swprintf_s(styleKey,L"overlay_override_sticky__sticky_note_%zu_style",i);
                 auto& note=stickyNotes[i];readOverlayBool(enabledKey,note.enabled,OverlayFeatureId::StickyNote);std::wstring noteText;if(ReadProfileString(textKey,noteText)){note.text.assign(noteText.begin(),noteText.end());profileOverlayOverrideMask|=1u<<(uint32_t)OverlayFeatureId::StickyNote;}
-                readOverlayDouble(xKey,note.x,0,1,OverlayFeatureId::StickyNote);readOverlayDouble(yKey,note.y,0,1,OverlayFeatureId::StickyNote);readOverlayDouble(scaleKey,note.scale,.5,2.5,OverlayFeatureId::StickyNote);readOverlayDouble(opacityKey,note.opacity,.1,1,OverlayFeatureId::StickyNote);readOverlayU32(themeKey,note.theme,0,4,OverlayFeatureId::StickyNote);
+                readOverlayDouble(xKey,note.x,0,1,OverlayFeatureId::StickyNote);readOverlayDouble(yKey,note.y,0,1,OverlayFeatureId::StickyNote);readOverlayDouble(scaleKey,note.scale,.5,2.5,OverlayFeatureId::StickyNote);readOverlayDouble(opacityKey,note.opacity,.1,1,OverlayFeatureId::StickyNote);readOverlayU32(themeKey,note.theme,0,4,OverlayFeatureId::StickyNote);uint32_t design=(uint32_t)note.design;if(readOverlayU32(styleKey,design,0,1,OverlayFeatureId::StickyNote))note.design=(StickyNoteDesign)design;
             }
         }
 

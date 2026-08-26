@@ -3,8 +3,25 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-08-25
-**Current version:** 4.1.343 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.343.msi` (contracts pass; full MSI build 0 warnings / 0 errors; **not live-validated yet**).
+**Updated:** 2026-08-27
+**Current version:** 4.1.345 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.345.msi` (contracts and full MSI payload validation pass; **not live-validated yet**).
+
+**2026-08-27 — 4.1.345 Sticky-note themes and HD Paper implemented; headset validation pending.**
+Sticky notes now separate visual **Style** from paper colour. Existing indexed notes with no style and the
+legacy single-note migration remain explicitly **8-bit**, preserving the original rectangle/5×7 renderer.
+New notes default to **HD Paper**. Both global and per-app editors persist and publish the choice through
+the dedicated sticky-note mapping, now v2 (2164 bytes).
+
+HD Paper is composed natively at 1024×1024 from the bundled OFL Caveat Bold font with anti-aliased adaptive
+word wrapping, five colour palettes, quiet paper grain/gradient, adhesive shading, irregular edges, a folded
+corner, soft depth and an alpha-aware 11-level mip chain. The existing filtered textured shader draws it at
+the note's angular size and opacity. CPU composition runs in one bounded worker per note, never on the OpenXR
+render thread; immutable D3D textures cache by text+colour, so placement/scale/opacity edits do not rerasterise.
+Missing font, raster or D3D resources degrade only the affected note to 8-bit and log the reason. Deterministic
+renderer fixtures and repository contracts pass; WPF, broker, x64/Win32 native layers and MSI payload hashes
+validate. Build 4.1.345 is 149,938,176 bytes, SHA-256
+`134ADC1C7A5E0AE321607C60E2E46998E037D177BFCB13496F62DC3FDAAA4436`. Headset appearance/fusion and live
+style-switch/fallback behaviour remain to be validated.
 
 **2026-08-25 — Forced SPS accepted as a gated feasibility project (proposal only; no implementation).**
 The product goal is an opt-in, AMD-compatible stereo-draw translation path that can reduce duplicated
@@ -729,8 +746,8 @@ instead of cancelling it, the correction sign in `stab_video_render` is a one-li
 footprint from raster dimensions and `ComposeCard` SUPERSAMPLES at `logical × RasterFactor(scale)` (RasterQuality
 2.0 ≈ 200% native Quest 3 linear density, cap 3×); the shared slot grew to 1008×288 and the notify contract is v3
 (native `g_notify->version == 3`). Physical size is unchanged (native derives it from `notify_scale`); enlarging a
-card now allocates source pixels instead of stretching. Notifications are the only rasterised overlay — clock/HUD/
-trace/crosshair/sticky draw native vector at eye resolution. **Minimal** was reworked to the Clock Minimal language:
+card now allocates source pixels instead of stretching. Notifications and HD Paper sticky notes are the rasterised
+overlays — clock/HUD/trace/crosshair and 8-bit sticky notes draw native geometry at eye resolution. **Minimal** was reworked to the Clock Minimal language:
 transparent, surfaceless, drop-shadow text (`DrawShadowedText`); Classic/Compact Banner/Bold keep their boxed
 layouts; all palettes still work. (2) **Magenta edge:** full ViewLab-side audit — sampler CLAMP, transparent card
 texels stored with zeroed RGB, opaque visor shader, transparent-black clears. New `OverlayCompositeModel.h` +
@@ -1428,9 +1445,10 @@ round-trip and full build pass; headset bind/legibility validation remains pendi
 
 ## Sticky note visor widget (implemented; headset validation pending, 2026-07-14)
 
-Up to eight optional 120-character notes are normalized and word-wrapped by tested native logic into at
-most four lines, then drawn as independently themed square paper cards through the shared binocular
-presentation path. Each note owns enable, position, angular size and opacity; the collection retains one
+Up to eight optional 120-character notes are drawn through the shared binocular presentation path. Each note
+independently owns style (migration-safe 8-bit or mipmapped HD Paper), paper colour, position, angular size and
+opacity. 8-bit preserves tested four-line native geometry; HD Paper adaptively wraps up to five handwritten
+lines in its 1024-square cached surface. The collection retains one
 rising-edge F6–F12 visibility bind (F7 default) and never enters the notification queue. Legacy single-note
 settings migrate into note one. Headset scale, fusion and bind validation remain pending.
 

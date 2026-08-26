@@ -181,6 +181,7 @@ public partial class MainWindow : Window
 	private readonly ObservableCollection<AppProfile> _apps = new ObservableCollection<AppProfile>();
 	private readonly ObservableCollection<StickyNoteOption> _stickyNotes = new();
 	public string[] StickyNoteThemes { get; } = { "Classic yellow", "Rose", "Mint", "Sky", "Paper" };
+	public string[] StickyNoteStyles { get; } = { "8-bit", "HD Paper" };
 	private readonly ObservableCollection<HudWidgetOption> _hudWidgets = new()
 	{
 		new() { MetricId=0, Id="cpu", Label="CPU — total utilisation", Provider="Windows / GetSystemTimes", Unit="%", ToolTip="Total machine CPU utilisation; sampled every 250 ms." },
@@ -2901,7 +2902,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		{
 			StickyNoteOption note = _stickyNotes[index]; string prefix = $"sticky_note_{index}_";
 			result.Set("sticky", prefix + "enabled", note.Enabled ? "1" : "0"); result.Set("sticky", prefix + "text", note.Text);
-			result.Set("sticky", prefix + "x", note.X.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "y", note.Y.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "scale", note.Scale.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "opacity", note.Opacity.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "theme", note.Theme.ToString(CultureInfo.InvariantCulture));
+			result.Set("sticky", prefix + "x", note.X.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "y", note.Y.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "scale", note.Scale.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "opacity", note.Opacity.ToString("0.###", CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "theme", note.Theme.ToString(CultureInfo.InvariantCulture)); result.Set("sticky", prefix + "style", note.Design.ToString(CultureInfo.InvariantCulture));
 		}
 		return result;
 	}
@@ -3400,14 +3401,14 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		{
 			_stickyNotes.Add(new StickyNoteOption { Number=1, Enabled=true, Text=ReadSetting(StickyNoteTextKey,string.Empty),
 				X=ReadRangeSetting("sticky_note_x",.78,0,1),Y=ReadRangeSetting("sticky_note_y",.22,0,1),
-				Scale=ReadRangeSetting("sticky_note_scale",1,.5,2.5),Opacity=ReadRangeSetting("sticky_note_opacity",.85,.1,1) });
+				Scale=ReadRangeSetting("sticky_note_scale",1,.5,2.5),Opacity=ReadRangeSetting("sticky_note_opacity",.85,.1,1),Design=0 });
 			return;
 		}
 		for(int i=0;i<count;++i)_stickyNotes.Add(new StickyNoteOption { Number=i+1,
 			Enabled=ReadBoolSetting($"sticky_note_{i}_enabled",true),Text=ReadSetting($"sticky_note_{i}_text",string.Empty),
 			X=ReadRangeSetting($"sticky_note_{i}_x",.78,0,1),Y=ReadRangeSetting($"sticky_note_{i}_y",.22,0,1),
 			Scale=ReadRangeSetting($"sticky_note_{i}_scale",1,.5,2.5),Opacity=ReadRangeSetting($"sticky_note_{i}_opacity",.85,.1,1),
-			Theme=(int)ReadRangeSetting($"sticky_note_{i}_theme",0,0,4) });
+			Theme=(int)ReadRangeSetting($"sticky_note_{i}_theme",0,0,4),Design=(int)ReadRangeSetting($"sticky_note_{i}_style",0,0,1) });
 	}
 
 	private void SaveStickyNotes()
@@ -3418,14 +3419,14 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		for(int i=0;i<_stickyNotes.Count;++i){var n=_stickyNotes[i];string p=$"sticky_note_{i}_";
 			WritePrivateProfileString("Settings",p+"enabled",n.Enabled?"1":"0",ConfigPath);WritePrivateProfileString("Settings",p+"text",StickyNoteLiveStateService.Normalize(n.Text),ConfigPath);
 			WritePrivateProfileString("Settings",p+"x",n.X.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings",p+"y",n.Y.ToString("0.###",c),ConfigPath);
-			WritePrivateProfileString("Settings",p+"scale",n.Scale.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings",p+"opacity",n.Opacity.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings",p+"theme",n.Theme.ToString(c),ConfigPath);}
+			WritePrivateProfileString("Settings",p+"scale",n.Scale.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings",p+"opacity",n.Opacity.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings",p+"theme",n.Theme.ToString(c),ConfigPath);WritePrivateProfileString("Settings",p+"style",n.Design.ToString(c),ConfigPath);}
 		if(_stickyNotes.Count>0){var n=_stickyNotes[0];WritePrivateProfileString("Settings",StickyNoteTextKey,StickyNoteLiveStateService.Normalize(n.Text),ConfigPath);WritePrivateProfileString("Settings","sticky_note_x",n.X.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings","sticky_note_y",n.Y.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings","sticky_note_scale",n.Scale.ToString("0.###",c),ConfigPath);WritePrivateProfileString("Settings","sticky_note_opacity",n.Opacity.ToString("0.###",c),ConfigPath);}
 		SaveAllOverlayHotkeys();_stickyNoteLiveState.Publish(StickyNoteEnabledCheck.IsChecked==true,_stickyNotes);RefreshMaskOverlayPreview();
 	}
 	private void StickyNote_Changed(object sender,RoutedEventArgs e){if(_loading||_applyingOverlayPreviewEdit)return;RequestSave(PendingSave.StickyNotes);StatusText.Text="Sticky notes applied live.";}
 	private void StickyNoteItem_Changed(object sender,RoutedEventArgs e)=>StickyNote_Changed(sender,e);
 	private void StickyNoteItemSlider_Changed(object sender,RoutedPropertyChangedEventArgs<double> e)=>StickyNote_Changed(sender,e);
-	private void StickyNoteAdd_Click(object sender,RoutedEventArgs e){if(_stickyNotes.Count>=StickyNoteLiveStateService.MaxNotes){StatusText.Text="Sticky notes are limited to eight.";return;}_stickyNotes.Add(new StickyNoteOption{Number=_stickyNotes.Count+1,X=.78,Y=.22+.08*_stickyNotes.Count});SaveStickyNotes();}
+	private void StickyNoteAdd_Click(object sender,RoutedEventArgs e){if(_stickyNotes.Count>=StickyNoteLiveStateService.MaxNotes){StatusText.Text="Sticky notes are limited to eight.";return;}_stickyNotes.Add(new StickyNoteOption{Number=_stickyNotes.Count+1,X=.78,Y=.22+.08*_stickyNotes.Count,Design=1});SaveStickyNotes();}
 	private void StickyNoteRemove_Click(object sender,RoutedEventArgs e){if(sender is FrameworkElement{DataContext:StickyNoteOption n}){_stickyNotes.Remove(n);for(int i=0;i<_stickyNotes.Count;++i)_stickyNotes[i].Number=i+1;SaveStickyNotes();}}
 	private void StickyNoteReset_Click(object sender,RoutedEventArgs e){if(sender is FrameworkElement{DataContext:StickyNoteOption n}){n.X=.78;n.Y=.22;SaveStickyNotes();}}
 
