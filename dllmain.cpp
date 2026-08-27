@@ -6265,13 +6265,15 @@ void LoadConfig() {
         constexpr const wchar_t* profileWidgetKeys[kHudWidgetCount]={L"cpu",L"gpu",L"app",L"vr",L"cpu_peak",L"cpu_frequency",L"ram",L"commit",L"vram",L"sys",L"fps",L"frame_interval",L"network_ping",L"network_loss",L"network_jitter",L"network_status"};
         std::array<std::pair<int,uint8_t>,kHudWidgetCount> profileWidgetOrder{};
         for(size_t i=0;i<kHudWidgetCount;++i){
-            wchar_t enabledKey[128]{},symbolKey[128]{},orderKey[128]{},warningKey[128]{},criticalKey[128]{};
-            swprintf_s(enabledKey,L"overlay_override_hud__hud_widget_%s_enabled",profileWidgetKeys[i]);swprintf_s(symbolKey,L"overlay_override_hud__hud_widget_%s_symbol",profileWidgetKeys[i]);swprintf_s(orderKey,L"overlay_override_hud__hud_widget_%s_order",profileWidgetKeys[i]);swprintf_s(warningKey,L"overlay_override_hud__hud_widget_%s_warning",profileWidgetKeys[i]);swprintf_s(criticalKey,L"overlay_override_hud__hud_widget_%s_critical",profileWidgetKeys[i]);
-            bool enabled=(hudWidgetMask&(1ull<<i))!=0;if(readOverlayBool(enabledKey,enabled,OverlayFeatureId::Hud)){if(enabled)hudWidgetMask|=1ull<<i;else hudWidgetMask&=~(1ull<<i);}
-            bool symbol=(hudWidgetSymbolMask&(1u<<i))!=0;if(readOverlayBool(symbolKey,symbol,OverlayFeatureId::Hud)){if(symbol)hudWidgetSymbolMask|=1u<<i;else hudWidgetSymbolMask&=~(1u<<i);}
-            double order=(double)i;ReadProfileDouble(orderKey,order);profileWidgetOrder[i]={(int)order,(uint8_t)i};
-            readOverlayDouble(warningKey,hudWidgetWarning[i],0,1000000,OverlayFeatureId::Hud);readOverlayDouble(criticalKey,hudWidgetCritical[i],0,1000000,OverlayFeatureId::Hud);
-        }
+	            wchar_t enabledKey[128]{},symbolKey[128]{},unitKey[128]{},orderKey[128]{},warningKey[128]{},criticalKey[128]{};
+	            swprintf_s(enabledKey,L"overlay_override_hud__hud_widget_%s_enabled",profileWidgetKeys[i]);swprintf_s(symbolKey,L"overlay_override_hud__hud_widget_%s_symbol",profileWidgetKeys[i]);swprintf_s(unitKey,L"overlay_override_hud__hud_widget_%s_unit",profileWidgetKeys[i]);swprintf_s(orderKey,L"overlay_override_hud__hud_widget_%s_order",profileWidgetKeys[i]);swprintf_s(warningKey,L"overlay_override_hud__hud_widget_%s_warning",profileWidgetKeys[i]);swprintf_s(criticalKey,L"overlay_override_hud__hud_widget_%s_critical",profileWidgetKeys[i]);
+	            bool enabled=(hudWidgetMask&(1ull<<i))!=0;if(readOverlayBool(enabledKey,enabled,OverlayFeatureId::Hud)){if(enabled)hudWidgetMask|=1ull<<i;else hudWidgetMask&=~(1ull<<i);}
+	            bool symbol=(hudWidgetSymbolMask&(1u<<i))!=0;if(readOverlayBool(symbolKey,symbol,OverlayFeatureId::Hud)){if(symbol)hudWidgetSymbolMask|=1u<<i;else hudWidgetSymbolMask&=~(1u<<i);}
+	            bool showUnit=(hudWidgetUnitHiddenMask&(1u<<i))==0;if(readOverlayBool(unitKey,showUnit,OverlayFeatureId::Hud)){if(showUnit)hudWidgetUnitHiddenMask&=~(1u<<i);else hudWidgetUnitHiddenMask|=1u<<i;}
+	            double order=(double)i;if(ReadProfileDouble(orderKey,order))profileOverlayOverrideMask|=1u<<(uint32_t)OverlayFeatureId::Hud;profileWidgetOrder[i]={(int)order,(uint8_t)i};
+	            readOverlayDouble(warningKey,hudWidgetWarning[i],0,1000000,OverlayFeatureId::Hud);readOverlayDouble(criticalKey,hudWidgetCritical[i],0,1000000,OverlayFeatureId::Hud);
+	        }
+	        std::wstring profileProbeTarget;if(ReadProfileString(L"overlay_override_hud__network_probe_target",profileProbeTarget)){IN_ADDR profileProbeAddress{};if(InetPtonW(AF_INET,profileProbeTarget.c_str(),&profileProbeAddress)==1)viewlab::telemetry::SetNetworkProbeTarget(profileProbeAddress.S_un.S_addr);profileOverlayOverrideMask|=1u<<(uint32_t)OverlayFeatureId::Hud;}
         if((profileOverlayOverrideMask&(1u<<(uint32_t)OverlayFeatureId::Hud))!=0){std::stable_sort(profileWidgetOrder.begin(),profileWidgetOrder.end(),[](const auto&a,const auto&b){return a.first<b.first;});for(size_t i=0;i<kHudWidgetCount;++i)hudWidgetOrder[i]=profileWidgetOrder[i].second;viewlab::telemetry::SetNetworkProbeEnabled((hudWidgetMask&(0xFull<<12))!=0);}
 
         readOverlayBool(L"overlay_override_trace__hud_trace_enabled",hudTraceEnabled,OverlayFeatureId::Trace);
@@ -6317,8 +6319,9 @@ void LoadConfig() {
         readOverlayBool(L"overlay_override_notifications__notify_enabled",notifyEnabled,OverlayFeatureId::Notifications);
         readOverlayDouble(L"overlay_override_notifications__notify_x",notifyX,0,1,OverlayFeatureId::Notifications);
         readOverlayDouble(L"overlay_override_notifications__notify_y",notifyY,0,1,OverlayFeatureId::Notifications);
-        readOverlayDouble(L"overlay_override_notifications__notify_scale",notifyScale,.1,3,OverlayFeatureId::Notifications);
-        readOverlayDouble(L"overlay_override_notifications__notify_opacity",notifyOpacity,.1,1,OverlayFeatureId::Notifications);
+	        readOverlayDouble(L"overlay_override_notifications__notify_scale",notifyScale,.1,3,OverlayFeatureId::Notifications);
+	        readOverlayDouble(L"overlay_override_notifications__notify_opacity",notifyOpacity,.1,1,OverlayFeatureId::Notifications);
+	        readOverlayDouble(L"overlay_override_notifications__notify_duration_ms",notifyDurationMs,500,15000,OverlayFeatureId::Notifications);
 
         double featureEnabled=obsIndicatorEnabled?1.0:0.0;if(ReadProfileDouble(L"overlay_override_obs__obs_indicator_enabled",featureEnabled)){obsIndicatorEnabled=featureEnabled!=0;profileObsFeatureOverride=true;}
         featureEnabled=iracingEnabled?1.0:0.0;if(ReadProfileDouble(L"overlay_override_iracing__iracing_enabled",featureEnabled)){iracingEnabled=featureEnabled!=0;profileIRacingFeatureOverride=true;}

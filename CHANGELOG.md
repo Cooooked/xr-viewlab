@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.1.347 - 2026-08-28 (Complete live-overlay contract)
+
+- Completed the interrupted live per-app overlay work: every editable property of clock, HUD, Performance Trace, sticky notes, crosshair and notifications now publishes into the running executable without recreating the OpenXR session.
+- Added a scoped notification-composition live channel for unsaved design, palette, resolution, privacy, icon/image, filters, allowlist, media-card and queue settings. Test Presentation now consumes that state before composing instead of saving and testing the global configuration.
+- Per-feature Use Global Values now publishes all six resolved overlays authoritatively, while Cancel restores the original resolved profile. Restored saved per-app HUD unit/network settings and notification duration at session startup; resolution-only broker changes are no longer ignored.
+
 ## 4.1.346 - 2026-08-28 (Live per-app overlays)
 
 - Per-app changes to clock, HUD, Performance Trace, sticky notes, crosshair and notification placement now apply to the currently running game without restarting it. This includes enable/disable, position, scale, opacity, hotkeys, HUD widgets/thresholds, trace channels, sticky-note content/style, crosshair colour, and clock design/palette.

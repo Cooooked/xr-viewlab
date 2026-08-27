@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.IO.Pipes;
 using System.IO.MemoryMappedFiles;
+using System.Linq;
 using Microsoft.Win32;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -79,13 +80,12 @@ internal static class NotificationBrokerProgram
         var mediaProvider = new MediaSessionEventProvider();
         var obsProvider = new ObsRecordingProvider();
         bool obsEnabled=ReadBool("obs_indicator_enabled",false);string obsEndpoint=Read("obs_websocket_url","ws://127.0.0.1:4455"),obsPassword=Read("obs_websocket_password","");obsProvider.Update(obsEnabled,obsEndpoint,obsPassword);
-        bool mediaNotifyEnabled = ReadBool("media_notify_enabled", false);
+	        bool mediaNotifyEnabled = false;
         mediaProvider.TrackChanged += info => dispatcher.BeginInvoke(() =>
         {
             if (mediaNotifyEnabled && service.State != NotificationService.ServiceState.InternalRendererFailure)
                 service.EnqueueMediaCard(info.Title, info.Artist, info.Artwork);
         });
-        if (mediaNotifyEnabled) mediaProvider.Start();
         bool racingEnabled = ReadBool("iracing_enabled", false);
         bool lapPopupEnabled = ReadBool("iracing_lap_popup", false);
         double lapDurationMs = ReadDouble("iracing_lap_duration_ms", 4500, 1000, 15000);
@@ -116,15 +116,31 @@ internal static class NotificationBrokerProgram
         });
         if (racingEnabled) racingProvider.Start(); else { racingProvider.Stop(); racingState.Clear(); }
 
-        NotificationSettings current = ReadSettings();
+	        using var notificationLiveReader = new NotificationLiveStateReader();
+	        notificationLiveReader.Poll();
+	        NotificationSettings ResolveNotificationSettings(out bool resolvedMediaEnabled)
+	        {
+	            NotificationSettings persisted = ReadSettings();
+	            NotificationLiveSnapshot? live = notificationLiveReader.Current;
+	            if (live != null && NotificationLiveStatePolicy.Applies(live, _activeProfileKey, HasProfileNotificationOverride()))
+	            {
+	                resolvedMediaEnabled = live.MediaEnabled;
+	                return FromLiveSnapshot(live);
+	            }
+	            resolvedMediaEnabled = ReadBool("media_notify_enabled", false);
+	            return persisted;
+	        }
+	        NotificationSettings current = ResolveNotificationSettings(out mediaNotifyEnabled);
+	        if (mediaNotifyEnabled) mediaProvider.Start();
         bool initialAccessRequest = initialCommand is "request-access" or "request-access-and-test";
         service.Update(current, requestAccess: identityReady && initialAccessRequest);
         if (initialCommand is "test" or "request-access-and-test") service.EnqueueTestNotification();
         WriteStatus(service.State.ToString(), service.Status, identityReady);
 
-        void RefreshFromSettings()
-        {
-            NotificationSettings next = ReadSettings();
+	        void RefreshFromSettings()
+	        {
+	            notificationLiveReader.Poll();
+	            NotificationSettings next = ResolveNotificationSettings(out bool nextMediaNotifyEnabled);
             if (!Equivalent(current, next))
             {
                 current = next;
@@ -141,8 +157,7 @@ internal static class NotificationBrokerProgram
                 racingEnabled = nextRacingEnabled;
                 if (racingEnabled) racingProvider.Start(); else { racingProvider.Stop(); racingState.Clear(); attentionSpotter=SpotterState.Clear; attentionFlag=RacingFlagState.Clear; service.SetRacingAttention(false); }
             }
-            bool nextMediaNotifyEnabled = ReadBool("media_notify_enabled", false);
-            if (nextMediaNotifyEnabled != mediaNotifyEnabled)
+	            if (nextMediaNotifyEnabled != mediaNotifyEnabled)
             {
                 mediaNotifyEnabled = nextMediaNotifyEnabled;
                 if (mediaNotifyEnabled) mediaProvider.Start(); else mediaProvider.Stop();
@@ -190,11 +205,17 @@ internal static class NotificationBrokerProgram
         }
         StartWatcher();
 
-        var profileTimer = new DispatcherTimer(TimeSpan.FromSeconds(2), DispatcherPriority.Background, (_, _) =>
+	        var profileTimer = new DispatcherTimer(TimeSpan.FromSeconds(2), DispatcherPriority.Background, (_, _) =>
         {
             if (TryReadActiveProfileKey() != _activeProfileKey) RefreshFromSettings();
         }, dispatcher);
-        profileTimer.Start();
+	        profileTimer.Start();
+
+	        var notificationLiveTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background, (_, _) =>
+	        {
+	            if (notificationLiveReader.Poll()) RefreshFromSettings();
+	        }, dispatcher);
+	        notificationLiveTimer.Start();
 
         var fallbackTimer = new DispatcherTimer(TimeSpan.FromSeconds(30), DispatcherPriority.Background, (_, _) => RefreshFromSettings(), dispatcher);
         fallbackTimer.Start();
@@ -214,8 +235,8 @@ internal static class NotificationBrokerProgram
                         switch (received)
                         {
                             case "request-access": service.Update(current, requestAccess: identityReady); break;
-                            case "request-access-and-test": service.Update(current, requestAccess: identityReady); service.EnqueueTestNotification(); break;
-                            case "test": service.EnqueueTestNotification(); break;
+	                            case "request-access-and-test": RefreshFromSettings(); service.Update(current, requestAccess: identityReady); service.EnqueueTestNotification(); break;
+	                            case "test": RefreshFromSettings(); service.EnqueueTestNotification(); break;
                             case "refresh": RefreshFromSettings(); service.Update(current); break;
                             case "simulate-left": racingProvider.Simulate("Left"); break;
                             case "simulate-right": racingProvider.Simulate("Right"); break;
@@ -228,7 +249,7 @@ internal static class NotificationBrokerProgram
                             case "simulate-blue": racingProvider.Simulate("Blue"); break;
                             case "simulate-lowfuel": racingProvider.Simulate("LowFuel"); break;
                             case "shutdown":
-                                settingsDebounce.Stop(); profileTimer.Stop(); fallbackTimer.Stop(); settingsWatcher?.Dispose(); racingProvider.Dispose(); racingState.Dispose(); mediaProvider.Dispose(); obsProvider.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
+	                                settingsDebounce.Stop(); profileTimer.Stop(); notificationLiveTimer.Stop(); fallbackTimer.Stop(); settingsWatcher?.Dispose(); racingProvider.Dispose(); racingState.Dispose(); mediaProvider.Dispose(); obsProvider.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
                         }
                     });
                     if (received == "shutdown") return;
@@ -291,7 +312,7 @@ internal static class NotificationBrokerProgram
         catch { /* the status file will reveal a broker startup failure */ }
     }
 
-	private static NotificationSettings ReadSettings()
+		private static NotificationSettings ReadSettings()
 	{
 		_activeProfileKey = TryReadActiveProfileKey();
 		// Migration: legacy configs stored the recolour in notify_theme. When notify_palette is
@@ -350,10 +371,30 @@ internal static class NotificationBrokerProgram
 				if (value != null) return Convert.ToString(value, CultureInfo.InvariantCulture) ?? fallback;
 			}
 		}
-        var b = new StringBuilder(2048);
+
+	        var b = new StringBuilder(2048);
         GetPrivateProfileString("Settings", key, fallback, b, (uint)b.Capacity, ConfigPath);
         return b.ToString();
-    }
+	    }
+
+	private static NotificationSettings FromLiveSnapshot(NotificationLiveSnapshot live) => new()
+	{
+		Enabled = live.Enabled, X = Math.Clamp(live.X, 0, 1), Y = Math.Clamp(live.Y, 0, 1),
+		Scale = Math.Clamp(live.Scale, .25, 3), Opacity = Math.Clamp(live.Opacity, .1, 1),
+		DurationMs = Math.Clamp(live.DurationMs, 500, 15000), Resolution = Math.Clamp(live.Resolution, 1, 3),
+		MaxVisible = Math.Clamp(live.MaxVisible, 1, 6), Privacy = Math.Clamp(live.Privacy, 0, 2),
+		Theme = Math.Clamp(live.Theme, 0, 3), Palette = Math.Clamp(live.Palette, 0, 4),
+		ShowIcon = live.ShowIcon, ShowImage = live.ShowImage, AllowlistMode = live.AllowlistMode,
+		AppFilters = live.Filters.Split(new[] { ',', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+	};
+
+	private static bool HasProfileNotificationOverride()
+	{
+		if (string.IsNullOrWhiteSpace(_activeProfileKey)) return false;
+		using RegistryKey? profile = Registry.CurrentUser.OpenSubKey(@"Software\cooooked\xr-viewlab\Apps\" + _activeProfileKey);
+		if (Convert.ToInt32(profile?.GetValue("profile_enabled", 0), CultureInfo.InvariantCulture) == 0) return false;
+		return profile!.GetValueNames().Any(name => name.StartsWith("overlay_override_notifications__", StringComparison.OrdinalIgnoreCase));
+	}
 
 	// Probed on an idle timer, so the no-session case must not cost a thrown exception per tick:
 	// OpenFileMapping simply reports absence.
@@ -381,7 +422,7 @@ internal static class NotificationBrokerProgram
 
     private static bool Equivalent(NotificationSettings a, NotificationSettings b) =>
         a.Enabled == b.Enabled && a.X == b.X && a.Y == b.Y && a.Scale == b.Scale && a.Opacity == b.Opacity &&
-        a.DurationMs == b.DurationMs && a.MaxVisible == b.MaxVisible && a.Privacy == b.Privacy && a.Theme == b.Theme && a.Palette == b.Palette &&
+	        a.DurationMs == b.DurationMs && a.Resolution == b.Resolution && a.MaxVisible == b.MaxVisible && a.Privacy == b.Privacy && a.Theme == b.Theme && a.Palette == b.Palette &&
         a.ShowIcon == b.ShowIcon && a.ShowImage == b.ShowImage && a.AllowlistMode == b.AllowlistMode &&
         string.Join('\0', a.AppFilters) == string.Join('\0', b.AppFilters);
 

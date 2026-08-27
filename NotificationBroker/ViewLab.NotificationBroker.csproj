@@ -16,6 +16,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\XRViewLab.UI\NotificationService.cs" Link="NotificationService.cs" />
+    <Compile Include="..\XRViewLab.UI\NotificationLiveStateService.cs" Link="NotificationLiveStateService.cs" />
     <Compile Include="..\XRViewLab.UI\NotificationCardLayout.cs" Link="NotificationCardLayout.cs" />
     <Compile Include="..\XRViewLab.UI\ViewLabEvents.cs" Link="ViewLabEvents.cs" />
     <Compile Include="..\XRViewLab.UI\IRacingTelemetryProvider.cs" Link="IRacingTelemetryProvider.cs" />

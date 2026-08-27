@@ -482,7 +482,7 @@ Assert-Contains 'dllmain.cpp' 'return \(profileOverlayOverrideMask & bit\) == 0 
 # Only the LIVE-consume gates move to liveOwns (the '==0' form). The '!=0' form in session setup
 # applies the profile's own values and must keep reading the mask directly.
 Assert-NotContains 'dllmain.cpp' 'profileOverlayOverrideMask&\(1u<<\(uint32_t\)OverlayFeatureId::\w+\)\)==0' 'every live overlay gate goes through the shared liveOwns helper'
-Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'OverlayLiveChanged\(values, mask\);' 'the per-app editor publishes every overlay edit for live application'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'OverlayLiveChanged\(values, OverlaySettingsCatalog\.AllFeatureMask\)' 'the per-app editor publishes every overlay edit and inherited value authoritatively'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'SetInheritCheckbox\(parts\[0\], false\);[\s\S]{0,120}PublishOverlayLive\(\);' 'every keyed per-app overlay control publishes live, not just preview drags'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'NotificationTestRequested' 'the per-app notification section can fire a synthetic test card'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'profileWindow\.OverlayLiveChanged=\(values,mask\)=>ApplyProfileOverlayLive\(appProfile\.Key,values,mask\);' 'the active per-app editor is wired to the scoped live publisher'
@@ -491,6 +491,14 @@ Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'BuildLiveHudWidgets\(\)' 'per-app 
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'BuildLiveStickyNotes\(\)' 'per-app sticky note collection is published live'
 Assert-Contains 'XRViewLab.UI\TelemetryConfigService.cs' 'private const int Size = 576' 'telemetry live collection carries scoped widget details'
 Assert-Contains 'XRViewLab.UI\StickyNoteLiveStateService.cs' 'private const int HeaderSize = 276' 'sticky-note live collection carries the scoped profile key'
+Assert-Contains 'XRViewLab.UI\NotificationLiveStateService.cs' 'NotificationLiveStatePolicy' 'broker-owned notification composition lacks a scoped live policy'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' '_notificationLiveState\.Publish' 'unsaved notification composition settings are not published live'
+Assert-Contains 'NotificationBroker\Program.cs' 'notificationLiveReader\.Poll\(\)' 'notification broker does not consume live unsaved settings'
+Assert-Contains 'NotificationBroker\Program.cs' 'case "test": RefreshFromSettings\(\); service\.EnqueueTestNotification\(\)' 'test notification is composed before live per-app settings are consumed'
+Assert-Contains 'NotificationBroker\Program.cs' 'a\.Resolution == b\.Resolution' 'resolution-only notification edits are discarded by broker equality'
+Assert-Contains 'dllmain.cpp' 'overlay_override_notifications__notify_duration_ms' 'saved per-app notification duration is not restored at session start'
+Assert-Contains 'dllmain.cpp' 'overlay_override_hud__network_probe_target' 'saved per-app HUD network target is not restored at session start'
+Assert-Contains 'dllmain.cpp' 'hud_widget_%s_unit' 'saved per-app HUD unit visibility is not restored at session start'
 Assert-Contains 'ProfileWindow.xaml' 'ProfileNotifyTestButton' 'the per-app notification section has a test button'
 # Item 19 follow-up: every iRacing cue control applies live, not only at session restart. The v12 tail
 # carries the numeric tuning and iracingFlags gains bit4 race start, bit5 rear closing, bit6 Grip-O-Bar.

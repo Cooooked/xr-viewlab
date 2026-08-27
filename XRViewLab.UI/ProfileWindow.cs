@@ -874,14 +874,14 @@ public partial class ProfileWindow : Window
 	{
 		if (!_initialized || OverlayLiveChanged is null) return;
 		var values = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-		uint mask = 0;
 		foreach ((string key, string value) in _overlayOverrides.Values)
 		{
 			values[key] = value;
-			int split = key.IndexOf(':');
-			if (split > 0) mask |= FeatureBit(key.Substring(0, split));
 		}
-		OverlayLiveChanged(values, mask);
+		// The editor publishes resolved values for every feature. This is essential when a feature is
+		// switched back to global: the running session still remembers its startup profile override and
+		// must be told authoritatively to yield to the now-effective global values.
+		OverlayLiveChanged(values, OverlaySettingsCatalog.AllFeatureMask);
 	}
 
 	private void MaskBeanEditor_OverlayPreviewChanged(object? sender, OverlayPreviewChangedEventArgs e)

@@ -4,7 +4,25 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-28
-**Current version:** 4.1.346 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.346.msi` (contracts and full MSI payload validation pass; **not live-validated yet**).
+**Current version:** 4.1.347 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.347.msi` (contracts, targeted fixtures and full MSI payload validation pass; **not live-validated yet**).
+
+**2026-08-28 — 4.1.347 Completion audit of interrupted live-overlay work.**
+The 4.1.346 commit built successfully but did not satisfy the complete live-overlay contract. Broker-owned
+notification composition still used persisted settings, the per-app Test Presentation invoked the global save
+path, resolution-only changes were omitted from broker equality, and clearing one feature back to global could
+not override the running session's startup profile snapshot. Saved per-app HUD unit/network choices and native
+notification duration were also incomplete at the next session start.
+
+The active profile editor now publishes the fully resolved state of all six overlays authoritatively. A dedicated,
+generation-stamped notification mapping carries unsaved composition/filter/media settings and the executable key
+to the broker; mismatched profiles and unscoped globals that conflict with an active override are rejected. Test
+Presentation refreshes this live state before composition and no longer mutates global settings. Native startup
+restores the missing HUD unit/network and notification-duration fields. Deterministic overlay-policy and notification
+composition fixtures, repository contracts, WPF, broker, x64/Win32 native layers and MSI payload validation pass.
+Build 4.1.347 is 149,942,272 bytes, SHA-256
+`B96537BC414CCE5DF3C5E596D97AB3BC157D07792597E7BF1440EC3F367D4244`. Required headset validation remains: edit every property while iRacing
+continues running, exercise Test Presentation before Save, then verify Save, Cancel, per-feature Use Global Values
+and a non-active profile.
 
 **2026-08-28 — 4.1.346 Per-app overlay changes are live; headset validation pending.**
 The live channel now scopes its resolved snapshot to the native layer's active executable key. Clock, HUD,

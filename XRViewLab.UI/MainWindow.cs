@@ -227,6 +227,7 @@ public partial class MainWindow : Window
 	private CancellationTokenSource? _calibrationSuiteCancellation;
 	private readonly StickyNoteLiveStateService _stickyNoteLiveState = new();
 	private readonly TelemetryConfigService _telemetryConfig = new();
+	private readonly NotificationLiveStateService _notificationLiveState = new();
 	private readonly CrosshairSettings _crosshair = new();
 	private readonly NotificationBrokerClient _notificationBroker = new();
 	private bool _boundaryDragActive;
@@ -2890,6 +2891,12 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		double pNotifyDuration = LiveD("notifications:notify_duration_ms", NotifyDurationSlider.Value);
 		int pNotifyMax = LiveI("notifications:notify_max_visible", (int)Math.Round(NotifyMaxSlider.Value));
 		int pNotifyPrivacy = LiveI("notifications:notify_privacy", Math.Max(0, NotifyPrivacyCombo.SelectedIndex));
+		double pNotifyResolution = LiveD("notifications:notify_resolution", NotifyResolutionSlider.Value);
+		int pNotifyTheme = LiveI("notifications:notify_theme", Math.Max(0, NotifyThemeCombo.SelectedIndex));
+		int pNotifyPalette = LiveI("notifications:notify_palette", Math.Max(0, NotifyPaletteCombo.SelectedIndex));
+		bool pNotifyAllowlist = LiveB("notifications:notify_allowlist_mode", NotifyAllowlistModeCheck.IsChecked == true);
+		bool pNotifyMedia = LiveB("notifications:media_notify_enabled", MediaNotifyEnabledCheck.IsChecked == true);
+		string pNotifyFilters = LiveS("notifications:notify_app_filters", NotifyFiltersBox.Text ?? string.Empty);
 		bool pClockEnabled = LiveB("clock:clock_widget_enabled", ClockWidgetEnabledCheck.IsChecked == true);
 		bool pClockTimer = LiveB("clock:clock_session_timer_enabled", ClockSessionTimerCheck.IsChecked == true);
 		bool pClock24 = LiveB("clock:clock_24_hour", Clock24HourCheck.IsChecked == true);
@@ -2932,6 +2939,11 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		string? stickyProfileKey=(_liveAuthoritativeMask&OverlayFeatureBit("sticky"))!=0?_liveProfileKey:null;
 		_telemetryConfig.Publish(liveWidgets,liveWidgets.Count,hudProfileKey,LiveS("hud:network_probe_target",NetworkProbeTargetBox.Text??"1.1.1.1"));
 		_stickyNoteLiveState.Publish(LiveB("sticky:sticky_note_enabled",StickyNoteEnabledCheck.IsChecked==true),BuildLiveStickyNotes(),stickyProfileKey);
+		_notificationLiveState.Publish(new NotificationLiveSnapshot(_liveProfileKey ?? string.Empty,
+			(_liveAuthoritativeMask & OverlayFeatureBit("notifications")) != 0,
+			pNotifyEnabled, pNotifyIcon, pNotifyImage, pNotifyAllowlist, pNotifyMedia,
+			pNotifyX, pNotifyY, pNotifyScale, pNotifyOpacity, pNotifyDuration, pNotifyResolution,
+			pNotifyMax, pNotifyPrivacy, pNotifyTheme, pNotifyPalette, pNotifyFilters));
 		RefreshMaskOverlayPreview();
 	}
 
@@ -4390,13 +4402,17 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		// Publishing another row would otherwise leak its resolved values into the active title.
 		bool profileIsLive=string.Equals(TryReadActiveProfileKey(),appProfile.Key,StringComparison.OrdinalIgnoreCase);
 		Dictionary<string,string> originalLiveValues=new(appProfile.OverlayOverrides.Values,StringComparer.OrdinalIgnoreCase);
-		uint originalLiveMask=OverlayMaskFor(originalLiveValues.Keys);
+		uint originalLiveMask=OverlaySettingsCatalog.AllFeatureMask;
 		if(profileIsLive)
 		{
 			profileWindow.OverlayLiveChanged=(values,mask)=>ApplyProfileOverlayLive(appProfile.Key,values,mask);
 			ApplyProfileOverlayLive(appProfile.Key,originalLiveValues,originalLiveMask);
 		}
-		profileWindow.NotificationTestRequested = () => TestNotification_Click(this, new RoutedEventArgs());
+		profileWindow.NotificationTestRequested = () =>
+		{
+			_notificationBroker.SendTest(requestAccess: false);
+			if (NotifyStatusText != null) NotifyStatusText.Text = "Per-app test presentation requested through the notification broker.";
+		};
 		bool profileSaved = profileWindow.ShowDialog() == true;
 		if(!profileSaved&&profileIsLive)ApplyProfileOverlayLive(appProfile.Key,originalLiveValues,originalLiveMask);
 		if (profileSaved)
@@ -4417,7 +4433,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 				ResetAppCustomProfile(appProfile);
 				ApplyGlobalMaskValuesToProfile(appProfile);
 				appProfile.ProfileEnabled = false;
-				if(profileIsLive)ApplyProfileOverlayLive(appProfile.Key,new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase),(1u<<6)-1u);
+				if(profileIsLive)ApplyProfileOverlayLive(appProfile.Key,new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase),OverlaySettingsCatalog.AllFeatureMask);
 			}
 			else
 			{

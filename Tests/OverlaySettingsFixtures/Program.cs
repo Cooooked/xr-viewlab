@@ -2,6 +2,7 @@ using XRViewLab.UI;
 
 static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
 Require(OverlaySettingsCatalog.All.Count==6,"ordinary overlay catalogue count changed without migration coverage");
+Require(OverlaySettingsCatalog.AllFeatureMask==0x3Fu,"authoritative live editor mask does not cover all six overlays");
 Require(OverlaySettingsCatalog.All.Values.Select(x=>x.Id).Distinct().Count()==6,"overlay identifiers are not unique");
 for(int vk=OverlaySettingsCatalog.FirstFunctionKey;vk<=OverlaySettingsCatalog.LastFunctionKey;++vk)
 {
@@ -28,4 +29,10 @@ var cropOnlyChanged=new System.Windows.Rect(300,150,400,200);
 var fullReferenceSize=OverlayPreviewReplicaLayout.ResolveSize(previewItem,fullArea);
 Require(Math.Abs(fullReferenceSize.Width-normal.Width)<.001&&Math.Abs(fullReferenceSize.Height-normal.Height)<.001&&cropOnlyChanged.Width<1000,
     "crop-only coverage state changed the full-reference overlay footprint");
+var scopedNotification=new NotificationLiveSnapshot("iracing.exe",true,true,true,true,false,false,.8,.2,1,.9,3000,2,3,0,1,2,"");
+Require(NotificationLiveStatePolicy.Applies(scopedNotification,"IRACING.EXE",true),"matching active profile rejected its unsaved notification state");
+Require(!NotificationLiveStatePolicy.Applies(scopedNotification,"other.exe",false),"scoped notification state leaked into another executable");
+var globalNotification=scopedNotification with{ProfileKey="",Authoritative=false};
+Require(NotificationLiveStatePolicy.Applies(globalNotification,"iracing.exe",false),"global notification state was rejected for an inheriting profile");
+Require(!NotificationLiveStatePolicy.Applies(globalNotification,"iracing.exe",true),"global notification state overrode a customised active profile");
 Console.WriteLine("Overlay settings, migration and uniform preview replica fixtures passed.");

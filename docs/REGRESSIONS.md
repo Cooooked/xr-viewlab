@@ -1,5 +1,23 @@
 # Regression memory
 
+## R57 — A successful build concealed an incomplete live-overlay contract (fixed 4.1.347, 2026-08-28)
+
+**Symptom:** native placement changed live, but unsaved per-app notification design, resolution, privacy,
+filtering and media settings were still composed from saved/global state. Per-feature inheritance could also
+leave the running session on its old profile value, while some saved HUD/notification fields disappeared after
+restart.
+
+**Cause:** 4.1.346 scoped the native and collection mappings but did not provide an equivalent broker-owned
+notification mapping. Its contracts asserted symbols and versions rather than the scoped precedence lifecycle.
+The editor's authoritative mask was derived only from remaining override keys, so clearing a feature removed the
+very authority required to replace its startup snapshot.
+
+**Contract:** the active editor publishes all six resolved overlays authoritatively. The broker accepts scoped
+notification composition only for the matching active executable, accepts global live state only when that
+profile inherits notifications, and refreshes it before Test Presentation. Save retains, Cancel restores and
+per-feature Use Global Values immediately publishes the resolved globals. Executable fixtures cover scoped,
+mismatched and inherited notification precedence.
+
 ## R56 — Per-app overlays silently needed a restart (fixed 4.1.346, 2026-08-28)
 
 **Symptom:** an enabled iRacing sticky note, or any other customised per-app overlay, could be edited and

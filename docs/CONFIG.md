@@ -9,9 +9,10 @@ applies only its listed keys once when `HKCU\Software\cooooked\xr-viewlab\Factor
 Per-app true-overlay values are `overlay_override_<feature>__<canonical_ini_key>` registry strings. OBS Recording
 Cue and iRacing Telemetry use this form only for enable state. Layout uses `overlay_layout_<id>_{x,y,scale}`.
 The native layer publishes its current executable key through `Local\XRViewLabActiveProfileV1`; the independent
-notification broker uses that key only to resolve `overlay_override_notifications__*` values for an enabled profile,
-then falls back to the global INI. This keeps notification filters, privacy, theme and presentation options aligned
-with the same profile selected by the renderer. The broker is resident from login, so since 4.1.295 it reads those
+notification broker uses that key to resolve saved `overlay_override_notifications__*` values and to validate the
+generation-stamped `Local\XRViewLabNotificationSettingsV1` live mapping. The mapping carries unsaved composition,
+filter, media and queue settings only for the matching active executable; unscoped globals apply only when the
+profile inherits notifications. The broker is resident from login, so since 4.1.295 it reads saved settings
 settings on demand instead of once per second: a `FileSystemWatcher` on the INI (300 ms debounce) covers global keys,
 a 2 s `OpenFileMappingW` probe of that mapping covers profile switches without throwing while no session exists, a
 30 s timer is the fallback, and the settings app sends the existing `refresh` pipe command after a per-app profile

@@ -24,6 +24,7 @@ internal sealed record OverlaySettingsDefinition(
 
 internal static class OverlaySettingsCatalog
 {
+    internal const uint AllFeatureMask = (1u << 6) - 1u;
     internal const int NoHotkey = 0;
     internal const int FirstFunctionKey = 117; // VK_F6
     internal const int LastFunctionKey = 123;  // VK_F12
