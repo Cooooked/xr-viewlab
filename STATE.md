@@ -4,7 +4,22 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-28
-**Current version:** 4.1.347 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.347.msi` (contracts, targeted fixtures and full MSI payload validation pass; **not live-validated yet**).
+**Current version:** 4.1.348 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.348.msi` (contracts, overlay fixtures and full MSI payload validation pass; **not live-validated yet**).
+
+**2026-08-28 — 4.1.348 Global/per-app overlay control parity.**
+The six ordinary overlay editors now share one visible control contract: Clock, Performance HUD, Performance
+Trace, Sticky Notes, Crosshair and Notifications each expose separately labelled Scale and Opacity controls in
+both global and per-app settings. The missing per-app scale controls are wired to the existing profile/live keys;
+sticky-note scale is now available beside opacity. Duplicate global X/Y and position-reset controls are no longer
+visible because the binocular preview owns placement. Their named state elements remain collapsed so existing
+preview, persistence and live-update paths are unchanged. Crosshair Alpha is labelled Opacity, its CS line length
+is distinguished as Crosshair arm size, and trace sensitivity no longer uses the word scale.
+
+WPF, shared overlay settings/contracts/fixtures, x64/Win32 native layers and MSI payload validation pass. Build
+4.1.348 is 149,950,464 bytes, SHA-256
+`35EE4391E58DAA4CA4978071B61F2CC1F4680AAFB384EB78424C5082BAE10E2F`. Required live check: open the global and
+iRacing profile editors, verify every ordinary overlay shows Scale then Opacity, drag placement only in the
+preview, and confirm scale/opacity changes apply in-headset without restarting iRacing.
 
 **2026-08-28 — 4.1.347 Completion audit of interrupted live-overlay work.**
 The 4.1.346 commit built successfully but did not satisfy the complete live-overlay contract. Broker-owned

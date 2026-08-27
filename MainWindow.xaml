@@ -629,15 +629,15 @@
                       </ComboBox>
                       <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
                       <ComboBox Name="ClockWidgetToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
-                      <TextBlock Text="Position X" Foreground="{StaticResource MutedBrush}" FontSize="10" />
-                      <Slider Name="ClockWidgetXSlider" Minimum="0" Maximum="1" Value="0.5" Tag="0.5" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Horizontal position in the shared binocular view. Right-click to reset." />
-                      <TextBlock Text="Position Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="ClockWidgetYSlider" Minimum="0" Maximum="1" Value="0.1" Tag="0.1" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical position in the shared binocular view. Right-click to reset." />
+                      <StackPanel Visibility="Collapsed">
+                        <TextBlock Text="Position X"/><Slider Name="ClockWidgetXSlider" Minimum="0" Maximum="1" Value="0.5" Tag="0.5" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
+                        <TextBlock Text="Position Y"/><Slider Name="ClockWidgetYSlider" Minimum="0" Maximum="1" Value="0.1" Tag="0.1" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
+                        <Button Content="Reset position" Tag="clock" Click="OverlayResetPosition_Click" />
+                      </StackPanel>
                       <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="ClockWidgetScaleSlider" Minimum="0.1" Maximum="2" Value="1" Tag="1" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Whole-widget scale. Right-click to reset." />
                       <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="ClockWidgetOpacitySlider" Minimum="0.1" Maximum="1" Value="0.82" Tag="0.82" ValueChanged="ClockWidgetSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Card and text opacity. Right-click to reset." />
-                      <Button Content="Reset" Tag="clock" Click="OverlayResetPosition_Click" Style="{StaticResource OverlayResetButton}" />
                         </StackPanel>
                       </Expander>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
@@ -646,15 +646,15 @@
                         <StackPanel Margin="20,4,0,4">
                       <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
                       <ComboBox Name="HudToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
-                      <TextBlock Text="HUD X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,0" />
-                      <Slider Name="HudXSlider" Minimum="0" Maximum="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Horizontal position within the shared binocular view." />
-                      <TextBlock Text="HUD Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="HudYSlider" Minimum="0" Maximum="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" ToolTip="Vertical position within the shared binocular view." />
-                      <TextBlock Text="HUD scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <StackPanel Visibility="Collapsed">
+                        <TextBlock Text="Position X"/><Slider Name="HudXSlider" Minimum="0" Maximum="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" />
+                        <TextBlock Text="Position Y"/><Slider Name="HudYSlider" Minimum="0" Maximum="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" />
+                        <Button Content="Reset position" Tag="hud" Click="OverlayResetPosition_Click" />
+                      </StackPanel>
+                      <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudScaleSlider" Minimum="0.15" Maximum="3" Value="1" Tag="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Scales rings, icons, numbers, spacing, and padding together. Existing 0.5–3.0 sizes are preserved. Right-click to reset." />
-                      <TextBlock Text="HUD opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudOpacitySlider" Minimum="0.1" Maximum="1" Value="0.7" Tag="0.7" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
-                      <Button Content="Reset" Tag="hud" Click="OverlayResetPosition_Click" Style="{StaticResource OverlayResetButton}" />
                       <CheckBox Name="HudAlarmOnlyCheck" Content="Alarm-only symbols (critical/unstable)" Foreground="#A8A8A8" Margin="0,6,0,0" ToolTip="Shows only widgets with a sustained critical or unstable state; recovery uses hysteresis and a hold." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                       <TextBlock Text="Widgets (enabled and order)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,2" />
                       <!-- IsSharedSizeScope + the SharedSizeGroup columns below make every row agree on
@@ -738,20 +738,20 @@
                           <CheckBox Name="HudGraphDisplayPeriodCheck" Content="Predicted display period — ms" ToolTip="Runtime-provided predictedDisplayPeriod for the current headset refresh rate." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                         </StackPanel>
                       </Expander>
-                      <TextBlock Text="Graph X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,0" />
-                      <Slider Name="HudTraceXSlider" Minimum="0" Maximum="1" Value="0.05" Tag="0.05" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Horizontal position of the frame-pacing trace. Right-click to reset." />
-                      <TextBlock Text="Graph Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="HudTraceYSlider" Minimum="0" Maximum="1" Value="0.75" Tag="0.75" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical position of the frame-pacing trace. Right-click to reset." />
-                      <TextBlock Text="Graph height" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <StackPanel Visibility="Collapsed">
+                        <TextBlock Text="Position X"/><Slider Name="HudTraceXSlider" Minimum="0" Maximum="1" Value="0.05" Tag="0.05" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" />
+                        <TextBlock Text="Position Y"/><Slider Name="HudTraceYSlider" Minimum="0" Maximum="1" Value="0.75" Tag="0.75" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" />
+                        <Button Content="Reset position" Tag="trace" Click="OverlayResetPosition_Click" />
+                      </StackPanel>
+                      <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceScaleSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical size of the frame-pacing trace. Right-click to reset." />
-                      <TextBlock Text="Graph opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceOpacitySlider" Minimum="0.1" Maximum="1" Value="0.7" Tag="0.7" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
-                      <Button Content="Reset" Tag="trace" Click="OverlayResetPosition_Click" Style="{StaticResource OverlayResetButton}" />
                       <TextBlock Text="Graph width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceWidthSlider" Minimum="0.1" Maximum="1" Value="0.42" Tag="0.42" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Width of the frame-pacing trace as a fraction of the visible view. Right-click to reset." />
                       <TextBlock Text="Graph history (samples)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceHistorySlider" Minimum="30" Maximum="600" Value="120" Tag="120" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Number of frames kept in the trace; newest at the right, scrolling left. Right-click to reset." />
-                      <TextBlock Text="Graph scale / deviation sensitivity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <TextBlock Text="Deviation sensitivity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceSensitivitySlider" Minimum="0.5" Maximum="8" Value="2" Tag="2" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Deviation mode uses ±ms; absolute-ms mode uses this as a minimum scale before budget auto-scaling. Right-click to reset." />
                       <TextBlock Text="Safe margin" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudSafeMarginSlider" Minimum="0" Maximum="0.25" Value="0.025" Tag="0.025" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
@@ -772,11 +772,10 @@
                           <ComboBox ItemsSource="{Binding StickyNoteStyles, RelativeSource={RelativeSource AncestorType=Window}}" SelectedIndex="{Binding Design, Mode=TwoWay}" SelectionChanged="StickyNoteItem_Changed"/>
                           <TextBlock Text="Paper colour" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,1"/>
                           <ComboBox ItemsSource="{Binding StickyNoteThemes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedIndex="{Binding Theme, Mode=TwoWay}" SelectionChanged="StickyNoteItem_Changed"/>
-                          <TextBlock Text="Position X / Y" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0"/>
-                          <Slider Minimum="0" Maximum="1" Value="{Binding X, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/><Slider Minimum="0" Maximum="1" Value="{Binding Y, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/>
-                          <TextBlock Text="Scale / opacity" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0"/>
-                          <Slider Minimum="0.5" Maximum="2.5" Value="{Binding Scale, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/><Slider Minimum="0.1" Maximum="1" Value="{Binding Opacity, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/>
-                          <Button Content="Reset" Click="StickyNoteReset_Click" Style="{StaticResource OverlayResetButton}"/>
+                          <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0"/>
+                          <Slider Minimum="0.5" Maximum="2.5" Value="{Binding Scale, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/>
+                          <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0"/>
+                          <Slider Minimum="0.1" Maximum="1" Value="{Binding Opacity, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/>
                         </StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate>
                       </ItemsControl>
                       <Button Content="Add sticky note" Click="StickyNoteAdd_Click" Padding="7,2" HorizontalAlignment="Left"/>
@@ -791,13 +790,16 @@
                       <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
                       <ComboBox Name="CrosshairToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
                       <ui:CrosshairPreview x:Name="CrosshairOverlayPreview" Height="120" Margin="0,6,0,2" />
-                      <TextBlock Text="Reposition Crosshair" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
-                      <TextBlock Text="Horizontal offset" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
-                      <Slider Name="CrosshairOffsetXSlider" Minimum="-1" Maximum="1" Value="0" ValueChanged="CrosshairPosition_Changed" MouseRightButtonUp="CrosshairOffset_ResetRightClick" />
-                      <TextBlock Text="Vertical offset" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
-                      <Slider Name="CrosshairOffsetYSlider" Minimum="-1" Maximum="1" Value="0" ValueChanged="CrosshairPosition_Changed" MouseRightButtonUp="CrosshairOffset_ResetRightClick" />
-                      <Button Content="Reset" Tag="crosshair" Style="{StaticResource OverlayResetButton}" Click="OverlayResetPosition_Click" />
-                      <TextBlock Text="Size" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
+                      <StackPanel Visibility="Collapsed">
+                        <TextBlock Text="Position X"/><Slider Name="CrosshairOffsetXSlider" Minimum="-1" Maximum="1" Value="0" ValueChanged="CrosshairPosition_Changed" MouseRightButtonUp="CrosshairOffset_ResetRightClick" />
+                        <TextBlock Text="Position Y"/><Slider Name="CrosshairOffsetYSlider" Minimum="-1" Maximum="1" Value="0" ValueChanged="CrosshairPosition_Changed" MouseRightButtonUp="CrosshairOffset_ResetRightClick" />
+                        <Button Content="Reset position" Tag="crosshair" Click="OverlayResetPosition_Click" />
+                      </StackPanel>
+                      <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
+                      <Slider Name="CrosshairScaleSlider" Minimum="0.1" Maximum="5" Value="1" Tag="1" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                      <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="CrosshairAlphaSlider" Minimum="0" Maximum="1" Value="1" Tag="1" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                      <TextBlock Text="Crosshair arm size" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
                       <Slider Name="CrosshairSizeSlider" Minimum="0" Maximum="30" Value="5" Tag="5" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Gap (may be negative)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="CrosshairGapSlider" Minimum="-10" Maximum="20" Value="-2" Tag="-2" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
@@ -805,10 +807,6 @@
                       <Slider Name="CrosshairThicknessSlider" Minimum="0.1" Maximum="10" Value="1" Tag="1" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Outline thickness" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="CrosshairOutlineThicknessSlider" Minimum="0" Maximum="5" Value="1" Tag="1" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
-                      <TextBlock Text="Alpha" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="CrosshairAlphaSlider" Minimum="0" Maximum="1" Value="1" Tag="1" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
-                      <TextBlock Text="ViewLab VR scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="CrosshairScaleSlider" Minimum="0.1" Maximum="5" Value="1" Tag="1" ValueChanged="CrosshairControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <WrapPanel Margin="0,6,0,0">
                         <CheckBox Name="CrosshairDotCheck" Content="Centre dot" Foreground="#A8A8A8" Margin="0,0,10,0" Checked="CrosshairControl_Changed" Unchecked="CrosshairControl_Changed" />
                         <CheckBox Name="CrosshairOutlineCheck" Content="Outline" Foreground="#A8A8A8" Margin="0,0,10,0" Checked="CrosshairControl_Changed" Unchecked="CrosshairControl_Changed" />
@@ -841,15 +839,15 @@
                       <ComboBox Name="NotifyThemeCombo" SelectionChanged="NotifyControl_Changed" ToolTip="Changes the actual card design: layout, typography, spacing, corner shape, icon treatment and information arrangement."><ComboBoxItem Content="Classic"/><ComboBoxItem Content="Compact Banner"/><ComboBoxItem Content="Minimal"/><ComboBoxItem Content="Bold"/></ComboBox>
                       <TextBlock Text="Palette (colours)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1"/>
                       <ComboBox Name="NotifyPaletteCombo" SelectionChanged="NotifyControl_Changed" ToolTip="Changes card colours only. Existing saved themes migrate here automatically."><ComboBoxItem Content="Graphite"/><ComboBoxItem Content="Paper"/><ComboBoxItem Content="OLED"/><ComboBoxItem Content="Amber"/><ComboBoxItem Content="Mint"/></ComboBox>
-                      <TextBlock Text="Position X" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,0" />
-                      <Slider Name="NotifyXSlider" Minimum="0" Maximum="1" Value="0.98" Tag="0.98" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
-                      <TextBlock Text="Position Y" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                      <Slider Name="NotifyYSlider" Minimum="0" Maximum="1" Value="0.98" Tag="0.98" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                      <StackPanel Visibility="Collapsed">
+                        <TextBlock Text="Position X"/><Slider Name="NotifyXSlider" Minimum="0" Maximum="1" Value="0.98" Tag="0.98" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
+                        <TextBlock Text="Position Y"/><Slider Name="NotifyYSlider" Minimum="0" Maximum="1" Value="0.98" Tag="0.98" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
+                        <Button Content="Reset position" Tag="notifications" Click="OverlayResetPosition_Click" />
+                      </StackPanel>
                       <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="NotifyScaleSlider" Minimum="0.1" Maximum="3" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                       <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="NotifyOpacitySlider" Minimum="0.1" Maximum="1" Value="1" Tag="1" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
-                      <Button Content="Reset" Tag="notifications" Click="OverlayResetPosition_Click" Style="{StaticResource OverlayResetButton}" />
                       <TextBlock Text="Display duration (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <TextBlock Text="Resolution" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" ToolTip="How many pixels each notification card is drawn with. Higher looks sharper and uses a little more memory." />
                       <Slider Name="NotifyResolutionSlider" Minimum="1" Maximum="3" Value="2" Tag="2" ValueChanged="NotifyControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />

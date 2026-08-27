@@ -148,6 +148,29 @@ Assert-Contains 'ProfileWindow.xaml' 'Grid\.Column="1" Name="PART_VerticalScroll
 Assert-Contains 'ProfileWindow.xaml' 'ProfileClockEnabled[\s\S]*ProfileHudEnabled[\s\S]*ProfileTraceEnabled[\s\S]*ProfileStickyEnabled[\s\S]*ProfileCrosshairEnabled[\s\S]*ProfileNotifyEnabled' 'profile uses the six configurable overlay rows'
 Assert-Contains 'ProfileWindow.xaml' 'Name="ProfileHudWidgetList"' 'profile HUD expansion reuses the complete widget catalogue'
 Assert-Contains 'ProfileWindow.xaml' 'Name="ProfileStickyNotesList"' 'profile Sticky Notes expansion exposes the bounded note collection'
+# R58: the global and per-app editors had drifted apart. In particular, the per-app Sticky Notes
+# row exposed one unlabelled opacity slider and no scale control, while the global editor duplicated
+# position sliders already owned by the preview. Every ordinary overlay now presents the same explicit
+# Scale + Opacity pair; legacy X/Y elements remain collapsed only because preview/persistence code owns them.
+foreach ($control in @(
+    @('ProfileClockScale', 'clock:clock_widget_scale', '0.1', '2'),
+    @('ProfileHudScale', 'hud:hud_scale', '0.15', '3'),
+    @('ProfileTraceScale', 'trace:hud_trace_scale', '0.25', '3'),
+    @('ProfileCrosshairScale', 'crosshair:crosshair_scale', '0.1', '5'),
+    @('ProfileNotifyScale', 'notifications:notify_scale', '0.1', '3')
+)) {
+    $name, $tag, $minimum, $maximum = $control
+    Assert-Contains 'ProfileWindow.xaml' ('Text="Scale"[^>]*/>\s*<Slider Name="{0}"[^>]*Minimum="{1}"[^>]*Maximum="{2}"[^>]*Tag="{3}"' -f $name, [regex]::Escape($minimum), [regex]::Escape($maximum), [regex]::Escape($tag)) "$name is the labelled per-app scale control"
+}
+foreach ($name in @('ProfileClockOpacity','ProfileHudOpacity','ProfileTraceOpacity','ProfileCrosshairAlpha','ProfileNotifyOpacity')) {
+    Assert-Contains 'ProfileWindow.xaml' ('Text="Opacity"[^>]*/>\s*<Slider Name="{0}"' -f $name) "$name is explicitly labelled Opacity"
+}
+Assert-Contains 'ProfileWindow.xaml' 'Name="ProfileStickyNotesList"[\s\S]*?Text="Scale"[^>]*/>\s*<Slider[^>]*Value="\{Binding Scale,Mode=TwoWay\}"[\s\S]*?Text="Opacity"[^>]*/>\s*<Slider[^>]*Value="\{Binding Opacity,Mode=TwoWay\}"' 'per-app sticky notes expose separate labelled Scale and Opacity controls'
+foreach ($positionControl in @('ClockWidgetXSlider','HudXSlider','HudTraceXSlider','CrosshairOffsetXSlider','NotifyXSlider')) {
+    Assert-Contains 'MainWindow.xaml' ('<StackPanel Visibility="Collapsed">[\s\S]*?Name="{0}"' -f $positionControl) "$positionControl is retained only as hidden preview-backed state"
+}
+Assert-NotContains 'MainWindow.xaml' 'Text="(Scale / opacity|HUD scale|HUD opacity|Graph height|Graph opacity|Graph scale / deviation sensitivity|ViewLab VR scale)"' 'global overlay controls use the canonical Scale and Opacity names'
+Assert-NotContains 'ProfileWindow.xaml' 'Text="(Scale / opacity|Alpha)"' 'per-app overlay controls use the canonical Scale and Opacity names'
 # R53: was 'OBS Recording Cue' + 'iRacing Telemetry'. iRacing is global-only, so OBS is now the only
 # per-app feature module; it must stay a simple checkbox.
 Assert-Contains 'ProfileWindow.xaml' 'Content="OBS Recording Cue"' 'the remaining feature module is a simple profile checkbox'

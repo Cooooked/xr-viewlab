@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.348 - 2026-08-28 (Consistent overlay size controls)
+
+- Made the global and per-app editors expose the same clearly labelled `Scale` and `Opacity` controls for Clock, Performance HUD, Performance Trace, Sticky Notes, Crosshair and Notifications.
+- Added the missing per-app Scale sliders, including the sticky-note Scale control that was absent beside its unlabelled opacity slider.
+- Removed duplicate position and position-reset controls from the visible global overlay sections. Position remains editable through the binocular preview, which is the single placement surface; existing position values and live persistence are unchanged.
+- Renamed Crosshair `Alpha` to `Opacity`, distinguished its feature-specific `Crosshair arm size` from whole-overlay `Scale`, and renamed the trace sensitivity control so it no longer masquerades as a second scale setting.
+
 ## 4.1.347 - 2026-08-28 (Complete live-overlay contract)
 
 - Completed the interrupted live per-app overlay work: every editable property of clock, HUD, Performance Trace, sticky notes, crosshair and notifications now publishes into the running executable without recreating the OpenXR session.

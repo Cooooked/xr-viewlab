@@ -1,5 +1,24 @@
 # Regression memory
 
+## R58 — Global and per-app overlay controls drifted apart (fixed 4.1.348, 2026-08-28)
+
+**Symptom:** the per-app Sticky Notes editor showed one unlabelled slider (opacity) and no size control.
+Clock, HUD, Trace, Crosshair and Notifications also lacked their per-overlay Scale controls in the per-app
+editor, while the global editor duplicated X/Y position sliders already represented by draggable preview nodes.
+Several labels described the same contract differently (`HUD scale`, `Graph height`, `ViewLab VR scale`,
+`Alpha`, and the combined `Scale / opacity`).
+
+**Cause:** the two XAML surfaces were extended independently. The shared settings catalogue and live/profile
+plumbing already carried scale and opacity for all six ordinary overlays, but the per-app XAML never exposed
+the scale keys and the global XAML retained controls from before preview dragging became the placement surface.
+
+**Contract:** Clock, Performance HUD, Performance Trace, Sticky Notes, Crosshair and Notifications expose one
+explicitly labelled `Scale` control and one explicitly labelled `Opacity` control in both editors. Position is
+edited only through `BeanMaskEditor`; the named X/Y elements remain collapsed backing state because the common
+preview, persistence and live-update paths still read them. Crosshair's CS-style line length is labelled
+`Crosshair arm size`, and trace deviation sensitivity must not be labelled as scale. Contract tests pin the
+per-app tags/ranges, label pairs and collapsed global position state.
+
 ## R57 — A successful build concealed an incomplete live-overlay contract (fixed 4.1.347, 2026-08-28)
 
 **Symptom:** native placement changed live, but unsaved per-app notification design, resolution, privacy,
