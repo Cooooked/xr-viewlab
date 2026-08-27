@@ -10,7 +10,7 @@ namespace XRViewLab.UI;
 internal sealed class LiveStateService : IDisposable
 {
     private const string Name = "Local\\XRViewLabLiveState";
-    private const int Size = 336;
+    private const int Size = 608;
     private const uint Magic = 0x534C4C56; // VLLS
     private MemoryMappedFile? _map;
     private MemoryMappedViewAccessor? _view;
@@ -20,7 +20,7 @@ internal sealed class LiveStateService : IDisposable
     {
         _map = MemoryMappedFile.CreateOrOpen(Name, Size, MemoryMappedFileAccess.ReadWrite);
         _view = _map.CreateViewAccessor(0, Size, MemoryMappedFileAccess.ReadWrite);
-        _view.Write(0, Magic); _view.Write(4, 14u); _view.Write(8, (uint)Size);
+        _view.Write(0, Magic); _view.Write(4, 15u); _view.Write(8, (uint)Size);
     }
 
     public void Publish(uint calibrationMask,
@@ -47,7 +47,10 @@ internal sealed class LiveStateService : IDisposable
         double clockScale, double clockOpacity, uint clockTheme, uint clockPalette,
         IReadOnlyList<int> overlayToggleKeys,
         uint obsMirrorVisibilityMask,
-        uint visorColor = 0)
+        uint visorColor,
+        string? liveProfileKey,
+        double hudOpacity, double traceOpacity,
+        bool performanceTraceRecording, uint performanceTraceMarkerKey)
     {
         if (_view == null) return;
         _view.Write(16, calibrationMask);
@@ -94,8 +97,18 @@ internal sealed class LiveStateService : IDisposable
         _view.Write(316, (float)irRearClosingOpacity); _view.Write(320, (float)irGripBarOpacity);
         _view.Write(324, (float)irSpotterFadeInMs); _view.Write(328, (float)irSpotterFadeOutMs);
         _view.Write(332, liveAuthoritativeMask);
+        WriteFixedString(336, 128, liveProfileKey);
+        _view.Write(592, (float)hudOpacity); _view.Write(596, (float)traceOpacity);
+        _view.Write(600, performanceTraceRecording ? 1u : 0u); _view.Write(604, performanceTraceMarkerKey);
         Thread.MemoryBarrier();
         _view.Write(12, unchecked(++_generation));
+    }
+
+    private void WriteFixedString(int offset, int characters, string? value)
+    {
+        string text = value ?? string.Empty;
+        int count = Math.Min(text.Length, characters - 1);
+        for (int i = 0; i < characters; ++i) _view!.Write(offset + i * 2, i < count ? text[i] : '\0');
     }
 
     public void Dispose() { _view?.Dispose(); _map?.Dispose(); }

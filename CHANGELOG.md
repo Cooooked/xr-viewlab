@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.1.346 - 2026-08-28 (Live per-app overlays)
+
+- Per-app changes to clock, HUD, Performance Trace, sticky notes, crosshair and notification placement now apply to the currently running game without restarting it. This includes enable/disable, position, scale, opacity, hotkeys, HUD widgets/thresholds, trace channels, sticky-note content/style, crosshair colour, and clock design/palette.
+- Live state is explicitly scoped to the active executable, so an edit for one profile cannot bleed into another VR title. Saving retains the live result; cancelling restores the profile that was running. Render/FOV settings still apply when a new VR session starts.
+- Fixed the sticky-note and HUD collection channels so they publish the active profile rather than stale global values. Added the missing live fields and corrected the per-app clock/notification design-versus-palette controls.
+
 ## 4.1.345 - 2026-08-27 (Sticky-note visual themes and HD Paper)
 
 - Added an independent per-note **Style** choice. Existing and unversioned notes retain the exact **8-bit** renderer; newly added notes default to **HD Paper**. Paper colour remains a separate Classic yellow/Rose/Mint/Sky/Paper choice in both global and per-app editors.

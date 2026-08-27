@@ -465,18 +465,19 @@ foreach ($key in @('hud_trace_x', 'hud_trace_y', 'hud_trace_scale', 'hud_trace_w
 }
 Assert-Contains 'MainWindow.xaml' 'Name="HudSafeMarginSlider"' 'HUD safe-margin control exists'
 Assert-Contains 'dllmain.cpp' 'hudClampToVisible' 'HUD clamps complete bounds to the visible eye rectangle'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 336' 'live state carries iRacing cue tuning, timing controls, OBS mirror controls and the visor colour'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 14u\)' 'live state contract is version 14'
-Assert-Contains 'dllmain.cpp' 'snapshot\.version != 14' 'DLL consumes live-state contract version 14'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 608' 'live state carries scoped per-app overlay state plus every live overlay field'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 15u\)' 'live state contract is version 15'
+Assert-Contains 'dllmain.cpp' 'snapshot\.version != 15' 'DLL consumes live-state contract version 15'
 # Item 21: versioned visor colour field (0x00RRGGBB); default 0 = black.
 Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(268, visorColor & 0xFFFFFFu\)' 'live state publishes the visor colour'
-Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(LiveStateBlock\)==336' 'native live-state struct grew to the v14 size'
-# v14: per-app profile overrides are read once at xrCreateSession, so the layer used to discard every
+Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(LiveStateBlock\)==608' 'native live-state struct grew to the v15 size'
+# v15: per-app profile overrides are read once at xrCreateSession, so the layer used to discard every
 # live update for a feature the running profile customised — dragging in the per-app editor's preview
 # only showed up after a game restart. The publisher now marks such values authoritative.
 Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(332, liveAuthoritativeMask\)' 'live state publishes the authoritative-overlay mask'
 Assert-Contains 'dllmain.cpp' 'uint32_t liveAuthoritativeMask;' 'native live-state struct carries the authoritative-overlay mask'
-Assert-Contains 'dllmain.cpp' 'g_liveAuthoritativeMask = stable.liveAuthoritativeMask;' 'native latches the authoritative-overlay mask each generation'
+Assert-Contains 'dllmain.cpp' 'wchar_t liveProfileKey\[128\]' 'live state scopes per-app authority to an executable key'
+Assert-Contains 'dllmain.cpp' 'g_liveScopedMismatchMask' 'a live profile from another game cannot leak into this session'
 Assert-Contains 'dllmain.cpp' 'return \(profileOverlayOverrideMask & bit\) == 0 \|\| \(g_liveAuthoritativeMask & bit\) != 0;' 'a profile override yields only to an authoritative live publish'
 # Only the LIVE-consume gates move to liveOwns (the '==0' form). The '!=0' form in session setup
 # applies the profile's own values and must keep reading the mask directly.
@@ -484,8 +485,12 @@ Assert-NotContains 'dllmain.cpp' 'profileOverlayOverrideMask&\(1u<<\(uint32_t\)O
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'OverlayLiveChanged\(values, mask\);' 'the per-app editor publishes every overlay edit for live application'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'SetInheritCheckbox\(parts\[0\], false\);[\s\S]{0,120}PublishOverlayLive\(\);' 'every keyed per-app overlay control publishes live, not just preview drags'
 Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'NotificationTestRequested' 'the per-app notification section can fire a synthetic test card'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'profileWindow.OverlayLiveChanged = ApplyProfileOverlayLive;' 'the per-app editor is wired to the live publisher'
-Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ClearProfileOverlayLive\(\);' 'the per-app live view is dropped when the editor closes'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'profileWindow\.OverlayLiveChanged=\(values,mask\)=>ApplyProfileOverlayLive\(appProfile\.Key,values,mask\);' 'the active per-app editor is wired to the scoped live publisher'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'TryReadActiveProfileKey\(\)' 'the settings app only publishes a profile to its running executable'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'BuildLiveHudWidgets\(\)' 'per-app HUD widget order and thresholds are published live'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'BuildLiveStickyNotes\(\)' 'per-app sticky note collection is published live'
+Assert-Contains 'XRViewLab.UI\TelemetryConfigService.cs' 'private const int Size = 576' 'telemetry live collection carries scoped widget details'
+Assert-Contains 'XRViewLab.UI\StickyNoteLiveStateService.cs' 'private const int HeaderSize = 276' 'sticky-note live collection carries the scoped profile key'
 Assert-Contains 'ProfileWindow.xaml' 'ProfileNotifyTestButton' 'the per-app notification section has a test button'
 # Item 19 follow-up: every iRacing cue control applies live, not only at session restart. The v12 tail
 # carries the numeric tuning and iracingFlags gains bit4 race start, bit5 rear closing, bit6 Grip-O-Bar.
@@ -887,7 +892,7 @@ Assert-Contains 'dllmain.cpp' 'if\(down&&!feature\.keyDown\)' 'shared overlay bi
 Assert-Contains 'dllmain.cpp' 'viewlab::sticky_note::Wrap' 'native note uses bounded tested wrapping'
 Assert-Contains 'MainWindow.xaml' 'MaxLength="120"' 'sticky note inputs are short and bounded'
 Assert-Contains 'XRViewLab.UI\StickyNoteLiveStateService.cs' 'MaxNotes = 8' 'sticky note collection is explicitly bounded'
-Assert-Contains 'XRViewLab.UI\StickyNoteLiveStateService.cs' '_view\.Write\(4, 2u\)' 'sticky note live contract is versioned for the style field'
+Assert-Contains 'XRViewLab.UI\StickyNoteLiveStateService.cs' '_view\.Write\(4, 3u\)' 'sticky note live contract is versioned for the scoped style field'
 Assert-Contains 'MainWindow.xaml' 'Text="Note theme"[\s\S]*StickyNoteStyles[\s\S]*Text="Paper colour"' 'sticky note theme and paper colour are independent controls'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'sticky_note_\{i\}_style' 'UI loads sticky note style independently from paper colour'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'p\+"style"' 'UI persists sticky note style'

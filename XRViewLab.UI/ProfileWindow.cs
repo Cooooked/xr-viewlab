@@ -485,6 +485,7 @@ public partial class ProfileWindow : Window
 		_syncingControls = previous;
 		SetFeatureControlsEnabled(feature, !inherit);
 		ApplyOverlayPreviewState();
+		PublishOverlayLive();
 	}
 
 	private void RebuildHudWidgetsFromEffective()
@@ -598,6 +599,7 @@ public partial class ProfileWindow : Window
 			_overlayOverrides.Set("hud", prefix + "order", index.ToString(CultureInfo.InvariantCulture));
 		}
 		ApplyOverlayPreviewState();
+		PublishOverlayLive();
 	}
 
 	private void ProfileHudWidget_Changed(object sender, RoutedEventArgs e) => RecordHudWidgets();
@@ -623,6 +625,7 @@ public partial class ProfileWindow : Window
 			_overlayOverrides.Set("sticky", prefix + "theme", note.Theme.ToString(CultureInfo.InvariantCulture)); _overlayOverrides.Set("sticky", prefix + "style", note.Design.ToString(CultureInfo.InvariantCulture));
 		}
 		ApplyOverlayPreviewState();
+		PublishOverlayLive();
 	}
 	private void ProfileSticky_Changed(object sender, RoutedEventArgs e) => RecordStickyNotes();
 	private void ProfileStickySlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => RecordStickyNotes();

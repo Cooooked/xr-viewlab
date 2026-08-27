@@ -1,5 +1,20 @@
 # Regression memory
 
+## R56 — Per-app overlays silently needed a restart (fixed 4.1.346, 2026-08-28)
+
+**Symptom:** an enabled iRacing sticky note, or any other customised per-app overlay, could be edited and
+saved while the sim was running yet remain absent or stale in-headset until a restart.
+
+**Cause:** the general live mapping marked preview placement authoritative but the sticky-note and HUD
+collection mappings still carried global values. Collection changes did not always publish at all; Save then
+discarded the live authority. Several ordinary settings (HUD/trace opacity, crosshair colour, clock palette,
+widget thresholds and probe target) were also startup-only despite having a live editor.
+
+**Contract:** v15 live state and scoped v2/v3 collection mappings carry the active executable key. Clock,
+HUD, trace, sticky notes, crosshair and notification placement/configuration apply live only to that process;
+the layer rejects a scoped update for every other executable. Save retains the resolved active profile, Cancel
+restores the prior one, and render/FOV remain the explicit next-session exception.
+
 ## R55 — Split Top/Bottom sliders were half-lens shares and read as double (changed 4.1.301, 2026-07-25)
 
 **Symptom:** with Vertical at 0.15, ticking "Split top and bottom" showed 0.15 top and 0.15 bottom. The

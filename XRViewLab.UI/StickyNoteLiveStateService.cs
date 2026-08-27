@@ -11,7 +11,7 @@ internal sealed class StickyNoteLiveStateService : IDisposable
 {
     internal const int MaxNotes = 8;
     internal const int MaxText = 120;
-    private const int HeaderSize = 20;
+    private const int HeaderSize = 276;
     private const int RecordSize = 268;
     private const int Size = HeaderSize + MaxNotes * RecordSize;
     private const uint Magic = 0x314E5356; // VSN1
@@ -22,13 +22,14 @@ internal sealed class StickyNoteLiveStateService : IDisposable
     public StickyNoteLiveStateService()
     {
         _view = _map.CreateViewAccessor(0, Size, MemoryMappedFileAccess.ReadWrite);
-        _view.Write(0, Magic); _view.Write(4, 2u); _view.Write(8, (uint)Size);
+        _view.Write(0, Magic); _view.Write(4, 3u); _view.Write(8, (uint)Size);
     }
 
-    public void Publish(bool enabled, IReadOnlyList<StickyNoteOption> notes)
+    public void Publish(bool enabled, IReadOnlyList<StickyNoteOption> notes, string? liveProfileKey = null)
     {
         int count = Math.Min(notes.Count, MaxNotes);
         _view.Write(16, enabled ? 1u : 0u);
+        WriteFixedString(20, 128, liveProfileKey);
         for (int i = 0; i < MaxNotes; ++i)
         {
             int offset = HeaderSize + i * RecordSize;
@@ -43,6 +44,13 @@ internal sealed class StickyNoteLiveStateService : IDisposable
         }
         Thread.MemoryBarrier();
         _view.Write(12, unchecked(++_generation));
+    }
+
+    private void WriteFixedString(int offset, int characters, string? value)
+    {
+        string text = value ?? string.Empty;
+        int count = Math.Min(text.Length, characters - 1);
+        for (int i = 0; i < characters; ++i) _view.Write(offset + i * 2, i < count ? text[i] : '\0');
     }
 
     internal static string Normalize(string? value)

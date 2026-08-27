@@ -3,8 +3,22 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-08-27
-**Current version:** 4.1.345 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.345.msi` (contracts and full MSI payload validation pass; **not live-validated yet**).
+**Updated:** 2026-08-28
+**Current version:** 4.1.346 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.346.msi` (contracts and full MSI payload validation pass; **not live-validated yet**).
+
+**2026-08-28 — 4.1.346 Per-app overlay changes are live; headset validation pending.**
+The live channel now scopes its resolved snapshot to the native layer's active executable key. Clock, HUD,
+Performance Trace, sticky notes, crosshair and notification placement/configuration can be enabled, disabled,
+repositioned, rescaled and reconfigured for the active profile without a sim restart. The HUD collection mapping
+now carries complete widget order, symbols, units, thresholds and network probe target; sticky-note mapping now
+carries the active profile collection rather than global notes. Profile Save retains the live result; Cancel restores
+the prior profile and Use Global Values publishes globals authoritatively. The per-app clock and notification
+editors now correctly separate design from colour palette. Render/FOV remain OpenXR-session setup values.
+
+Build 4.1.346 is 149,942,272 bytes, SHA-256
+`786C3BC438728A53BB632E38F0220DC78C47C204134364F4B0CE7242E1212E4D`. Contracts, WPF, broker, x64/Win32 native
+layers and MSI payload validation pass. Required headset check: while iRacing remains running, edit/save each
+ordinary overlay, verify it changes immediately, then verify another profile cannot alter iRacing.
 
 **2026-08-27 — 4.1.345 Sticky-note themes and HD Paper implemented; headset validation pending.**
 Sticky notes now separate visual **Style** from paper colour. Existing indexed notes with no style and the

@@ -75,6 +75,7 @@ double liveVisorRevision = 0.0;
 bool liveVisorUsesProfileOverride = false;
 uint32_t profileOverlayOverrideMask = 0;
 uint32_t profileStickyOverlayOverrideMask = 0;
+std::wstring currentAppKey;
 bool profileObsFeatureOverride = false;
 bool profileIRacingFeatureOverride = false;
 constexpr bool visorHD = false;          // HD visor removed
@@ -300,12 +301,15 @@ enum class OverlayFeatureId : uint8_t { Hud=0, Trace=1, Clock=2, StickyNote=3, C
 struct OverlayFeatureVisibility { int toggleKey=0; bool keyDown=false; std::atomic<bool> visible{true}; };
 std::array<OverlayFeatureVisibility,(size_t)OverlayFeatureId::Count> g_overlayFeatureVisibility{};
 bool OverlayFeatureVisible(OverlayFeatureId id) { return g_overlayFeatureVisibility[(size_t)id].visible.load(std::memory_order_acquire); }
-// Latest v14 authoritative mask from the settings app. A per-app profile override normally beats
+// Latest v15 authoritative mask from the settings app. A per-app profile override normally beats
 // live global edits; it yields only for a feature the publisher marks authoritative, which the
-// per-app editor does while its preview is being dragged.
+// per-app editor does while its preview is being edited. Scoped mismatch prevents those resolved
+// values leaking into another running title if the settings app remains open across sessions.
 uint32_t g_liveAuthoritativeMask = 0;
+uint32_t g_liveScopedMismatchMask = 0;
 bool liveOwns(OverlayFeatureId id) {
     const uint32_t bit = 1u << static_cast<uint32_t>(id);
+    if ((g_liveScopedMismatchMask & bit) != 0) return false;
     return (profileOverlayOverrideMask & bit) == 0 || (g_liveAuthoritativeMask & bit) != 0;
 }
 void UpdateOverlayFeatureHotkeys() {
@@ -743,9 +747,15 @@ struct LiveStateBlock {
     // profile overrides once at xrCreateSession, and the override gate below discarded every
     // live update for any feature the active profile customised.
     uint32_t liveAuthoritativeMask;
+    // v15: authoritative values are scoped to the executable whose profile is being edited.
+    // Opacity and trace-recording fields complete the live contract for settings that were
+    // previously loaded only at xrCreateSession.
+    wchar_t liveProfileKey[128];
+    float hudOpacity, traceOpacity;
+    uint32_t performanceTraceRecording, performanceTraceMarkerKey;
 };
 #pragma pack(pop)
-static_assert(sizeof(LiveStateBlock)==336,"live state v14 contract size");
+static_assert(sizeof(LiveStateBlock)==608,"live state v15 contract size");
 constexpr uint32_t kLiveStateMagic = 0x534C4C56; // VLLS
 HANDLE g_liveStateMap = nullptr;
 const LiveStateBlock* g_liveState = nullptr;
@@ -764,19 +774,24 @@ void ConnectLiveState() {
     g_liveState = static_cast<const LiveStateBlock*>(MapViewOfFile(g_liveStateMap, FILE_MAP_READ, 0, 0, sizeof(LiveStateBlock)));
     if (!g_liveState) { CloseHandle(g_liveStateMap); g_liveStateMap = nullptr; }
 }
-void DisconnectLiveState() { if (g_liveState) { UnmapViewOfFile(g_liveState); g_liveState = nullptr; } if (g_liveStateMap) { CloseHandle(g_liveStateMap); g_liveStateMap = nullptr; } g_liveStateGeneration = 0; g_liveStateNextConnectTick = 0; }
+void DisconnectLiveState() { if (g_liveState) { UnmapViewOfFile(g_liveState); g_liveState = nullptr; } if (g_liveStateMap) { CloseHandle(g_liveStateMap); g_liveStateMap = nullptr; } g_liveStateGeneration = 0; g_liveStateNextConnectTick = 0; g_liveAuthoritativeMask=0; g_liveScopedMismatchMask=0; }
 
 #pragma pack(push,4)
-struct TelemetryConfigBlock { uint32_t magic,version,size,generation; uint64_t widgetMask; uint8_t order[16]; uint32_t maxPerRow; float sysWarning,sysCritical; uint32_t flags,reserved[2]; };
+struct TelemetryConfigBlock { uint32_t magic,version,size,generation; uint64_t widgetMask; uint8_t order[16]; uint32_t maxPerRow; float sysWarning,sysCritical; uint32_t flags,reserved[2]; wchar_t liveProfileKey[128]; float warning[16],critical[16]; wchar_t networkProbeTarget[64]; };
 #pragma pack(pop)
+static_assert(sizeof(TelemetryConfigBlock)==576,"telemetry config v2 contract size");
 HANDLE g_telemetryConfigMap=nullptr; const TelemetryConfigBlock* g_telemetryConfig=nullptr; uint32_t g_telemetryConfigGeneration=0;
 void ConsumeTelemetryConfig() {
     if(!g_telemetryConfig){g_telemetryConfigMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabTelemetryConfigV1");if(g_telemetryConfigMap)g_telemetryConfig=(const TelemetryConfigBlock*)MapViewOfFile(g_telemetryConfigMap,FILE_MAP_READ,0,0,sizeof(TelemetryConfigBlock));}
-    if(!g_telemetryConfig||g_telemetryConfig->magic!=0x31435456u||g_telemetryConfig->version!=1||g_telemetryConfig->size!=64||g_telemetryConfig->generation==g_telemetryConfigGeneration)return;
+    if(!g_telemetryConfig||g_telemetryConfig->magic!=0x31435456u||g_telemetryConfig->version!=2||g_telemetryConfig->size!=sizeof(TelemetryConfigBlock)||g_telemetryConfig->generation==g_telemetryConfigGeneration)return;
     const TelemetryConfigBlock stable=*g_telemetryConfig;if(stable.generation!=g_telemetryConfig->generation)return;
-    if(liveOwns(OverlayFeatureId::Hud)){hudWidgetMask=stable.widgetMask&((1ull<<kHudWidgetCount)-1);hudWidgetSymbolMask=stable.flags&0xFFFFu;hudWidgetUnitHiddenMask=stable.reserved[0];hudMaxPerRow=std::clamp(stable.maxPerRow,1u,16u);hudSysWarningThreshold=std::clamp((double)stable.sysWarning,10.0,60.0);hudSysCriticalThreshold=std::clamp((double)stable.sysCritical,0.0,hudSysWarningThreshold);
+    const bool scoped=stable.liveProfileKey[0]!=L'\0';const bool profileMatches=!scoped||(!currentAppKey.empty()&&_wcsicmp(stable.liveProfileKey,currentAppKey.c_str())==0);
+    if(!profileMatches||(!scoped&&!liveOwns(OverlayFeatureId::Hud))){g_telemetryConfigGeneration=stable.generation;return;}
+    hudWidgetMask=stable.widgetMask&((1ull<<kHudWidgetCount)-1);hudWidgetSymbolMask=stable.flags&0xFFFFu;hudWidgetUnitHiddenMask=stable.reserved[0];hudMaxPerRow=std::clamp(stable.maxPerRow,1u,16u);hudSysWarningThreshold=std::clamp((double)stable.sysWarning,10.0,60.0);hudSysCriticalThreshold=std::clamp((double)stable.sysCritical,0.0,hudSysWarningThreshold);
+    for(size_t i=0;i<kHudWidgetCount;++i){hudWidgetWarning[i]=std::clamp((double)stable.warning[i],0.0,1000000.0);hudWidgetCritical[i]=std::clamp((double)stable.critical[i],0.0,1000000.0);}
+    IN_ADDR probeAddress{};const bool validProbeTarget=InetPtonW(AF_INET,stable.networkProbeTarget,&probeAddress)==1;viewlab::telemetry::SetNetworkProbeTarget(validProbeTarget?probeAddress.S_un.S_addr:0);
     viewlab::telemetry::SetNetworkProbeEnabled((hudWidgetMask & (0xFull<<12)) != 0);
-    std::array<bool,kHudWidgetCount> seen{};size_t n=0;for(uint8_t id:stable.order)if(id<kHudWidgetCount&&!seen[id]){hudWidgetOrder[n++]=id;seen[id]=true;}for(uint8_t id=0;id<kHudWidgetCount;++id)if(!seen[id])hudWidgetOrder[n++]=id;}
+    std::array<bool,kHudWidgetCount> seen{};size_t n=0;for(uint8_t id:stable.order)if(id<kHudWidgetCount&&!seen[id]){hudWidgetOrder[n++]=id;seen[id]=true;}for(uint8_t id=0;id<kHudWidgetCount;++id)if(!seen[id])hudWidgetOrder[n++]=id;
     g_telemetryConfigGeneration=stable.generation;
 }
 void DisconnectTelemetryConfig(){if(g_telemetryConfig)UnmapViewOfFile(g_telemetryConfig);if(g_telemetryConfigMap)CloseHandle(g_telemetryConfigMap);g_telemetryConfig=nullptr;g_telemetryConfigMap=nullptr;g_telemetryConfigGeneration=0;}
@@ -873,39 +888,40 @@ void DisconnectRacingState(){if(g_racing)UnmapViewOfFile(g_racing);if(g_racingMa
 
 #pragma pack(push,4)
 struct StickyNoteLiveRecord { uint32_t enabled; float x,y,scale,opacity; uint32_t theme,design; wchar_t text[120]; };
-struct StickyNoteLiveBlock { uint32_t magic,version,size,generation,enabled; StickyNoteLiveRecord notes[kStickyNoteMax]; };
+struct StickyNoteLiveBlock { uint32_t magic,version,size,generation,enabled; wchar_t liveProfileKey[128]; StickyNoteLiveRecord notes[kStickyNoteMax]; };
 #pragma pack(pop)
-static_assert(sizeof(StickyNoteLiveRecord)==268&&sizeof(StickyNoteLiveBlock)==2164,"sticky note live contract size");
+static_assert(sizeof(StickyNoteLiveRecord)==268&&sizeof(StickyNoteLiveBlock)==2420,"sticky note live v3 contract size");
 HANDLE g_stickyNoteMap=nullptr;const StickyNoteLiveBlock* g_stickyNoteState=nullptr;uint32_t g_stickyNoteGeneration=0;uint64_t g_stickyNoteNextConnectTick=0;
 void ConsumeStickyNoteState(){
     if(!g_stickyNoteState){const uint64_t now=GetTickCount64();if(now<g_stickyNoteNextConnectTick)return;g_stickyNoteNextConnectTick=now+1000;g_stickyNoteMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabStickyNotes");if(g_stickyNoteMap)g_stickyNoteState=(const StickyNoteLiveBlock*)MapViewOfFile(g_stickyNoteMap,FILE_MAP_READ,0,0,sizeof(StickyNoteLiveBlock));}
-    if(!g_stickyNoteState||g_stickyNoteState->magic!=0x314E5356u||g_stickyNoteState->version!=2||g_stickyNoteState->size!=sizeof(StickyNoteLiveBlock)||g_stickyNoteState->generation==g_stickyNoteGeneration)return;
+    if(!g_stickyNoteState||g_stickyNoteState->magic!=0x314E5356u||g_stickyNoteState->version!=3||g_stickyNoteState->size!=sizeof(StickyNoteLiveBlock)||g_stickyNoteState->generation==g_stickyNoteGeneration)return;
     const StickyNoteLiveBlock snapshot=*g_stickyNoteState;MemoryBarrier();if(snapshot.generation!=g_stickyNoteState->generation)return;
-    if(!liveOwns(OverlayFeatureId::StickyNote)){g_stickyNoteGeneration=snapshot.generation;return;}
-    if(liveOwns(OverlayFeatureId::StickyNote))stickyNoteEnabled=snapshot.enabled!=0;stickyNoteCount=0;
-    for(size_t i=0;i<kStickyNoteMax;++i){const auto&r=snapshot.notes[i];size_t length=0;while(length<std::size(r.text)&&r.text[length])++length;if(length==0&&!r.enabled)continue;auto&n=stickyNotes[stickyNoteCount++];n.enabled=r.enabled!=0;if((profileStickyOverlayOverrideMask&(1u<<i))==0){n.x=std::clamp((double)r.x,0.0,1.0);n.y=std::clamp((double)r.y,0.0,1.0);n.scale=std::clamp((double)r.scale,.5,2.5);}n.opacity=std::clamp((double)r.opacity,.1,1.0);n.theme=std::clamp(r.theme,0u,4u);n.design=static_cast<StickyNoteDesign>(std::clamp(r.design,0u,1u));n.text.assign(r.text,length);}
+    const bool scoped=snapshot.liveProfileKey[0]!=L'\0';const bool profileMatches=!scoped||(!currentAppKey.empty()&&_wcsicmp(snapshot.liveProfileKey,currentAppKey.c_str())==0);
+    if(!profileMatches||(!scoped&&!liveOwns(OverlayFeatureId::StickyNote))){g_stickyNoteGeneration=snapshot.generation;return;}
+    stickyNoteEnabled=snapshot.enabled!=0;stickyNoteCount=0;
+    for(size_t i=0;i<kStickyNoteMax;++i){const auto&r=snapshot.notes[i];size_t length=0;while(length<std::size(r.text)&&r.text[length])++length;if(length==0&&!r.enabled)continue;auto&n=stickyNotes[stickyNoteCount++];n.enabled=r.enabled!=0;if(scoped||(profileStickyOverlayOverrideMask&(1u<<i))==0){n.x=std::clamp((double)r.x,0.0,1.0);n.y=std::clamp((double)r.y,0.0,1.0);n.scale=std::clamp((double)r.scale,.5,2.5);}n.opacity=std::clamp((double)r.opacity,.1,1.0);n.theme=std::clamp(r.theme,0u,4u);n.design=static_cast<StickyNoteDesign>(std::clamp(r.design,0u,1u));n.text.assign(r.text,length);}
     g_stickyNoteGeneration=snapshot.generation;
 }
 void DisconnectStickyNoteState(){if(g_stickyNoteState)UnmapViewOfFile(g_stickyNoteState);if(g_stickyNoteMap)CloseHandle(g_stickyNoteMap);g_stickyNoteState=nullptr;g_stickyNoteMap=nullptr;g_stickyNoteGeneration=0;g_stickyNoteNextConnectTick=0;}
 
 void ConsumeLiveState() {
-    ConsumeTelemetryConfig();
-    ConsumeStickyNoteState();
-    if (!g_liveState) { ConnectLiveState(); if (!g_liveState) return; }
+    if (!g_liveState) { ConnectLiveState(); if (!g_liveState) { ConsumeTelemetryConfig(); ConsumeStickyNoteState(); return; } }
     const LiveStateBlock snapshot = *g_liveState;
-    if (snapshot.magic != kLiveStateMagic || snapshot.version != 14 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) return;
+    if (snapshot.magic != kLiveStateMagic || snapshot.version != 15 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) { ConsumeTelemetryConfig(); ConsumeStickyNoteState(); return; }
     MemoryBarrier();
     const LiveStateBlock stable = *g_liveState;
-    if (stable.generation != snapshot.generation) return;
-    g_liveAuthoritativeMask = stable.liveAuthoritativeMask;
+    if (stable.generation != snapshot.generation) { ConsumeTelemetryConfig(); ConsumeStickyNoteState(); return; }
+    const bool scoped=stable.liveProfileKey[0]!=L'\0';const bool profileMatches=!scoped||(!currentAppKey.empty()&&_wcsicmp(stable.liveProfileKey,currentAppKey.c_str())==0);
+    g_liveAuthoritativeMask=profileMatches?stable.liveAuthoritativeMask:0;
+    g_liveScopedMismatchMask=scoped&&!profileMatches?stable.liveAuthoritativeMask:0;
     g_liveStateGeneration = stable.generation;
     calibrationGrid = (stable.calibrationMask & (1u << 0)) != 0; calibrationRuler = (stable.calibrationMask & (1u << 1)) != 0;
     calibrationGratings = (stable.calibrationMask & (1u << 2)) != 0; calibrationBars = (stable.calibrationMask & (1u << 3)) != 0;
     calibrationBeacon = (stable.calibrationMask & (1u << 4)) != 0; calibrationEdgeProbes = (stable.calibrationMask & (1u << 5)) != 0;
     calibrationCheckerboards = (stable.calibrationMask & (1u << 6)) != 0; calibrationZonePlate = (stable.calibrationMask & (1u << 7)) != 0;
     calibrationClippingSteps = (stable.calibrationMask & (1u << 8)) != 0; calibrationMotionStrip = (stable.calibrationMask & (1u << 9)) != 0;
-    if(liveOwns(OverlayFeatureId::Hud)){hudEnabled = (stable.hudFlags & 1u) != 0; hudClampToVisible = (stable.hudFlags & 2u) != 0; hudAlarmOnly = (stable.hudFlags & 4u) != 0;hudAnchorX = std::clamp((double)stable.hudAnchorX, 0.0, 1.0); hudAnchorY = std::clamp((double)stable.hudAnchorY, 0.0, 1.0); hudScale = std::clamp((double)stable.hudScale, 0.15, 3.0);hudSafeMargin = std::clamp((double)stable.hudSafeMargin, 0.0, 0.25);hudAlarmHoldMs = std::clamp((double)stable.alarmHoldMs, 0.0, 10000.0);}
-    if(liveOwns(OverlayFeatureId::Trace)){hudTraceSensitivityMs = std::clamp((double)stable.traceSensitivityMs, 0.25, 8.0);hudTraceX = std::clamp((double)stable.traceX, 0.0, 1.0); hudTraceY = std::clamp((double)stable.traceY, 0.0, 1.0); hudTraceScale = std::clamp((double)stable.traceScale, 0.25, 3.0);hudTraceWidth = std::clamp((double)stable.traceWidth, 0.10, 1.0);hudTraceHistory = std::clamp((double)stable.traceHistory, 10.0, 600.0);hudTraceEnabled = (stable.traceFlags & 1u) != 0;hudTraceVisibilityMode = !hudTraceEnabled ? 0u : (stable.traceFlags & 2u) != 0 ? 2u : 1u;}
+    if(liveOwns(OverlayFeatureId::Hud)){hudEnabled = (stable.hudFlags & 1u) != 0; hudClampToVisible = (stable.hudFlags & 2u) != 0; hudAlarmOnly = (stable.hudFlags & 4u) != 0;hudAnchorX = std::clamp((double)stable.hudAnchorX, 0.0, 1.0); hudAnchorY = std::clamp((double)stable.hudAnchorY, 0.0, 1.0); hudScale = std::clamp((double)stable.hudScale, 0.15, 3.0);hudSafeMargin = std::clamp((double)stable.hudSafeMargin, 0.0, 0.25);hudAlarmHoldMs = std::clamp((double)stable.alarmHoldMs, 0.0, 10000.0);hudOpacity=std::clamp((double)stable.hudOpacity,.1,1.0);}
+    if(liveOwns(OverlayFeatureId::Trace)){hudTraceSensitivityMs = std::clamp((double)stable.traceSensitivityMs, 0.25, 8.0);hudTraceX = std::clamp((double)stable.traceX, 0.0, 1.0); hudTraceY = std::clamp((double)stable.traceY, 0.0, 1.0); hudTraceScale = std::clamp((double)stable.traceScale, 0.25, 3.0);hudTraceWidth = std::clamp((double)stable.traceWidth, 0.10, 1.0);hudTraceHistory = std::clamp((double)stable.traceHistory, 10.0, 600.0);hudTraceOpacity=std::clamp((double)stable.traceOpacity,.1,1.0);hudTraceEnabled = (stable.traceFlags & 1u) != 0;hudTraceVisibilityMode = !hudTraceEnabled ? 0u : (stable.traceFlags & 2u) != 0 ? 2u : 1u;performanceTraceRecording=stable.performanceTraceRecording!=0;performanceTraceMarkerKey=(int)std::clamp(stable.performanceTraceMarkerKey,1u,255u);}
     // Backend selection is session-owned and profile-aware. Live UI snapshots must not override a
     // per-game diagnostic force-direct policy halfway through a session.
     if(liveOwns(OverlayFeatureId::Hud)){hudWidgetMask=(hudWidgetMask&~0x0Full)|(stable.hudWidgetMask&0x0Fu);hudWidgetOrderPacked=stable.hudWidgetOrder;}
@@ -945,7 +961,7 @@ void ConsumeLiveState() {
     }
     if(liveOwns(OverlayFeatureId::Clock)){clockWidgetEnabled=(stable.clockFlags&1u)!=0;clockSessionTimerEnabled=(stable.clockFlags&2u)!=0;clock24Hour=(stable.clockFlags&4u)!=0;clockWidgetX=std::clamp((double)stable.clockX,0.0,1.0);clockWidgetY=std::clamp((double)stable.clockY,0.0,1.0);clockWidgetScale=std::clamp((double)stable.clockScale,.1,2.0);clockWidgetOpacity=std::clamp((double)stable.clockOpacity,.1,1.0);clockWidgetTheme=std::clamp(stable.clockTheme,0u,3u);clockWidgetPalette=std::clamp(stable.clockPalette,0u,4u);}
     obsMirrorVisibilityMask = stable.obsMirrorVisibilityMask & kAllMirrorFeatures;
-    for(size_t i=0;i<(size_t)OverlayFeatureId::Count;++i)if((profileOverlayOverrideMask&(1u<<(uint32_t)i))==0)g_overlayFeatureVisibility[i].toggleKey=(int)std::clamp(stable.overlayToggleKeys[i],0u,255u);
+    for(size_t i=0;i<(size_t)OverlayFeatureId::Count;++i)if(liveOwns((OverlayFeatureId)i))g_overlayFeatureVisibility[i].toggleKey=(int)std::clamp(stable.overlayToggleKeys[i],0u,255u);
     if ((stable.flags & 1u) != 0 && !liveVisorUsesProfileOverride) {
         maskEnabled = (stable.flags & 4u) != 0;
         visorSize = std::clamp((double)stable.visorSize, 0.1, 1.0); visorCurve = std::clamp(1.0 - (double)stable.maskCorner, 0.0, 1.0);
@@ -958,13 +974,14 @@ void ConsumeLiveState() {
         g_visorColor[1] = ((stable.visorColor >> 8) & 0xFF) / 255.f;
         g_visorColor[2] = (stable.visorColor & 0xFF) / 255.f;
     }
+    ConsumeTelemetryConfig();
+    ConsumeStickyNoteState();
 }
 bool uevrLikeProcess = false;
 double totalTangent = DefaultTotalTangent;
 double topTangent = DefaultTopTangent;
 double bottomTangent = DefaultBottomTangent;
 double horizontalRenderWidth = DefaultHorizontalRenderWidth;
-std::wstring currentAppKey;
 
 #pragma pack(push,4)
 struct ActiveProfileBlock { uint32_t magic,version,generation,reserved; wchar_t appKey[128]; };
@@ -6096,6 +6113,8 @@ void LoadConfig() {
     liveVisorUsesProfileOverride = false;
     profileOverlayOverrideMask = 0;
     profileStickyOverlayOverrideMask = 0;
+    g_liveAuthoritativeMask = 0;
+    g_liveScopedMismatchMask = 0;
     profileObsFeatureOverride = false;
     profileIRacingFeatureOverride = false;
     DWORD profileEnabled = 0;
