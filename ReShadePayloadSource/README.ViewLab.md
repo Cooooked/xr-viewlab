@@ -28,6 +28,7 @@ The fork adds:
 
 - the `Local\ReShadeXRControl` shared-memory contract used by ReShade Remote;
 - a Home-key (`KeyOverlay=36`) controlled menu rendered into a dedicated OpenXR quad;
+- one LocalAppData preference authority shared with ViewLab, with separate desktop and in-HMD visibility;
 - persisted quad position, orientation, size and opacity;
 - an OpenComposite-aware OpenXR route that avoids the SteamVR dashboard-overlay path;
 - a focusable desktop mirror of the same ImGui menu surface, including mouse, wheel and keyboard input;

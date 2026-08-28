@@ -25,7 +25,7 @@ $main = Get-Content -LiteralPath (Join-Path $root 'XRViewLab.UI\MainWindow.cs') 
 if ($main -notmatch 'FactoryBaseline\.MigrationMarker' -or $main -notmatch 'FactoryBaseline\.IniSettings') { throw 'Factory migration is not wired.' }
 if ($main -match 'FactoryBaseline[\s\S]{0,800}Apps\\') { throw 'Factory migration must not touch the per-app registry subtree.' }
 $service = Get-Content -LiteralPath (Join-Path $root 'XRViewLab.UI\ReShadeControlService.cs') -Raw
-foreach ($key in @('xr_mode','menu_visible','win_headless','win_always_on_top')) {
-    if ($service -notmatch [regex]::Escape('reshade_remote_' + $key)) { throw "ReShade preference $key is not persisted." }
+foreach ($key in @('xr_mode','menu_visible','desktop_menu_visible','win_headless','win_always_on_top')) {
+    if ($service -notmatch [regex]::Escape('"' + $key + '"')) { throw "ReShade preference $key is not persisted." }
 }
-Write-Host "Factory baseline verified: $(@($baseline.iniSettings.PSObject.Properties).Count) INI keys and four ReShade Remote preferences."
+Write-Host "Factory baseline verified: $(@($baseline.iniSettings.PSObject.Properties).Count) INI keys and five ReShade Remote preferences."

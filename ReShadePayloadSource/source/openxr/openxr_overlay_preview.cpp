@@ -9,23 +9,77 @@
 #include <condition_variable>
 #include <cstring>
 #include <cmath>
+#include <climits>
+#include <string>
 
 // ── Preview window state persistence ───────────────────────────────────────
 //
-// The control block is volatile shared memory. It only lives while some
-// process holds a handle, so once both the game and ViewLab exit it is gone
-// and the next launch recreates it "fresh". Previously that path hardcoded
-// the window flags back to their defaults, which is why borderless and
-// always-on-top were forgotten between sessions. Persist them next to the
-// quad transform, which already survives restarts, and restore them instead.
+// The control block is volatile shared memory. ViewLab used to persist menu
+// and window preferences in LocalAppData while this payload persisted another
+// copy in ProgramData, so launch order decided which values survived. The
+// ViewLab INI is now authoritative. ProgramData is read only as a compatibility
+// fallback for preferences saved before this repair.
 namespace
 {
-	constexpr wchar_t WINDOW_STATE_FILE[]    = L"C:\\ProgramData\\ReShade\\openxr_quad_transform.ini";
-	constexpr wchar_t WINDOW_STATE_SECTION[] = L"Window";
+	constexpr wchar_t LEGACY_WINDOW_STATE_FILE[]    = L"C:\\ProgramData\\ReShade\\openxr_quad_transform.ini";
+	constexpr wchar_t LEGACY_WINDOW_STATE_SECTION[] = L"Window";
+	constexpr wchar_t REMOTE_SETTINGS_SECTION[]     = L"Settings";
 
-	uint32_t window_state_get(const wchar_t *key, uint32_t fallback)
+	const std::wstring &remote_settings_directory()
 	{
-		return static_cast<uint32_t>(GetPrivateProfileIntW(WINDOW_STATE_SECTION, key, static_cast<INT>(fallback), WINDOW_STATE_FILE));
+		static const std::wstring directory = [] {
+			wchar_t local_app_data[MAX_PATH] = {};
+			const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", local_app_data, MAX_PATH);
+			if (length == 0 || length >= MAX_PATH)
+				return std::wstring();
+			return std::wstring(local_app_data) + L"\\XR ViewLab";
+		}();
+		return directory;
+	}
+
+	const std::wstring &remote_settings_file()
+	{
+		static const std::wstring path = remote_settings_directory().empty()
+			? std::wstring()
+			: remote_settings_directory() + L"\\xr-viewlab.ini";
+		return path;
+	}
+
+	std::wstring remote_key(const wchar_t *key)
+	{
+		return std::wstring(L"reshade_remote_") + key;
+	}
+
+	uint32_t legacy_window_state_get(const wchar_t *key, uint32_t fallback)
+	{
+		return static_cast<uint32_t>(GetPrivateProfileIntW(LEGACY_WINDOW_STATE_SECTION, key,
+			static_cast<INT>(fallback), LEGACY_WINDOW_STATE_FILE));
+	}
+	uint32_t remote_pref_get(const wchar_t *key, uint32_t fallback, const wchar_t *legacy_key = nullptr)
+	{
+		const std::wstring &path = remote_settings_file();
+		if (!path.empty())
+		{
+			const std::wstring name = remote_key(key);
+			constexpr UINT missing = UINT_MAX;
+			const UINT value = GetPrivateProfileIntW(REMOTE_SETTINGS_SECTION, name.c_str(), missing, path.c_str());
+			if (value != missing)
+				return static_cast<uint32_t>(value);
+		}
+		return legacy_key ? legacy_window_state_get(legacy_key, fallback) : fallback;
+	}
+
+	void remote_pref_set(const wchar_t *key, uint32_t value)
+	{
+		const std::wstring &directory = remote_settings_directory();
+		const std::wstring &path = remote_settings_file();
+		if (directory.empty() || path.empty())
+			return;
+		CreateDirectoryW(directory.c_str(), nullptr);
+		wchar_t buffer[16];
+		swprintf_s(buffer, L"%u", value);
+		const std::wstring name = remote_key(key);
+		WritePrivateProfileStringW(REMOTE_SETTINGS_SECTION, name.c_str(), buffer, path.c_str());
 	}
 
 	// Global menu hotkey.
@@ -58,20 +112,20 @@ namespace
 	uint32_t              s_hotkey_registered[HOTKEY_COUNT] = {};
 	std::atomic<bool>     s_hotkey_loaded{ false };
 
-	// Desktop preview visibility is tracked separately from the in-HMD quad so
-	// the menu hotkey can target the headset alone. ViewLab writing
-	// menu_visible still drives both, which is what its checkbox implies.
+	// Desktop preview visibility is independent from the in-HMD quad. The old
+	// shared menu_visible field now has one meaning only: in-HMD visibility.
 	std::atomic<bool>     s_menu_hotkey_desktop{ true };
 	uint32_t              s_desktop_menu_visible = 1;
 	uint32_t              s_last_ctrl_menu_visible = UINT32_MAX;
+	uint32_t              s_last_ctrl_xr_mode = UINT32_MAX;
 
 	void hotkey_load_once()
 	{
 		if (s_hotkey_loaded.exchange(true))
 			return;
 		for (size_t i = 0; i < HOTKEY_COUNT; ++i)
-			s_hotkey_vk[i].store(window_state_get(HOTKEY_INI_KEYS[i], HOTKEY_DEFAULTS[i]));
-		s_menu_hotkey_desktop.store(window_state_get(L"hotkey_menu_desktop", 1) != 0);
+			s_hotkey_vk[i].store(remote_pref_get(HOTKEY_INI_KEYS[i], HOTKEY_DEFAULTS[i], HOTKEY_INI_KEYS[i]));
+		s_menu_hotkey_desktop.store(remote_pref_get(L"hotkey_menu_desktop", 1, L"hotkey_menu_desktop") != 0);
 	}
 
 	// Re-registers only what actually changed, so this is cheap to call on the
@@ -87,7 +141,7 @@ namespace
 			if (s_hotkey_registered[i] != 0)
 				UnregisterHotKey(hwnd, HOTKEY_ID_BASE + static_cast<int>(i));
 
-			if (want != 0 && !RegisterHotKey(hwnd, HOTKEY_ID_BASE + static_cast<int>(i), 0, want))
+			if (want != 0 && !RegisterHotKey(hwnd, HOTKEY_ID_BASE + static_cast<int>(i), MOD_NOREPEAT, want))
 			{
 				reshade::log::message(reshade::log::level::warning,
 					"Could not register a ReShade hotkey; another application may already own that key.");
@@ -99,12 +153,6 @@ namespace
 		}
 	}
 
-	void window_state_set(const wchar_t *key, uint32_t value)
-	{
-		wchar_t buffer[16];
-		swprintf_s(buffer, L"%u", value);
-		WritePrivateProfileStringW(WINDOW_STATE_SECTION, key, buffer, WINDOW_STATE_FILE);
-	}
 }
 
 #ifndef SRCCOPY
@@ -262,8 +310,8 @@ namespace
 
 			if (index == static_cast<size_t>(reshade::openxr::hotkey_action::toggle_menu))
 			{
-				// Toggle the shared flag rather than local state, so ReShade,
-				// the desktop preview and ViewLab's checkbox all agree.
+				// Toggle the one authoritative in-HMD flag. Desktop preview
+				// visibility is deliberately independent.
 				if (s_ctrl && s_ctrl->version == 1)
 				{
 					const uint32_t next = s_ctrl->menu_visible ? 0u : 1u;
@@ -273,8 +321,11 @@ namespace
 					// for ViewLab changing the setting.
 					s_last_ctrl_menu_visible = next;
 					if (s_menu_hotkey_desktop.load())
+					{
 						s_desktop_menu_visible = next;
-					window_state_set(L"menu_visible", next);
+						remote_pref_set(L"desktop_menu_visible", next);
+					}
+					remote_pref_set(L"menu_visible", next);
 				}
 			}
 			else
@@ -300,9 +351,10 @@ namespace
 			{
 				RECT cr;
 				GetClientRect(hwnd, &cr);
+				const LONG visible_style = IsWindowVisible(hwnd) ? WS_VISIBLE : 0;
 				if (want_headless)
 				{
-					SetWindowLong(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+					SetWindowLong(hwnd, GWL_STYLE, WS_POPUP | visible_style);
 					SetWindowPos(hwnd, nullptr, 0, 0, cr.right, cr.bottom,
 						SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
 				}
@@ -310,12 +362,12 @@ namespace
 				{
 					RECT wr = { 0, 0, cr.right, cr.bottom };
 					AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
-					SetWindowLong(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+					SetWindowLong(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | visible_style);
 					SetWindowPos(hwnd, nullptr, 0, 0, wr.right - wr.left, wr.bottom - wr.top,
 						SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED);
 				}
 				s_preview.applied_headless = s_ctrl->win_headless;
-				window_state_set(L"headless", s_ctrl->win_headless);
+				remote_pref_set(L"win_headless", s_ctrl->win_headless);
 			}
 
 			// Always on top
@@ -324,15 +376,20 @@ namespace
 				const HWND z_order = s_ctrl->win_always_on_top ? HWND_TOPMOST : HWND_NOTOPMOST;
 				SetWindowPos(hwnd, z_order, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 				s_preview.applied_always_on_top = s_ctrl->win_always_on_top;
-				window_state_set(L"always_on_top", s_ctrl->win_always_on_top);
+				remote_pref_set(L"win_always_on_top", s_ctrl->win_always_on_top);
 			}
 
-			// Hide preview window when Desktop VR Menu is disabled
-			// ViewLab changing menu_visible drives both surfaces.
+			// Persist ViewLab or hotkey changes to the same settings file the UI
+			// reads. The in-HMD flag never changes desktop visibility here.
 			if (s_ctrl->menu_visible != s_last_ctrl_menu_visible)
 			{
 				s_last_ctrl_menu_visible = s_ctrl->menu_visible;
-				s_desktop_menu_visible = s_ctrl->menu_visible;
+				remote_pref_set(L"menu_visible", s_ctrl->menu_visible);
+			}
+			if (s_ctrl->xr_mode != s_last_ctrl_xr_mode)
+			{
+				s_last_ctrl_xr_mode = s_ctrl->xr_mode;
+				remote_pref_set(L"xr_mode", s_ctrl->xr_mode);
 			}
 
 			if (s_preview.applied_visible != s_desktop_menu_visible)
@@ -557,8 +614,8 @@ namespace
 		s_preview.lifecycle_cv.notify_all();
 		if (hwnd)
 		{
-			// Show immediately if menu_visible is already set (ViewLab connected first)
-			if (s_ctrl && s_ctrl->version == 1 && s_ctrl->menu_visible)
+			// Desktop preview visibility is independent from the in-HMD menu.
+			if (s_desktop_menu_visible)
 				ShowWindow(hwnd, SW_SHOW);
 			hotkey_load_once();
 			hotkey_sync_registrations(hwnd);
@@ -725,12 +782,12 @@ void reshade::openxr::control_init()
 		// First initialiser: Gameplay mode, quad NaN signals "use built-in defaults"
 		s_ctrl->version            = 1;
 		s_ctrl->size               = sizeof(XRControlBlock);
-		s_ctrl->xr_mode            = XR_MODE_GAMEPLAY;
+		s_ctrl->xr_mode            = remote_pref_get(L"xr_mode", XR_MODE_GAMEPLAY);
 		s_ctrl->revision           = 0;
-		s_ctrl->win_headless       = window_state_get(L"headless", 0);
-		s_ctrl->win_always_on_top  = window_state_get(L"always_on_top", 0);
+		s_ctrl->win_headless       = remote_pref_get(L"win_headless", 0, L"headless");
+		s_ctrl->win_always_on_top  = remote_pref_get(L"win_always_on_top", 1, L"always_on_top");
 		s_ctrl->win_snap_cursor    = 0; // transient: deliberately not persisted
-		s_ctrl->menu_visible       = window_state_get(L"menu_visible", 1);
+		s_ctrl->menu_visible       = remote_pref_get(L"menu_visible", 0, L"menu_visible");
 		s_ctrl->quad_edit_mode     = 0;
 		s_ctrl->heartbeat          = 0;
 		s_ctrl->quad_pos_x         = 0.0f;
@@ -743,6 +800,12 @@ void reshade::openxr::control_init()
 		s_ctrl->quad_width         = 0.32f;
 		s_ctrl->quad_height        = 0.30f;
 		s_ctrl->quad_alpha         = 1.0f;
+	}
+	if (s_ctrl)
+	{
+		s_desktop_menu_visible = remote_pref_get(L"desktop_menu_visible", 1, L"menu_visible");
+		s_last_ctrl_menu_visible = s_ctrl->menu_visible;
+		s_last_ctrl_xr_mode = s_ctrl->xr_mode;
 	}
 }
 
@@ -777,7 +840,7 @@ void reshade::openxr::hotkey_set(hotkey_action action, uint32_t virtual_key)
 	hotkey_load_once();
 	const size_t index = static_cast<size_t>(action);
 	s_hotkey_vk[index].store(virtual_key);
-	window_state_set(HOTKEY_INI_KEYS[index], virtual_key);
+	remote_pref_set(HOTKEY_INI_KEYS[index], virtual_key);
 	// The window tick re-registers; no cross-thread window calls needed here.
 }
 
@@ -796,5 +859,5 @@ void reshade::openxr::set_menu_hotkey_includes_desktop(bool include)
 {
 	hotkey_load_once();
 	s_menu_hotkey_desktop.store(include);
-	window_state_set(L"hotkey_menu_desktop", include ? 1u : 0u);
+	remote_pref_set(L"hotkey_menu_desktop", include ? 1u : 0u);
 }

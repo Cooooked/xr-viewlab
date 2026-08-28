@@ -1,5 +1,26 @@
 # Regression memory
 
+## R60 — ReShade Remote values reset and Home could leave a false menu state (fixed 4.1.350, 2026-08-28)
+
+**Symptom:** the in-HMD ReShade menu reopened on launch despite ViewLab saving it off. Borderless and Always on
+top could also revert. Home occasionally appeared to do nothing, and the only recovery was to toggle the Remote's
+menu checkbox on then off; its displayed state could disagree with the headset.
+
+**Cause:** ViewLab persisted four preferences in its LocalAppData INI while the payload restored and rewrote a
+second copy in ProgramData. The payload's startup order therefore selected the winner. Home changed only shared
+memory plus ProgramData, while ViewLab changes did not update that ProgramData copy. The same `menu_visible` bit
+also represented both desktop preview and in-HMD visibility despite an option promising HMD-only Home behaviour.
+Finally, `RegisterHotKey` omitted `MOD_NOREPEAT`, so keyboard repeat could execute an even number of toggles.
+The live diagnosis captured the contradiction directly: LocalAppData menu `0`, ProgramData menu `1`, shared block
+menu `1`.
+
+**Contract:** LocalAppData is the sole writable preference authority used by UI and payload; legacy ProgramData
+window values are read only when a key is absent. Opening Remote adopts a valid live block rather than overwriting
+it, and payload-originated revisions are mirrored durably. Desktop preview has its own key/control, while
+`menu_visible` means in-HMD only. Home uses `MOD_NOREPEAT`; fresh installs start with HMD hidden and desktop shown.
+Changing Borderless preserves the desktop window's current visibility. Source contracts pin these rules and the
+rebuilt payload must hash-match the bundled DLL.
+
 ## R59 — Detached Overlays lost its theme and Sticky Notes drifted again (fixed 4.1.349, 2026-08-28)
 
 **Symptom:** the detached global Overlays window rendered ComboBoxes, TextBoxes and Buttons with white stock-WPF

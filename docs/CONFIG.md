@@ -17,9 +17,14 @@ settings on demand instead of once per second: a `FileSystemWatcher` on the INI 
 a 2 s `OpenFileMappingW` probe of that mapping covers profile switches without throwing while no session exists, a
 30 s timer is the fallback, and the settings app sends the existing `refresh` pipe command after a per-app profile
 save because registry overrides are invisible to a file watcher.
-`experimental_draw_in_void` defaults off and has no renderer effect. ReShade UI preferences use
-`reshade_remote_xr_mode`, `reshade_remote_menu_visible`, `reshade_remote_win_headless` and
-`reshade_remote_win_always_on_top`; deployment state is deliberately absent.
+`experimental_draw_in_void` defaults off and has no renderer effect. ReShade Remote preferences use
+`reshade_remote_xr_mode`, `reshade_remote_menu_visible` (in-HMD only),
+`reshade_remote_desktop_menu_visible`, `reshade_remote_win_headless` and
+`reshade_remote_win_always_on_top`. The payload's configurable keys use
+`reshade_remote_hotkey_{toggle_effects,next_preset,previous_preset,toggle_menu}` and
+`reshade_remote_hotkey_menu_desktop`. `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini` is authoritative for all of
+them; the old ProgramData `[Window]` values are compatibility-read-only when a preference is absent. Deployment
+state is deliberately absent. Fresh installs start with the in-HMD menu hidden and desktop preview visible.
 
 ## OBS mirror-only visibility
 
@@ -191,8 +196,9 @@ Dead keys (removed 4.1.65, do not resurrect): `mask_vertical`/`mask_horizontal` 
 4.1.55-derived `LoadConfig`; treat them as legacy compat only.
 
 UI-only keys: window size/column layout keys, `stencil_outer_edges_only` also gates preview mode +
-inner-low slider enablement. ReShade Remote state lives in ProgramData (shared-memory block +
-`openxr_quad_transform.ini`), not in this ini.
+inner-low slider enablement. ReShade Remote preferences live in this INI and are mirrored through the volatile
+`Local\ReShadeXRControl` block. Only the ReShade quad transform remains in ProgramData
+`openxr_quad_transform.ini`; its obsolete `[Window]` entries are migration fallback, not a second authority.
 
 ## 2026-07-10 implementation update
 

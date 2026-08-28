@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.350 - 2026-08-28 (ReShade Remote persistence and Home repair)
+
+- Unified ReShade Remote mode, menu/window and hotkey preferences in ViewLab's LocalAppData INI. The payload reads old ProgramData window values only as migration fallback, so game/ViewLab launch order can no longer reset Borderless, Always on top or menu state.
+- Split the former combined menu checkbox into independent `Show desktop preview` and `Show in-HMD menu` controls. Home now changes the in-HMD state only unless its explicit desktop option is enabled.
+- Made Home a no-repeat Windows hotkey, mirrored payload-originated menu changes durably, and stopped opening the Remote from overwriting a valid live control block.
+- Fresh installs start with the in-HMD ReShade menu hidden and the desktop preview visible. Changing Borderless preserves whether that preview is currently shown or hidden.
+
 ## 4.1.349 - 2026-08-28 (Overlay theme and sticky-note scale repair)
 
 - Restored ViewLab's dark TextBlock, CheckBox, Slider, ComboBox, ComboBoxItem, TextBox and Button styles in the detached global Overlays window, including styles supplied by the merged shared theme.

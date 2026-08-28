@@ -4,7 +4,25 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-28
-**Current version:** 4.1.349 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.349.msi` (contracts, overlay fixtures and full MSI payload validation pass; **not live-validated yet**).
+**Current version:** 4.1.350 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.350.msi` (contracts, focused ReShade source build and full MSI payload validation pass; **not live-validated yet**).
+
+**2026-08-28 — 4.1.350 ReShade Remote persistence and Home state repaired.**
+Live diagnosis found three contradictory values in the same running iRacing session: ViewLab's LocalAppData menu
+preference was `0`, the legacy ProgramData menu preference was `1`, and `Local\ReShadeXRControl` was `1`. ViewLab
+and the payload had been writing separate durable copies, so launch order reset menu, Borderless and Always on top.
+The shared `menu_visible` bit also claimed to mean desktop and in-HMD visibility at once, while Home could be
+configured not to change desktop. Its Windows registration lacked `MOD_NOREPEAT`, allowing repeat toggles.
+
+LocalAppData is now the sole writable Remote preference authority on both sides; ProgramData `[Window]` values are
+read-only compatibility fallback and quad transform remains there. Desktop preview and in-HMD visibility have
+separate controls and keys. Opening Remote adopts a valid live block, payload revisions are mirrored durably,
+Borderless preserves hidden/shown desktop state, and Home is a no-repeat edge. Fresh installs start HMD hidden and
+desktop shown. The frozen 80-byte control block is unchanged. Rebuilt payload SHA-256 is
+`F3857C20031A1FE64A05A85A9242D9EEFBD899C7140F75C0DD51DA61FAFE0B54` and hash-matches canonical source output.
+Factory/payload/ViewLab contracts, WPF, broker, x64/Win32 layers and extracted MSI validation pass. Build 4.1.350 is
+149,954,560 bytes, SHA-256 `AD85EE61D37C0032D18946CF4609225EB959893B2E350757D47CA238E21791BE`.
+Required live check after closing the current sim before install: launch twice with HMD menu off; confirm it stays
+off, Home toggles exactly once per press, desktop remains independent, and Borderless/Always on top survive restart.
 
 **2026-08-28 — 4.1.349 Overlay theme and sticky-note scale regressions repaired.**
 The detached global Overlays window now resolves and copies the main window's TextBlock, CheckBox, Slider,

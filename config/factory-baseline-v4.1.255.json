@@ -253,7 +253,8 @@
   },
   "reshadeRemote": {
     "xr_mode": 0,
-    "menu_visible": 1,
+    "menu_visible": 0,
+    "desktop_menu_visible": 1,
     "win_headless": 0,
     "win_always_on_top": 1
   },

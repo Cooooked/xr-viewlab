@@ -38,7 +38,7 @@ public sealed class ReShadeRemoteWindow : Window
 
     TextBlock _status = null!, _setup = null!;
     Border _gameplay = null!, _tuning = null!, _btnInstall = null!, _btnEnable = null!, _btnReposition = null!, _btnTransform = null!;
-    CheckBox _menu = null!, _headless = null!, _onTop = null!;
+    CheckBox _desktopMenu = null!, _hmdMenu = null!, _headless = null!, _onTop = null!;
     Window? _reposWin, _transWin;
 
     public ReShadeRemoteWindow()
@@ -96,8 +96,8 @@ public sealed class ReShadeRemoteWindow : Window
         body.Children.Add(Row(_gameplay, _tuning));
 
         body.Children.Add(Header("DESKTOP MENU"));
-        _menu = Check("Show desktop menu / overlay", v => Mutate((ref ReShadeControlService.XRControlBlock b) => b.menu_visible = v));
-        body.Children.Add(_menu);
+        _desktopMenu = Check("Show desktop preview", v => _svc.SetDesktopMenuVisible(v != 0));
+        body.Children.Add(_desktopMenu);
 
         body.Children.Add(Header("DESKTOP MENU WINDOW"));
         _headless = Check("Borderless", v => Mutate((ref ReShadeControlService.XRControlBlock b) => b.win_headless = v));
@@ -106,6 +106,8 @@ public sealed class ReShadeRemoteWindow : Window
         body.Children.Add(_onTop);
 
         body.Children.Add(Header("IN-HMD MENU QUAD"));
+        _hmdMenu = Check("Show in-HMD menu", v => Mutate((ref ReShadeControlService.XRControlBlock b) => b.menu_visible = v));
+        body.Children.Add(_hmdMenu);
         _btnReposition = RedButton("Reposition", ToggleRepos);
         _btnTransform = RedButton("Transform", ToggleTrans);
         body.Children.Add(Row(_btnReposition, _btnTransform));
@@ -472,7 +474,8 @@ public sealed class ReShadeRemoteWindow : Window
         SetButtonEnabled(_tuning, hasPayload);
         SetButtonEnabled(_btnReposition, hasPayload);
         SetButtonEnabled(_btnTransform, hasPayload);
-        _menu.IsEnabled = hasPayload;
+        _desktopMenu.IsEnabled = hasPayload;
+        _hmdMenu.IsEnabled = hasPayload;
         _headless.IsEnabled = hasPayload;
         _onTop.IsEnabled = hasPayload;
 
@@ -508,6 +511,7 @@ public sealed class ReShadeRemoteWindow : Window
         }
 
         var b = _svc.ReadBlock();
+		_svc.SyncPersistedPreferences();
         if (!_handshakeBaselineSet) { _lastHb = b.heartbeat; _handshakeBaselineSet = true; }
         else if (b.heartbeat != _lastHb) { _lastHb = b.heartbeat; _lastHbChange = DateTime.Now; }
         bool live = _lastHbChange != DateTime.MinValue && (DateTime.Now - _lastHbChange).TotalSeconds < 2.0;
@@ -540,7 +544,8 @@ public sealed class ReShadeRemoteWindow : Window
             _lastAppliedRevision = b.revision;
             _applying = true;
             SetChip(_gameplay, b.xr_mode == 0); SetChip(_tuning, b.xr_mode == 1);
-            _menu.IsChecked = b.menu_visible != 0;
+            _desktopMenu.IsChecked = _svc.ReadDesktopMenuVisible();
+            _hmdMenu.IsChecked = b.menu_visible != 0;
             _headless.IsChecked = b.win_headless != 0;
             _onTop.IsChecked = b.win_always_on_top != 0;
             _applying = false;

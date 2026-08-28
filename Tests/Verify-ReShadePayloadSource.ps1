@@ -16,6 +16,9 @@ Require-Text (Join-Path $source 'source\openxr\openxr_overlay.hpp') 'Local\\\\Re
 Require-Text (Join-Path $source 'source\openxr\openxr_hooks_swapchain.cpp') 'staging_textures\[2\]' 'double-buffered preview readback'
 Require-Text (Join-Path $source 'source\openxr\openxr_overlay_preview.cpp') 'WM_ERASEBKGND' 'flicker-free preview paint'
 Require-Text (Join-Path $source 'source\openxr\openxr_overlay_preview.cpp') 'preview_consume_keyboard_input' 'desktop keyboard bridge'
+Require-Text (Join-Path $source 'source\openxr\openxr_overlay_preview.cpp') 'reshade_remote_' 'single ViewLab preference authority'
+Require-Text (Join-Path $source 'source\openxr\openxr_overlay_preview.cpp') 'desktop_menu_visible' 'independent desktop visibility preference'
+Require-Text (Join-Path $source 'source\openxr\openxr_overlay_preview.cpp') 'MOD_NOREPEAT' 'single-edge global hotkeys'
 Require-Text (Join-Path $source 'source\runtime_gui_vr.cpp') 'AddInputCharacterUTF16' 'ImGui keyboard input'
 Require-Text (Join-Path $source 'README.ViewLab.md') '4a50d1eddace85734871d91792ff214f13f66c01' 'source provenance'
 

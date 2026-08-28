@@ -8,6 +8,18 @@ belongs to HUD/Trace layout feedback. A profile inherits until edited; `Use Glob
 overlay/module configuration and layout. The 4.1.255 baseline is an embedded JSON allowlist and never migrates app
 profiles or machine-specific ReShade deployment state.
 
+## D32 — ReShade Remote has one preference authority and two visibility states (2026-08-28)
+
+`%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini` is the sole durable authority for ReShade Remote mode, menu/window
+visibility, window chrome/topmost and global hotkeys. `Local\ReShadeXRControl` is live transport only. The payload
+may read the former ProgramData `[Window]` entries only when an INI preference is absent; it never writes them.
+The quad transform remains in ProgramData because it has no competing copy.
+
+Desktop preview visibility and in-HMD quad visibility are independent product states. `menu_visible` means only
+the in-HMD quad; `reshade_remote_desktop_menu_visible` owns the desktop preview. Home is a no-repeat edge and may
+include desktop only when the explicit payload option is enabled. Rejected: two writable persistence stores,
+launch-order precedence, and a single checkbox/bit pretending two surfaces are one.
+
 ## D31 — Per-app visor state and shape form one override (2026-07-18; supersedes D4)
 
 `Use global visor settings` means the entire visor configuration follows the main editor. Its registry sentinel is
