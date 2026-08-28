@@ -3,6 +3,9 @@ $ErrorActionPreference='Stop'
 $model=Get-Content (Join-Path $Root 'XRViewLab.UI\OverlaySettingsModels.cs') -Raw
 $ui=Get-Content (Join-Path $Root 'XRViewLab.UI\MainWindow.cs') -Raw
 $xaml=Get-Content (Join-Path $Root 'MainWindow.xaml') -Raw
+$profile=Get-Content (Join-Path $Root 'ProfileWindow.xaml') -Raw
+$profileUi=Get-Content (Join-Path $Root 'XRViewLab.UI\ProfileWindow.cs') -Raw
+$theme=Get-Content (Join-Path $Root 'ViewLabTheme.xaml') -Raw
 $native=Get-Content (Join-Path $Root 'dllmain.cpp') -Raw
 $ini=Get-Content (Join-Path $Root 'xr-viewlab.ini') -Raw
 function Need($text,$pattern,$message){if($text-notmatch$pattern){throw "Overlay settings contract failed: $message"}}
@@ -16,6 +19,7 @@ foreach($control in 'ClockWidgetXSlider','HudXSlider','HudTraceXSlider','Crossha
     Need $xaml "<StackPanel Visibility=`"Collapsed`">[\s\S]*?Name=`"$control`"" "position backing control $control is not collapsed"
 }
 Forbid $xaml 'Text="Position X / Y"|Text="Scale / opacity"' 'legacy combined sticky-note slider labels remain'
+Forbid $xaml 'Each note has an independent theme, paper colour, position, scale and opacity' 'removed green sticky-note annotation remains'
 # "applies live" boilerplate removed (all supported overlay settings apply live already).
 Forbid $xaml 'apply live|applies live' 'redundant "applies live" boilerplate remains'
 # One-off "Keep HUD inside visible region" checkbox removed; clamp-to-visible is an always-on internal default.
@@ -76,6 +80,24 @@ Need $native 'stable\.notifyScale, 0\.1, 3\.0' 'notification live minimum scale 
 Need $native 'stable\.clockScale,\.1,2\.0' 'Clock + Timer live minimum scale differs from UI'
 Need $native 'ReadDoubleSetting\(L"notify_scale", 1\.0\), 0\.1, 3\.0' 'notification startup minimum scale differs from UI'
 Need $native 'ReadDoubleSetting\(L"clock_widget_scale", 1\.0\), 0\.10, 2\.0' 'Clock + Timer startup minimum scale differs from UI'
+Need $xaml '<Slider Minimum="0\.1" Maximum="2\.5" Value="\{Binding Scale, Mode=TwoWay\}"' 'global sticky-note scale range is not 0.1-2.5'
+Need $profile '<Slider Minimum="0\.1" Maximum="2\.5" Value="\{Binding Scale,Mode=TwoWay\}"' 'per-app sticky-note scale range is not 0.1-2.5'
+Need $ui 'n\.Scale,\.1,2\.5,n\.Opacity' 'global sticky-note preview does not expose the 0.1 minimum'
+Need $profileUi 'placement\.Scale, \.1, 2\.5' 'per-app sticky-note preview does not expose the 0.1 minimum'
+Need $ui 'ReadRangeSetting\("sticky_note_scale",1,\.1,2\.5\)' 'legacy sticky-note load still clamps scale above 0.1'
+Need $ui 'ReadRangeSetting\(\$"sticky_note_\{i\}_scale",1,\.1,2\.5\)' 'indexed sticky-note load still clamps scale above 0.1'
+Need $native 'r\.scale,\.1,2\.5' 'sticky-note live-state scale clamp differs from the UI'
+Need $native 'ReadDoubleSetting\(L"sticky_note_scale",1\.0\),\.1,2\.5' 'legacy sticky-note startup clamp differs from the UI'
+Need $native 'ReadDoubleSetting\(key,1\),\.1,2\.5' 'indexed sticky-note startup clamp differs from the UI'
+Need $native 'std::clamp\(scale,\.1,2\.5\)' 'legacy profile sticky-note clamp differs from the UI'
+Need $native 'readOverlayDouble\(scaleKey,note\.scale,\.1,2\.5' 'canonical profile sticky-note clamp differs from the UI'
+Need $ini '(?m)^sticky_note_scale=1\.0\r?$' 'sticky-note default scale is no longer 1.0'
+Need $theme 'x:Key="StickyNoteCard"' 'sticky-note card styling is not shared'
+Need $theme 'x:Key="StickyNoteLabel"[\s\S]*?Property="Foreground"' 'sticky-note labels do not have an explicit shared readable foreground'
+Need $xaml 'Name="StickyNotesList" Style="\{StaticResource StickyNoteCollection\}"[\s\S]*?Style="\{StaticResource StickyNoteCard\}"' 'global sticky-note editor does not use the shared card layout'
+Need $profile 'Name="ProfileStickyNotesList" Style="\{StaticResource StickyNoteCollection\}"[\s\S]*?Style="\{StaticResource StickyNoteCard\}"' 'per-app sticky-note editor does not use the shared card layout'
+Need $ui 'typeof\(TextBlock\), typeof\(CheckBox\), typeof\(Slider\), typeof\(ComboBox\),\s*typeof\(ComboBoxItem\), typeof\(TextBox\), typeof\(Button\)' 'detached Overlays window does not copy every required control style'
+Need $ui 'TryFindResource\(controlType\) is Style style[\s\S]*?w\.Resources\[controlType\] = style' 'detached Overlays window bypasses merged theme resources'
 Need $xaml 'Name="HudScaleSlider" Minimum="0\.15" Maximum="3" Value="1"' 'HUD scale bounds changed outside scope'
 Need $xaml 'Name="HudTraceScaleSlider" Minimum="0\.25" Maximum="3" Value="1"' 'Trace scale bounds changed outside scope'
 Need $ui 'MaskBeanEditor\.SetVisorVisible\(MaskEnabledCheck\?\.IsChecked==true\)' 'visor enable state is not forwarded to the preview'

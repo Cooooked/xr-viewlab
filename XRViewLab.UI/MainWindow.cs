@@ -387,12 +387,17 @@ public partial class MainWindow : Window
 			WindowStartupLocation = WindowStartupLocation.CenterOwner,
 			ShowInTaskbar = false, Content = shell
 		};
-		// The panel was declared in MainWindow.xaml and is now hosted in a separate Window. Copy the
-		// window-level control styles it depends on so Expander headers, CheckBoxes and sliders retain
-		// the ViewLab dark theme rather than falling back to WPF's black text/light slider defaults.
-		w.Resources[typeof(TextBlock)] = Resources[typeof(TextBlock)];
-		w.Resources[typeof(CheckBox)] = Resources[typeof(CheckBox)];
-		w.Resources[typeof(Slider)] = Resources[typeof(Slider)];
+		// The panel was declared in MainWindow.xaml and is now hosted in a separate Window. Copy every
+		// implicit control style it uses. TryFindResource includes merged ViewLabTheme.xaml resources,
+		// unlike indexing this window's local Resources dictionary directly.
+		Type[] overlayStyleTypes =
+		{
+			typeof(TextBlock), typeof(CheckBox), typeof(Slider), typeof(ComboBox),
+			typeof(ComboBoxItem), typeof(TextBox), typeof(Button)
+		};
+		foreach (Type controlType in overlayStyleTypes)
+			if (TryFindResource(controlType) is Style style)
+				w.Resources[controlType] = style;
 		w.Resources[typeof(Expander)] = new Style(typeof(Expander))
 		{
 			Setters = { new Setter(Control.ForegroundProperty, new SolidColorBrush(Color.FromRgb(0xE8, 0xE8, 0xE8))) }
@@ -2953,7 +2958,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if(includeDisabled||HudEnabledCheck.IsChecked==true){int count=_hudWidgets.Count(w=>w.Enabled);items.Add(new("hud","PERFORMANCE HUD",HudXSlider.Value,HudYSlider.Value,Math.Max(1,count),0,HudScaleSlider.Value,HudScaleSlider.Minimum,HudScaleSlider.Maximum,HudOpacitySlider.Value,OverlayPreviewAnchor.TopLeft,OverlayPreviewStyle.Hud));}
 		if(includeDisabled||HudTraceVisibilityCombo.SelectedIndex>0)items.Add(new("trace","PERFORMANCE TRACE",HudTraceXSlider.Value,HudTraceYSlider.Value,HudTraceWidthSlider.Value,.16,HudTraceScaleSlider.Value,HudTraceScaleSlider.Minimum,HudTraceScaleSlider.Maximum,HudTraceOpacitySlider.Value,OverlayPreviewAnchor.TopLeft,OverlayPreviewStyle.Trace));
 		if(includeDisabled||ClockWidgetEnabledCheck.IsChecked==true)items.Add(new("clock",ClockSessionTimerCheck.IsChecked==true?"CLOCK + TIMER":"CLOCK",ClockWidgetXSlider.Value,ClockWidgetYSlider.Value,0,ClockSessionTimerCheck.IsChecked==true?1:0,ClockWidgetScaleSlider.Value,ClockWidgetScaleSlider.Minimum,ClockWidgetScaleSlider.Maximum,ClockWidgetOpacitySlider.Value,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Clock,Math.Max(0,ClockThemeCombo.SelectedIndex)));
-		if(includeDisabled||StickyNoteEnabledCheck.IsChecked==true)for(int i=0;i<_stickyNotes.Count;++i){var n=_stickyNotes[i];if(n.Enabled&&!string.IsNullOrWhiteSpace(n.Text))items.Add(new($"sticky:{i}",$"NOTE {i+1}",n.X,n.Y,.12,.12,n.Scale,.5,2.5,n.Opacity,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Sticky,n.Theme));}
+		if(includeDisabled||StickyNoteEnabledCheck.IsChecked==true)for(int i=0;i<_stickyNotes.Count;++i){var n=_stickyNotes[i];if(n.Enabled&&!string.IsNullOrWhiteSpace(n.Text))items.Add(new($"sticky:{i}",$"NOTE {i+1}",n.X,n.Y,.12,.12,n.Scale,.1,2.5,n.Opacity,OverlayPreviewAnchor.Centre,OverlayPreviewStyle.Sticky,n.Theme));}
 		if(includeDisabled||NotifyEnabledCheck.IsChecked==true)items.Add(new("notifications","NOTIFICATION",NotifyXSlider.Value,NotifyYSlider.Value,.28,.12,NotifyScaleSlider.Value,NotifyScaleSlider.Minimum,NotifyScaleSlider.Maximum,NotifyOpacitySlider.Value,OverlayPreviewAnchor.BottomRight,OverlayPreviewStyle.Notification,Math.Max(0,NotifyThemeCombo.SelectedIndex)));
 		return items;
 	}
@@ -3483,13 +3488,13 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		{
 			_stickyNotes.Add(new StickyNoteOption { Number=1, Enabled=true, Text=ReadSetting(StickyNoteTextKey,string.Empty),
 				X=ReadRangeSetting("sticky_note_x",.78,0,1),Y=ReadRangeSetting("sticky_note_y",.22,0,1),
-				Scale=ReadRangeSetting("sticky_note_scale",1,.5,2.5),Opacity=ReadRangeSetting("sticky_note_opacity",.85,.1,1),Design=0 });
+				Scale=ReadRangeSetting("sticky_note_scale",1,.1,2.5),Opacity=ReadRangeSetting("sticky_note_opacity",.85,.1,1),Design=0 });
 			return;
 		}
 		for(int i=0;i<count;++i)_stickyNotes.Add(new StickyNoteOption { Number=i+1,
 			Enabled=ReadBoolSetting($"sticky_note_{i}_enabled",true),Text=ReadSetting($"sticky_note_{i}_text",string.Empty),
 			X=ReadRangeSetting($"sticky_note_{i}_x",.78,0,1),Y=ReadRangeSetting($"sticky_note_{i}_y",.22,0,1),
-			Scale=ReadRangeSetting($"sticky_note_{i}_scale",1,.5,2.5),Opacity=ReadRangeSetting($"sticky_note_{i}_opacity",.85,.1,1),
+			Scale=ReadRangeSetting($"sticky_note_{i}_scale",1,.1,2.5),Opacity=ReadRangeSetting($"sticky_note_{i}_opacity",.85,.1,1),
 			Theme=(int)ReadRangeSetting($"sticky_note_{i}_theme",0,0,4),Design=(int)ReadRangeSetting($"sticky_note_{i}_style",0,0,1) });
 	}
 

@@ -166,6 +166,26 @@ foreach ($name in @('ProfileClockOpacity','ProfileHudOpacity','ProfileTraceOpaci
     Assert-Contains 'ProfileWindow.xaml' ('Text="Opacity"[^>]*/>\s*<Slider Name="{0}"' -f $name) "$name is explicitly labelled Opacity"
 }
 Assert-Contains 'ProfileWindow.xaml' 'Name="ProfileStickyNotesList"[\s\S]*?Text="Scale"[^>]*/>\s*<Slider[^>]*Value="\{Binding Scale,Mode=TwoWay\}"[\s\S]*?Text="Opacity"[^>]*/>\s*<Slider[^>]*Value="\{Binding Opacity,Mode=TwoWay\}"' 'per-app sticky notes expose separate labelled Scale and Opacity controls'
+# R59: the detached global window must resolve merged theme resources, both sticky-note editors use
+# the same shared card/label styles, and the 0.1 scale minimum must survive every UI/native path.
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'typeof\(TextBlock\), typeof\(CheckBox\), typeof\(Slider\), typeof\(ComboBox\),\s*typeof\(ComboBoxItem\), typeof\(TextBox\), typeof\(Button\)' 'detached Overlays window copies all required implicit styles'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'TryFindResource\(controlType\) is Style style[\s\S]*?w\.Resources\[controlType\] = style' 'detached Overlays window includes merged theme resources'
+Assert-Contains 'ViewLabTheme.xaml' 'x:Key="StickyNoteCard"[\s\S]*?x:Key="StickyNoteTitle"[\s\S]*?x:Key="StickyNoteLabel"' 'sticky-note editor visuals have one shared definition'
+Assert-Contains 'ViewLabTheme.xaml' 'x:Key="StickyNoteLabel"[\s\S]*?Property="Foreground" Value="\{StaticResource ThemeMutedBrush\}"' 'sticky-note labels have an explicit readable shared foreground'
+Assert-Contains 'MainWindow.xaml' 'Name="StickyNotesList" Style="\{StaticResource StickyNoteCollection\}"[\s\S]*?Style="\{StaticResource StickyNoteCard\}"' 'global sticky-note editor uses the shared card layout'
+Assert-Contains 'ProfileWindow.xaml' 'Name="ProfileStickyNotesList" Style="\{StaticResource StickyNoteCollection\}"[\s\S]*?Style="\{StaticResource StickyNoteCard\}"' 'per-app sticky-note editor uses the shared card layout'
+Assert-NotContains 'MainWindow.xaml' 'Each note has an independent theme, paper colour, position, scale and opacity' 'removed green sticky-note annotation is absent'
+Assert-Contains 'MainWindow.xaml' '<Slider Minimum="0\.1" Maximum="2\.5" Value="\{Binding Scale, Mode=TwoWay\}"' 'global sticky-note scale range is 0.1-2.5'
+Assert-Contains 'ProfileWindow.xaml' '<Slider Minimum="0\.1" Maximum="2\.5" Value="\{Binding Scale,Mode=TwoWay\}"' 'per-app sticky-note scale range is 0.1-2.5'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'n\.Scale,\.1,2\.5,n\.Opacity' 'global sticky-note preview uses the 0.1 minimum'
+Assert-Contains 'XRViewLab.UI\ProfileWindow.cs' 'placement\.Scale, \.1, 2\.5' 'per-app sticky-note preview uses the 0.1 minimum'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ReadRangeSetting\("sticky_note_scale",1,\.1,2\.5\)' 'legacy sticky-note loading accepts scale 0.1'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'ReadRangeSetting\(\$"sticky_note_\{i\}_scale",1,\.1,2\.5\)' 'indexed sticky-note loading accepts scale 0.1'
+Assert-Contains 'dllmain.cpp' 'r\.scale,\.1,2\.5' 'sticky-note live-state clamp accepts scale 0.1'
+Assert-Contains 'dllmain.cpp' 'ReadDoubleSetting\(L"sticky_note_scale",1\.0\),\.1,2\.5' 'legacy sticky-note startup clamp accepts scale 0.1'
+Assert-Contains 'dllmain.cpp' 'ReadDoubleSetting\(key,1\),\.1,2\.5' 'indexed sticky-note startup clamp accepts scale 0.1'
+Assert-Contains 'dllmain.cpp' 'std::clamp\(scale,\.1,2\.5\)' 'legacy profile sticky-note clamp accepts scale 0.1'
+Assert-Contains 'dllmain.cpp' 'readOverlayDouble\(scaleKey,note\.scale,\.1,2\.5' 'canonical profile sticky-note clamp accepts scale 0.1'
 foreach ($positionControl in @('ClockWidgetXSlider','HudXSlider','HudTraceXSlider','CrosshairOffsetXSlider','NotifyXSlider')) {
     Assert-Contains 'MainWindow.xaml' ('<StackPanel Visibility="Collapsed">[\s\S]*?Name="{0}"' -f $positionControl) "$positionControl is retained only as hidden preview-backed state"
 }
@@ -918,6 +938,7 @@ foreach ($key in @('sticky_note_enabled','sticky_note_x','sticky_note_y','sticky
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'sticky_note_text' 'UI persists sticky note text'
 Assert-Contains 'dllmain.cpp' 'sticky_note_text' 'native layer reads sticky note text'
 Assert-IniValue 'sticky_note_enabled' '0'
+Assert-IniValue 'sticky_note_scale' '1.0'
 Assert-IniValue 'sticky_note_toggle_vk' '118'
 Assert-Contains 'dllmain.cpp' 'if\(down&&!feature\.keyDown\)' 'shared overlay binds are rising-edge triggered'
 Assert-Contains 'dllmain.cpp' 'viewlab::sticky_note::Wrap' 'native note uses bounded tested wrapping'

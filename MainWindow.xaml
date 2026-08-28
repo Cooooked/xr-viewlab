@@ -763,23 +763,22 @@
                         <StackPanel Margin="20,4,0,4">
                       <TextBlock Text="Show/hide bind" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1"/>
                       <ComboBox Name="StickyNoteToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed"/>
-                      <ItemsControl Name="StickyNotesList" Margin="0,5,0,0">
-                        <ItemsControl.ItemTemplate><DataTemplate><Border Background="#1C1D20" BorderBrush="#3B3D42" BorderThickness="1" CornerRadius="3" Padding="7" Margin="0,0,0,6"><StackPanel>
-                          <DockPanel><TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="#C8C8C8"/><Button DockPanel.Dock="Right" Content="Remove" Click="StickyNoteRemove_Click" Padding="5,1"/></DockPanel>
+                      <ItemsControl Name="StickyNotesList" Style="{StaticResource StickyNoteCollection}">
+                        <ItemsControl.ItemTemplate><DataTemplate><Border Style="{StaticResource StickyNoteCard}"><StackPanel>
+                          <DockPanel><TextBlock Text="{Binding Title}" Style="{StaticResource StickyNoteTitle}"/><Button DockPanel.Dock="Right" Content="Remove" Click="StickyNoteRemove_Click" Padding="5,1"/></DockPanel>
                           <CheckBox Content="Enabled" IsChecked="{Binding Enabled, Mode=TwoWay}" Checked="StickyNoteItem_Changed" Unchecked="StickyNoteItem_Changed"/>
                           <TextBox Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" MaxLength="120" Margin="0,4,0,0" LostFocus="StickyNoteItem_Changed" AcceptsReturn="True" Height="42" TextWrapping="Wrap"/>
-                          <TextBlock Text="Note theme" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,1"/>
+                          <TextBlock Text="Note theme" Style="{StaticResource StickyNoteLabel}"/>
                           <ComboBox ItemsSource="{Binding StickyNoteStyles, RelativeSource={RelativeSource AncestorType=Window}}" SelectedIndex="{Binding Design, Mode=TwoWay}" SelectionChanged="StickyNoteItem_Changed"/>
-                          <TextBlock Text="Paper colour" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,1"/>
+                          <TextBlock Text="Paper colour" Style="{StaticResource StickyNoteLabel}"/>
                           <ComboBox ItemsSource="{Binding StickyNoteThemes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedIndex="{Binding Theme, Mode=TwoWay}" SelectionChanged="StickyNoteItem_Changed"/>
-                          <TextBlock Text="Scale" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0"/>
-                          <Slider Minimum="0.5" Maximum="2.5" Value="{Binding Scale, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/>
-                          <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="9" Margin="0,4,0,0"/>
+                          <TextBlock Text="Scale" Style="{StaticResource StickyNoteLabel}"/>
+                          <Slider Minimum="0.1" Maximum="2.5" Value="{Binding Scale, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/>
+                          <TextBlock Text="Opacity" Style="{StaticResource StickyNoteLabel}"/>
                           <Slider Minimum="0.1" Maximum="1" Value="{Binding Opacity, Mode=TwoWay}" ValueChanged="StickyNoteItemSlider_Changed"/>
                         </StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate>
                       </ItemsControl>
                       <Button Content="Add sticky note" Click="StickyNoteAdd_Click" Padding="7,2" HorizontalAlignment="Left"/>
-                      <TextBlock Text="Each note has an independent theme, paper colour, position, scale and opacity. HD Paper uses anti-aliased handwriting, paper grain, a folded corner and soft depth." Foreground="#72B88A" FontSize="9" TextWrapping="Wrap" Margin="0,3,0,0"/>
                         </StackPanel>
                       </Expander>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1"/>

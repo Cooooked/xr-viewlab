@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.349 - 2026-08-28 (Overlay theme and sticky-note scale repair)
+
+- Restored ViewLab's dark TextBlock, CheckBox, Slider, ComboBox, ComboBoxItem, TextBox and Button styles in the detached global Overlays window, including styles supplied by the merged shared theme.
+- Made global and per-app Sticky Notes use the same shared dark card, border, padding, title, label and spacing resources, with explicit readable foregrounds throughout.
+- Lowered Sticky Notes Scale from 0.5 to 0.1 in both editors, both previews, live state, startup, legacy-profile and canonical per-app override clamps. The default remains 1.0 and the maximum remains 2.5.
+- Removed the green HD Paper annotation from the global editor. Position remains preview-only and global/per-app changes remain live.
+
 ## 4.1.348 - 2026-08-28 (Consistent overlay size controls)
 
 - Made the global and per-app editors expose the same clearly labelled `Scale` and `Opacity` controls for Clock, Performance HUD, Performance Trace, Sticky Notes, Crosshair and Notifications.

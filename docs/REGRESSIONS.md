@@ -1,5 +1,23 @@
 # Regression memory
 
+## R59 — Detached Overlays lost its theme and Sticky Notes drifted again (fixed 4.1.349, 2026-08-28)
+
+**Symptom:** the detached global Overlays window rendered ComboBoxes, TextBoxes and Buttons with white stock-WPF
+chrome and allowed black text on a dark surface. Its Sticky Notes editor and the per-app editor also used different
+card backgrounds, padding, margins, title/label treatment and field spacing. Sticky-note Scale stopped at 0.5 even
+though the intended default-sized card was still far too large.
+
+**Cause:** `BuildOverlaysWindow` copied only three styles by indexing `MainWindow.Resources`; that lookup cannot see
+the ComboBox/ComboBoxItem styles in merged `ViewLabTheme.xaml`. The two note DataTemplates contained independent
+visual literals, and the scale minimum was duplicated across two XAML sliders, two UI preview bounds, two UI load
+bounds and five native live/startup/profile clamps.
+
+**Contract:** the detached window copies TextBlock, CheckBox, Slider, ComboBox, ComboBoxItem, TextBox and Button
+styles through `TryFindResource`, so merged resources are included. Both note editors opt into the same
+`StickyNoteCollection`, `StickyNoteCard`, `StickyNoteTitle` and `StickyNoteLabel` resources; every note label has an
+explicit readable foreground. Sticky-note Scale is 0.1-2.5 at every UI, preview, live, startup, legacy-profile and
+canonical-override boundary, with a default of 1.0. Position remains preview-only and changes remain live per app.
+
 ## R58 — Global and per-app overlay controls drifted apart (fixed 4.1.348, 2026-08-28)
 
 **Symptom:** the per-app Sticky Notes editor showed one unlabelled slider (opacity) and no size control.

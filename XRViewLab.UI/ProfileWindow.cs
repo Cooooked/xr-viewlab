@@ -346,7 +346,7 @@ public partial class ProfileWindow : Window
 				StickyNoteOption note = _profileStickyNotes[index]; if (!note.Enabled || string.IsNullOrWhiteSpace(note.Text)) continue;
 				OverlayPlacementOverride placement = _overlayPlacements.TryGetValue($"sticky:{index}", out var customSticky)
 					? customSticky : new OverlayPlacementOverride(note.X, note.Y, note.Scale);
-				items.Add(new OverlayPreviewItem($"sticky:{index}", $"NOTE {index + 1}", placement.X, placement.Y, .12, .12, placement.Scale, .5, 2.5,
+				items.Add(new OverlayPreviewItem($"sticky:{index}", $"NOTE {index + 1}", placement.X, placement.Y, .12, .12, placement.Scale, .1, 2.5,
 					note.Opacity, OverlayPreviewAnchor.Centre, OverlayPreviewStyle.Sticky, note.Theme));
 			}
 		}

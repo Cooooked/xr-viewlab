@@ -4,7 +4,30 @@
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
 **Updated:** 2026-08-28
-**Current version:** 4.1.348 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.348.msi` (contracts, overlay fixtures and full MSI payload validation pass; **not live-validated yet**).
+**Current version:** 4.1.349 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.349.msi` (contracts, overlay fixtures and full MSI payload validation pass; **not live-validated yet**).
+
+**2026-08-28 — 4.1.349 Overlay theme and sticky-note scale regressions repaired.**
+The detached global Overlays window now resolves and copies the main window's TextBlock, CheckBox, Slider,
+ComboBox, ComboBoxItem, TextBox and Button styles through `TryFindResource`, so resources merged from
+`ViewLabTheme.xaml` remain available after the settings panel is re-hosted. Global and per-app Sticky Notes now
+consume the same shared dark card, border, padding, title and label resources; all note text uses explicit readable
+white/muted-grey foregrounds. The green HD Paper annotation is removed.
+
+Sticky-note Scale is 0.1-2.5 in both editors, both preview resize bounds, UI loading, native live state, native
+startup, legacy profile layout and canonical per-app overrides. Default Scale remains 1.0, including the packaged
+INI/factory baseline. Position remains exclusively preview-edited and all existing live per-app publishing paths are
+unchanged. `Verify-OverlaySettings.ps1`, `Verify-ViewLabContracts.ps1`, overlay settings/inheritance fixtures and the
+native RenderPolicy fixture pass. Build 4.1.349 is 149,950,464 bytes, SHA-256
+`84551E4557C0460F693D1C530DC6E88F3A766F460B6DC056AD11D238BAD4CACA`; WPF, broker, signed identity, x64/Win32 layers,
+MSI construction and extracted-payload validation pass. Required live check: open the detached global Overlays window
+and one app profile, compare Sticky Notes side by side, then confirm Scale 0.1 and live position/scale changes in-headset.
+
+**Known unrelated verifier defect found during 4.1.349 validation (not fixed here):**
+`Tests\Verify-Quest3PreviewAndProfiles.ps1` limits the text allowed between `LoadAppProfiles()` and the saved-profile
+status to 300 characters. The actual reload remains present in both `HEAD` and this build, but later broker/live-state
+work expanded the intervening block past that arbitrary ceiling, so the script reports a false missing
+"post-save registry reload" contract. Its profile logic is outside this regression fix and remains to be repaired
+by making the assertion structural rather than length-limited.
 
 **2026-08-28 — 4.1.348 Global/per-app overlay control parity.**
 The six ordinary overlay editors now share one visible control contract: Clock, Performance HUD, Performance
