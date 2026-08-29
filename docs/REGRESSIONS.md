@@ -1,5 +1,18 @@
 # Regression memory
 
+## R61 — 144 Hz cadence drops were averaged out while APP appeared alone (fixed 4.1.351, 2026-08-30)
+
+**What:** on Quest 3 at 144 Hz, APP could enter alarm while a fluctuating 140–120 FPS cadence produced no useful
+timing symbol. **Why:** VR/frame interval still used 103/108% defaults and the generic 750 ms alarm entry; the
+documented unstable-cadence and reprojection classifier existed only inside dead `#if 0` recovery code. A 140 FPS
+interval is 102.86% of the 6.944 ms target, just below the old warning boundary, while short 120 FPS periods could
+recover before generic sustained entry.
+
+**Never again:** `RenderPolicy.h::ClassifyCadenceHealth` is executable fixture-tested at 144, 140 and 120 FPS,
+including a mixed 140–120 distribution and stable cadence division. VR and frame interval default to 102/105% of
+the runtime-derived effective budget and use a 300 ms cadence-only entry. APP remains application-side wall time,
+not CPU utilisation; untouched version-1 global thresholds migrate once and explicit custom/profile values win.
+
 ## R60 — ReShade Remote values reset and Home could leave a false menu state (fixed 4.1.350, 2026-08-28)
 
 **Symptom:** the in-HMD ReShade menu reopened on launch despite ViewLab saving it off. Borderless and Always on

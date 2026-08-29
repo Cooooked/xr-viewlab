@@ -97,6 +97,7 @@ public partial class MainWindow : Window
 	private const string HudTraceVisibilityKey = "hud_trace_visibility_mode";
 	private const string PerformanceTraceRecordingKey = "performance_trace_recording";
 	private const string DiagnosticsOptInMarker = "DiagnosticsOptInApplied";
+	private const string Refresh144MetricsMarker = "Refresh144MetricsApplied";
 	private const string PerformanceTraceMarkerVkKey = "performance_trace_marker_vk";
 	private const string HudAlarmOnlyKey = "hud_alarm_only";
 	private const string HudAlarmHoldKey = "hud_alarm_hold_ms";
@@ -187,8 +188,8 @@ public partial class MainWindow : Window
 	{
 		new() { MetricId=0, Id="cpu", Label="CPU — total utilisation", Provider="Windows / GetSystemTimes", Unit="%", ToolTip="Total machine CPU utilisation; sampled every 250 ms." },
 		new() { MetricId=1, Id="gpu", Label="GPU — 3D utilisation", Provider="Windows PDH / adapter LUID", Unit="%", ToolTip="3D-engine utilisation for the render adapter." },
-		new() { MetricId=2, Id="app", Label="APP — application workload", Provider="OpenXR timing", Unit="%", ToolTip="Application work against the cadence-aware budget." },
-		new() { MetricId=3, Id="vr", Label="VR — cadence", Provider="OpenXR timing", Unit="ms", ToolTip="Wait-to-wait interval judged against the display period." },
+		new() { MetricId=2, Id="app", Label="APP — game frame workload", Provider="OpenXR timing", Unit="%", ToolTip="Wall time from xrBeginFrame return to xrEndFrame entry as a percentage of the active cadence budget. It can expose a main/render-thread bottleneck while total CPU and GPU still look comfortable." },
+		new() { MetricId=3, Id="vr", Label="VR — cadence", Provider="OpenXR timing", Unit="ms", ToolTip="Wait-to-wait application cadence against the runtime display period, including 144 Hz and stable reprojection divisions." },
 		new() { MetricId=4, Id="cpu_peak", Label="PEAK — busiest logical CPU", Provider="Windows PDH", Unit="%", ToolTip="Smoothed busiest logical processor." },
 		new() { MetricId=5, Id="cpu_frequency", Label="CLK — CPU reported clock", Provider="Windows power API", Unit="MHz", ToolTip="Average Windows CurrentMhz; not residency-derived effective clock." },
 		new() { MetricId=6, Id="ram", Label="RAM — physical memory", Provider="GlobalMemoryStatusEx", Unit="%", ToolTip="Physical memory pressure." },
@@ -498,6 +499,24 @@ public partial class MainWindow : Window
 		{
 			if (!WritePrivateProfileString("Settings", PerformanceTraceRecordingKey, "0", ConfigPath)) throw new IOException("Could not apply the diagnostics opt-in default.");
 			productKey.SetValue(DiagnosticsOptInMarker, "1", RegistryValueKind.String);
+		}
+
+		// Version-1 cadence defaults were tuned only through 120 Hz. Migrate only untouched values;
+		// deliberate user thresholds remain authoritative.
+		if (!string.Equals(productKey.GetValue(Refresh144MetricsMarker) as string, "1", StringComparison.Ordinal))
+		{
+			foreach ((string key, string oldValue, string newValue) in new[]
+			{
+				("hud_widget_vr_warning", "103", "102"), ("hud_widget_vr_critical", "108", "105"),
+				("hud_widget_frame_interval_warning", "103", "102"), ("hud_widget_frame_interval_critical", "108", "105")
+			})
+				if (string.Equals(ReadSetting(key, string.Empty), oldValue, StringComparison.Ordinal) &&
+					!WritePrivateProfileString("Settings", key, newValue, ConfigPath))
+					throw new IOException($"Could not migrate 144 Hz cadence setting '{key}'.");
+			if (string.Equals(ReadSetting(TelemetrySettingsVersionKey, "1"), "1", StringComparison.Ordinal) &&
+				!WritePrivateProfileString("Settings", TelemetrySettingsVersionKey, "2", ConfigPath))
+				throw new IOException("Could not migrate telemetry settings version.");
+			productKey.SetValue(Refresh144MetricsMarker, "1", RegistryValueKind.String);
 		}
 	}
 
@@ -1769,7 +1788,7 @@ public partial class MainWindow : Window
 			(double warning, double critical, string unit, bool lowerIsWorse) = widget.Id switch
 			{
 				"gpu" => (90, 98, "%", false),
-				"vr" or "frame_interval" => (103, 108, "% of frame budget", false),
+				"vr" or "frame_interval" => (102, 105, "% of frame budget", false),
 				"cpu_frequency" => (0, 0, "MHz (0 disables)", true),
 				"sys" => (30, 10, "% remaining", true),
 				"fps" => (0, 0, "fps (0 disables)", true),
@@ -3471,7 +3490,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_warning", widget.Warning.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 			WritePrivateProfileString("Settings", $"hud_widget_{widget.Id}_critical", widget.Critical.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		}
-		WritePrivateProfileString("Settings", TelemetrySettingsVersionKey, "1", ConfigPath);
+		WritePrivateProfileString("Settings", TelemetrySettingsVersionKey, "2", ConfigPath);
 		WritePrivateProfileString("Settings", "hud_max_per_row", HudWidgetIds.Length.ToString(CultureInfo.InvariantCulture), ConfigPath);
 		if (NetworkProbeTargetBox != null) WritePrivateProfileString("Settings",NetworkProbeTargetKey,(NetworkProbeTargetBox.Text??"1.1.1.1").Trim(),ConfigPath);
 		WritePrivateProfileString("Settings", HudGraphModeKey, Math.Max(0, HudGraphModeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);

@@ -72,5 +72,10 @@ function Ratio($interval,$hz,$multiple=1){$interval/((1000.0/$hz)*$multiple)}
 if([math]::Abs((Ratio 11.11 90)-1)-gt0.02){throw '90 Hz target classification failed'}
 if((Ratio 11.11 120)-lt1.30){throw '11.11 ms incorrectly acceptable at 120 Hz'}
 if([math]::Abs((Ratio 16.67 120 2)-1)-gt0.02){throw '120 Hz half-rate classification failed'}
+if([math]::Abs((Ratio (1000.0/144.0) 144)-1)-gt0.000001){throw '144 Hz native target classification failed'}
+if((Ratio (1000.0/140.0) 144)-lt1.02){throw '140 FPS at a 144 Hz target did not enter warning territory'}
+if((Ratio (1000.0/120.0) 144)-lt1.05){throw '120 FPS at a 144 Hz target did not enter critical territory'}
+Require $policy 'ClassifyCadenceHealth' '144 Hz cadence policy is not executable'
+Require $native 'cadenceMetric\?300:750' 'cadence alarms still hide high-refresh drops for the generic entry delay'
 
 Write-Output 'Performance HUD modularity, timing, cadence, graph, and migration contracts passed.'

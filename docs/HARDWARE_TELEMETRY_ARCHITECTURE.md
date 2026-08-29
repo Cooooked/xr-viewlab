@@ -50,11 +50,13 @@ text, spacing and row bounds.
 
 ## Persistence
 
-INI settings use explicit `telemetry_settings_version=1`, per-widget enable/order keys,
+INI settings use explicit `telemetry_settings_version=2`, per-widget enable/order keys,
 the legacy `hud_max_per_row` migration field, `hud_sys_warning`, and `hud_sys_critical`. The separate 64-byte
 `Local\XRViewLabTelemetryConfigV1` mapping carries live catalogue state and leaves the established
 208-byte v7 overlay mapping unchanged. Old explicit CPU/GPU/APP/VR keys are honoured; otherwise the
-default is CPU/GPU/SYS/VR.
+default is CPU/GPU/SYS/VR. Version 2 makes VR/frame interval explicitly cadence-relative through
+144 Hz, restores rolling-spread unstable/reprojection states, and migrates only untouched global
+103/108 thresholds to 102/105. APP remains the application-side wall window rather than CPU usage.
 
 ## Deferred providers and licensing
 

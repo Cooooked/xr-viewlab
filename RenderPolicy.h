@@ -39,6 +39,31 @@ inline uint32_t EffectiveGraphChannels(uint32_t mode, uint32_t selected) {
     return compatible != 0 ? compatible : DefaultGraphChannel(mode);
 }
 
+enum class CadenceHealthState : uint8_t {
+    OnTarget = 0,
+    Warning = 1,
+    Critical = 2,
+    Reprojection = 3,
+    Unstable = 4,
+    Unavailable = 5
+};
+
+// Classifies application cadence independently of any particular headset refresh rate. The
+// caller supplies ratios against predictedDisplayPeriod x the detected cadence multiple, so
+// 72/80/90/120/144 Hz and stable reprojection all use the same policy. Spread catches a bouncing
+// cadence (such as 140 <-> 120 at a 144 Hz target) even when its median has not yet crossed red.
+inline CadenceHealthState ClassifyCadenceHealth(bool available, double medianRatio, double spread,
+    bool cadenceTransition, int cadenceMultiple, int cadenceStableSamples,
+    double warningRatio, double criticalRatio) {
+    if (!available || medianRatio <= 0.0) return CadenceHealthState::Unavailable;
+    if (cadenceTransition || spread > 0.12) return CadenceHealthState::Unstable;
+    if (cadenceMultiple > 1 && cadenceStableSamples >= 20 && medianRatio >= 0.94 && medianRatio <= 1.06)
+        return CadenceHealthState::Reprojection;
+    if (criticalRatio > 0.0 && medianRatio >= criticalRatio) return CadenceHealthState::Critical;
+    if (warningRatio > 0.0 && medianRatio >= warningRatio) return CadenceHealthState::Warning;
+    return CadenceHealthState::OnTarget;
+}
+
 struct TraceVisibilityState {
     float alpha = 0.f;
     uint64_t holdUntil = 0;

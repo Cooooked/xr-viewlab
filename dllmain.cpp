@@ -141,10 +141,12 @@ enum class HudWidgetId : uint8_t {
     NetworkPing=12, NetworkLoss=13, NetworkJitter=14, NetworkStatus=15, Count=16
 };
 constexpr size_t kHudWidgetCount=static_cast<size_t>(HudWidgetId::Count);
-std::array<double,kHudWidgetCount> hudWidgetWarning{{75,90,75,103,75,0,75,75,75,30,0,103,80,2,15,1}};
-std::array<double,kHudWidgetCount> hudWidgetCritical{{90,98,90,108,90,0,90,90,90,10,0,108,150,5,30,2}};
+std::array<double,kHudWidgetCount> hudWidgetWarning{{75,90,75,102,75,0,75,75,75,30,0,102,80,2,15,1}};
+std::array<double,kHudWidgetCount> hudWidgetCritical{{90,98,90,105,90,0,90,90,90,10,0,105,150,5,30,2}};
 constexpr uint64_t kHudLowerIsWorseMask=(1ull<<(size_t)HudWidgetId::CpuFrequency)|(1ull<<(size_t)HudWidgetId::Sys)|(1ull<<(size_t)HudWidgetId::Fps);
 enum class HudMetricState : uint8_t { OnTarget=0, Warning=1, Critical=2, Reprojection=3, Unstable=4, Unavailable=5 };
+static_assert(static_cast<uint8_t>(HudMetricState::Unavailable)==static_cast<uint8_t>(viewlab::policy::CadenceHealthState::Unavailable),
+    "cadence policy and HUD presentation states must remain value-compatible");
 enum class HudGraphMode : uint32_t { Deviation=0, Milliseconds=1, Fps=2, BudgetPercent=3 };
 enum HudGraphChannel : uint32_t {
     GraphFrameInterval=1u<<0, GraphFps=1u<<1, GraphBudgetDeviation=1u<<2,
@@ -528,8 +530,9 @@ void UpdateHudState(int index, HudMetricState desired, uint64_t nowTick) {
         if(state==HudMetricState::Unavailable)return -1;
         return 0;
     };
+    const bool cadenceMetric=index==(int)HudWidgetId::Vr || index==(int)HudWidgetId::FrameInterval || index==(int)HudWidgetId::Fps;
     viewlab::policy::UpdateSustainedAlarm(alarm.policy, static_cast<int>(desired), severity(desired),
-        nowTick, 750, 750, static_cast<uint64_t>(std::clamp(hudAlarmHoldMs,0.0,10000.0)));
+        nowTick, cadenceMetric?300:750, 750, static_cast<uint64_t>(std::clamp(hudAlarmHoldMs,0.0,10000.0)));
     alarm.state=static_cast<HudMetricState>(alarm.policy.stableState);
     alarm.inAlarm=alarm.policy.visible;
 }
@@ -607,6 +610,8 @@ void UpdateHudMetrics() {
         copyHardware(HudWidgetId::NetworkJitter,viewlab::telemetry::MetricId::NetworkJitter);
         copyHardware(HudWidgetId::NetworkStatus,viewlab::telemetry::MetricId::NetworkStatus);
     }
+    HudMetricState cadenceVrDesired=HudMetricState::Unavailable;
+    HudMetricState cadenceFrameIntervalDesired=HudMetricState::Unavailable;
     {
         std::lock_guard<std::mutex> lock(g_hudTimingMutex);
         if(g_hudAppSmoothedPercent>0.0||g_hudAppRawPercent>0.0)g_hudMetrics[(size_t)HudWidgetId::App]={std::clamp(g_hudAppSmoothedPercent,0.0,100.0),true};
@@ -614,9 +619,32 @@ void UpdateHudMetrics() {
         g_hudMetrics[(size_t)HudWidgetId::Vr]={std::clamp(g_hudFrameTimeMs,0.0,999.9),cadenceAvailable};
         g_hudMetrics[(size_t)HudWidgetId::FrameInterval]=g_hudMetrics[(size_t)HudWidgetId::Vr];
         g_hudMetrics[(size_t)HudWidgetId::Fps]={cadenceAvailable?1000.0/g_hudFrameTimeMs:0.0,cadenceAvailable};
+        std::array<double,60> ratios{}; size_t ratioCount=0;
+        const size_t n=(std::min)(g_hudFrameHistoryCount,ratios.size());
+        for(size_t i=g_hudFrameHistoryCount-n;i<g_hudFrameHistoryCount;++i) {
+            const HudFrameSample& sample=g_hudFrameHistory[(g_hudFrameHistoryStart+i)%g_hudFrameHistory.size()];
+            if(sample.targetMs>0.0)ratios[ratioCount++]=sample.actualMs/sample.targetMs;
+        }
+        double medianRatio=0.0,spread=0.0;
+        if(ratioCount) {
+            std::sort(ratios.begin(),ratios.begin()+ratioCount);
+            medianRatio=ratios[ratioCount/2];
+            if(ratioCount>=10)spread=ratios[(ratioCount*9)/10]-ratios[ratioCount/10];
+        }
+        const bool transition=g_hudCadenceCandidate!=g_hudCadenceMultiple&&g_hudCadenceStable>=4;
+        auto classifyCadence=[&](HudWidgetId id) {
+            const size_t index=(size_t)id;
+            return static_cast<HudMetricState>(viewlab::policy::ClassifyCadenceHealth(cadenceAvailable&&ratioCount>=12,
+                medianRatio,spread,transition,g_hudCadenceMultiple,g_hudCadenceStable,
+                hudWidgetWarning[index]/100.0,hudWidgetCritical[index]/100.0));
+        };
+        cadenceVrDesired=classifyCadence(HudWidgetId::Vr);
+        cadenceFrameIntervalDesired=classifyCadence(HudWidgetId::FrameInterval);
     }
     for(size_t i=0;i<kHudWidgetCount;++i) {
-        UpdateHudState((int)i,ClassifyHudMetric(i,g_hudMetrics[i]),now);
+        const HudMetricState desired=i==(size_t)HudWidgetId::Vr?cadenceVrDesired:
+            i==(size_t)HudWidgetId::FrameInterval?cadenceFrameIntervalDesired:ClassifyHudMetric(i,g_hudMetrics[i]);
+        UpdateHudState((int)i,desired,now);
     }
     g_hudVrState=g_hudAlarm[(size_t)HudWidgetId::Vr].state;
     publishTraceState();

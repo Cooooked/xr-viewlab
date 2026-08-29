@@ -808,7 +808,7 @@ Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'modelHitRadius = PinHitPixelRa
 Assert-NotContains 'dllmain.cpp' 'projectionView\.fov\s*=' 'layer never rewrites submitted projection FOVs'
 Assert-NotContains 'dllmain.cpp' 'projectionView\.subImage\.imageRect\s*=' 'layer never rewrites submitted image rects'
 
-foreach ($hz in @(72, 80, 90, 107, 120)) {
+foreach ($hz in @(72, 80, 90, 107, 120, 144)) {
     $targetMs = 1000.0 / $hz
     $underBudgetMs = $targetMs * 0.95
     $overBudgetMs = $targetMs * 1.05
@@ -826,7 +826,8 @@ foreach ($case in @(
     @{ Hz = 72;  Multiple = 1; Fps = 72 }, @{ Hz = 72;  Multiple = 2; Fps = 36 },
     @{ Hz = 80;  Multiple = 1; Fps = 80 }, @{ Hz = 80;  Multiple = 2; Fps = 40 },
     @{ Hz = 90;  Multiple = 1; Fps = 90 }, @{ Hz = 90;  Multiple = 2; Fps = 45 },
-    @{ Hz = 120; Multiple = 1; Fps = 120 }, @{ Hz = 120; Multiple = 2; Fps = 60 })) {
+    @{ Hz = 120; Multiple = 1; Fps = 120 }, @{ Hz = 120; Multiple = 2; Fps = 60 },
+    @{ Hz = 144; Multiple = 1; Fps = 144 }, @{ Hz = 144; Multiple = 2; Fps = 72 })) {
     $periodMs = 1000.0 / $case.Hz
     $budgetMs = $periodMs * $case.Multiple
     $expectedBudgetMs = 1000.0 / $case.Fps

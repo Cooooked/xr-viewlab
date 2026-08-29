@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.351 - 2026-08-30 (Quest 3 144 Hz performance metrics)
+
+- Rebuilt VR/frame-interval health around the runtime's actual display period, with explicit 144 Hz fixtures: 6.944 ms is the native target, sustained 140 FPS is warning territory, and 120 FPS is critical.
+- Restored active unstable-cadence and stable-reprojection classification that had survived only in dead reference code. A bouncing 140–120 FPS distribution now raises an unstable cadence alarm even before its rolling median settles.
+- Reduced cadence-only alarm entry from 750 ms to 300 ms while retaining the shared time-based recovery and hold policy. CPU, GPU, APP and hardware metrics keep their existing sustained entry.
+- Clarified APP as game-frame wall time from `xrBeginFrame` return to `xrEndFrame` entry. It can expose main/render-thread pressure even when total CPU and GPU utilisation appear healthy.
+- Migrated untouched VR/frame-interval defaults from 103/108% to 102/105% of the active cadence budget; customised global and all per-app thresholds remain untouched.
+
 ## 4.1.350 - 2026-08-28 (ReShade Remote persistence and Home repair)
 
 - Unified ReShade Remote mode, menu/window and hotkey preferences in ViewLab's LocalAppData INI. The payload reads old ProgramData window values only as migration fallback, so game/ViewLab launch order can no longer reset Borderless, Always on top or menu state.

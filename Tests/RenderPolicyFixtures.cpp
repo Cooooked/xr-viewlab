@@ -72,6 +72,15 @@ int main() {
     Check(EffectiveGraphChannels(2, GraphBudgetDeviation) == GraphFps, "FPS mode gains its FPS channel");
     Check(EffectiveGraphChannels(3, GraphFps) == GraphFrameInterval, "budget-percent mode gains frame interval");
 
+    Check(ClassifyCadenceHealth(true, 144.0 / 140.0, 0.01, false, 1, 30, 1.02, 1.05) == CadenceHealthState::Warning,
+        "144 Hz cadence identifies a sustained 140 FPS shortfall");
+    Check(ClassifyCadenceHealth(true, 144.0 / 120.0, 0.01, false, 1, 30, 1.02, 1.05) == CadenceHealthState::Critical,
+        "144 Hz cadence identifies 120 FPS as critical");
+    Check(ClassifyCadenceHealth(true, 1.04, 0.17, false, 1, 30, 1.02, 1.05) == CadenceHealthState::Unstable,
+        "144 Hz cadence catches a bouncing 140-to-120 FPS interval distribution");
+    Check(ClassifyCadenceHealth(true, 1.00, 0.02, false, 2, 30, 1.02, 1.05) == CadenceHealthState::Reprojection,
+        "stable cadence division remains distinct from a dropped-frame alarm");
+
     TraceVisibilityState trace{};
     Check(UpdateTraceVisibility(trace, 1, false, 1000, 1500) == 1.f, "always mode is immediately visible");
     Check(UpdateTraceVisibility(trace, 2, false, 1001, 1500) == 0.f, "healthy alarm-only mode hides immediately");

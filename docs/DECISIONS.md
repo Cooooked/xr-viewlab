@@ -1,5 +1,17 @@
 # Decision log
 
+## D33 — Cadence health is runtime-relative and burst-aware (2026-08-30)
+
+Performance health never selects policy by headset name or a fixed refresh allowlist. ViewLab divides each real
+wait-to-wait interval by `predictedDisplayPeriod × detected cadence multiple`, then classifies the recent median,
+distribution spread and cadence transition. This covers 72–144 Hz and future rates without another hard-coded
+branch; 144 Hz is an explicit regression fixture because its 6.944 ms budget exposed the weakness.
+
+VR/frame interval warn at 102% and become critical at 105% by default. A rolling spread above 12 percentage points
+is unstable, and a confirmed integer cadence division is reprojection rather than a false dropped-frame alarm.
+Cadence uses 300 ms entry because a 750 ms window conceals high-refresh bursts; recovery remains 750 ms plus the
+user hold. APP remains the game-frame wall window, deliberately separate from machine-wide CPU/GPU utilisation.
+
 ## D32 — Overlay categories, inheritance and baseline (2026-07-18)
 
 Clock, HUD, Performance Trace, Sticky Notes, Crosshair and Notifications are configurable overlays. OBS Recording

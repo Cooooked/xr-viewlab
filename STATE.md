@@ -3,8 +3,25 @@
 > Single source of truth for "where are we". Update this file in the same commit as any
 > behavior change. Do not create handoff/status/session documents — this is the only one.
 
-**Updated:** 2026-08-28
-**Current version:** 4.1.350 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.350.msi` (contracts, focused ReShade source build and full MSI payload validation pass; **not live-validated yet**).
+**Updated:** 2026-08-30
+**Current version:** 4.1.351 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.351.msi` (contracts, native cadence fixtures, WPF, x64/Win32 layers and full MSI payload validation pass; **not live-validated yet**).
+
+**2026-08-30 — 4.1.351 Quest 3 144 Hz performance metrics rebuilt.**
+APP remains the application-side game-frame wall window (`xrBeginFrame` return to `xrEndFrame` entry) divided by
+the active cadence budget; it is not CPU utilisation and can expose a main/render-thread bottleneck while total CPU
+and GPU remain low. At 144 Hz the native budget is 6.944 ms, so the existing APP 75/90 thresholds mean 5.208 ms
+warning and 6.250 ms critical.
+
+VR/frame interval now use active `ClassifyCadenceHealth` policy rather than the generic classifier that had left
+unstable-cadence/reprojection handling stranded inside dead reference code. Defaults are 102/105% of the runtime's
+`predictedDisplayPeriod × detected cadence multiple`, cadence-only alarm entry is 300 ms rather than 750 ms, and
+rolling spread catches a bouncing 140–120 FPS distribution. Untouched version-1 global 103/108 values migrate
+once; user-customised globals and every per-app threshold remain authoritative. Native fixtures prove 144 target,
+140 warning, 120 critical, mixed-cadence unstable and stable reprojection. Repository contracts, factory baseline,
+WPF, broker, x64/Win32 layers and extracted MSI validation pass. Build is 149,954,560 bytes, SHA-256
+`76873C7048E0D22946426C68A2BC88601179DD21F94FADC89F8BA1019811B4FC`. Required headset check: at Quest 3
+144 Hz, reproduce the former 140–120 oscillation and confirm VR/FT appears within roughly 300 ms while APP still
+reports the game-frame workload independently.
 
 **2026-08-28 — 4.1.350 ReShade Remote persistence and Home state repaired.**
 Live diagnosis found three contradictory values in the same running iRacing session: ViewLab's LocalAppData menu
