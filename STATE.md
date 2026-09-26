@@ -6,7 +6,7 @@
 
 **Updated:** 2026-09-26
 
-- **Built for headset test:** 4.1.404 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.404.msi`. Proximity colour now has an independent 0–255 signal only inside two metres; the three-panel button row is fixed to 3×2. Racing cue validation awaits user confirmation.
+- **Built for headset test:** 4.1.406 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.406.msi`. Help panels now describe the current clock, iRacing cue and test behaviour. Proximity colour remains independent inside two metres; the three-panel button row is fixed to 3×2.
 
 - **Pending headset test:** native rendering now defaults to direct eye-texture presentation even when an
   existing installed config lacks `overlay_force_direct`. iRacing presentation tests now run while telemetry is
@@ -20,7 +20,7 @@
 
 ## Version
 
-- **Last built:** 4.1.404 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.404.msi` (pending visual validation).
+- **Last built:** 4.1.406 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.406.msi` (pending visual validation).
 - **Last confirmed in-headset by the user:** 4.1.351 (2026-09-26: "it works"). Nothing after it is confirmed.
 - **Nothing is committed.** All work since `ca33c96` is uncommitted on `dev` (never `git restore`/`stash` it).
 
