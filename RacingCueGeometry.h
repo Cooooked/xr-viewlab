@@ -5,6 +5,7 @@
 // severity) changes the computed geometry/alpha, rather than only that a key is read.
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace viewlab::racing {
 
@@ -14,6 +15,16 @@ namespace viewlab::racing {
 // the falloff reads. 8 bands produced a visibly blocky staircase; 32 keeps each band under
 // roughly a quarter of the width of the old ones while staying cheap to draw.
 constexpr int kSpotterBands = 32;
+
+// The colour mode uses the existing peripheral spotter geometry. Until CarLeftRight identifies
+// a side, longitudinal approach lights both outer edges; the separate rear cue keeps its own gate.
+inline bool ApproachVisible(bool active, bool iracingEnabled, bool spotterEnabled,
+                            uint32_t spotterMode, bool presentationTest) {
+    return active && spotterMode == 1 && ((iracingEnabled && spotterEnabled) || presentationTest);
+}
+inline uint32_t SpotterColour(uint32_t spotterMode, uint32_t classicColour) {
+    return spotterMode == 1 ? 0xFF0000u : classicColour;
+}
 
 // Spotter glow: total band width in pixels grows with the configured width, clamped to a safe range.
 inline float SpotterWidthPx(double spotterWidth, float viewW) {

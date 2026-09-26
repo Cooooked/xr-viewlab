@@ -76,6 +76,7 @@ bool liveVisorUsesProfileOverride = false;
 uint32_t profileOverlayOverrideMask = 0;
 uint32_t profileStickyOverlayOverrideMask = 0;
 std::wstring currentAppKey;
+std::wstring currentOpenXrAppName; // XrApplicationInfo::applicationName, as OpenXR Toolkit keys its settings
 bool profileObsFeatureOverride = false;
 bool profileIRacingFeatureOverride = false;
 constexpr bool visorHD = false;          // HD visor removed
@@ -93,6 +94,11 @@ bool splitMode = false;
 // visible region. Opt-in (default off) — on some titles the pose pitch reads as a slight world
 // tilt, so it is only for users who want their foveation re-centred on a lopsided crop.
 bool foveatedCenterCompensation = false;
+// Optical centring: keep the vertical crop band's height but centre it on straight ahead (tangent 0), which on
+// Quest 3 is the lens's optical centre (the preview's "optical centre", 0.403 of the lens height from the top),
+// instead of trimming top and bottom in proportion (which leaves the band centred below it). Overlays anchored
+// to the band follow automatically.
+bool opticalCentring = false;
 bool visualMaskOnly = false;
 bool horizontalVisualMaskOnly = false;
 void Log(const char* fmt, ...);
@@ -115,6 +121,7 @@ void LogVerbose(const char* format, ...);
 // Native performance HUD. It uses the same submitted-texture path as the visor, never an
 // OpenXR quad layer. Values remain unavailable unless measurable or explicitly debug-supplied.
 bool hudEnabled = false;
+uint32_t hudVisibilityMode = 0; // 0 off, 1 always, 2 sustained alarm
 double hudAnchorX = 0.04, hudAnchorY = 0.05, hudScale = 1.0, hudSpacing = 0.018, hudOpacity = 0.70, hudTraceOpacity = 0.70, hudSafeMargin = 0.025;
 bool hudClampToVisible = true;
 double hudGreenThreshold = 75.0, hudRedThreshold = 90.0, hudTraceSensitivityMs = 2.0;
@@ -127,8 +134,13 @@ bool hudTraceEnabled = false;
 uint32_t hudTraceVisibilityMode = 0; // 0 off, 1 always, 2 alarm only
 float g_hudTraceVisibilityAlpha = 0.f;
 viewlab::policy::TraceVisibilityState g_hudTraceVisibilityState{};
-bool hudAlarmOnly = false;
+float g_hudVisibilityAlpha = 0.f;
+viewlab::policy::TraceVisibilityState g_hudVisibilityState{};
 double hudAlarmHoldMs = 1500.0;
+// Alarm-only fade times (hud_trace_fade_in_ms / _out_ms; live in traceFlags bits 8-19 / 20-31).
+double hudTraceFadeInMs = 150.0, hudTraceFadeOutMs = 150.0;
+// Frame cost alarm-only sensitivity 0..1 (hud_trace_alarm_sensitivity; live in traceFlags bits 2-7 as 0..63).
+double hudTraceAlarmSensitivity = 0.8;
 double networkPingWarningMs=80.0,networkPingCriticalMs=150.0;
 double networkLossWarning=2.0,networkLossCritical=5.0;
 double networkJitterWarningMs=15.0,networkJitterCriticalMs=30.0;
@@ -147,7 +159,7 @@ constexpr uint64_t kHudLowerIsWorseMask=(1ull<<(size_t)HudWidgetId::CpuFrequency
 enum class HudMetricState : uint8_t { OnTarget=0, Warning=1, Critical=2, Reprojection=3, Unstable=4, Unavailable=5 };
 static_assert(static_cast<uint8_t>(HudMetricState::Unavailable)==static_cast<uint8_t>(viewlab::policy::CadenceHealthState::Unavailable),
     "cadence policy and HUD presentation states must remain value-compatible");
-enum class HudGraphMode : uint32_t { Deviation=0, Milliseconds=1, Fps=2, BudgetPercent=3 };
+enum class HudGraphMode : uint32_t { Deviation=0, Milliseconds=1, Fps=2, BudgetPercent=3, FrameCost=4 };
 enum HudGraphChannel : uint32_t {
     GraphFrameInterval=1u<<0, GraphFps=1u<<1, GraphBudgetDeviation=1u<<2,
     GraphAppWork=1u<<3, GraphWaitDuration=1u<<4, GraphSubmitDuration=1u<<5,
@@ -174,6 +186,12 @@ std::array<uint8_t,kHudWidgetCount> hudWidgetOrder{{0,1,9,3,2,4,5,6,7,8,10,11,12
 uint32_t hudMaxPerRow=static_cast<uint32_t>(kHudWidgetCount); // legacy mapping field; renderer is deliberately one row
 uint32_t hudGraphChannels = GraphBudgetDeviation;
 HudGraphMode hudGraphMode = HudGraphMode::Deviation;
+// Graph mode FrameCost = ms axes, budget line and a live one-decimal readout of CPU / GPU / Wait / Total
+// frame cost; hud_trace_cost_view picks the series. Live state packs the view into bits 8-11 of the
+// graph mode value. The legacy hud_trace_theme=1 key maps to this mode.
+uint32_t hudCostLines = 7;  // frame cost series bitmask: 1 total, 2 CPU, 4 GPU, 8 wait (0 reads as 7)
+uint32_t hudCostLabels = 0; // 0 full, 1 minimal+ (big readout only), 2 minimal (lines only)
+inline bool TraceFrameCostMode() { return hudGraphMode == HudGraphMode::FrameCost; }
 std::array<uint8_t,kHudWidgetCount> OrderedHudWidgets(uint32_t) { return hudWidgetOrder; }
 uint32_t PackHudWidgetOrder(const std::array<int,4>& positions) {
     std::array<std::pair<int,uint8_t>,4> sorted{};
@@ -186,9 +204,11 @@ struct HudMetric { double value = 0.0; bool available = false; };
 struct HudFrameSample {
     double actualMs = 0.0, targetMs = 0.0, deviationMs = 0.0;
     double appWorkMs = 0.0, waitDurationMs = 0.0, submitDurationMs = 0.0, displayPeriodMs = 0.0;
+    double cpuFrameMs = 0.0; // xrWaitFrame return -> xrEndFrame entry: the game's whole CPU frame (sim + render submit)
     int64_t qpc = 0;
     uint32_t markerNumber = 0;
     double gpuPercent = -1.0;
+    double gpuMs = -1.0; // GPU timestamp span of the frame; -1 when not measured
     uint64_t warningMask = 0, criticalMask = 0, visibleAlarmMask = 0;
     bool overBudget = false;
 };
@@ -200,7 +220,8 @@ PDH_HQUERY g_hudPdhQuery = nullptr;
 PDH_HCOUNTER g_hudGpuCounter = nullptr;
 LARGE_INTEGER g_hudQpcFrequency{};
 double g_hudAppRawPercent = 0.0, g_hudAppSmoothedPercent = 0.0;
-double g_hudLastAppWorkMs = 0.0, g_hudLastWaitDurationMs = 0.0, g_hudLastSubmitDurationMs = 0.0;
+double g_hudLastAppWorkMs = 0.0, g_hudLastWaitDurationMs = 0.0, g_hudLastSubmitDurationMs = 0.0, g_hudLastCpuFrameMs = 0.0;
+std::atomic<double> g_hudLastGpuMs{-1.0}; // latest resolved GPU frame span (GpuFrameTimer), -1 = none
 std::mutex g_hudTimingMutex;
 // The post-session recording is the same QPC sample stream used by the visor trace, retained in a
 // bounded ring for persistence at xrDestroySession. Markers are events in this stream, never log lines.
@@ -282,6 +303,13 @@ double notifyDurationMs = 3000.0;
 // The session clock starts at successful xrCreateSession and uses monotonic uptime; local time is
 // read only for display. It is deliberately independent of notifications and performance alarms.
 bool clockWidgetEnabled = false, clockSessionTimerEnabled = true, clock24Hour = true;
+uint32_t clockTimerMode=0,clockCountdownMinutes=15,clockTargetSeconds=17*3600+46*60;
+bool clockAlarmEnabled=true;
+uint32_t g_clockTimerCommand=0;
+viewlab::clock_widget::TimerState g_clockTimer{};
+void ResetClockTimer(uint64_t now){SYSTEMTIME local{};GetLocalTime(&local);const uint32_t nowSeconds=local.wHour*3600u+local.wMinute*60u+local.wSecond;
+    const uint64_t duration=clockTimerMode==3?uint64_t(viewlab::clock_widget::SecondsUntilLocalTarget(nowSeconds,clockTargetSeconds))*1000u:uint64_t(clockCountdownMinutes)*60000u;
+    g_clockTimer.Reset(now,duration,true);}
 // clockWidgetTheme selects the visual DESIGN (0 Classic card, 1 Minimal, 2 Terminal,
 // 3 Banner); clockWidgetPalette selects the colour set only (0 Graphite, 1 Paper, 2 OLED,
 // 3 Amber, 4 Mint). Legacy configs stored the palette in clock_widget_theme; a missing
@@ -353,8 +381,15 @@ bool iracingRearClosing = false;
 double iracingRearClosingOpacity = 0.9;
 // Grip-O-Bar (item 6): lower-left/right peripheral whole-car grip-loss bar from the packed gripState.
 bool iracingGripBar = false;
+// Rhythm shift light: packed shiftState (racing state v3). Monocular left/right peripheral tracks.
+bool iracingShiftLight = false;
+// Cue themes: 0 = the original glow; spotter 1 = crisp edge line, rear-closing 1 = mirror chevrons.
+uint32_t iracingSpotterTheme = 0, iracingRearClosingTheme = 0;
+uint32_t iracingSpotterMode = 0; // 0 Classic, 1 radar-style amber approach / red overlap
+double iracingShiftLightOpacity = 0.9, iracingShiftLightWidth = 1.0, iracingShiftLightPosition = 0.035;
 double iracingGripBarOpacity = 0.9;
 double iracingSpotterWidth = 0.12, iracingSpotterStrength = 1.0, iracingSpotterOpacity = 0.65, iracingSpotterFade = 1.8;
+double iracingSpotterLineWidth = 1.0, iracingSpotterLineInset = 0.18;
 // Optional presentation-only ramp for the spotter glow. Both default to 0 ms, which is an
 // instant on/off envelope — byte-identical to the behaviour before the sliders existed.
 double iracingSpotterFadeInMs = 0.0, iracingSpotterFadeOutMs = 0.0;
@@ -380,7 +415,8 @@ inline bool AnyCalibrationPattern() {
 inline bool BoundaryFlashActive() { return g_boundaryDragActive || g_boundaryReleaseTick != 0; }
 inline bool TraceMarkerConfirmationActive() { return g_traceMarkerConfirmationUntil.load(std::memory_order_acquire)>GetTickCount64(); }
 inline bool AnyStickyNote(){for(size_t i=0;i<stickyNoteCount;++i)if(stickyNotes[i].enabled&&!stickyNotes[i].text.empty()&&stickyNotes[i].opacity>.001)return true;return false;}
-inline bool AnyViewLabOverlay() { return (clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock)) || obsIndicatorEnabled || (stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote()) || (crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair)) || (notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications)) || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder || iracingRaceStart || iracingRearClosing || iracingGripBar)) || BoundaryFlashActive(); }
+bool RacingPresentationActive();
+inline bool AnyViewLabOverlay() { return (clockWidgetEnabled&&OverlayFeatureVisible(OverlayFeatureId::Clock)) || obsIndicatorEnabled || (stickyNoteEnabled&&OverlayFeatureVisible(OverlayFeatureId::StickyNote)&&AnyStickyNote()) || (crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair)) || (notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications)) || TraceMarkerConfirmationActive() || (iracingEnabled && (iracingLapPopup || iracingSpotterGlow || iracingFlagBorder || iracingRaceStart || iracingRearClosing || iracingGripBar || iracingShiftLight)) || RacingPresentationActive() || BoundaryFlashActive(); }
 inline bool AnyDirectOverlay() { return maskEnabled || AnyCalibrationPattern() || (hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud)) || (hudTraceEnabled&&OverlayFeatureVisible(OverlayFeatureId::Trace)) || AnyViewLabOverlay(); }
 
 uint64_t FileTimeToUint64(const FILETIME& time) {
@@ -446,8 +482,10 @@ void RecordHudFrameSample(double actualMs, double targetMs, int64_t qpc) {
     sample.actualMs=actualMs; sample.targetMs=targetMs; sample.deviationMs=actualMs-targetMs;
     sample.appWorkMs=g_hudLastAppWorkMs; sample.waitDurationMs=g_hudLastWaitDurationMs;
     sample.submitDurationMs=g_hudLastSubmitDurationMs; sample.displayPeriodMs=g_hudDisplayPeriodMs;
+    sample.cpuFrameMs=g_hudLastCpuFrameMs;
     sample.qpc=qpc; sample.markerNumber=g_pendingTraceMarker; g_pendingTraceMarker=0;
     sample.gpuPercent=g_traceGpuPercent.load(std::memory_order_acquire);
+    sample.gpuMs=g_hudLastGpuMs.load(std::memory_order_relaxed);
     sample.warningMask=g_traceWarningMask.load(std::memory_order_acquire);
     sample.criticalMask=g_traceCriticalMask.load(std::memory_order_acquire);
     sample.visibleAlarmMask=g_traceVisibleAlarmMask.load(std::memory_order_acquire);
@@ -781,10 +819,17 @@ struct LiveStateBlock {
     wchar_t liveProfileKey[128];
     float hudOpacity, traceOpacity;
     uint32_t performanceTraceRecording, performanceTraceMarkerKey;
+    // v16: colour engine (bit0 = LUT, 0 = per-pixel maths), switchable live from the Render menu.
+    uint32_t colourFlags;
+    float irShiftLightWidth, irShiftLightPosition;
+    uint32_t clockTimerMode,clockCountdownMinutes,clockTargetSeconds,clockTimerControl;
+    float irSpotterLineWidth, irSpotterLineInset; // v19: visible edge-line geometry
 };
 #pragma pack(pop)
-static_assert(sizeof(LiveStateBlock)==608,"live state v15 contract size");
+static_assert(sizeof(LiveStateBlock)==644,"live state v19 contract size");
 constexpr uint32_t kLiveStateMagic = 0x534C4C56; // VLLS
+// Colour engine: true = baked 3D LUT (one lookup per pixel), false = per-pixel maths. ini colour_grade_lut, live.
+bool g_colourUseLut = true;
 HANDLE g_liveStateMap = nullptr;
 const LiveStateBlock* g_liveState = nullptr;
 uint32_t g_liveStateGeneration = 0;
@@ -886,10 +931,13 @@ struct RacingStateBlock {
     int32_t lapNumber; float lapSeconds,lapDeltaSeconds; uint32_t reserved0;
     int64_t lapExpiresTick; uint32_t presentationFlags,reserved1;
     uint32_t gripState; // v2: packed Grip-O-Bar — bit0 active, bits1-2 dominance, bits3-4 direction, severity<<8
+    uint32_t shiftState; // v3: packed shift light — bit0 active, bit1 at shift point, bit2 over-rev, progress<<8
+    uint32_t spotterProximity; // v4: independent 0..255 close-range approach within two metres
 };
 #pragma pack(pop)
-static_assert(sizeof(RacingStateBlock)==68,"Racing state contract size");
+static_assert(sizeof(RacingStateBlock)==76,"Racing state contract size");
 HANDLE g_racingMap=nullptr; const RacingStateBlock* g_racing=nullptr; RacingStateBlock g_racingStable{}; uint32_t g_racingGeneration=0; uint64_t g_racingNextConnectTick=0;
+bool RacingPresentationActive(){return g_racingStable.presentationFlags!=0;}
 
 // Spotter fade envelope. Presentation only: it scales the drawn alpha and never affects which side
 // detection reports. g_spotterVisualState latches the last active side so the glow can fade OUT on
@@ -909,7 +957,7 @@ void UpdateSpotterEnvelope(){
 }
 void ConsumeRacingState(){
     if(!g_racing){const uint64_t now=GetTickCount64();if(now<g_racingNextConnectTick)return;g_racingNextConnectTick=now+1000;g_racingMap=OpenFileMappingW(FILE_MAP_READ,FALSE,L"Local\\XRViewLabRacingState");if(g_racingMap)g_racing=(const RacingStateBlock*)MapViewOfFile(g_racingMap,FILE_MAP_READ,0,0,sizeof(RacingStateBlock));}
-    if(!g_racing||g_racing->magic!=kRacingMagic||g_racing->version!=2||g_racing->size!=sizeof(RacingStateBlock)||g_racing->generation==g_racingGeneration)return;
+    if(!g_racing||g_racing->magic!=kRacingMagic||g_racing->version!=4||g_racing->size!=sizeof(RacingStateBlock)||g_racing->generation==g_racingGeneration)return;
     const RacingStateBlock snapshot=*g_racing;MemoryBarrier();if(snapshot.generation!=g_racing->generation)return;g_racingStable=snapshot;g_racingGeneration=snapshot.generation;
 }
 void DisconnectRacingState(){if(g_racing)UnmapViewOfFile(g_racing);if(g_racingMap)CloseHandle(g_racingMap);g_racing=nullptr;g_racingMap=nullptr;g_racingStable={};g_racingGeneration=0;g_racingNextConnectTick=0;g_spotterVisualState=0;g_spotterTargetActive=false;g_spotterTransitionTick=0;g_spotterTransitionStart=0.0f;g_spotterEnvelope=0.0f;}
@@ -935,10 +983,15 @@ void DisconnectStickyNoteState(){if(g_stickyNoteState)UnmapViewOfFile(g_stickyNo
 void ConsumeLiveState() {
     if (!g_liveState) { ConnectLiveState(); if (!g_liveState) { ConsumeTelemetryConfig(); ConsumeStickyNoteState(); return; } }
     const LiveStateBlock snapshot = *g_liveState;
-    if (snapshot.magic != kLiveStateMagic || snapshot.version != 15 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) { ConsumeTelemetryConfig(); ConsumeStickyNoteState(); return; }
+    if (snapshot.magic != kLiveStateMagic || snapshot.version != 19 || snapshot.size != sizeof(LiveStateBlock) || snapshot.generation == g_liveStateGeneration) { ConsumeTelemetryConfig(); ConsumeStickyNoteState(); return; }
     MemoryBarrier();
     const LiveStateBlock stable = *g_liveState;
     if (stable.generation != snapshot.generation) { ConsumeTelemetryConfig(); ConsumeStickyNoteState(); return; }
+    g_colourUseLut = (stable.colourFlags & 1u) != 0;
+    iracingShiftLightWidth = std::clamp((double)stable.irShiftLightWidth, 0.25, 3.0);
+    iracingShiftLightPosition = std::clamp((double)stable.irShiftLightPosition, 0.0, 0.35);
+    iracingSpotterLineWidth = std::clamp((double)stable.irSpotterLineWidth, 0.25, 3.0);
+    iracingSpotterLineInset = std::clamp((double)stable.irSpotterLineInset, 0.0, 0.35);
     const bool scoped=stable.liveProfileKey[0]!=L'\0';const bool profileMatches=!scoped||(!currentAppKey.empty()&&_wcsicmp(stable.liveProfileKey,currentAppKey.c_str())==0);
     g_liveAuthoritativeMask=profileMatches?stable.liveAuthoritativeMask:0;
     g_liveScopedMismatchMask=scoped&&!profileMatches?stable.liveAuthoritativeMask:0;
@@ -948,12 +1001,12 @@ void ConsumeLiveState() {
     calibrationBeacon = (stable.calibrationMask & (1u << 4)) != 0; calibrationEdgeProbes = (stable.calibrationMask & (1u << 5)) != 0;
     calibrationCheckerboards = (stable.calibrationMask & (1u << 6)) != 0; calibrationZonePlate = (stable.calibrationMask & (1u << 7)) != 0;
     calibrationClippingSteps = (stable.calibrationMask & (1u << 8)) != 0; calibrationMotionStrip = (stable.calibrationMask & (1u << 9)) != 0;
-    if(liveOwns(OverlayFeatureId::Hud)){hudEnabled = (stable.hudFlags & 1u) != 0; hudClampToVisible = (stable.hudFlags & 2u) != 0; hudAlarmOnly = (stable.hudFlags & 4u) != 0;hudAnchorX = std::clamp((double)stable.hudAnchorX, 0.0, 1.0); hudAnchorY = std::clamp((double)stable.hudAnchorY, 0.0, 1.0); hudScale = std::clamp((double)stable.hudScale, 0.15, 3.0);hudSafeMargin = std::clamp((double)stable.hudSafeMargin, 0.0, 0.25);hudAlarmHoldMs = std::clamp((double)stable.alarmHoldMs, 0.0, 10000.0);hudOpacity=std::clamp((double)stable.hudOpacity,.1,1.0);}
-    if(liveOwns(OverlayFeatureId::Trace)){hudTraceSensitivityMs = std::clamp((double)stable.traceSensitivityMs, 0.25, 8.0);hudTraceX = std::clamp((double)stable.traceX, 0.0, 1.0); hudTraceY = std::clamp((double)stable.traceY, 0.0, 1.0); hudTraceScale = std::clamp((double)stable.traceScale, 0.25, 3.0);hudTraceWidth = std::clamp((double)stable.traceWidth, 0.10, 1.0);hudTraceHistory = std::clamp((double)stable.traceHistory, 10.0, 600.0);hudTraceOpacity=std::clamp((double)stable.traceOpacity,.1,1.0);hudTraceEnabled = (stable.traceFlags & 1u) != 0;hudTraceVisibilityMode = !hudTraceEnabled ? 0u : (stable.traceFlags & 2u) != 0 ? 2u : 1u;performanceTraceRecording=stable.performanceTraceRecording!=0;performanceTraceMarkerKey=(int)std::clamp(stable.performanceTraceMarkerKey,1u,255u);}
+    if(liveOwns(OverlayFeatureId::Hud)){hudEnabled = (stable.hudFlags & 1u) != 0; hudVisibilityMode = !hudEnabled ? 0u : (stable.hudFlags & 8u) != 0 ? 2u : 1u; hudClampToVisible = (stable.hudFlags & 2u) != 0;hudAnchorX = std::clamp((double)stable.hudAnchorX, 0.0, 1.0); hudAnchorY = std::clamp((double)stable.hudAnchorY, 0.0, 1.0); hudScale = std::clamp((double)stable.hudScale, 0.15, 3.0);hudSafeMargin = std::clamp((double)stable.hudSafeMargin, 0.0, 0.25);hudAlarmHoldMs = std::clamp((double)stable.alarmHoldMs, 0.0, 10000.0);hudOpacity=std::clamp((double)stable.hudOpacity,.1,1.0);}
+    if(liveOwns(OverlayFeatureId::Trace)){hudTraceSensitivityMs = std::clamp((double)stable.traceSensitivityMs, 0.25, 8.0);hudTraceX = std::clamp((double)stable.traceX, 0.0, 1.0); hudTraceY = std::clamp((double)stable.traceY, 0.0, 1.0); hudTraceScale = std::clamp((double)stable.traceScale, 0.25, 3.0);hudTraceWidth = std::clamp((double)stable.traceWidth, 0.10, 1.0);hudTraceHistory = std::clamp((double)stable.traceHistory, 10.0, 600.0);hudTraceOpacity=std::clamp((double)stable.traceOpacity,.1,1.0);hudTraceEnabled = (stable.traceFlags & 1u) != 0;hudTraceVisibilityMode = !hudTraceEnabled ? 0u : (stable.traceFlags & 2u) != 0 ? 2u : 1u;hudTraceAlarmSensitivity = ((stable.traceFlags >> 2) & 0x3Fu) / 63.0;hudTraceFadeInMs = (double)((stable.traceFlags >> 8) & 0xFFFu);hudTraceFadeOutMs = (double)((stable.traceFlags >> 20) & 0xFFFu);performanceTraceRecording=stable.performanceTraceRecording!=0;performanceTraceMarkerKey=(int)std::clamp(stable.performanceTraceMarkerKey,1u,255u);}
     // Backend selection is session-owned and profile-aware. Live UI snapshots must not override a
     // per-game diagnostic force-direct policy halfway through a session.
     if(liveOwns(OverlayFeatureId::Hud)){hudWidgetMask=(hudWidgetMask&~0x0Full)|(stable.hudWidgetMask&0x0Fu);hudWidgetOrderPacked=stable.hudWidgetOrder;}
-    if(liveOwns(OverlayFeatureId::Trace)){hudGraphChannels=stable.hudGraphChannels&0x7Fu;hudGraphMode=(HudGraphMode)std::clamp(stable.hudGraphMode,0u,3u);}
+    if(liveOwns(OverlayFeatureId::Trace)){hudGraphChannels=stable.hudGraphChannels&0x7Fu;hudGraphMode=(HudGraphMode)std::clamp(stable.hudGraphMode&0xFFu,0u,4u);hudCostLines=(stable.hudGraphMode>>8)&0xFu;hudCostLabels=std::clamp((stable.hudGraphMode>>12)&0x3u,0u,2u);}
     // Feature 1: render-boundary flash drag state. A rising edge to inactive stamps the fade start.
     {
         const bool dragNow = (stable.interactFlags & 1u) != 0;
@@ -969,15 +1022,17 @@ void ConsumeLiveState() {
     crosshairAlpha = std::clamp((double)stable.chAlpha, 0.0, 1.0);crosshairScale = std::clamp((double)stable.chScale, 0.1, 10.0);crosshairOffsetX = std::clamp((double)stable.crosshairOffsetX, -1.0, 1.0); crosshairOffsetY = std::clamp((double)stable.crosshairOffsetY, -1.0, 1.0);
     crosshairR = ((stable.chColor >> 16) & 0xFF) / 255.f; crosshairG = ((stable.chColor >> 8) & 0xFF) / 255.f; crosshairB = (stable.chColor & 0xFF) / 255.f;
     }
-    Log("crosshair: live resolve generation=%u enabled=%d size=%.2f gap=%.2f thickness=%.2f outline=%d/%.2f dot=%d tstyle=%d rgba=(%.3f,%.3f,%.3f,%.3f) scale=%.2f\n",
-        stable.generation,crosshairEnabled?1:0,crosshairSize,crosshairGap,crosshairThickness,crosshairOutline?1:0,crosshairOutlineThickness,crosshairDot?1:0,crosshairTStyle?1:0,crosshairR,crosshairG,crosshairB,crosshairAlpha,crosshairScale);
     // Feature 3: notification render settings (content arrives via the separate mapping).
     if(liveOwns(OverlayFeatureId::Notifications)){notifyEnabled = (stable.notifyFlags & 1u) != 0;notifyX = std::clamp((double)stable.notifyX, 0.0, 1.0); notifyY = std::clamp((double)stable.notifyY, 0.0, 1.0);notifyScale = std::clamp((double)stable.notifyScale, 0.1, 3.0);notifyOpacity = std::clamp((double)stable.notifyOpacity, 0.1, 1.0);notifyDurationMs = std::clamp((double)stable.notifyDurationMs, 500.0, 15000.0);}
     // Generic racing presentation enables; event state arrives through its dedicated mapping.
     // v12: the cue tuning values also arrive live so slider drags apply without a session restart.
+    // Spotter mode is global-only, so a legacy per-app iRacing enable override must not block live switching.
+    iracingSpotterMode = (stable.iracingFlags & 256u) != 0 ? 1u : 0u;
+    iracingSpotterTheme = (stable.iracingFlags & 512u) != 0 ? 1u : 0u;
+    iracingRearClosingTheme = (stable.iracingFlags & 1024u) != 0 ? 1u : 0u;
     if(!profileIRacingFeatureOverride){
         iracingEnabled = (stable.iracingFlags & 1u) != 0; iracingLapPopup = (stable.iracingFlags & 2u) != 0;iracingSpotterGlow = (stable.iracingFlags & 4u) != 0; iracingFlagBorder = (stable.iracingFlags & 8u) != 0;
-        iracingRaceStart = (stable.iracingFlags & 16u) != 0; iracingRearClosing = (stable.iracingFlags & 32u) != 0; iracingGripBar = (stable.iracingFlags & 64u) != 0;
+        iracingRaceStart = (stable.iracingFlags & 16u) != 0; iracingRearClosing = (stable.iracingFlags & 32u) != 0; iracingGripBar = (stable.iracingFlags & 64u) != 0; iracingShiftLight = (stable.iracingFlags & 128u) != 0;
         iracingSpotterWidth = std::clamp((double)stable.irSpotterWidth, 0.03, 0.70); iracingSpotterStrength = std::clamp((double)stable.irSpotterStrength, 0.1, 4.0);
         iracingSpotterOpacity = std::clamp((double)stable.irSpotterOpacity, 0.05, 2.0); iracingSpotterFade = std::clamp((double)stable.irSpotterFade, 0.25, 4.0);
         iracingSpotterFadeInMs = std::clamp((double)stable.irSpotterFadeInMs, 0.0, 2000.0); iracingSpotterFadeOutMs = std::clamp((double)stable.irSpotterFadeOutMs, 0.0, 3000.0);
@@ -987,7 +1042,13 @@ void ConsumeLiveState() {
         iracingRaceStartGreenMs = std::clamp((double)stable.irRaceStartGreenMs, 250.0, 15000.0); iracingRaceStartThickness = std::clamp((double)stable.irRaceStartThickness, 0.005, 0.12);
         iracingRearClosingOpacity = std::clamp((double)stable.irRearClosingOpacity, 0.05, 1.0); iracingGripBarOpacity = std::clamp((double)stable.irGripBarOpacity, 0.05, 1.0);
     }
-    if(liveOwns(OverlayFeatureId::Clock)){clockWidgetEnabled=(stable.clockFlags&1u)!=0;clockSessionTimerEnabled=(stable.clockFlags&2u)!=0;clock24Hour=(stable.clockFlags&4u)!=0;clockWidgetX=std::clamp((double)stable.clockX,0.0,1.0);clockWidgetY=std::clamp((double)stable.clockY,0.0,1.0);clockWidgetScale=std::clamp((double)stable.clockScale,.1,2.0);clockWidgetOpacity=std::clamp((double)stable.clockOpacity,.1,1.0);clockWidgetTheme=std::clamp(stable.clockTheme,0u,3u);clockWidgetPalette=std::clamp(stable.clockPalette,0u,4u);}
+    if(liveOwns(OverlayFeatureId::Clock)){clockWidgetEnabled=(stable.clockFlags&1u)!=0;clockSessionTimerEnabled=(stable.clockFlags&2u)!=0;clock24Hour=(stable.clockFlags&4u)!=0;clockWidgetX=std::clamp((double)stable.clockX,0.0,1.0);clockWidgetY=std::clamp((double)stable.clockY,0.0,1.0);clockWidgetScale=std::clamp((double)stable.clockScale,.1,2.0);clockWidgetOpacity=std::clamp((double)stable.clockOpacity,.1,1.0);clockWidgetTheme=std::clamp(stable.clockTheme,0u,3u);clockWidgetPalette=std::clamp(stable.clockPalette,0u,4u);
+        const uint32_t mode=std::clamp(stable.clockTimerMode,0u,3u),minutes=std::clamp(stable.clockCountdownMinutes,1u,180u),target=stable.clockTargetSeconds%86400u;
+        if(mode!=clockTimerMode||minutes!=clockCountdownMinutes||target!=clockTargetSeconds){clockTimerMode=mode;clockCountdownMinutes=minutes;clockTargetSeconds=target;ResetClockTimer(GetTickCount64());}
+        clockAlarmEnabled=(stable.clockTimerControl&0x80000000u)!=0;
+        const uint32_t command=stable.clockTimerControl&0x7FFFFFFFu;
+        if(command!=0&&command!=g_clockTimerCommand){g_clockTimerCommand=command;const uint64_t now=GetTickCount64();switch(command&0xFFu){case 1:g_clockTimer.Resume(now);break;case 2:g_clockTimer.Pause(now);break;case 3:ResetClockTimer(now);break;}}
+    }
     obsMirrorVisibilityMask = stable.obsMirrorVisibilityMask & kAllMirrorFeatures;
     for(size_t i=0;i<(size_t)OverlayFeatureId::Count;++i)if(liveOwns((OverlayFeatureId)i))g_overlayFeatureVisibility[i].toggleKey=(int)std::clamp(stable.overlayToggleKeys[i],0u,255u);
     if ((stable.flags & 1u) != 0 && !liveVisorUsesProfileOverride) {
@@ -1199,6 +1260,7 @@ struct TrackedSwapchain {
     XrSwapchainUsageFlags usageFlags = 0;
     std::vector<ID3D11Texture2D*> textures;  // runtime textures; not AddRef'd
     std::vector<ID3D11RenderTargetView*> rtvs; // runtime texture RTVs, indexed image * arraySize + slice
+    std::vector<ID3D11RenderTargetView*> gradeRtvs; // colour-grade RTVs in the app's own format, same indexing
     uint32_t lastAcquiredIndex = UINT32_MAX;
     uint64_t createSerial = 0;
     uint64_t acquireSerial = 0;
@@ -1339,6 +1401,10 @@ void ReleaseTrackedSwapchainResources(TrackedSwapchain& ts) {
         if (rtv) rtv->Release();
     }
     ts.rtvs.clear();
+    for (ID3D11RenderTargetView* rtv : ts.gradeRtvs) {
+        if (rtv) rtv->Release();
+    }
+    ts.gradeRtvs.clear();
 }
 
 std::filesystem::path LocalAppDataPath() {
@@ -1781,6 +1847,7 @@ void SetRegistryDwordValue(HKEY key, const wchar_t* name, DWORD value) {
 
 void RememberApplication(const char* openXrAppName, const char* openXrEngineName, XrResult createResult, const char* runtimeName) {
     currentAppKey = SanitizeRegistryKey(CurrentProcessFileName());
+    currentOpenXrAppName = Utf8ToWide(openXrAppName);
     PublishActiveProfile();
     const std::wstring displayName = Utf8ToWide(openXrAppName);
     const std::wstring engineName = Utf8ToWide(openXrEngineName);
@@ -1957,6 +2024,8 @@ XrQuaternionf MultiplyQuaternion(const XrQuaternionf& a, const XrQuaternionf& b)
 }
 
 void ReleaseVlmcQuadFx(); // VLMC overlay compositor resources, defined with the VLMC producer
+void ReleaseColourGradeResources(); // colour grade pass resources, defined with the grade renderer
+void ReleaseGpuFrameTimer(); // Frame cost trace GPU queries, defined with the timer
 void ReleaseD3D11MaskRenderer() {
     std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
     StopStickyHdRenderJobs();
@@ -1974,6 +2043,8 @@ void ReleaseD3D11MaskRenderer() {
     if (g_d3d11Mask.bs)      { g_d3d11Mask.bs->Release();      g_d3d11Mask.bs = nullptr; }
     if (g_d3d11Mask.bsOpaque){ g_d3d11Mask.bsOpaque->Release(); g_d3d11Mask.bsOpaque = nullptr; }
     ReleaseVlmcQuadFx();
+    ReleaseColourGradeResources();
+    ReleaseGpuFrameTimer();
     if (g_d3d11Mask.rs)      { g_d3d11Mask.rs->Release();      g_d3d11Mask.rs = nullptr; }
     if (g_d3d11Mask.calibrationRs) { g_d3d11Mask.calibrationRs->Release(); g_d3d11Mask.calibrationRs = nullptr; }
     if (g_d3d11Mask.layout)  { g_d3d11Mask.layout->Release();  g_d3d11Mask.layout = nullptr; }
@@ -2701,6 +2772,1295 @@ uint32_t BuildProjectedPartnerVisorVerts(
     return v;
 }
 
+// ---------------------------------------------------------------------------------------------
+// GPU frame timer for the Performance Trace "Frame cost" theme. D3D11 timestamp queries on the
+// game's immediate context: one at xrBeginFrame return, one at xrEndFrame entry, so the value is
+// the GPU-timeline span of everything submitted for that frame (the same window OpenXR Toolkit
+// reports as app GPU time). Results are read without stalling, 2-3 frames late. Only runs while
+// the Frame cost theme is visible, so it costs nothing otherwise.
+// ---------------------------------------------------------------------------------------------
+struct GpuFrameTimer {
+    static constexpr int kSlots = 6;
+    ID3D11Query* disjoint[kSlots] = {};
+    ID3D11Query* begin[kSlots] = {};
+    ID3D11Query* end[kSlots] = {};
+    bool pending[kSlots] = {};
+    bool valid[kSlots] = {};
+    int next = 0;
+    int open = -1;
+    bool failed = false;
+};
+GpuFrameTimer g_gpuTimer;
+
+inline bool GpuFrameTimerWanted() {
+    return hudTraceEnabled && TraceFrameCostMode() && OverlayFeatureVisible(OverlayFeatureId::Trace);
+}
+
+void ReleaseGpuFrameTimer() {
+    for (int i = 0; i < GpuFrameTimer::kSlots; ++i) {
+        if (g_gpuTimer.disjoint[i]) { g_gpuTimer.disjoint[i]->Release(); g_gpuTimer.disjoint[i] = nullptr; }
+        if (g_gpuTimer.begin[i]) { g_gpuTimer.begin[i]->Release(); g_gpuTimer.begin[i] = nullptr; }
+        if (g_gpuTimer.end[i]) { g_gpuTimer.end[i]->Release(); g_gpuTimer.end[i] = nullptr; }
+    }
+    g_gpuTimer = GpuFrameTimer{};
+    g_hudLastGpuMs.store(-1.0, std::memory_order_relaxed);
+}
+
+static bool EnsureGpuFrameTimer() {
+    if (g_gpuTimer.failed || !g_d3d11Mask.device) return false;
+    if (g_gpuTimer.disjoint[0]) return true;
+    D3D11_QUERY_DESC dq{}; dq.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+    D3D11_QUERY_DESC tq{}; tq.Query = D3D11_QUERY_TIMESTAMP;
+    for (int i = 0; i < GpuFrameTimer::kSlots; ++i) {
+        if (FAILED(g_d3d11Mask.device->CreateQuery(&dq, &g_gpuTimer.disjoint[i])) ||
+            FAILED(g_d3d11Mask.device->CreateQuery(&tq, &g_gpuTimer.begin[i])) ||
+            FAILED(g_d3d11Mask.device->CreateQuery(&tq, &g_gpuTimer.end[i]))) {
+            Log("gpu timer: query creation failed; GPU ms unavailable for this session\n");
+            ReleaseGpuFrameTimer();
+            g_gpuTimer.failed = true;
+            return false;
+        }
+    }
+    Log("gpu timer: timestamp queries ready\n");
+    return true;
+}
+
+static void CollectGpuFrameTimer() {
+    ID3D11DeviceContext* ctx = g_d3d11Mask.context;
+    for (int n = 0; n < GpuFrameTimer::kSlots; ++n) {
+        const int i = (g_gpuTimer.next + n) % GpuFrameTimer::kSlots; // oldest first
+        if (!g_gpuTimer.pending[i]) continue;
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT dj{};
+        if (ctx->GetData(g_gpuTimer.disjoint[i], &dj, sizeof(dj), D3D11_ASYNC_GETDATA_DONOTFLUSH) != S_OK) break;
+        UINT64 t0 = 0, t1 = 0;
+        if (ctx->GetData(g_gpuTimer.begin[i], &t0, sizeof(t0), D3D11_ASYNC_GETDATA_DONOTFLUSH) != S_OK ||
+            ctx->GetData(g_gpuTimer.end[i], &t1, sizeof(t1), D3D11_ASYNC_GETDATA_DONOTFLUSH) != S_OK) break;
+        g_gpuTimer.pending[i] = false;
+        if (g_gpuTimer.valid[i] && !dj.Disjoint && dj.Frequency > 0 && t1 >= t0) {
+            const double ms = 1000.0 * static_cast<double>(t1 - t0) / static_cast<double>(dj.Frequency);
+            if (std::isfinite(ms) && ms < 1000.0) g_hudLastGpuMs.store(ms, std::memory_order_relaxed);
+        }
+    }
+}
+
+void GpuFrameTimerBegin() {
+    std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
+    if (!GpuFrameTimerWanted() || !g_d3d11Mask.initialized || !g_d3d11Mask.context) {
+        if (g_hudLastGpuMs.load(std::memory_order_relaxed) >= 0.0) g_hudLastGpuMs.store(-1.0, std::memory_order_relaxed);
+        return;
+    }
+    if (!EnsureGpuFrameTimer()) return;
+    ID3D11DeviceContext* ctx = g_d3d11Mask.context;
+    if (g_gpuTimer.open >= 0) { // previous frame never reached xrEndFrame: close it and ignore it
+        const int s = g_gpuTimer.open;
+        ctx->End(g_gpuTimer.end[s]); ctx->End(g_gpuTimer.disjoint[s]);
+        g_gpuTimer.pending[s] = true; g_gpuTimer.valid[s] = false; g_gpuTimer.open = -1;
+        g_gpuTimer.next = (s + 1) % GpuFrameTimer::kSlots;
+    }
+    CollectGpuFrameTimer();
+    const int slot = g_gpuTimer.next;
+    if (g_gpuTimer.pending[slot]) return; // results not back yet: skip timing this frame, never stall
+    ctx->Begin(g_gpuTimer.disjoint[slot]);
+    ctx->End(g_gpuTimer.begin[slot]);
+    g_gpuTimer.open = slot;
+}
+
+void GpuFrameTimerEnd() {
+    std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
+    if (g_gpuTimer.open < 0 || !g_d3d11Mask.context) return;
+    const int slot = g_gpuTimer.open;
+    g_d3d11Mask.context->End(g_gpuTimer.end[slot]);
+    g_d3d11Mask.context->End(g_gpuTimer.disjoint[slot]);
+    g_gpuTimer.pending[slot] = true; g_gpuTimer.valid[slot] = true; g_gpuTimer.open = -1;
+    g_gpuTimer.next = (slot + 1) % GpuFrameTimer::kSlots;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Colour grade (OpenXR Toolkit post-processing port).
+//
+// One full-screen pass per eye rectangle, run at xrReleaseSwapchainImage BEFORE the visor,
+// calibration patterns and overlays, so only the game image is graded. The colour maths and the
+// 0..1000 setting scale are a line-for-line port of OpenXR Toolkit's postprocess.hlsl /
+// imageprocess.cpp so imported values look identical:
+//
+//   OpenXR Toolkit — MIT License
+//   Copyright (c) 2021-2022 Matthieu Bucchianeri
+//   Copyright (c) 2021-2022 Jean-Luc Dupiot - Reality XP
+//   Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+//   and associated documentation files (the "Software"), to deal in the Software without
+//   restriction, including without limitation the rights to use, copy, modify, merge, publish,
+//   distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
+//   Software is furnished to do so, subject to the following conditions: The above copyright
+//   notice and this permission notice shall be included in all copies or substantial portions of
+//   the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+//   PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+//   LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+//   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+//   DEALINGS IN THE SOFTWARE.
+//
+// Like OpenXR Toolkit, the shader sees values through a view of the app's own swapchain format:
+// an _SRGB swapchain is graded on linear values, a UNORM swapchain on stored values.
+// Neutral settings skip the pass entirely (zero GPU cost).
+// ---------------------------------------------------------------------------------------------
+// ViewLab replaces OpenXR Toolkit's colour stage outright; there is no "follow the Toolkit" source.
+// A legacy mode value 2 (the removed follow mode) reads as ViewLab.
+enum class ColourGradeMode : uint32_t { Off = 0, ViewLab = 1 };
+
+struct ColourGradeSettings {
+    // OpenXR Toolkit units: 0..1000, OpenXR Toolkit defaults (all neutral).
+    int contrast = 500, brightness = 500, exposure = 500, saturation = 500;
+    int gainR = 500, gainG = 500, gainB = 500;
+    int highlights = 1000, shadows = 0, vibrance = 0;
+    int sunglasses = 0;        // 0 none, 1 light, 2 dark, 3 night (OpenXR Toolkit presets)
+    bool fullGrade = true;     // OpenXR Toolkit post_process On; Off still applies colour gains
+};
+
+struct ColourGradeState {
+    ColourGradeMode mode = ColourGradeMode::Off;
+    const char* source = "off";
+    ColourGradeSettings settings;  // current values (the in-headset menu edits these)
+    float p1[4]{}, p2[4]{}, p3[4]{};
+    bool active = false;          // non-neutral and allowed to run this session
+    bool stageActive = false;     // the OpenXR Toolkit-equivalent stage is non-neutral
+    bool toolkitLoaded = false;   // OpenXR Toolkit layer is in this process: its stage stands down
+    // Levels stage (in-headset calibration, applied after the Toolkit stage in display encoding):
+    // encoded = black + (white - black) * encoded ^ gamma.
+    float levelsBlack = 0.f, levelsWhite = 1.f, levelsGamma = 1.f;
+    // Renderer resources (created lazily on first graded frame).
+    ID3D11VertexShader* vs = nullptr;
+    ID3D11PixelShader* ps = nullptr;       // per-pixel maths
+    ID3D11PixelShader* psLut = nullptr;    // one 3D lookup per pixel
+    ID3D11PixelShader* psBake = nullptr;   // bakes one LUT slice
+    ID3D11Texture3D* lut = nullptr;
+    ID3D11ShaderResourceView* lutSrv = nullptr;
+    ID3D11RenderTargetView* lutRtv[33] = {};
+    ID3D11SamplerState* lutSampler = nullptr;
+    uint64_t lutHash = 0;                  // settings + encoding the LUT was baked for (0 = stale)
+    bool prewarmed = false;                // resources pre-created this session
+    ID3D11Buffer* cb = nullptr;
+    ID3D11RasterizerState* rs = nullptr;
+    ID3D11Texture2D* scratch = nullptr;
+    ID3D11ShaderResourceView* scratchSrv = nullptr;
+    UINT scratchW = 0, scratchH = 0;
+    DXGI_FORMAT scratchFormat = DXGI_FORMAT_UNKNOWN, scratchViewFormat = DXGI_FORMAT_UNKNOWN;
+    bool failed = false;
+};
+ColourGradeState g_colourGrade;
+
+inline bool ColourGradeActive() { return g_colourGrade.active && !g_colourGrade.failed; }
+inline bool ColourLevelsActive() {
+    return g_colourGrade.levelsBlack > 1e-4f || g_colourGrade.levelsWhite < 1.f - 1e-4f || std::fabs(g_colourGrade.levelsGamma - 1.f) > 1e-4f;
+}
+void RefreshColourGradeActive() {
+    const bool stage = g_colourGrade.stageActive && !g_colourGrade.toolkitLoaded;
+    g_colourGrade.active = stage || ColourLevelsActive();
+}
+
+static int ClampGradeValue(DWORD v) { return static_cast<int>(std::min<DWORD>(v, 1000u)); }
+
+static void ComputeColourGradeParams(const ColourGradeSettings& s) {
+    // OpenXR Toolkit imageprocess.cpp GetPreset(): sunglasses offsets in the same 0..1000 units.
+    static const int kPreset[4][3][4] = {
+        {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}},
+        {{25, -50, -50, 0}, {0, 0, 0, 0}, {-20, 0, 0, 0}},
+        {{25, -100, -100, 0}, {0, 0, 0, 0}, {-400, 50, 0, 0}},
+        {{50, -300, 250, 50}, {0, 0, 0, 0}, {-1000, 100, 0, 0}},
+    };
+    // OpenXR Toolkit kGainBias: shader value = saturate((raw + preset) * 0.001) * gain - bias.
+    static const float kGain[3][4] = {{2.0f, 1.6f, 6.0f, 2.0f}, {2.0f, 2.0f, 2.0f, 2.0f}, {-1.0f, 0.5f, 1.0f, 1.0f}};
+    static const float kBias[3][4] = {{1.0f, 0.8f, 3.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f}, {-1.0f, 0.0f, 0.0f, 0.0f}};
+    const int raw[3][4] = {
+        {s.contrast, s.brightness, s.exposure, s.saturation},
+        {s.gainR, s.gainG, s.gainB, 0},
+        {s.highlights, s.shadows, s.vibrance, 0},
+    };
+    const int preset = std::clamp(s.sunglasses, 0, 3);
+    float* rows[3] = {g_colourGrade.p1, g_colourGrade.p2, g_colourGrade.p3};
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            const float v = std::clamp((raw[r][c] + kPreset[preset][r][c]) * 0.001f, 0.0f, 1.0f);
+            rows[r][c] = v * kGain[r][c] - kBias[r][c];
+        }
+    }
+    g_colourGrade.p2[3] = s.fullGrade ? 1.0f : 0.0f; // Params2.w is unused by OpenXR Toolkit; ours = mode
+    g_colourGrade.p3[3] = 0.0f;                        // no chromatic-aberration correction
+    auto nz = [](float v) { return std::fabs(v) > 1e-6f; };
+    const bool gains = nz(g_colourGrade.p2[0]) || nz(g_colourGrade.p2[1]) || nz(g_colourGrade.p2[2]);
+    const bool grade = s.fullGrade && (nz(g_colourGrade.p1[0]) || nz(g_colourGrade.p1[1]) || nz(g_colourGrade.p1[2]) ||
+        nz(g_colourGrade.p1[3]) || nz(g_colourGrade.p3[0]) || nz(g_colourGrade.p3[1]) || nz(g_colourGrade.p3[2]));
+    g_colourGrade.stageActive = gains || grade;
+    g_colourGrade.active = g_colourGrade.stageActive;
+}
+
+void LoadColourGradeConfig() {
+    // Global default is ViewLab values (neutral until changed, so zero cost). Per-app registry value
+    // overrides the global mode; the legacy follow-the-Toolkit value 2 reads as ViewLab.
+    DWORD mode = static_cast<DWORD>(std::clamp(ReadDoubleSetting(L"colour_grade_mode", 1.0), 0.0, 2.0));
+    g_colourUseLut = ReadBoolSetting(L"colour_grade_lut", true); // engine; the settings app switches it live too
+    { DWORD profileLut = 0; if (ReadProfileDword(L"colour_grade_lut", profileLut)) g_colourUseLut = profileLut != 0; }
+    DWORD profileMode = 0;
+    if (ReadProfileDword(L"colour_grade_mode", profileMode)) mode = profileMode;
+    g_colourGrade.mode = mode == 0 ? ColourGradeMode::Off : ColourGradeMode::ViewLab;
+    g_colourGrade.active = false;
+    g_colourGrade.toolkitLoaded = GetModuleHandleW(L"XR_APILAYER_MBUCCHIA_toolkit.dll") != nullptr ||
+        GetModuleHandleW(L"XR_APILAYER_NOVENDOR_toolkit.dll") != nullptr;
+
+    // Levels from the in-headset calibration: global ini, per-app DWORD (x1000) overrides.
+    auto readLevel = [](const wchar_t* key, double fallback, double lo, double hi) {
+        double v = std::clamp(ReadDoubleSetting(key, fallback), lo, hi);
+        DWORD profileValue = 0;
+        if (ReadProfileDword(key, profileValue)) v = std::clamp(profileValue / 1000.0, lo, hi);
+        return static_cast<float>(v);
+    };
+    g_colourGrade.levelsBlack = readLevel(L"colour_grade_levels_black", 0.0, 0.0, 0.25);
+    g_colourGrade.levelsWhite = readLevel(L"colour_grade_levels_white", 1.0, 0.6, 1.0);
+    g_colourGrade.levelsGamma = readLevel(L"colour_grade_levels_gamma", 1.0, 0.4, 2.5);
+
+    ColourGradeSettings s;
+    if (g_colourGrade.mode == ColourGradeMode::ViewLab) {
+        g_colourGrade.source = "viewlab";
+        auto readValue = [](const wchar_t* key, int& value) {
+            value = std::clamp(static_cast<int>(std::lround(ReadDoubleSetting(key, value))), 0, 1000);
+            DWORD profileValue = 0;
+            if (ReadProfileDword(key, profileValue)) value = ClampGradeValue(profileValue);
+        };
+        readValue(L"colour_grade_contrast", s.contrast);
+        readValue(L"colour_grade_brightness", s.brightness);
+        readValue(L"colour_grade_exposure", s.exposure);
+        readValue(L"colour_grade_saturation", s.saturation);
+        readValue(L"colour_grade_vibrance", s.vibrance);
+        readValue(L"colour_grade_highlights", s.highlights);
+        readValue(L"colour_grade_shadows", s.shadows);
+        readValue(L"colour_grade_gain_r", s.gainR);
+        readValue(L"colour_grade_gain_g", s.gainG);
+        readValue(L"colour_grade_gain_b", s.gainB);
+        readValue(L"colour_grade_sunglasses", s.sunglasses);
+        s.sunglasses = std::clamp(s.sunglasses, 0, 3);
+        int postProcess = 1;
+        readValue(L"colour_grade_post_process", postProcess);
+        s.fullGrade = postProcess != 0;
+    } else {
+        g_colourGrade.source = "off";
+        s.fullGrade = false; // neutral stage; calibration levels may still apply
+    }
+
+    g_colourGrade.settings = s;
+    ComputeColourGradeParams(s);
+    if (g_colourGrade.toolkitLoaded) { // never apply the Toolkit-equivalent stage on top of the real Toolkit
+        for (int i = 0; i < 4; ++i) { g_colourGrade.p1[i] = 0.f; g_colourGrade.p2[i] = 0.f; g_colourGrade.p3[i] = 0.f; }
+    }
+    if (g_colourGrade.toolkitLoaded && g_colourGrade.stageActive)
+        Log("colour grade: OpenXR Toolkit is loaded in this process; ViewLab's Toolkit stage stands down to avoid grading twice\n");
+    RefreshColourGradeActive();
+    Log("colour grade: source=%s app=%ls active=%d full=%d contrast=%d brightness=%d exposure=%d saturation=%d "
+        "vibrance=%d highlights=%d shadows=%d gain=%d/%d/%d sunglasses=%d\n",
+        g_colourGrade.source, currentOpenXrAppName.c_str(), g_colourGrade.active ? 1 : 0, s.fullGrade ? 1 : 0,
+        s.contrast, s.brightness, s.exposure, s.saturation, s.vibrance, s.highlights, s.shadows,
+        s.gainR, s.gainG, s.gainB, s.sunglasses);
+    Log("colour grade: levels black=%.3f white=%.3f gamma=%.3f\n", g_colourGrade.levelsBlack, g_colourGrade.levelsWhite, g_colourGrade.levelsGamma);
+}
+
+// Colour grade shaders, compiled at build time from Shaders\ColourGrade.hlsl by Shaders\Build-Shaders.ps1:
+// no shader compiler runs in the game (runtime D3DCompile was a one-off 20-100 ms first-use hitch).
+#include "Shaders/ColourGrade_VSMain.h"
+#include "Shaders/ColourGrade_PSMath.h"
+#include "Shaders/ColourGrade_PSLut.h"
+#include "Shaders/ColourGrade_PSBake.h"
+constexpr UINT kColourLutSize = 33;
+
+static DXGI_FORMAT ColourGradeTypelessFormat(DXGI_FORMAT f) {
+    switch (f) {
+    case DXGI_FORMAT_R8G8B8A8_TYPELESS: case DXGI_FORMAT_R8G8B8A8_UNORM: case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+        return DXGI_FORMAT_R8G8B8A8_TYPELESS;
+    case DXGI_FORMAT_B8G8R8A8_TYPELESS: case DXGI_FORMAT_B8G8R8A8_UNORM: case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        return DXGI_FORMAT_B8G8R8A8_TYPELESS;
+    case DXGI_FORMAT_B8G8R8X8_TYPELESS: case DXGI_FORMAT_B8G8R8X8_UNORM: case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
+        return DXGI_FORMAT_B8G8R8X8_TYPELESS;
+    case DXGI_FORMAT_R10G10B10A2_TYPELESS: case DXGI_FORMAT_R10G10B10A2_UNORM:
+        return DXGI_FORMAT_R10G10B10A2_TYPELESS;
+    case DXGI_FORMAT_R16G16B16A16_TYPELESS: case DXGI_FORMAT_R16G16B16A16_FLOAT: case DXGI_FORMAT_R16G16B16A16_UNORM:
+        return DXGI_FORMAT_R16G16B16A16_TYPELESS;
+    case DXGI_FORMAT_R11G11B10_FLOAT:
+        return DXGI_FORMAT_R11G11B10_FLOAT;
+    default:
+        return DXGI_FORMAT_UNKNOWN;
+    }
+}
+
+static bool IsTypelessFormat(DXGI_FORMAT f) {
+    return f == DXGI_FORMAT_R8G8B8A8_TYPELESS || f == DXGI_FORMAT_B8G8R8A8_TYPELESS ||
+        f == DXGI_FORMAT_B8G8R8X8_TYPELESS || f == DXGI_FORMAT_R10G10B10A2_TYPELESS ||
+        f == DXGI_FORMAT_R16G16B16A16_TYPELESS;
+}
+
+void ReleaseColourGradeResources() {
+    if (g_colourGrade.scratchSrv) { g_colourGrade.scratchSrv->Release(); g_colourGrade.scratchSrv = nullptr; }
+    if (g_colourGrade.scratch) { g_colourGrade.scratch->Release(); g_colourGrade.scratch = nullptr; }
+    for (auto*& rtv : g_colourGrade.lutRtv) { if (rtv) { rtv->Release(); rtv = nullptr; } }
+    if (g_colourGrade.lutSrv) { g_colourGrade.lutSrv->Release(); g_colourGrade.lutSrv = nullptr; }
+    if (g_colourGrade.lut) { g_colourGrade.lut->Release(); g_colourGrade.lut = nullptr; }
+    if (g_colourGrade.lutSampler) { g_colourGrade.lutSampler->Release(); g_colourGrade.lutSampler = nullptr; }
+    if (g_colourGrade.psBake) { g_colourGrade.psBake->Release(); g_colourGrade.psBake = nullptr; }
+    if (g_colourGrade.psLut) { g_colourGrade.psLut->Release(); g_colourGrade.psLut = nullptr; }
+    if (g_colourGrade.rs) { g_colourGrade.rs->Release(); g_colourGrade.rs = nullptr; }
+    if (g_colourGrade.cb) { g_colourGrade.cb->Release(); g_colourGrade.cb = nullptr; }
+    if (g_colourGrade.ps) { g_colourGrade.ps->Release(); g_colourGrade.ps = nullptr; }
+    if (g_colourGrade.vs) { g_colourGrade.vs->Release(); g_colourGrade.vs = nullptr; }
+    g_colourGrade.lutHash = 0;
+    g_colourGrade.prewarmed = false;
+    g_colourGrade.scratchW = g_colourGrade.scratchH = 0;
+    g_colourGrade.scratchFormat = g_colourGrade.scratchViewFormat = DXGI_FORMAT_UNKNOWN;
+    g_colourGrade.failed = false;
+}
+
+static bool FailColourGrade(const char* what, HRESULT hr) {
+    Log("colour grade: %s failed hr=0x%08X; grading disabled for this session\n", what, static_cast<unsigned>(hr));
+    g_colourGrade.failed = true;
+    return false;
+}
+
+// Creates every grade resource from precompiled byte code: shaders, constants, the 33^3 LUT and its slice
+// targets. Cheap (no compiler), and called when colour is enabled even at neutral settings, so nothing is
+// created mid-race the first time a setting moves.
+static bool EnsureColourGradePipeline() {
+    if (g_colourGrade.vs && g_colourGrade.ps && g_colourGrade.psLut && g_colourGrade.psBake && g_colourGrade.cb &&
+        g_colourGrade.rs && g_colourGrade.lutSrv && g_colourGrade.lutSampler) return true;
+    if (g_colourGrade.failed || !g_d3d11Mask.device) return false;
+    ID3D11Device* dev = g_d3d11Mask.device;
+    HRESULT hr = dev->CreateVertexShader(g_ColourGradeVS, sizeof(g_ColourGradeVS), nullptr, &g_colourGrade.vs);
+    if (FAILED(hr)) return FailColourGrade("vertex shader", hr);
+    hr = dev->CreatePixelShader(g_ColourGradePSMath, sizeof(g_ColourGradePSMath), nullptr, &g_colourGrade.ps);
+    if (FAILED(hr)) return FailColourGrade("maths pixel shader", hr);
+    hr = dev->CreatePixelShader(g_ColourGradePSLut, sizeof(g_ColourGradePSLut), nullptr, &g_colourGrade.psLut);
+    if (FAILED(hr)) return FailColourGrade("LUT pixel shader", hr);
+    hr = dev->CreatePixelShader(g_ColourGradePSBake, sizeof(g_ColourGradePSBake), nullptr, &g_colourGrade.psBake);
+    if (FAILED(hr)) return FailColourGrade("LUT bake shader", hr);
+    D3D11_BUFFER_DESC cbd{};
+    cbd.ByteWidth = 96;
+    cbd.Usage = D3D11_USAGE_DYNAMIC;
+    cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    hr = dev->CreateBuffer(&cbd, nullptr, &g_colourGrade.cb);
+    if (FAILED(hr)) return FailColourGrade("constant buffer", hr);
+    D3D11_RASTERIZER_DESC rsd{};
+    rsd.FillMode = D3D11_FILL_SOLID;
+    rsd.CullMode = D3D11_CULL_NONE;
+    rsd.DepthClipEnable = TRUE;
+    hr = dev->CreateRasterizerState(&rsd, &g_colourGrade.rs);
+    if (FAILED(hr)) return FailColourGrade("rasterizer state", hr);
+    D3D11_TEXTURE3D_DESC ld{};
+    ld.Width = ld.Height = ld.Depth = kColourLutSize;
+    ld.MipLevels = 1;
+    ld.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    ld.Usage = D3D11_USAGE_DEFAULT;
+    ld.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    hr = dev->CreateTexture3D(&ld, nullptr, &g_colourGrade.lut);
+    if (FAILED(hr)) return FailColourGrade("LUT texture", hr);
+    hr = dev->CreateShaderResourceView(g_colourGrade.lut, nullptr, &g_colourGrade.lutSrv);
+    if (FAILED(hr)) return FailColourGrade("LUT view", hr);
+    for (UINT z = 0; z < kColourLutSize; ++z) {
+        D3D11_RENDER_TARGET_VIEW_DESC rd{};
+        rd.Format = ld.Format;
+        rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE3D;
+        rd.Texture3D.MipSlice = 0; rd.Texture3D.FirstWSlice = z; rd.Texture3D.WSize = 1;
+        hr = dev->CreateRenderTargetView(g_colourGrade.lut, &rd, &g_colourGrade.lutRtv[z]);
+        if (FAILED(hr)) return FailColourGrade("LUT slice target", hr);
+    }
+    D3D11_SAMPLER_DESC sd{};
+    sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sd.MaxLOD = D3D11_FLOAT32_MAX;
+    hr = dev->CreateSamplerState(&sd, &g_colourGrade.lutSampler);
+    if (FAILED(hr)) return FailColourGrade("LUT sampler", hr);
+    g_colourGrade.lutHash = 0;
+    Log("colour grade: pipeline ready (precompiled shaders, %ux%ux%u LUT)\n", kColourLutSize, kColourLutSize, kColourLutSize);
+    return true;
+}
+
+static bool EnsureColourGradeScratch(UINT width, UINT height, DXGI_FORMAT typeless, DXGI_FORMAT viewFormat) {
+    if (g_colourGrade.scratch && g_colourGrade.scratchW >= width && g_colourGrade.scratchH >= height &&
+        g_colourGrade.scratchFormat == typeless && g_colourGrade.scratchViewFormat == viewFormat) return true;
+    if (g_colourGrade.scratchSrv) { g_colourGrade.scratchSrv->Release(); g_colourGrade.scratchSrv = nullptr; }
+    if (g_colourGrade.scratch) { g_colourGrade.scratch->Release(); g_colourGrade.scratch = nullptr; }
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = typeless;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    HRESULT hr = g_d3d11Mask.device->CreateTexture2D(&desc, nullptr, &g_colourGrade.scratch);
+    if (FAILED(hr)) return FailColourGrade("scratch texture", hr);
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+    srvDesc.Format = viewFormat;
+    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MipLevels = 1;
+    hr = g_d3d11Mask.device->CreateShaderResourceView(g_colourGrade.scratch, &srvDesc, &g_colourGrade.scratchSrv);
+    if (FAILED(hr)) return FailColourGrade("scratch view", hr);
+    g_colourGrade.scratchW = width;
+    g_colourGrade.scratchH = height;
+    g_colourGrade.scratchFormat = typeless;
+    g_colourGrade.scratchViewFormat = viewFormat;
+    Log("colour grade: scratch %ux%u format=%d view=%d\n", width, height, static_cast<int>(typeless), static_cast<int>(viewFormat));
+    return true;
+}
+
+// Grade RTVs use the app's own swapchain format (sRGB when the app asked for sRGB), unlike the
+// visor's non-sRGB RTVs, so the grade sees the same values OpenXR Toolkit's shader saw.
+ID3D11RenderTargetView* CachedGradeRtvFor(TrackedSwapchain& ts, uint32_t imageIndex, uint32_t arraySlice) {
+    if (!g_d3d11Mask.device || ts.arraySize == 0 || imageIndex >= ts.textures.size() || !ts.textures[imageIndex]) return nullptr;
+    const size_t index = static_cast<size_t>(imageIndex) * ts.arraySize + arraySlice;
+    if (ts.gradeRtvs.size() != ts.textures.size() * ts.arraySize) {
+        for (ID3D11RenderTargetView* rtv : ts.gradeRtvs) if (rtv) rtv->Release();
+        ts.gradeRtvs.assign(ts.textures.size() * ts.arraySize, nullptr);
+    }
+    if (index >= ts.gradeRtvs.size()) return nullptr;
+    if (!ts.gradeRtvs[index]) {
+        const DXGI_FORMAT viewFormat = static_cast<DXGI_FORMAT>(ts.format);
+        if (IsTypelessFormat(viewFormat) || ColourGradeTypelessFormat(viewFormat) == DXGI_FORMAT_UNKNOWN) return nullptr;
+        D3D11_RENDER_TARGET_VIEW_DESC rtvDesc{};
+        rtvDesc.Format = viewFormat;
+        if (ts.arraySize > 1) {
+            rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+            rtvDesc.Texture2DArray.MipSlice = 0;
+            rtvDesc.Texture2DArray.FirstArraySlice = arraySlice;
+            rtvDesc.Texture2DArray.ArraySize = 1;
+        } else {
+            rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+            rtvDesc.Texture2D.MipSlice = 0;
+        }
+        if (FAILED(g_d3d11Mask.device->CreateRenderTargetView(ts.textures[imageIndex], &rtvDesc, &ts.gradeRtvs[index])))
+            ts.gradeRtvs[index] = nullptr;
+    }
+    ID3D11RenderTargetView* rtv = ts.gradeRtvs[index];
+    if (rtv) rtv->AddRef();
+    return rtv;
+}
+
+std::atomic<bool> g_diagGradeOk{false};
+std::atomic<bool> g_diagGradeSkipped{false};
+
+static bool GradeEyeUsable(ID3D11Texture2D* tex, const D3D11_TEXTURE2D_DESC& texDesc, DXGI_FORMAT viewFormat, const EyeView& eye) {
+    const DXGI_FORMAT typeless = ColourGradeTypelessFormat(viewFormat);
+    const XrRect2Di& rect = eye.rect;
+    return tex && texDesc.SampleDesc.Count == 1 && typeless != DXGI_FORMAT_UNKNOWN && !IsTypelessFormat(viewFormat) &&
+        ColourGradeTypelessFormat(texDesc.Format) == typeless && rect.extent.width > 0 && rect.extent.height > 0 &&
+        rect.offset.x >= 0 && rect.offset.y >= 0 &&
+        static_cast<UINT>(rect.offset.x + rect.extent.width) <= texDesc.Width &&
+        static_cast<UINT>(rect.offset.y + rect.extent.height) <= texDesc.Height;
+}
+
+// Colour enabled but neutral: create the pipeline, LUT and scratch now so the first real grade (for example
+// after moving a menu setting mid-race) allocates nothing.
+void PrewarmColourGrade(ID3D11Texture2D* tex, int64_t scFormat, const std::vector<EyeView>& eyes) {
+    g_colourGrade.prewarmed = true; // once per session, whatever happens below
+    if (g_colourGrade.mode == ColourGradeMode::Off || g_colourGrade.failed || !tex || !g_d3d11Mask.device) return;
+    if (!EnsureColourGradePipeline()) return;
+    D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
+    const DXGI_FORMAT viewFormat = static_cast<DXGI_FORMAT>(scFormat);
+    UINT w = 0, h = 0;
+    for (const EyeView& e : eyes) if (GradeEyeUsable(tex, texDesc, viewFormat, e)) {
+        w = (std::max)(w, (UINT)e.rect.extent.width); h = (std::max)(h, (UINT)e.rect.extent.height); }
+    if (w && h) EnsureColourGradeScratch(w, h, ColourGradeTypelessFormat(viewFormat), viewFormat);
+}
+
+// Grades every eye rectangle of one released swapchain image in place, in ONE pass: pipeline state is saved
+// and restored once (not per eye), and nothing is flushed here (the release path flushes once per image).
+// Engine: LUT (default) = one 3D lookup per pixel into a 33^3 table baked from the same maths only when a
+// setting changes, so the per-frame cost is constant whatever the settings; or per-pixel maths.
+void GradeEyes(ID3D11Texture2D* tex, int64_t scFormat, const std::vector<EyeView>& eyes, const std::vector<ID3D11RenderTargetView*>& rtvs) {
+    if (!ColourGradeActive() || !tex || !g_d3d11Mask.context) return;
+    D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
+    const DXGI_FORMAT viewFormat = static_cast<DXGI_FORMAT>(scFormat);
+    const DXGI_FORMAT typeless = ColourGradeTypelessFormat(viewFormat);
+    UINT maxW = 0, maxH = 0; size_t usable = 0;
+    for (size_t i = 0; i < eyes.size(); ++i) {
+        if (i >= rtvs.size() || !rtvs[i]) continue;
+        if (!GradeEyeUsable(tex, texDesc, viewFormat, eyes[i])) {
+            if (!g_diagGradeSkipped.exchange(true))
+                Log("colour grade: skipped unsupported eye image samples=%u format=%d texFormat=%d rect=(%d,%d %dx%d) tex=%ux%u\n",
+                    texDesc.SampleDesc.Count, static_cast<int>(viewFormat), static_cast<int>(texDesc.Format),
+                    eyes[i].rect.offset.x, eyes[i].rect.offset.y, eyes[i].rect.extent.width, eyes[i].rect.extent.height, texDesc.Width, texDesc.Height);
+            continue;
+        }
+        maxW = (std::max)(maxW, (UINT)eyes[i].rect.extent.width); maxH = (std::max)(maxH, (UINT)eyes[i].rect.extent.height); ++usable;
+    }
+    if (!usable || !EnsureColourGradePipeline() || !EnsureColourGradeScratch(maxW, maxH, typeless, viewFormat)) return;
+
+    ID3D11DeviceContext* ctx = g_d3d11Mask.context;
+    const int srgb = (viewFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB || viewFormat == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB ||
+        viewFormat == DXGI_FORMAT_B8G8R8X8_UNORM_SRGB) ? 1 : 0; // levels and the LUT work in display encoding
+    struct { float p1[4], p2[4], p3[4]; int32_t offset[4]; float levels[4]; float bake[4]; } cbData{};
+    memcpy(cbData.p1, g_colourGrade.p1, sizeof(cbData.p1));
+    memcpy(cbData.p2, g_colourGrade.p2, sizeof(cbData.p2));
+    memcpy(cbData.p3, g_colourGrade.p3, sizeof(cbData.p3));
+    cbData.offset[2] = srgb;
+    cbData.levels[0] = g_colourGrade.levelsBlack; cbData.levels[1] = g_colourGrade.levelsWhite; cbData.levels[2] = g_colourGrade.levelsGamma;
+    cbData.bake[1] = static_cast<float>(kColourLutSize);
+    auto upload = [&]() {
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        if (FAILED(ctx->Map(g_colourGrade.cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return false;
+        memcpy(mapped.pData, &cbData, sizeof(cbData)); ctx->Unmap(g_colourGrade.cb, 0); return true;
+    };
+
+    // Save state once.
+    ID3D11RenderTargetView* sRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
+    ID3D11DepthStencilView* sDSV = nullptr;
+    ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, &sDSV);
+    UINT sVPCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    D3D11_VIEWPORT sVPs[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+    ctx->RSGetViewports(&sVPCount, sVPs);
+    ID3D11RasterizerState* sRS = nullptr; ctx->RSGetState(&sRS);
+    ID3D11BlendState* sBS = nullptr; FLOAT sBF[4]{}; UINT sSM = 0; ctx->OMGetBlendState(&sBS, sBF, &sSM);
+    ID3D11DepthStencilState* sDSS = nullptr; UINT sSRef = 0; ctx->OMGetDepthStencilState(&sDSS, &sSRef);
+    ID3D11VertexShader* sVS = nullptr; ctx->VSGetShader(&sVS, nullptr, nullptr);
+    ID3D11PixelShader* sPS = nullptr; ctx->PSGetShader(&sPS, nullptr, nullptr);
+    ID3D11GeometryShader* sGS = nullptr; ctx->GSGetShader(&sGS, nullptr, nullptr);
+    ID3D11HullShader* sHS = nullptr; ctx->HSGetShader(&sHS, nullptr, nullptr);
+    ID3D11DomainShader* sDS = nullptr; ctx->DSGetShader(&sDS, nullptr, nullptr);
+    ID3D11InputLayout* sLayout = nullptr; ctx->IAGetInputLayout(&sLayout);
+    D3D11_PRIMITIVE_TOPOLOGY sTopo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED; ctx->IAGetPrimitiveTopology(&sTopo);
+    ID3D11ShaderResourceView* sSRV[2] = {}; ctx->PSGetShaderResources(0, 2, sSRV);
+    ID3D11SamplerState* sSmp = nullptr; ctx->PSGetSamplers(0, 1, &sSmp);
+    ID3D11Buffer* sCB = nullptr; ctx->PSGetConstantBuffers(0, 1, &sCB);
+
+    static const FLOAT kBF[] = {0.f, 0.f, 0.f, 0.f};
+    ctx->RSSetState(g_colourGrade.rs);
+    ctx->OMSetBlendState(g_d3d11Mask.bsOpaque, kBF, 0xFFFFFFFF);
+    ctx->OMSetDepthStencilState(g_d3d11Mask.dss, 0);
+    ctx->IASetInputLayout(nullptr);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->VSSetShader(g_colourGrade.vs, nullptr, 0);
+    ctx->GSSetShader(nullptr, nullptr, 0);
+    ctx->HSSetShader(nullptr, nullptr, 0);
+    ctx->DSSetShader(nullptr, nullptr, 0);
+    ctx->PSSetConstantBuffers(0, 1, &g_colourGrade.cb);
+
+    // Re-bake the LUT only when the settings (or the swapchain's encoding) changed: 33 tiny draws.
+    const bool useLut = g_colourUseLut;
+    if (useLut) {
+        uint64_t hash = 1469598103934665603ull;
+        auto mix = [&](const void* d, size_t n) { const auto* b = static_cast<const uint8_t*>(d); for (size_t i = 0; i < n; ++i) { hash ^= b[i]; hash *= 1099511628211ull; } };
+        mix(cbData.p1, sizeof(cbData.p1) * 3); mix(cbData.levels, sizeof(cbData.levels)); mix(&srgb, sizeof(srgb));
+        if (!hash) hash = 1;
+        if (hash != g_colourGrade.lutHash) {
+            ID3D11ShaderResourceView* nullSrv[2] = {};
+            ctx->PSSetShaderResources(0, 2, nullSrv); // the LUT cannot be bound as input while it is a target
+            ctx->PSSetShader(g_colourGrade.psBake, nullptr, 0);
+            D3D11_VIEWPORT bvp{}; bvp.Width = bvp.Height = static_cast<float>(kColourLutSize); bvp.MaxDepth = 1.f;
+            ctx->RSSetViewports(1, &bvp);
+            bool ok = true;
+            for (UINT z = 0; z < kColourLutSize && ok; ++z) {
+                cbData.bake[0] = static_cast<float>(z);
+                ok = upload();
+                if (ok) { ctx->OMSetRenderTargets(1, &g_colourGrade.lutRtv[z], nullptr); ctx->Draw(3, 0); }
+            }
+            ID3D11RenderTargetView* nullRtv = nullptr; ctx->OMSetRenderTargets(1, &nullRtv, nullptr);
+            g_colourGrade.lutHash = ok ? hash : 0;
+            cbData.bake[0] = 0.f;
+            LogVerbose("colour grade: LUT re-baked (srgb=%d)\n", srgb);
+        }
+    }
+    ctx->PSSetShader(useLut && g_colourGrade.lutHash ? g_colourGrade.psLut : g_colourGrade.ps, nullptr, 0);
+    ctx->PSSetSamplers(0, 1, &g_colourGrade.lutSampler);
+
+    bool gradedAny = false;
+    for (size_t i = 0; i < eyes.size(); ++i) {
+        if (i >= rtvs.size() || !rtvs[i] || !GradeEyeUsable(tex, texDesc, viewFormat, eyes[i])) continue;
+        const EyeView& eye = eyes[i];
+        const XrRect2Di& rect = eye.rect;
+        const UINT w = static_cast<UINT>(rect.extent.width), h = static_cast<UINT>(rect.extent.height);
+        ID3D11ShaderResourceView* nullSrv[2] = {};
+        ctx->PSSetShaderResources(0, 2, nullSrv); // scratch is a copy target below
+        D3D11_BOX box{static_cast<UINT>(rect.offset.x), static_cast<UINT>(rect.offset.y), 0,
+            static_cast<UINT>(rect.offset.x) + w, static_cast<UINT>(rect.offset.y) + h, 1};
+        ctx->CopySubresourceRegion(g_colourGrade.scratch, 0, 0, 0, 0, tex, D3D11CalcSubresource(0, eye.arraySlice, texDesc.MipLevels), &box);
+        cbData.offset[0] = rect.offset.x; cbData.offset[1] = rect.offset.y;
+        if (!upload()) continue;
+        D3D11_VIEWPORT vp{static_cast<float>(rect.offset.x), static_cast<float>(rect.offset.y), static_cast<float>(w), static_cast<float>(h), 0.f, 1.f};
+        ID3D11RenderTargetView* rtv = rtvs[i];
+        ctx->OMSetRenderTargets(1, &rtv, nullptr);
+        ctx->RSSetViewports(1, &vp);
+        ID3D11ShaderResourceView* srvs[2] = {g_colourGrade.scratchSrv, g_colourGrade.lutSrv};
+        ctx->PSSetShaderResources(0, 2, srvs);
+        ctx->Draw(3, 0);
+        gradedAny = true;
+        if (!g_diagGradeOk.exchange(true))
+            Log("colour grade: first graded eye format=%d rect=(%d,%d %ux%u) slice=%u engine=%s\n",
+                static_cast<int>(viewFormat), rect.offset.x, rect.offset.y, w, h, eye.arraySlice, useLut ? "lut" : "maths");
+    }
+    (void)gradedAny;
+
+    // Restore state once.
+    ctx->PSSetShaderResources(0, 2, sSRV);
+    ctx->PSSetSamplers(0, 1, &sSmp);
+    ctx->PSSetConstantBuffers(0, 1, &sCB);
+    ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, sDSV);
+    if (sVPCount > 0) ctx->RSSetViewports(sVPCount, sVPs);
+    ctx->RSSetState(sRS);
+    ctx->OMSetBlendState(sBS, sBF, sSM);
+    ctx->OMSetDepthStencilState(sDSS, sSRef);
+    ctx->VSSetShader(sVS, nullptr, 0);
+    ctx->GSSetShader(sGS, nullptr, 0);
+    ctx->HSSetShader(sHS, nullptr, 0);
+    ctx->DSSetShader(sDS, nullptr, 0);
+    ctx->PSSetShader(sPS, nullptr, 0);
+    ctx->IASetInputLayout(sLayout);
+    ctx->IASetPrimitiveTopology(sTopo);
+    for (ID3D11RenderTargetView* savedRtv : sRTVs) { if (savedRtv) savedRtv->Release(); }
+    if (sDSV) sDSV->Release();
+    if (sRS) sRS->Release();
+    if (sBS) sBS->Release();
+    if (sDSS) sDSS->Release();
+    if (sVS) sVS->Release();
+    if (sPS) sPS->Release();
+    if (sGS) sGS->Release();
+    if (sHS) sHS->Release();
+    if (sDS) sDS->Release();
+    if (sLayout) sLayout->Release();
+    for (auto* s : sSRV) if (s) s->Release();
+    if (sSmp) sSmp->Release();
+    if (sCB) sCB->Release();
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// In-headset colour calibration: Monster Hunter Wilds' three steps.
+//   1/3 Minimum luminosity  - 4x4 checkerboard of black and the slider value; adjust until there is no
+//                             difference between the light and dark squares  -> output black level.
+//   2/3 Maximum luminosity  - 4x4 checkerboard of white and the slider value; adjust until there is no
+//                             difference                                      -> output white level.
+//   3/3 Overall luminosity  - dim symbol (left) beside a bright reference (right); adjust until the
+//                             symbol on the left is barely visible            -> gamma.
+// Checkerboards are literal display values; the symbols are drawn through the levels being set.
+// The dim symbol is 4/255 in display encoding: on LCD headsets a brighter target (15/255 was used
+// first) stays clearly visible at gamma 1.0, so matching it drove users to a dark gamma (~1.5).
+// Keys (Ctrl+Alt so the game ignores them): C start/stop, Left/Right adjust, Enter next/confirm,
+// Backspace back, Esc cancel. Confirm saves to this game's profile and applies immediately.
+// ---------------------------------------------------------------------------------------------
+struct ColourCalibrationState {
+    bool active = false;
+    int step = 0;                         // 0 black, 1 white, 2 gamma
+    float black = 0.f, white = 1.f, gamma = 1.f;
+    float savedBlack = 0.f, savedWhite = 1.f, savedGamma = 1.f;
+    bool fromMenu = false;                // started from the colour menu: return to it afterwards
+    bool keyDown[10] = {};
+    uint64_t repeatTick[2] = {};
+};
+ColourCalibrationState g_colourCal;
+
+// In-headset colour menu: ViewLab's replacement for OpenXR Toolkit's menu (same items, same 0..100
+// display scale as the Toolkit's post-processing page). Any Ctrl+W/A/S/D (or Ctrl+arrow) opens it, like the
+// Toolkit; Ctrl+F2 toggles it and 15 s without input closes it. Ctrl+W/S (or Ctrl+Up/Down) select,
+// Ctrl+A/D (or Ctrl+Left/Right) change; holding repeats. Edits apply live and are saved to
+// this game's profile when the menu closes or after 1.5 s without changes.
+enum ColourMenuItem : int {
+    CmPost = 0, CmSunglasses, CmContrast, CmBrightness, CmExposure, CmSaturation, CmVibrance,
+    CmHighlights, CmShadows, CmGainR, CmGainG, CmGainB, CmBlack, CmWhite, CmGamma, CmCalibrate, CmReset,
+    CmMenuSize, CmMenuX, CmMenuY, CmMenuDepth, CmExit, CmCount
+};
+struct ColourMenuState {
+    bool open = false;
+    int tab = 0;        // index into kColourMenuTabs
+    int selected = 1;   // row in the tab: 0 = the tab row, 1.. = kColourMenuTabs[tab].items
+    bool keyDown[9] = {};
+    uint64_t repeatTick[4] = {};
+    bool dirty = false;
+    uint64_t lastChange = 0;
+    uint64_t lastInput = 0;
+    // Placement, per app (colour_menu_size %, colour_menu_x / _y = tangent offset x1000 + 1000,
+    // colour_menu_depth cm, 0 = infinity). colour_menu_size replaced colour_menu_scale when 100% was rescaled.
+    bool placementLoaded = false;
+    int scalePct = 75, offX = 0, offY = 0; // offsets in 1/1000 tangent units
+    int depthCm = 100; // OpenXR Toolkit menu_distance default (1 m)
+};
+ColourMenuState g_colourMenu;
+
+// OpenXR Toolkit layout: a tab row first (A/D switches tab when it is selected), then the tab's entries,
+// EXIT MENU last on every tab.
+struct ColourMenuTab { const char* name; int items[10]; int count; };
+static const ColourMenuTab kColourMenuTabs[] = {
+    {"COLOUR", {CmPost, CmSunglasses, CmContrast, CmBrightness, CmExposure, CmSaturation, CmVibrance, CmHighlights, CmShadows, CmExit}, 10},
+    {"GAINS", {CmGainR, CmGainG, CmGainB, CmExit}, 4},
+    {"LEVELS", {CmBlack, CmWhite, CmGamma, CmCalibrate, CmReset, CmExit}, 6},
+    {"MENU", {CmMenuSize, CmMenuX, CmMenuY, CmMenuDepth, CmExit}, 5},
+};
+constexpr int kColourMenuTabCount = (int)(sizeof(kColourMenuTabs) / sizeof(kColourMenuTabs[0]));
+
+static void LoadColourMenuPlacement() {
+    auto& m = g_colourMenu;
+    if (m.placementLoaded) return;
+    m.placementLoaded = true;
+    DWORD v = 0;
+    if (ReadProfileDword(L"colour_menu_size", v)) m.scalePct = std::clamp((int)v, 25, 200);
+    if (ReadProfileDword(L"colour_menu_distance", v)) m.depthCm = std::clamp((int)v, 30, 1000);
+    if (ReadProfileDword(L"colour_menu_x", v)) m.offX = std::clamp((int)v - 1000, -500, 500);
+    if (ReadProfileDword(L"colour_menu_y", v)) m.offY = std::clamp((int)v - 1000, -500, 500);
+}
+
+inline bool ColourCalibrationActive() { return g_colourCal.active || g_colourMenu.open; }
+
+static float CalibrationEncodedLevel(float e) {
+    const float g = (std::max)(0.05f, g_colourGrade.levelsGamma);
+    return g_colourGrade.levelsBlack + (g_colourGrade.levelsWhite - g_colourGrade.levelsBlack) * std::pow(std::clamp(e, 0.f, 1.f), g);
+}
+
+static void SaveColourCalibration() {
+    if (currentAppKey.empty()) return;
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, AppRegistryPath(currentAppKey).c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
+        Log("colour calibration: could not open the app profile key to save\n");
+        return;
+    }
+    SetRegistryDwordValue(key, L"colour_grade_levels_black", static_cast<DWORD>(std::lround(g_colourGrade.levelsBlack * 1000.f)));
+    SetRegistryDwordValue(key, L"colour_grade_levels_white", static_cast<DWORD>(std::lround(g_colourGrade.levelsWhite * 1000.f)));
+    SetRegistryDwordValue(key, L"colour_grade_levels_gamma", static_cast<DWORD>(std::lround(g_colourGrade.levelsGamma * 1000.f)));
+    RegCloseKey(key);
+    Log("colour calibration: saved black=%.3f white=%.3f gamma=%.3f for %ls\n",
+        g_colourGrade.levelsBlack, g_colourGrade.levelsWhite, g_colourGrade.levelsGamma, currentAppKey.c_str());
+}
+
+static void SaveColourMenu() {
+    if (currentAppKey.empty()) return;
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, AppRegistryPath(currentAppKey).c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
+        Log("colour menu: could not open the app profile key to save\n");
+        return;
+    }
+    const ColourGradeSettings& s = g_colourGrade.settings;
+    SetRegistryDwordValue(key, L"colour_grade_mode", static_cast<DWORD>(g_colourGrade.mode));
+    SetRegistryDwordValue(key, L"colour_grade_post_process", s.fullGrade ? 1u : 0u);
+    SetRegistryDwordValue(key, L"colour_grade_sunglasses", static_cast<DWORD>(s.sunglasses));
+    SetRegistryDwordValue(key, L"colour_grade_contrast", static_cast<DWORD>(s.contrast));
+    SetRegistryDwordValue(key, L"colour_grade_brightness", static_cast<DWORD>(s.brightness));
+    SetRegistryDwordValue(key, L"colour_grade_exposure", static_cast<DWORD>(s.exposure));
+    SetRegistryDwordValue(key, L"colour_grade_saturation", static_cast<DWORD>(s.saturation));
+    SetRegistryDwordValue(key, L"colour_grade_vibrance", static_cast<DWORD>(s.vibrance));
+    SetRegistryDwordValue(key, L"colour_grade_highlights", static_cast<DWORD>(s.highlights));
+    SetRegistryDwordValue(key, L"colour_grade_shadows", static_cast<DWORD>(s.shadows));
+    SetRegistryDwordValue(key, L"colour_grade_gain_r", static_cast<DWORD>(s.gainR));
+    SetRegistryDwordValue(key, L"colour_grade_gain_g", static_cast<DWORD>(s.gainG));
+    SetRegistryDwordValue(key, L"colour_grade_gain_b", static_cast<DWORD>(s.gainB));
+    SetRegistryDwordValue(key, L"colour_grade_levels_black", static_cast<DWORD>(std::lround(g_colourGrade.levelsBlack * 1000.f)));
+    SetRegistryDwordValue(key, L"colour_grade_levels_white", static_cast<DWORD>(std::lround(g_colourGrade.levelsWhite * 1000.f)));
+    SetRegistryDwordValue(key, L"colour_grade_levels_gamma", static_cast<DWORD>(std::lround(g_colourGrade.levelsGamma * 1000.f)));
+    SetRegistryDwordValue(key, L"colour_menu_size", static_cast<DWORD>(g_colourMenu.scalePct));
+    SetRegistryDwordValue(key, L"colour_menu_distance", static_cast<DWORD>(g_colourMenu.depthCm));
+    SetRegistryDwordValue(key, L"colour_menu_x", static_cast<DWORD>(g_colourMenu.offX + 1000));
+    SetRegistryDwordValue(key, L"colour_menu_y", static_cast<DWORD>(g_colourMenu.offY + 1000));
+    RegCloseKey(key);
+    g_colourMenu.dirty = false;
+    Log("colour menu: saved post=%d sunglasses=%d contrast=%d brightness=%d exposure=%d saturation=%d vibrance=%d "
+        "highlights=%d shadows=%d gain=%d/%d/%d levels=%.3f/%.3f/%.3f for %ls\n",
+        s.fullGrade ? 1 : 0, s.sunglasses, s.contrast, s.brightness, s.exposure, s.saturation, s.vibrance,
+        s.highlights, s.shadows, s.gainR, s.gainG, s.gainB,
+        g_colourGrade.levelsBlack, g_colourGrade.levelsWhite, g_colourGrade.levelsGamma, currentAppKey.c_str());
+}
+
+// Recomputes shader parameters after a menu edit (mirrors LoadColourGradeConfig's tail).
+static void ApplyColourMenuSettings() {
+    g_colourGrade.mode = ColourGradeMode::ViewLab;
+    g_colourGrade.source = "viewlab";
+    ComputeColourGradeParams(g_colourGrade.settings);
+    if (g_colourGrade.toolkitLoaded) {
+        for (int i = 0; i < 4; ++i) { g_colourGrade.p1[i] = 0.f; g_colourGrade.p2[i] = 0.f; g_colourGrade.p3[i] = 0.f; }
+    }
+    RefreshColourGradeActive();
+    g_colourMenu.dirty = true;
+    g_colourMenu.lastChange = GetTickCount64();
+}
+
+static void ApplyCalibrationToGrade() {
+    g_colourGrade.levelsBlack = g_colourCal.black;
+    g_colourGrade.levelsWhite = g_colourCal.white;
+    g_colourGrade.levelsGamma = g_colourCal.gamma;
+    RefreshColourGradeActive();
+}
+
+static void StartColourCalibration() {
+    auto& c = g_colourCal;
+    c.active = true; c.step = 0; c.fromMenu = false;
+    c.savedBlack = g_colourGrade.levelsBlack; c.savedWhite = g_colourGrade.levelsWhite; c.savedGamma = g_colourGrade.levelsGamma;
+    // Start each step from a visibly-different value so the user adjusts toward the target.
+    c.black = (std::max)(g_colourGrade.levelsBlack, 12.f / 255.f); c.white = (std::min)(g_colourGrade.levelsWhite, 235.f / 255.f);
+    c.gamma = g_colourGrade.levelsGamma;
+    // Show the checkerboards on an unmodified picture.
+    g_colourGrade.levelsBlack = 0.f; g_colourGrade.levelsWhite = 1.f; g_colourGrade.levelsGamma = 1.f; RefreshColourGradeActive();
+    // Swallow the keys that started it so they do not also act inside the calibration.
+    for (bool& k : c.keyDown) k = true;
+    Log("colour calibration: started\n");
+}
+
+static void AdjustColourMenuItem(int item, int dir) {
+    ColourGradeSettings& s = g_colourGrade.settings;
+    auto step = [&](int& v, int lo, int hi) { v = std::clamp(v + dir * 5, lo, hi); };
+    switch (item) {
+    case CmPost: s.fullGrade = !s.fullGrade; break;
+    case CmSunglasses: s.sunglasses = (s.sunglasses + (dir > 0 ? 1 : 3)) % 4; break;
+    case CmContrast: step(s.contrast, 0, 1000); break;
+    case CmBrightness: step(s.brightness, 0, 1000); break;
+    case CmExposure: step(s.exposure, 0, 1000); break;
+    case CmSaturation: step(s.saturation, 0, 1000); break;
+    case CmVibrance: step(s.vibrance, 0, 1000); break;
+    case CmHighlights: step(s.highlights, 0, 1000); break;
+    case CmShadows: step(s.shadows, 0, 1000); break;
+    case CmGainR: step(s.gainR, 0, 1000); break;
+    case CmGainG: step(s.gainG, 0, 1000); break;
+    case CmGainB: step(s.gainB, 0, 1000); break;
+    case CmBlack: g_colourGrade.levelsBlack = std::clamp(g_colourGrade.levelsBlack + dir / 255.f, 0.f, 64.f / 255.f); break;
+    case CmWhite: g_colourGrade.levelsWhite = std::clamp(g_colourGrade.levelsWhite + dir / 255.f, 160.f / 255.f, 1.f); break;
+    case CmGamma: g_colourGrade.levelsGamma = std::clamp(g_colourGrade.levelsGamma - dir * 0.02f, 0.40f, 2.50f); break; // right = brighter
+    case CmCalibrate:
+        if (dir > 0) { if (g_colourMenu.dirty) SaveColourMenu(); g_colourMenu.open = false; StartColourCalibration(); g_colourCal.fromMenu = true; }
+        return;
+    case CmMenuDepth: // OpenXR Toolkit's "menu distance": centimetres, default 100 (1 m); D = further
+        g_colourMenu.depthCm = std::clamp(g_colourMenu.depthCm + dir * 10, 30, 1000);
+        g_colourMenu.dirty = true; g_colourMenu.lastChange = GetTickCount64(); return;
+    case CmMenuSize: g_colourMenu.scalePct = std::clamp(g_colourMenu.scalePct + dir * 5, 25, 200); g_colourMenu.dirty = true; g_colourMenu.lastChange = GetTickCount64(); return;
+    case CmMenuX: g_colourMenu.offX = std::clamp(g_colourMenu.offX + dir * 10, -500, 500); g_colourMenu.dirty = true; g_colourMenu.lastChange = GetTickCount64(); return;
+    case CmMenuY: g_colourMenu.offY = std::clamp(g_colourMenu.offY + dir * 10, -500, 500); g_colourMenu.dirty = true; g_colourMenu.lastChange = GetTickCount64(); return; // D = up (tangent y is up)
+    case CmExit:
+        if (dir > 0) { g_colourMenu.open = false; Log("colour menu: closed (exit)\n"); if (g_colourMenu.dirty) SaveColourMenu(); }
+        return;
+    case CmReset:
+        if (dir > 0) { s = ColourGradeSettings{}; g_colourGrade.levelsBlack = 0.f; g_colourGrade.levelsWhite = 1.f; g_colourGrade.levelsGamma = 1.f; }
+        else return;
+        break;
+    default: return;
+    }
+    ApplyColourMenuSettings();
+}
+
+static void PollColourMenuKeys() {
+    const bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+    const bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+    // 0 F2, 1 W, 2 Up, 3 S, 4 Down, 5 A, 6 Left, 7 D, 8 Right
+    const int keys[9] = {VK_F2, 'W', VK_UP, 'S', VK_DOWN, 'A', VK_LEFT, 'D', VK_RIGHT};
+    bool pressed[9] = {}, held[9] = {};
+    for (int i = 0; i < 9; ++i) {
+        held[i] = ctrl && !alt && (GetAsyncKeyState(keys[i]) & 0x8000) != 0;
+        pressed[i] = held[i] && !g_colourMenu.keyDown[i];
+        g_colourMenu.keyDown[i] = held[i];
+    }
+    auto& m = g_colourMenu;
+    const uint64_t now = GetTickCount64();
+    bool anyPressed = false;
+    for (int i = 1; i < 9; ++i) anyPressed = anyPressed || pressed[i];
+    if (!g_colourCal.active && (pressed[0] || (!m.open && anyPressed))) {
+        // Like OpenXR Toolkit, any Ctrl+W/A/S/D (or arrow) opens the menu; that press only opens it.
+        m.open = pressed[0] ? !m.open : true;
+        m.lastInput = now;
+        LoadColourMenuPlacement();
+        Log("colour menu: %s\n", m.open ? "opened" : "closed");
+        if (!m.open && m.dirty) SaveColourMenu();
+        if (m.open) {
+            for (int i = 1; i < 9; ++i) pressed[i] = false;
+            for (uint64_t& t : m.repeatTick) t = now + 350; // a held opening key must not start repeating at once
+        }
+    }
+    if (m.open && (anyPressed || held[1] || held[2] || held[3] || held[4] || held[5] || held[6] || held[7] || held[8])) m.lastInput = now;
+    if (m.open && now - m.lastInput > 15000) { // auto-close after 15 s without input
+        m.open = false;
+        Log("colour menu: closed (idle)\n");
+        if (m.dirty) SaveColourMenu();
+    }
+    if (!m.open) {
+        if (m.dirty && now - m.lastChange > 1500) SaveColourMenu();
+        return;
+    }
+    // dir groups: 0 up, 1 down, 2 decrease, 3 increase. Values repeat faster than selection.
+    const int groups[4][2] = {{1, 2}, {3, 4}, {5, 6}, {7, 8}};
+    for (int g = 0; g < 4; ++g) {
+        const bool p = pressed[groups[g][0]] || pressed[groups[g][1]];
+        const bool h = held[groups[g][0]] || held[groups[g][1]];
+        bool fire = p;
+        const uint64_t firstDelay = 350, repeat = g < 2 ? 120 : 40;
+        if (p) m.repeatTick[g] = now + firstDelay;
+        else if (h && now >= m.repeatTick[g]) { fire = true; m.repeatTick[g] = now + repeat; }
+        if (!fire) continue;
+        const ColourMenuTab& tab = kColourMenuTabs[std::clamp(m.tab, 0, kColourMenuTabCount - 1)];
+        const int rows = tab.count + 1; // + the tab row
+        if (g == 0) m.selected = (m.selected + rows - 1) % rows;
+        else if (g == 1) m.selected = (m.selected + 1) % rows;
+        else if (m.selected == 0) {
+            if (!p) continue; // one tab per press
+            m.tab = (m.tab + (g == 2 ? kColourMenuTabCount - 1 : 1)) % kColourMenuTabCount;
+        } else {
+            const int item = tab.items[std::clamp(m.selected - 1, 0, tab.count - 1)];
+            // Actions (calibrate/reset/exit/choices) fire once per press, never on repeat.
+            const bool once = item == CmCalibrate || item == CmReset || item == CmExit || item == CmPost || item == CmSunglasses;
+            if (once && !p) continue;
+            AdjustColourMenuItem(item, g == 2 ? -1 : 1);
+            if (!m.open) return;
+        }
+    }
+    if (m.dirty && now - m.lastChange > 1500) SaveColourMenu();
+}
+
+void PollColourCalibrationKeys() {
+    std::lock_guard<std::recursive_mutex> rendererLock(g_rendererMutex);
+    PollColourMenuKeys();
+    // Keys: the menu's Ctrl+W/A/S/D (A/D adjust, S next / confirm, W back / cancel on step 1), or the
+    // original Ctrl+Alt set (C start/cancel, Left/Right adjust, Enter next, Backspace back, Esc cancel).
+    const bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+    const bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+    // 0 C, 1 Left, 2 Right, 3 Enter, 4 Back, 5 Esc (Ctrl+Alt); 6 W, 7 A, 8 S, 9 D (Ctrl only)
+    const int keys[10] = {'C', VK_LEFT, VK_RIGHT, VK_RETURN, VK_BACK, VK_ESCAPE, 'W', 'A', 'S', 'D'};
+    bool pressed[10] = {}, held[10] = {};
+    for (int i = 0; i < 10; ++i) {
+        held[i] = ctrl && (i < 6 ? alt : !alt) && (GetAsyncKeyState(keys[i]) & 0x8000) != 0;
+        pressed[i] = held[i] && !g_colourCal.keyDown[i];
+        g_colourCal.keyDown[i] = held[i];
+    }
+    auto& c = g_colourCal;
+    auto finish = [&](const char* how) {
+        c.active = false;
+        Log("colour calibration: %s\n", how);
+        if (c.fromMenu) { // back to the menu it was started from
+            auto& m = g_colourMenu;
+            m.open = true; m.lastInput = GetTickCount64();
+            for (uint64_t& t : m.repeatTick) t = m.lastInput + 350;
+        }
+    };
+    if (pressed[0]) {
+        if (!c.active) {
+            if (g_colourMenu.open) { if (g_colourMenu.dirty) SaveColourMenu(); g_colourMenu.open = false; }
+            StartColourCalibration();
+            return;
+        } else pressed[5] = true; // Ctrl+Alt+C again = cancel
+    }
+    if (!c.active) return;
+    const bool pLeft = pressed[1] || pressed[7], pRight = pressed[2] || pressed[9];
+    const bool hLeft = held[1] || held[7], hRight = held[2] || held[9];
+    const bool pNext = pressed[3] || pressed[8];
+    const bool pBack = pressed[4] || pressed[6];
+    if (pressed[5] || (pressed[6] && c.step == 0)) {
+        g_colourGrade.levelsBlack = c.savedBlack; g_colourGrade.levelsWhite = c.savedWhite; g_colourGrade.levelsGamma = c.savedGamma;
+        RefreshColourGradeActive(); finish("cancelled"); return;
+    }
+    // Adjust: one step per press, repeating every 90 ms after a 350 ms hold.
+    const uint64_t now = GetTickCount64();
+    const bool dirPressed[2] = {pLeft, pRight}, dirHeld[2] = {hLeft, hRight};
+    for (int dir = 0; dir < 2; ++dir) {
+        bool fire = dirPressed[dir];
+        if (dirPressed[dir]) c.repeatTick[dir] = now + 350;
+        else if (dirHeld[dir] && now >= c.repeatTick[dir]) { fire = true; c.repeatTick[dir] = now + 90; }
+        if (!fire) continue;
+        const float sign = dir == 0 ? -1.f : 1.f;
+        if (c.step == 0) c.black = std::clamp(c.black + sign / 255.f, 0.f, 64.f / 255.f);
+        else if (c.step == 1) c.white = std::clamp(c.white + sign / 255.f, 160.f / 255.f, 1.f);
+        else c.gamma = std::clamp(c.gamma - sign * 0.02f, 0.40f, 2.50f); // right = brighter midtones
+    }
+    if (pBack && c.step > 0) --c.step;
+    if (pNext) {
+        if (c.step < 2) {
+            ++c.step;
+            if (c.step == 2) { g_colourGrade.levelsBlack = c.black; g_colourGrade.levelsWhite = c.white; RefreshColourGradeActive(); }
+        } else {
+            ApplyCalibrationToGrade();
+            SaveColourCalibration();
+            finish("confirmed");
+            return;
+        }
+    }
+    // The game follows the slider live on every step (the checkerboards are literal display values drawn after
+    // the grade, so they are unaffected): step 1 sets black, step 2 adds white, step 3 adds gamma.
+    g_colourGrade.levelsBlack = c.black;
+    g_colourGrade.levelsWhite = c.step >= 1 ? c.white : c.savedWhite;
+    g_colourGrade.levelsGamma = c.step >= 2 ? c.gamma : c.savedGamma;
+    RefreshColourGradeActive();
+}
+
+// Compact 5x7 font for the panel captions (digits, A-Z, '.', '-', '/').
+static const unsigned char kCalFont[40][7] = {
+    {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E},{0x04,0x0C,0x04,0x04,0x04,0x04,0x0E},{0x0E,0x11,0x01,0x02,0x04,0x08,0x1F},
+    {0x1F,0x02,0x04,0x02,0x01,0x11,0x0E},{0x02,0x06,0x0A,0x12,0x1F,0x02,0x02},{0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E},
+    {0x06,0x08,0x10,0x1E,0x11,0x11,0x0E},{0x1F,0x01,0x02,0x04,0x04,0x04,0x04},{0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E},
+    {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C},{0x00,0x00,0x00,0x00,0x00,0x0C,0x0C},{0x00,0x00,0x00,0x0E,0x00,0x00,0x00},
+    {0x0E,0x11,0x11,0x1F,0x11,0x11,0x11},{0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E},{0x0E,0x11,0x10,0x10,0x10,0x11,0x0E},
+    {0x1E,0x11,0x11,0x11,0x11,0x11,0x1E},{0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F},{0x1F,0x10,0x10,0x1E,0x10,0x10,0x10},
+    {0x0E,0x11,0x10,0x17,0x11,0x11,0x0F},{0x11,0x11,0x11,0x1F,0x11,0x11,0x11},{0x0E,0x04,0x04,0x04,0x04,0x04,0x0E},
+    {0x07,0x02,0x02,0x02,0x02,0x12,0x0C},{0x11,0x12,0x14,0x18,0x14,0x12,0x11},{0x10,0x10,0x10,0x10,0x10,0x10,0x1F},
+    {0x11,0x1B,0x15,0x15,0x11,0x11,0x11},{0x11,0x19,0x15,0x13,0x11,0x11,0x11},{0x0E,0x11,0x11,0x11,0x11,0x11,0x0E},
+    {0x1E,0x11,0x11,0x1E,0x10,0x10,0x10},{0x0E,0x11,0x11,0x11,0x15,0x12,0x0D},{0x1E,0x11,0x11,0x1E,0x14,0x12,0x11},
+    {0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E},{0x1F,0x04,0x04,0x04,0x04,0x04,0x04},{0x11,0x11,0x11,0x11,0x11,0x11,0x0E},
+    {0x11,0x11,0x11,0x11,0x11,0x0A,0x04},{0x11,0x11,0x11,0x15,0x15,0x15,0x0A},{0x11,0x11,0x0A,0x04,0x0A,0x11,0x11},
+    {0x11,0x11,0x0A,0x04,0x04,0x04,0x04},{0x1F,0x01,0x02,0x04,0x08,0x10,0x1F},{0x01,0x01,0x02,0x04,0x08,0x10,0x10},
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00}};
+static int CalGlyph(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c == '.') return 10; if (c == '-') return 11;
+    if (c >= 'A' && c <= 'Z') return 12 + c - 'A';
+    if (c == '/') return 38; return -1;
+}
+
+// Draws the calibration panel or the colour menu into one eye rectangle through a non-sRGB RTV, so every
+// value written is exactly the value the stream and display receive. The panel is anchored at the
+// shared straight-ahead tangent point and sized in tangent units, projected through THIS eye's own
+// FOV (like the crosshair), so both eyes fuse it into one panel. Centring it in each eye rectangle
+// instead gives two panels with no overlap on canted/asymmetric headsets.
+void DrawColourCalibrationToTexture(ID3D11Texture2D* tex, const EyeView& eye, const std::vector<EyeView>& allViews, ID3D11RenderTargetView* rtv) {
+    if (!ColourCalibrationActive() || !tex || !rtv || !g_d3d11Mask.initialized || !g_d3d11Mask.calibrationPs || !g_d3d11Mask.calibrationRs) return;
+    D3D11_TEXTURE2D_DESC td{}; tex->GetDesc(&td);
+    if (td.Width == 0 || td.Height == 0) return;
+    ID3D11DeviceContext* ctx = g_d3d11Mask.context;
+    const float W = (float)td.Width, H = (float)td.Height;
+    const XrRect2Di& r = eye.rect;
+    std::vector<VisorVertex> verts; verts.reserve(8192);
+    auto ndcX = [&](float px) { return px / W * 2.f - 1.f; };
+    auto ndcY = [&](float py) { return 1.f - py / H * 2.f; };
+    auto quad = [&](float x0, float y0, float x1, float y1) {
+        VisorVertex v{}; v.alpha = 1.f;
+        const float xs[6] = {x0, x1, x1, x0, x1, x0}, ys[6] = {y0, y0, y1, y0, y1, y1};
+        for (int i = 0; i < 6; ++i) { v.x = ndcX(xs[i]); v.y = ndcY(ys[i]); verts.push_back(v); }
+    };
+    auto flush = [&](float cr, float cg, float cb) {
+        if (verts.empty()) return;
+        D3D11_MAPPED_SUBRESOURCE cm{};
+        if (SUCCEEDED(ctx->Map(g_d3d11Mask.calibrationColorCb, 0, D3D11_MAP_WRITE_DISCARD, 0, &cm))) {
+            const float col[4] = {cr, cg, cb, 0.f}; memcpy(cm.pData, col, sizeof(col)); ctx->Unmap(g_d3d11Mask.calibrationColorCb, 0);
+        }
+        for (size_t off = 0; off < verts.size(); off += 4092) {
+            const size_t n = (std::min)(verts.size() - off, size_t{4092});
+            D3D11_MAPPED_SUBRESOURCE m{};
+            if (FAILED(ctx->Map(g_d3d11Mask.vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) break;
+            memcpy(m.pData, verts.data() + off, n * sizeof(VisorVertex)); ctx->Unmap(g_d3d11Mask.vb, 0);
+            ctx->Draw((UINT)n, 0);
+        }
+        verts.clear();
+    };
+    auto grey = [&](float v) { flush(v, v, v); };
+    // Save state.
+    ID3D11RenderTargetView* sRTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{}; ID3D11DepthStencilView* sDSV = nullptr;
+    ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, &sDSV);
+    UINT sVPCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE; D3D11_VIEWPORT sVPs[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+    ctx->RSGetViewports(&sVPCount, sVPs);
+    UINT sScCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE; D3D11_RECT sSc[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+    ctx->RSGetScissorRects(&sScCount, sSc);
+    ID3D11RasterizerState* sRS = nullptr; ctx->RSGetState(&sRS);
+    ID3D11BlendState* sBS = nullptr; FLOAT sBF[4]{}; UINT sSM = 0; ctx->OMGetBlendState(&sBS, sBF, &sSM);
+    ID3D11DepthStencilState* sDSS = nullptr; UINT sSRef = 0; ctx->OMGetDepthStencilState(&sDSS, &sSRef);
+    ID3D11VertexShader* sVS = nullptr; ctx->VSGetShader(&sVS, nullptr, nullptr);
+    ID3D11PixelShader* sPS = nullptr; ctx->PSGetShader(&sPS, nullptr, nullptr);
+    ID3D11InputLayout* sLayout = nullptr; ctx->IAGetInputLayout(&sLayout);
+    D3D11_PRIMITIVE_TOPOLOGY sTopo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED; ctx->IAGetPrimitiveTopology(&sTopo);
+    ID3D11Buffer* sVB = nullptr; UINT sStride = 0, sOff = 0; ctx->IAGetVertexBuffers(0, 1, &sVB, &sStride, &sOff);
+    ID3D11Buffer* sCB = nullptr; ctx->PSGetConstantBuffers(0, 1, &sCB);
+    D3D11_VIEWPORT vp{}; vp.Width = W; vp.Height = H; vp.MaxDepth = 1.f;
+    const D3D11_RECT scissor{r.offset.x, r.offset.y, r.offset.x + r.extent.width, r.offset.y + r.extent.height};
+    static const FLOAT kBF[] = {0.f, 0.f, 0.f, 0.f};
+    UINT stride = sizeof(VisorVertex), offset = 0;
+    ctx->OMSetRenderTargets(1, &rtv, nullptr); ctx->RSSetViewports(1, &vp); ctx->RSSetScissorRects(1, &scissor);
+    ctx->RSSetState(g_d3d11Mask.calibrationRs);
+    ctx->OMSetBlendState(g_d3d11Mask.bsOpaque, kBF, 0xFFFFFFFF); ctx->OMSetDepthStencilState(g_d3d11Mask.dss, 0);
+    ctx->VSSetShader(g_d3d11Mask.vs, nullptr, 0); ctx->PSSetShader(g_d3d11Mask.calibrationPs, nullptr, 0);
+    ctx->IASetInputLayout(g_d3d11Mask.layout); ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->IASetVertexBuffers(0, 1, &g_d3d11Mask.vb, &stride, &offset); ctx->PSSetConstantBuffers(0, 1, &g_d3d11Mask.calibrationColorCb);
+
+    // Stereo anchor, projected through this eye's FOV so both eyes fuse one panel. Horizontally straight
+    // ahead; vertically the centre of the render band both eyes share (not the lens centre: with a
+    // render-height crop the band sits lower and a lens-centred panel reached the distorted band edge).
+    // Size never scales to the render band; the menu's MENU SIZE / MENU X / MENU Y entries scale and move it. Layout is in font pixels (float, so the size
+    // is exact): menu 280 tall x 160 wide, calibration 190 x 232.
+    const OverlayCoordinateResolver co(eye, allViews);
+    const bool menu = !g_colourCal.active;
+    const float bandTan = co.tangentValid ? (co.sharedSelectedU + co.sharedSelectedD) * .5f : 0.f;
+    const float menuScale = menu ? g_colourMenu.scalePct / 100.f : 1.f;
+    const float offX = menu ? g_colourMenu.offX / 1000.f : 0.f, offY = menu ? g_colourMenu.offY / 1000.f : 0.f;
+    // MENU DEPTH: identical tangents in both eyes = optical infinity (the default, and the furthest possible).
+    // A finite distance D converges the eyes: each eye's panel moves (IPD / 2) / D towards the nose.
+    float depthTan = 0.f;
+    if (menu && g_colourMenu.depthCm > 0) {
+        float ipd = .063f;
+        if (g_d3d11Mask.latestViewCount >= 2) {
+            const XrVector3f a = g_d3d11Mask.latestViews[0].pose.position, b = g_d3d11Mask.latestViews[1].pose.position;
+            const float d = std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z));
+            if (d > .04f && d < .09f) ipd = d;
+        }
+        depthTan = (ipd * .5f) / (g_colourMenu.depthCm / 100.f) * (eye.viewIndex == 0 ? 1.f : -1.f);
+    }
+    const auto centre = co.ResolveSharedTangent(offX + depthTan, bandTan + offY, false);
+    const float cx = centre.first, cy = centre.second;
+    const float unitPx = co.tangentValid ? co.width / (co.selectedR - co.selectedL) : (float)(std::min)(r.extent.width, r.extent.height) * .9f;
+    // Menu: OpenXR Toolkit layout, fixed size for every tab (the tallest tab: tab row + 10 entries) so it never
+    // jumps when switching tabs; 142 x 262 font px.
+    const float unitsTall = menu ? 142.f : 190.f, unitsWide = menu ? 262.f : 232.f;
+    // Menu: sized like OpenXR Toolkit's, in eye-image pixels (the Toolkit: 44 pt x 0.75 = 33 px font, menu.cpp /
+    // layer.cpp defaults). Matching its ~22 px capital height with our 7-row block glyphs gives 3 image px per
+    // font px (4.5, matching its 49.5 px row pitch instead, made the chunky block font look far bigger).
+    // Calibration keeps a fixed angular size (its test patches need area).
+    // MENU SIZE 75 (the default) = what 50% looked like at 3 px/unit, the size the user settled on in-headset.
+    // Whole screen pixels per font pixel and a pixel-aligned origin, like the HUD: the block font is only sharp
+    // on the texel grid (fractional sizes gave uneven strokes).
+    const float px = menu ? (std::max)(1.f, std::round(2.f * menuScale)) : unitPx * .30f / unitsTall;
+    const float panelW = px * unitsWide, panelH = px * unitsTall;
+    const float pl = menu ? std::round(cx - panelW * .5f) : cx - panelW * .5f, pt = menu ? std::round(cy - panelH * .5f) : cy - panelH * .5f;
+    auto textWidth = [&](const char* s, float scale) { return (float)std::strlen(s) * 6.f * scale - scale; };
+    auto textAt = [&](float x, float top, const char* s, float scale) {
+        for (const char* p = s; *p; ++p) {
+            const int gi = CalGlyph(*p);
+            // One quad per horizontal run of lit cells (like the HUD's text), not one per cell.
+            if (gi >= 0) for (int row = 0; row < 7; ++row) {
+                const unsigned char bits = kCalFont[gi][row];
+                for (int col = 0; col < 5;) {
+                    if (!(bits & (0x10 >> col))) { ++col; continue; }
+                    const int start = col;
+                    while (col < 5 && (bits & (0x10 >> col))) ++col;
+                    quad(x + start * scale, top + row * scale, x + col * scale, top + (row + 1) * scale);
+                }
+            }
+            x += scale * 6.f;
+        }
+    };
+    auto text = [&](float centreX, float top, const char* s, float scale) {
+        const size_t len = std::strlen(s);
+        if (len == 0) return;
+        scale = (std::min)(scale, panelW * .92f / (6.f * (float)len));
+        textAt(centreX - textWidth(s, scale) * .5f, top, s, scale);
+    };
+    // ViewLab theme (the settings app's colours): near-black panel (#101112) with a red (#C90012) frame
+    // and accents. Values are literal display values through the non-sRGB RTV.
+    auto red = [&]() { flush(201.f / 255.f, 0.f, 18.f / 255.f); };
+    {
+        const float frame = (std::max)(1.f, px);
+        quad(pl - frame, pt - frame, pl + panelW + frame, pt + panelH + frame); red();
+        quad(pl, pt, pl + panelW, pt + panelH); flush(16.f / 255.f, 17.f / 255.f, 18.f / 255.f);
+    }
+
+    if (menu) {
+        // OpenXR Toolkit menu layout (menu.cpp): tab row, separator, then "title | value" rows with the values in
+        // one column; choice entries list every option with the current one boxed; EXIT MENU last. ViewLab theme:
+        // the selected row is a red bar, the current choice / current tab box is red (dark on a red bar).
+        const ColourGradeSettings& s = g_colourGrade.settings;
+        const auto& m = g_colourMenu;
+        const ColourMenuTab& tab = kColourMenuTabs[std::clamp(m.tab, 0, kColourMenuTabCount - 1)];
+        const float left = pl + px * 7.f, right = pl + panelW - px * 7.f, valueCol = left + px * 106.f;
+        auto box = [&](float x0, float y0, float x1, float y1, bool onRedBar) {
+            quad(x0, y0, x1, y1);
+            if (onRedBar) flush(16.f / 255.f, 17.f / 255.f, 18.f / 255.f); else red();
+        };
+        float y = pt + px * 4.f;
+        // Tab row.
+        const bool tabRowSelected = m.selected == 0;
+        if (tabRowSelected) { quad(left - px * 3.f, y - px * 2.f, right + px * 3.f, y + px * 9.f); red(); }
+        float x = left;
+        for (int t = 0; t < kColourMenuTabCount; ++t) {
+            const char* name = kColourMenuTabs[t].name;
+            const float w = textWidth(name, px);
+            if (t == m.tab) box(x - px * 3.f, y - px * 2.f, x + w + px * 3.f, y + px * 9.f, tabRowSelected);
+            textAt(x, y, name, px); grey(t == m.tab || tabRowSelected ? 0.97f : 0.62f);
+            x += w + px * 13.f;
+        }
+        y += px * 11.f;
+        quad(left - px * 3.f, y, right + px * 3.f, y + (std::max)(1.f, px * .5f)); red();
+        y += px * 3.f;
+        // Entries.
+        static const char* kSun[4] = {"NONE", "LIGHT", "DARK", "TRUNITE"};
+        static const char* kOnOff[2] = {"OFF", "ON"};
+        char value[24]{};
+        auto fmt = [&](int v) { snprintf(value, sizeof(value), "%.1f", v / 10.0); };
+        for (int k = 0; k < tab.count; ++k) {
+            const int item = tab.items[k];
+            const bool sel = m.selected == k + 1;
+            const char* label = "";
+            const char* const* choices = nullptr; int choiceCount = 0, current = 0;
+            value[0] = 0;
+            switch (item) {
+            case CmPost: label = "POST-PROCESSING"; choices = kOnOff; choiceCount = 2; current = s.fullGrade ? 1 : 0; break;
+            case CmSunglasses: label = "SUNGLASSES"; choices = kSun; choiceCount = 4; current = std::clamp(s.sunglasses, 0, 3); break;
+            case CmContrast: label = "CONTRAST"; fmt(s.contrast); break;
+            case CmBrightness: label = "BRIGHTNESS"; fmt(s.brightness); break;
+            case CmExposure: label = "EXPOSURE"; fmt(s.exposure); break;
+            case CmSaturation: label = "SATURATION"; fmt(s.saturation); break;
+            case CmVibrance: label = "VIBRANCE"; fmt(s.vibrance); break;
+            case CmHighlights: label = "HIGHLIGHTS"; fmt(s.highlights); break;
+            case CmShadows: label = "SHADOWS"; fmt(s.shadows); break;
+            case CmGainR: label = "RED GAIN"; fmt(s.gainR); break;
+            case CmGainG: label = "GREEN GAIN"; fmt(s.gainG); break;
+            case CmGainB: label = "BLUE GAIN"; fmt(s.gainB); break;
+            case CmBlack: label = "BLACK LEVEL"; snprintf(value, sizeof(value), "%d", (int)std::lround(g_colourGrade.levelsBlack * 255.f)); break;
+            case CmWhite: label = "WHITE LEVEL"; snprintf(value, sizeof(value), "%d", (int)std::lround(g_colourGrade.levelsWhite * 255.f)); break;
+            case CmGamma: label = "GAMMA"; snprintf(value, sizeof(value), "%.2f", g_colourGrade.levelsGamma); break;
+            case CmCalibrate: label = "RUN CALIBRATION"; break;
+            case CmReset: label = "RESET ALL"; break;
+            case CmMenuSize: label = "MENU SIZE"; snprintf(value, sizeof(value), "%d", m.scalePct); break;
+            case CmMenuX: label = "MENU X"; snprintf(value, sizeof(value), "%.2f", m.offX / 1000.0); break;
+            case CmMenuY: label = "MENU Y"; snprintf(value, sizeof(value), "%.2f", m.offY / 1000.0); break;
+            case CmMenuDepth: label = "MENU DISTANCE"; snprintf(value, sizeof(value), "%d", m.depthCm); break;
+            case CmExit: label = "EXIT MENU"; break;
+            }
+            if (sel) { quad(left - px * 3.f, y - px * 2.f, right + px * 3.f, y + px * 9.f); red(); }
+            textAt(left, y, label, px); grey(sel ? 0.97f : 0.80f);
+            if (choices) {
+                float cxv = valueCol;
+                for (int j = 0; j < choiceCount; ++j) {
+                    const float w = textWidth(choices[j], px);
+                    if (j == current) box(cxv - px * 3.f, y - px * 2.f, cxv + w + px * 3.f, y + px * 9.f, sel);
+                    textAt(cxv, y, choices[j], px); grey(j == current || sel ? 0.97f : 0.55f);
+                    cxv += w + px * 10.f;
+                }
+            } else if (value[0]) { textAt(valueCol, y, value, px); grey(0.97f); }
+            y += px * 11.f;
+        }
+        text(cx, pt + panelH - px * 11.f, "W/S SELECT  A/D CHANGE", px); grey(0.60f);
+    } else {
+        static const char* kTitle[3] = {"SCREEN BRIGHTNESS ADJUSTMENT 1/3  MINIMUM LUMINOSITY", "SCREEN BRIGHTNESS ADJUSTMENT 2/3  MAXIMUM LUMINOSITY", "SCREEN BRIGHTNESS ADJUSTMENT 3/3  OVERALL LUMINOSITY"};
+        static const char* kHint[3] = {"ADJUST UNTIL THERE IS NO DIFFERENCE BETWEEN THE LIGHT AND DARK AREAS", "ADJUST UNTIL THERE IS NO DIFFERENCE BETWEEN THE LIGHT AND DARK AREAS", "ADJUST UNTIL THE SYMBOL ON THE LEFT IS BARELY VISIBLE"};
+        const int step = std::clamp(g_colourCal.step, 0, 2);
+        text(cx, pt + px * 6.f, kTitle[step], px); red();
+        const float boxS = panelH * .50f, boxT = pt + px * 20.f;
+        if (step < 2) {
+            const float dark = step == 0 ? 0.f : g_colourCal.white, light = step == 0 ? g_colourCal.black : 1.f;
+            const float bl = cx - boxS * .5f, cell = boxS / 4.f;
+            quad(bl - px * 2.f, boxT - px * 2.f, bl + boxS + px * 2.f, boxT + boxS + px * 2.f); grey(0.f);
+            for (int pass = 0; pass < 2; ++pass) {
+                for (int yy = 0; yy < 4; ++yy) for (int xx = 0; xx < 4; ++xx)
+                    if (((xx + yy) & 1) == pass) quad(bl + xx * cell, boxT + yy * cell, bl + (xx + 1) * cell, boxT + (yy + 1) * cell);
+                grey(pass == 0 ? light : dark);
+            }
+        } else {
+            const float gap = boxS * .15f, l0 = cx - boxS - gap * .5f, l1 = cx + gap * .5f;
+            const float bg = CalibrationEncodedLevel(0.f), dim = CalibrationEncodedLevel(4.f / 255.f), bright = CalibrationEncodedLevel(0.60f);
+            quad(l0, boxT, l0 + boxS, boxT + boxS); quad(l1, boxT, l1 + boxS, boxT + boxS); grey(bg);
+            auto symbol = [&](float leftX) { // a diamond ring with a centre bar
+                const float c0 = leftX + boxS * .5f, c1 = boxT + boxS * .5f, sz = boxS * .30f, t = boxS * .05f;
+                for (int i = -8; i <= 8; ++i) { const float yy = c1 + i * sz / 8.f, half = sz - std::fabs((float)i) * sz / 8.f;
+                    quad(c0 - half, yy - t * .5f, c0 - half + t, yy + t * .5f); quad(c0 + half - t, yy - t * .5f, c0 + half, yy + t * .5f); }
+                quad(c0 - sz * .45f, c1 - t * .5f, c0 + sz * .45f, c1 + t * .5f);
+            };
+            symbol(l0); grey(dim);
+            symbol(l1); grey(bright);
+        }
+        text(cx, boxT + boxS + px * 8.f, kHint[step], px); grey(0.70f);
+        // Value bar with the current setting.
+        const float barW = panelW * .5f, barL = cx - barW * .5f, barT = boxT + boxS + px * 20.f, barH = px * 2.f;
+        float frac = step == 0 ? g_colourCal.black / (64.f / 255.f) : step == 1 ? (g_colourCal.white - 160.f / 255.f) / (1.f - 160.f / 255.f) : (g_colourCal.gamma - .40f) / (2.50f - .40f);
+        if (step == 2) frac = 1.f - frac; // right = brighter
+        frac = std::clamp(frac, 0.f, 1.f);
+        quad(barL, barT, barL + barW, barT + barH); grey(0.30f);
+        quad(barL + barW * frac - px * 2.f, barT - px * 3.f, barL + barW * frac + px * 2.f, barT + barH + px * 3.f); grey(0.90f);
+        char value[16]{};
+        snprintf(value, sizeof(value), "%d", step == 0 ? (int)std::lround(g_colourCal.black * 255.f) : step == 1 ? (int)std::lround(g_colourCal.white * 255.f) : (int)std::lround(frac * 20.f));
+        text(barL - px * 14.f, barT - px * 2.f, value, px); grey(0.85f);
+        text(cx, pt + panelH - px * 12.f, "CTRL A/D ADJUST  CTRL S NEXT  CTRL W BACK", px); grey(0.55f);
+    }
+
+    // Restore state.
+    ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, sRTVs, sDSV);
+    if (sVPCount) ctx->RSSetViewports(sVPCount, sVPs);
+    ctx->RSSetScissorRects(sScCount, sScCount ? sSc : nullptr);
+    ctx->RSSetState(sRS); ctx->OMSetBlendState(sBS, sBF, sSM); ctx->OMSetDepthStencilState(sDSS, sSRef);
+    ctx->VSSetShader(sVS, nullptr, 0); ctx->PSSetShader(sPS, nullptr, 0); ctx->IASetInputLayout(sLayout);
+    ctx->IASetPrimitiveTopology(sTopo); ctx->IASetVertexBuffers(0, 1, &sVB, &sStride, &sOff); ctx->PSSetConstantBuffers(0, 1, &sCB);
+    for (auto* p : sRTVs) if (p) p->Release();
+    if (sDSV) sDSV->Release(); if (sRS) sRS->Release(); if (sBS) sBS->Release(); if (sDSS) sDSS->Release();
+    if (sVS) sVS->Release(); if (sPS) sPS->Release(); if (sLayout) sLayout->Release(); if (sVB) sVB->Release(); if (sCB) sCB->Release();
+    ctx->Flush();
+}
+
 // Draws the visor border directly into the given eye texture/slice/rect.
 // Pure draw: no swapchain lookup, no locking — the caller resolves these and must
 // call this on the render thread that owns the D3D11 immediate context. Called from
@@ -3185,13 +4545,34 @@ void DrawCalibrationOverlayToTexture(
         }
         const HudDrawSnapshot& snap = g_hudDrawSnap;
         if (eye.viewIndex == 0) {
+            bool hudTrouble=false;
+            for(size_t i=0;i<kHudWidgetCount;++i) if((snap.widgetMask&(1u<<i))&&snap.alarm[i]) {hudTrouble=true;break;}
+            g_hudVisibilityAlpha=viewlab::policy::UpdateTraceVisibility(g_hudVisibilityState,
+                hudVisibilityMode,hudTrouble,GetTickCount64(),
+                (uint64_t)std::clamp(hudAlarmHoldMs,0.0,10000.0),(uint64_t)std::clamp(hudTraceFadeOutMs,0.0,1000.0),(uint64_t)std::clamp(hudTraceFadeInMs,0.0,1000.0));
             const uint32_t effectiveChannels=viewlab::policy::EffectiveGraphChannels(static_cast<uint32_t>(snap.graphMode),snap.graphChannels);
             const bool vrTrouble=snap.alarm[(size_t)HudWidgetId::Vr] &&
                 (effectiveChannels&(GraphFrameInterval|GraphFps|GraphBudgetDeviation|GraphDisplayPeriod))!=0;
             const bool appTrouble=snap.alarm[(size_t)HudWidgetId::App] && (effectiveChannels&GraphAppWork)!=0;
+            bool trouble=vrTrouble||appTrouble;
+            if(snap.graphMode==HudGraphMode::FrameCost){
+                // Frame cost has one trigger line. The slider moves that line: 0 disables the alarm, 0.5 is the
+                // actual frame budget, lower values require a larger overrun, higher values allow near-misses,
+                // and 1 keeps the trace visible. There is deliberately no rolling frame-count threshold.
+                trouble=false;
+                const double s=std::clamp(hudTraceAlarmSensitivity,0.0,1.0);
+                if(s>=0.999) trouble=snap.sampleCount>0;
+                else if(s>0.0&&snap.sampleCount>0&&snap.budgetMs>0.0){
+                    const double total=(std::max)(snap.samples[snap.sampleCount-1].cpuFrameMs>0.0?
+                        snap.samples[snap.sampleCount-1].cpuFrameMs:snap.samples[snap.sampleCount-1].appWorkMs,
+                        snap.samples[snap.sampleCount-1].gpuMs);
+                    const double trigger=snap.budgetMs*(1.20-0.40*s);
+                    trouble=total>=trigger;
+                }
+            }
             g_hudTraceVisibilityAlpha=viewlab::policy::UpdateTraceVisibility(g_hudTraceVisibilityState,
-                hudTraceVisibilityMode,vrTrouble||appTrouble,GetTickCount64(),
-                (uint64_t)std::clamp(hudAlarmHoldMs,0.0,10000.0));
+                hudTraceVisibilityMode,trouble,GetTickCount64(),
+                (uint64_t)std::clamp(hudAlarmHoldMs,0.0,10000.0),(uint64_t)std::clamp(hudTraceFadeOutMs,0.0,1000.0),(uint64_t)std::clamp(hudTraceFadeInMs,0.0,1000.0));
         }
         XrFovf fovSelf = eye.fov, fovOther = eye.fov; bool haveOther = false;
         for (const EyeView& v : allViews) if (v.viewIndex != eye.viewIndex) { fovOther = v.fov; haveOther = true; break; }
@@ -3230,7 +4611,6 @@ void DrawCalibrationOverlayToTexture(
         std::array<uint8_t,kHudWidgetCount> drawWidgets{}; size_t drawWidgetCount=0;
         for(uint8_t id:OrderedHudWidgets(snap.widgetOrder)) {
             if((snap.widgetMask&(1ull<<id))==0)continue;
-            if(hudAlarmOnly && !snap.alarm[id])continue;
             drawWidgets[drawWidgetCount++]=id;
         }
         const float desiredX = anchorPxX(hudAnchorX) + radius;
@@ -3244,7 +4624,7 @@ void DrawCalibrationOverlayToTexture(
         const float maxY = obB - margin - radius - numberGap - numberHeight - (rowCount?rowStride*(rowCount-1):0.f);
         const float startX = hudClampToVisible ? (std::clamp)(desiredX, obL + margin + radius, (std::max)(obL + margin + radius, maxX)) : desiredX;
         const float startY = hudClampToVisible ? (std::clamp)(desiredY, obT + margin + radius, (std::max)(obT + margin + radius, maxY)) : desiredY;
-        const float intensity = std::clamp((float)hudOpacity, .10f, 1.f);
+        const float intensity = std::clamp((float)hudOpacity, .10f, 1.f)*g_hudVisibilityAlpha;
         // Item 3 (VR frame time) colours against the effective cadence budget; items 0-2
         // keep the percentage thresholds.
         auto hudColour = [&](int item, const HudMetric& m, float& rr, float& gg, float& bb) {
@@ -3343,7 +4723,7 @@ void DrawCalibrationOverlayToTexture(
                 emit(cx+cosf(a)*ri,cy+sinf(a)*ri,fr,fg,fb); emit(cx+cosf(b2)*radius,cy+sinf(b2)*radius,fr,fg,fb); emit(cx+cosf(b2)*ri,cy+sinf(b2)*ri,fr,fg,fb);
             }
         };
-        if (hudEnabled&&OverlayFeatureVisible(OverlayFeatureId::Hud) && IncludesMirrorFeature(featureMask, MirrorHud)) for (size_t slot=0; slot<drawWidgetCount; ++slot) {
+        if (hudEnabled&&g_hudVisibilityAlpha>.001f&&OverlayFeatureVisible(OverlayFeatureId::Hud) && IncludesMirrorFeature(featureMask, MirrorHud)) for (size_t slot=0; slot<drawWidgetCount; ++slot) {
             const int item=drawWidgets[slot];
             const HudWidgetDescriptor& widget=kHudWidgetRegistry[item];
             const size_t row=slot/widgetsPerRow,col=slot%widgetsPerRow;
@@ -3392,6 +4772,144 @@ void DrawCalibrationOverlayToTexture(
             traceTop = std::clamp(traceTop, obT + margin, (std::max)(obT + margin, obB - margin - traceH));
         }
         const float traceRight = traceLeft + traceW, traceBottom=traceTop+traceH, traceCentre = traceTop + traceH * .5f;
+        if (snap.graphMode == HudGraphMode::FrameCost) {
+            // "Frame cost" theme: what the game's frame actually costs, in milliseconds, against the
+            // headset's frame budget. CPU = APP work (xrBeginFrame return -> xrEndFrame entry), GPU =
+            // timestamp span of the same window, Wait = time blocked in xrWaitFrame, Total = the
+            // larger of CPU and GPU (the side that limits the frame).
+            const size_t visible = (std::min)(snap.sampleCount, historyN);
+            const float thin = (std::max)(1.f, unit * .012f), thick = (std::max)(1.4f, unit * .022f);
+            const float ti = traceIntensity;
+            auto cpuOf = [](const HudFrameSample& s) { return s.cpuFrameMs > 0.0 ? s.cpuFrameMs : s.appWorkMs; };
+            auto gpuOf = [](const HudFrameSample& s) { return s.gpuMs; };
+            auto waitOf = [](const HudFrameSample& s) { return s.waitDurationMs; };
+            auto totalOf = [](const HudFrameSample& s) { return (std::max)(s.cpuFrameMs > 0.0 ? s.cpuFrameMs : s.appWorkMs, s.gpuMs); };
+            struct CostSeries { double (*value)(const HudFrameSample&); const char* name; float r, g, b; };
+            const CostSeries kTotal{+totalOf, "TOTAL", .92f, .95f, 1.f};
+            const CostSeries kCpu{+cpuOf, "CPU", .78f, .38f, 1.f};
+            const CostSeries kGpu{+gpuOf, "GPU", .20f, .90f, .55f};
+            const CostSeries kWait{+waitOf, "WAIT", .98f, .88f, .25f};
+            // Overlaid lines from the user's selection; the first shown series drives the big readout.
+            CostSeries shown[4]{}; int shownCount = 0;
+            const uint32_t lines = (hudCostLines & 0xFu) ? (hudCostLines & 0xFu) : 0x7u;
+            if (lines & 1u) shown[shownCount++] = kTotal;
+            if (lines & 2u) shown[shownCount++] = kCpu;
+            if (lines & 4u) shown[shownCount++] = kGpu;
+            if (lines & 8u) shown[shownCount++] = kWait;
+            const bool showAxisText = hudCostLabels == 0u;   // Full: axis values, time span, legend
+            const bool showReadout = hudCostLabels <= 1u;    // Full and Minimal+: the big one-decimal readout
+            // Readout text uses the HUD pixel font at a larger integer scale.
+            auto textWidthPx = [&](const char* s, float px) { float tw = 0.f; for (const char* p = s; *p; ++p) tw += (*p == '.' ? px * 4 : *p == ' ' ? px * 3 : px * 6); return tw - px; };
+            auto drawTextPx = [&](float leftX, float topY, const char* s, float px, float rr, float gg, float bb) {
+                float x = leftX;
+                for (const char* p = s; *p; ++p) {
+                    const int gi = glyphIdx(*p);
+                    if (gi >= 0) for (int row = 0; row < 7; ++row) {
+                        const unsigned char bits = kHudFont[gi][row];
+                        int col = 0;
+                        while (col < 5) {
+                            if (bits & (0x10 >> col)) { const int runStart = col; while (col < 5 && (bits & (0x10 >> col))) ++col;
+                                safeQuad(x + runStart * px, topY + row * px, x + col * px, topY + (row + 1) * px, rr, gg, bb); }
+                            else ++col;
+                        }
+                    }
+                    x += (*p == '.' ? px * 4 : *p == ' ' ? px * 3 : px * 6);
+                }
+            };
+            // Frame cost text is scaled to the graph: at the HUD glyph scale (big readout 3x) the readout, legend and
+            // axis labels were too big for the graph and collided.
+            const float smallPx = (std::max)(1.f, pxs * .75f), bigPx = smallPx * 2.f;
+            const double budget = snap.budgetMs > 0.0 ? snap.budgetMs : 0.0;
+            const size_t base = snap.sampleCount - visible;
+            // Y range: at least 1.5x budget, rounded up to a whole 2 ms (5 ms past 20 ms).
+            double observedMax = budget;
+            for (int k = 0; k < shownCount; ++k) for (size_t i = 0; i < visible; ++i) {
+                const double v = shown[k].value(snap.samples[base + i]);
+                if (std::isfinite(v) && v > observedMax) observedMax = v;
+            }
+            // Tight scale: just above the budget (1.2x) so typical frames fill the plot; grows only for spikes.
+            double yMax = (std::max)(budget * 1.2, observedMax * 1.1);
+            if (yMax <= 0.0) yMax = 10.0;
+            const double step = yMax > 20.0 ? 5.0 : 1.0;
+            yMax = std::ceil(yMax / step) * step;
+            const float labelW = textWidthPx("00.0", smallPx) + smallPx * 2.f;
+            const float axisL = traceLeft + labelW, axisB = traceBottom - numberHeight - smallPx * 2.f;
+            const float axisT = traceTop, axisR = traceRight;
+            auto yFor = [&](double v) { return axisB - (float)std::clamp(v / yMax, 0.0, 1.0) * (axisB - axisT); };
+            const float ar = .55f * ti, ag = .58f * ti, ab = .62f * ti;
+            line(axisL, axisT, axisL, axisB, thin, ar, ag, ab);
+            line(axisL, axisB, axisR, axisB, thin, ar, ag, ab);
+            char label[24]{};
+            auto yLabel = [&](double v, float rr, float gg, float bb) {
+                if (!showAxisText) return;
+                snprintf(label, sizeof(label), "%.1f", v);
+                const float y = yFor(v);
+                drawTextPx(axisL - smallPx - textWidthPx(label, smallPx), y - smallPx * 3.5f, label, smallPx, rr, gg, bb);
+                line(axisL - smallPx, y, axisL, y, thin, rr, gg, bb);
+            };
+            yLabel(0.0, ar, ag, ab);
+            yLabel(yMax, ar, ag, ab);
+            if (budget > 0.0) {
+                const float by = yFor(budget), dash = (std::max)(4.f, unit * .06f);
+                for (float x = axisL; x < axisR; x += dash * 2.f) line(x, by, (std::min)(axisR, x + dash), by, thin, 1.f * ti, .56f * ti, .12f * ti);
+                yLabel(budget, 1.f * ti, .56f * ti, .12f * ti);
+            }
+            if (visible > 1) {
+                const float dx = (axisR - axisL) / (float)(historyN - 1);
+                const float firstX = axisR - dx * (visible - 1);
+                for (int k = shownCount - 1; k >= 0; --k) {
+                    const CostSeries& sr = shown[k];
+                    for (size_t i = 1; i < visible; ++i) {
+                        const double v0 = sr.value(snap.samples[base + i - 1]), v1 = sr.value(snap.samples[base + i]);
+                        if (!std::isfinite(v0) || !std::isfinite(v1) || v0 < 0.0 || v1 < 0.0) continue;
+                        line(firstX + dx * (i - 1), yFor(v0), firstX + dx * i, yFor(v1), k == 0 ? thick : thin, sr.r * ti, sr.g * ti, sr.b * ti);
+                    }
+                }
+                // Time axis: span of the visible history in seconds, from the samples' own clock.
+                const HudFrameSample& oldest = snap.samples[base];
+                const HudFrameSample& newest = snap.samples[base + visible - 1];
+                if (showAxisText && g_hudQpcFrequency.QuadPart > 0 && newest.qpc > oldest.qpc) {
+                    const double spanS = (double)(newest.qpc - oldest.qpc) / (double)g_hudQpcFrequency.QuadPart;
+                    snprintf(label, sizeof(label), "-%.1fS", spanS);
+                    drawTextPx(firstX, axisB + smallPx * 2.f, label, smallPx, ar, ag, ab);
+                }
+                if (showAxisText) drawTextPx(axisR - textWidthPx("NOW", smallPx), axisB + smallPx * 2.f, "NOW", smallPx, ar, ag, ab);
+                // Live readout: mean of the newest ~8 samples of the primary series, one decimal.
+                const size_t n = (std::min)((size_t)8, visible);
+                double sum = 0.0; size_t count = 0;
+                for (size_t i = visible - n; i < visible; ++i) { const double v = shown[0].value(snap.samples[base + i]); if (std::isfinite(v) && v >= 0.0) { sum += v; ++count; } }
+                float rr = .18f * ti, gg = 1.f * ti, bb = .48f * ti;
+                if (count) {
+                    const double mean = sum / (double)count;
+                    if (budget > 0.0 && shown[0].value != +waitOf) {
+                        if (mean >= budget) { rr = 1.f * ti; gg = .16f * ti; bb = .12f * ti; }
+                        else if (mean >= budget * .9) { rr = 1.f * ti; gg = .62f * ti; bb = .10f * ti; }
+                    }
+                    snprintf(label, sizeof(label), "%.1f MS", mean);
+                } else snprintf(label, sizeof(label), "-- MS");
+                const float bigTop = axisT - bigPx * 7.f - smallPx * 2.f;
+                if (showReadout) {
+                    drawTextPx(axisR - textWidthPx(label, bigPx), bigTop, label, bigPx, rr, gg, bb);
+                    drawTextPx(axisR - textWidthPx(label, bigPx) - textWidthPx(shown[0].name, smallPx) - smallPx * 3.f,
+                        bigTop + bigPx * 7.f - smallPx * 7.f, shown[0].name, smallPx, shown[0].r * ti, shown[0].g * ti, shown[0].b * ti);
+                }
+                if (showAxisText && shownCount > 1) {
+                    const float readoutLeft = showReadout ? axisR - textWidthPx(label, bigPx) - textWidthPx(shown[0].name, smallPx) - smallPx * 3.f : axisR;
+                    float legendW = 0.f;
+                    for (int k = 1; k < shownCount; ++k) legendW += textWidthPx(shown[k].name, smallPx) + smallPx * 23.f; // name + " 00.0" + gap
+                    // Same row as the readout's name when it fits; only if it would still collide, one row higher.
+                    const float legendTop = axisL + legendW <= readoutLeft - smallPx * 4.f ? bigTop + bigPx * 7.f - smallPx * 7.f : bigTop - smallPx * 9.f;
+                    float lx = axisL;
+                    for (int k = 1; k < shownCount; ++k) {
+                        const double v = shown[k].value(newest);
+                        if (std::isfinite(v) && v >= 0.0) snprintf(label, sizeof(label), "%s %.1f", shown[k].name, v);
+                        else snprintf(label, sizeof(label), "%s --", shown[k].name);
+                        drawTextPx(lx, legendTop, label, smallPx, shown[k].r * ti, shown[k].g * ti, shown[k].b * ti);
+                        lx += textWidthPx(label, smallPx) + smallPx * 4.f;
+                    }
+                }
+            }
+        } else {
         const bool deviationMode=snap.graphMode==HudGraphMode::Deviation;
         // Item 17: the dark base/centre reference line is removed in every mode (user-reported clutter).
         // The coloured data channels, budget-relative scaling and cyan event markers below are unaffected.
@@ -3445,6 +4963,7 @@ void DrawCalibrationOverlayToTexture(
                 drawText(markerX,traceTop-numberHeight-unit*.05f,label,.15f*traceIntensity,1.f*traceIntensity,.92f*traceIntensity);
             }
         }
+        } // classic theme
         }
     }
     flush();
@@ -3579,22 +5098,29 @@ void DrawViewLabOverlaysToTexture(
     const bool wantCrosshair = IncludesMirrorFeature(featureMask, MirrorCrosshair) && crosshairEnabled&&OverlayFeatureVisible(OverlayFeatureId::Crosshair) && crosshairAlpha > 0.001f;
     ConsumeRacingState();
     UpdateSpotterEnvelope();
-    const bool spotterEnabled = ((iracingEnabled && iracingSpotterGlow) || (g_racingStable.presentationFlags & 1u)) != 0;
+    const bool spotterEnabled = ((iracingEnabled && iracingSpotterGlow) || (g_racingStable.presentationFlags & (1u | 128u))) != 0;
     // Keep drawing while the envelope is still decaying, so a fade-out completes after the provider
     // has already cleared spotterState. With fade timings at 0 this reduces to spotterState != 0.
-    const bool wantSpotter = IncludesMirrorFeature(featureMask, MirrorRacingCues) && spotterEnabled && (g_spotterTargetActive || g_spotterEnvelope > 0.001f);
+    const bool rearOnlyTest = (g_racingStable.presentationFlags & 16u) != 0;
+    const bool radarApproach = !rearOnlyTest && g_racingStable.spotterState==0 &&
+        viewlab::racing::ApproachVisible(g_racingStable.spotterProximity!=0,iracingEnabled,iracingSpotterGlow,iracingSpotterMode,(g_racingStable.presentationFlags & 128u)!=0);
+    const bool wantSpotter = IncludesMirrorFeature(featureMask, MirrorRacingCues) && !rearOnlyTest && spotterEnabled && (g_spotterTargetActive || g_spotterEnvelope > 0.001f || radarApproach);
     const bool wantFlag = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingFlagBorder) || (g_racingStable.presentationFlags & 2u)) && g_racingStable.flagState != 0 && g_racingStable.flagColor != 0;
     // Race-start border light: reserved0 carries the latched phase (1 waiting/red, 2 started/green).
     const bool wantRaceStart = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingRaceStart) || (g_racingStable.presentationFlags & 8u)) && g_racingStable.reserved0 != 0;
-    // Rear-closing pressure cue: packed state in reserved1 (bit0 active, opacity<<8, width<<16, intensity<<24).
-    const bool wantRearClosing = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingRearClosing) || (g_racingStable.presentationFlags & 16u)) && (g_racingStable.reserved1 & 1u) != 0;
+    const bool wantRearClosing = IncludesMirrorFeature(featureMask, MirrorRacingCues) &&
+        (g_racingStable.spotterState==0 || (g_racingStable.presentationFlags & 16u)) &&
+        (g_racingStable.reserved1 & 1u)!=0 && !(g_racingStable.presentationFlags & 128u) &&
+        ((iracingEnabled && iracingRearClosing) || (g_racingStable.presentationFlags & 16u));
     // Grip-O-Bar: packed gripState (bit0 active, dominance<<1, direction<<3 [1 left/2 right], severity<<8).
     const bool wantGripBar = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingGripBar) || (g_racingStable.presentationFlags & 32u)) && (g_racingStable.gripState & 1u) != 0;
+    const bool wantShiftLight = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingShiftLight) || (g_racingStable.presentationFlags & 64u)) && (g_racingStable.shiftState & 1u) != 0;
     bool wantNotify = false;
     const bool wantsNotificationCards = IncludesMirrorFeature(featureMask, MirrorNotifications) && notifyEnabled&&OverlayFeatureVisible(OverlayFeatureId::Notifications);
     const bool wantsRacingLap = IncludesMirrorFeature(featureMask, MirrorRacingCues) && ((iracingEnabled && iracingLapPopup) || (g_racingStable.presentationFlags & 4u));
     if ((wantsNotificationCards || wantsRacingLap) && g_d3d11Mask.texturedPs) { ConnectNotify(); if (g_notify && g_notify->magic == kNotifyMagic && g_notify->version == 3) wantNotify = true; }
-    if (!wantBoundary && !wantClock && !wantSticky && !wantObs && !wantTraceMarker && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag) return;
+    if (!wantBoundary && !wantClock && !wantSticky && !wantObs && !wantTraceMarker && !wantCrosshair && !wantNotify && !wantSpotter && !wantFlag &&
+        !wantRaceStart && !wantRearClosing && !wantGripBar && !wantShiftLight) return;
 
     D3D11_TEXTURE2D_DESC texDesc{}; tex->GetDesc(&texDesc);
     if (texDesc.Width == 0 || texDesc.Height == 0) return;
@@ -3667,6 +5193,17 @@ void DrawViewLabOverlaysToTexture(
         emit(x0,y0,cr,cg,cb,a); emit(x1,y0,cr,cg,cb,a); emit(x1,y1,cr,cg,cb,a);
         emit(x0,y0,cr,cg,cb,a); emit(x1,y1,cr,cg,cb,a); emit(x0,y1,cr,cg,cb,a);
     };
+    // Thick line segment as a quad (cue themes that need diagonals).
+    auto quadLine=[&](float x0,float y0,float x1,float y1,float th,float cr,float cg,float cb,float a){
+        const float dx=x1-x0,dy=y1-y0,len=sqrtf(dx*dx+dy*dy); if(len<.001f) return;
+        const float nx=-dy/len*th*.5f,ny=dx/len*th*.5f;
+        emit(x0+nx,y0+ny,cr,cg,cb,a); emit(x1+nx,y1+ny,cr,cg,cb,a); emit(x1-nx,y1-ny,cr,cg,cb,a);
+        emit(x0+nx,y0+ny,cr,cg,cb,a); emit(x1-nx,y1-ny,cr,cg,cb,a); emit(x0-nx,y0-ny,cr,cg,cb,a);
+    };
+    // Downward-pointing chevron "v" centred on cx, top at y0.
+    auto chevron=[&](float cx,float y0,float halfW,float height,float th,float cr,float cg,float cb,float a){
+        quadLine(cx-halfW,y0,cx,y0+height,th,cr,cg,cb,a); quadLine(cx,y0+height,cx+halfW,y0,th,cr,cg,cb,a);
+    };
     auto flushFlat=[&](float cr,float cg,float cb,float alpha){
         if (verts.empty()) return;
         float color[4]={cr,cg,cb,alpha}; D3D11_MAPPED_SUBRESOURCE cm{};
@@ -3686,10 +5223,17 @@ void DrawViewLabOverlaysToTexture(
     };
 
     // Racing flag border is a restrained inner outline. It is static for an unchanged generic
-    // flag state, so telemetry ticks cannot replay an animation or create an event storm.
+    // flag state, so telemetry ticks cannot replay an animation or create an event storm. The only
+    // motion is the render-time pulse a provider requests with flagColor bit 24.
     if (wantFlag) {
         const float cr=((g_racingStable.flagColor>>16)&255)/255.f,cg=((g_racingStable.flagColor>>8)&255)/255.f,cb=(g_racingStable.flagColor&255)/255.f;
-        const float a=(float)iracingFlagOpacity,th=viewlab::racing::FlagBorderThickness(iracingFlagWidth,minDim),inset=2.f;
+        float a=(float)iracingFlagOpacity;
+        const float th=viewlab::racing::FlagBorderThickness(iracingFlagWidth,minDim),inset=2.f;
+        // Generic pulse request (flagColor bit 24, e.g. pit limiter off): 2 Hz, never below 35%.
+        if (g_racingStable.flagColor & 0x01000000u) {
+            const double phase = (double)(GetTickCount64() % 500ull) / 500.0;
+            a *= 0.35f + 0.65f * (float)(0.5 + 0.5 * std::cos(phase * 6.283185307179586));
+        }
         rectFill(l+inset,t+inset,rr_-inset,t+inset+th,cr,cg,cb,a); rectFill(l+inset,bb_-inset-th,rr_-inset,bb_-inset,cr,cg,cb,a);
         rectFill(l+inset,t+inset,l+inset+th,bb_-inset,cr,cg,cb,a); rectFill(rr_-inset-th,t+inset,rr_-inset,bb_-inset,cr,cg,cb,a);
         flushFlat(cr,cg,cb,a);
@@ -3733,10 +5277,27 @@ void DrawViewLabOverlaysToTexture(
         const float alpha = op * (0.35f + 0.65f * inten) * (float)iracingRearClosingOpacity;
         const float halfW = viewlab::racing::RearGlowHalfWidth(wd, w);
         const float cx = (l + rr_) * 0.5f, band = std::clamp(minDim * 0.05f, 4.f, minDim * 0.14f);
+        if (iracingRearClosingTheme == 1) {
+            // Mirror chevrons: up to three downward chevrons under the top edge, where the mirror sits.
+            // Closer car = more chevrons lit. Classic retains the original intensity hue;
+            // radar-style spotter holds amber until CarLeftRight confirms side overlap.
+            const int lit = (std::max)(1, (int)std::ceil(wd * 3.f - 0.001f));
+            const float cw = std::clamp(minDim * 0.085f, 18.f, minDim * 0.16f), ch = cw * 0.55f;
+            const float th = std::clamp(minDim * 0.015f, 3.f, minDim * 0.035f), gapX = cw * 1.3f;
+            const float cr = 1.f, cg = 1.f - inten, cb = 0.f;
+            for (int i = 0; i < 3; ++i) {
+                const float y0 = (float)t + band * 0.45f;
+                const float a = i < lit ? std::clamp(1.35f * std::sqrt(alpha), 0.f, 1.f) : 0.f;
+                if (a <= 0.001f) continue;
+                chevron(cx + (i - 1) * gapX, y0, cw * .5f, ch, th, cr, cg, cb, a);
+                flushFlat(cr, cg, cb, a);
+            }
+        } else
         for (int i = 0; i < 4; ++i) {          // stacked bands fading downward from the top edge
             const float f = 1.f - i / 4.f, a = alpha * f, hw = halfW * (0.7f + 0.3f * f);
-            rectFill(cx - hw, (float)t + i * band * 0.25f, cx + hw, (float)t + (i + 1) * band * 0.25f, 1.f, 0.35f, 0.15f, a);
-            flushFlat(1.f, 0.35f, 0.15f, a);
+            const float cg=1.f-inten,cb=0.f;
+            rectFill(cx - hw, (float)t + i * band * 0.25f, cx + hw, (float)t + (i + 1) * band * 0.25f, 1.f, cg, cb, a);
+            flushFlat(1.f, cg, cb, a);
         }
     }
 
@@ -3763,6 +5324,33 @@ void DrawViewLabOverlaysToTexture(
         }
     }
 
+    // Two lines converge into one at the car-reported shift RPM. The provider sends only quantised
+    // state changes; drawing reads that state without adding telemetry work to the render path.
+    if (wantShiftLight) {
+        const uint32_t sp = g_racingStable.shiftState;
+        const bool inWindow = (sp & 2u) != 0, over = (sp & 4u) != 0, perfect = (sp & 8u) != 0;
+        const float prog = ((sp >> 8) & 255u) / 255.f, op = (float)iracingShiftLightOpacity;
+        const bool leftEye = eye.viewIndex == 0;
+        const float trackW = std::clamp(minDim * 0.010f * (float)iracingShiftLightWidth, 3.f, minDim * 0.12f);
+        const float edgeInset = std::clamp((float)w * (float)iracingShiftLightPosition, trackW + 2.f, w * .35f);
+        const float cx = leftEye ? (float)l + edgeInset : (float)rr_ - edgeInset;
+        const float cy = ((float)t + (float)bb_) * 0.5f, halfSpan = ((float)bb_ - (float)t) * 0.28f;
+        const float barH = std::clamp(minDim * 0.012f, 3.f, minDim * 0.035f);
+        float cr = .18f + .82f * prog, cg = .72f + .20f * prog, cb = 1.f - .80f * prog;
+        if (inWindow) { cr = .15f; cg = 1.f; cb = .25f; }
+        if (perfect) { cr = .08f; cg = .48f; cb = 1.f; }
+        if (over) { cr = 1.f; cg = .08f; cb = .05f; }
+        const float alpha = (.45f + .55f * prog) * op;
+        const float travel = (1.f - prog) * halfSpan;
+        if (travel <= barH || over) {
+            rectFill(cx - trackW * .5f, cy - barH * .5f, cx + trackW * .5f, cy + barH * .5f, cr, cg, cb, alpha);
+        } else {
+            rectFill(cx - trackW * .5f, cy - travel - barH * .5f, cx + trackW * .5f, cy - travel + barH * .5f, cr, cg, cb, alpha);
+            rectFill(cx - trackW * .5f, cy + travel - barH * .5f, cx + trackW * .5f, cy + travel + barH * .5f, cr, cg, cb, alpha);
+        }
+        flushFlat(cr, cg, cb, alpha);
+    }
+
     // Spotter is spatial rather than textual: maximum intensity at the relevant peripheral edge,
     // fading inward in eight bounded bands. Both-sides remains two simultaneous independent cues.
     // Each side is monocular: a car on the left only lights the outer (left) edge of the LEFT eye,
@@ -3770,10 +5358,22 @@ void DrawViewLabOverlaysToTexture(
     // symmetric band duplicated into both eyes.
     if (wantSpotter) {
         const uint32_t state=g_spotterVisualState;
-        const bool left=(state==1||state==3||state==4) && eye.viewIndex==0;
-        const bool right=(state==2||state==3||state==5) && eye.viewIndex==1;
-        const float cr=((iracingSpotterColor>>16)&255)/255.f,cg=((iracingSpotterColor>>8)&255)/255.f,cb=(iracingSpotterColor&255)/255.f;
-        const float width=viewlab::racing::SpotterWidthPx(iracingSpotterWidth,w),step=width/(float)viewlab::racing::kSpotterBands,base=std::clamp(viewlab::racing::SpotterBase(iracingSpotterOpacity,iracingSpotterStrength)*g_spotterEnvelope,0.0f,1.0f);
+        const bool left=((state==1||state==3||state==4) || radarApproach) && eye.viewIndex==0;
+        const bool right=((state==2||state==3||state==5) || radarApproach) && eye.viewIndex==1;
+        const uint32_t sideColor=viewlab::racing::SpotterColour(iracingSpotterMode,iracingSpotterColor);
+        const float urgency=radarApproach?std::clamp(g_racingStable.spotterProximity,0u,255u)/255.f:1.f;
+        const float cr=radarApproach?1.f:((sideColor>>16)&255)/255.f,
+                    cg=radarApproach?(1.f-urgency):((sideColor>>8)&255)/255.f,
+                    cb=radarApproach?0.f:(sideColor&255)/255.f;
+        const float width=viewlab::racing::SpotterWidthPx(iracingSpotterWidth,w),step=width/(float)viewlab::racing::kSpotterBands,
+            base=std::clamp(viewlab::racing::SpotterBase(iracingSpotterOpacity,iracingSpotterStrength)*(radarApproach?(0.35f+0.65f*urgency):g_spotterEnvelope),0.0f,1.0f);
+        if(iracingSpotterTheme==1){
+            // Edge line: a crisp bar hugging the outer edge; two cars on that side = two segments.
+            const float lineW=std::clamp(minDim*.01f*(float)iracingSpotterLineWidth,3.f,minDim*.06f),inset=std::clamp(w*(float)iracingSpotterLineInset,lineW+2.f,w*.35f),top=(float)t+h*.12f,bot=(float)bb_-h*.12f,mid=(top+bot)*.5f,gap=h*.02f;
+            const bool twoLeft=state==4,twoRight=state==5,a=base>0.f;
+            if(a&&left){const float x0=(float)l+inset;if(twoLeft){rectFill(x0,top,x0+lineW,mid-gap,cr,cg,cb,base);rectFill(x0,mid+gap,x0+lineW,bot,cr,cg,cb,base);}else rectFill(x0,top,x0+lineW,bot,cr,cg,cb,base);flushFlat(cr,cg,cb,base);}
+            if(a&&right){const float x1=(float)rr_-inset;if(twoRight){rectFill(x1-lineW,top,x1,mid-gap,cr,cg,cb,base);rectFill(x1-lineW,mid+gap,x1,bot,cr,cg,cb,base);}else rectFill(x1-lineW,top,x1,bot,cr,cg,cb,base);flushFlat(cr,cg,cb,base);}
+        } else
         for(int i=0;i<viewlab::racing::kSpotterBands;++i){
             const float inward=(i+.5f)/(float)viewlab::racing::kSpotterBands;
             if(left){const float a=viewlab::racing::SpotterBandAlpha(base,inward,iracingSpotterFade,true);rectFill(l+i*step,(float)t,l+(i+1)*step,(float)bb_,cr,cg,cb,a);flushFlat(cr,cg,cb,a);}
@@ -3861,8 +5461,13 @@ void DrawViewLabOverlaysToTexture(
         SYSTEMTIME local{}; GetLocalTime(&local);
         const uint64_t nowTick = GetTickCount64();
         const uint64_t startTick = g_clockSessionStartTick.load(std::memory_order_acquire);
-        const auto text = viewlab::clock_widget::Format(local.wHour, local.wMinute,
+        auto text = viewlab::clock_widget::Format(local.wHour, local.wMinute,
             startTick != 0 && nowTick >= startTick ? nowTick - startTick : 0,clock24Hour);
+        uint64_t remaining=0;
+        if(clockTimerMode!=0){remaining=g_clockTimer.Remaining(nowTick);const uint64_t displayMs=clockTimerMode==1?g_clockTimer.Elapsed(nowTick):remaining;
+            const auto timerText=viewlab::clock_widget::Format(local.wHour,local.wMinute,displayMs,clock24Hour);
+            text.session=timerText.session;}
+        const bool showSecondary=clockSessionTimerEnabled||clockTimerMode!=0;
         const float pxPerTanX = stereo ? w/(sR-sL) : w*.5f;
         const float pxPerTanY = stereo ? h/(sU-sD) : h*.5f;
         const float referenceUnit = (float)clockWidgetScale * (2.f/1080.f);
@@ -3874,6 +5479,11 @@ void DrawViewLabOverlaysToTexture(
         struct ClockPalette{float br,bg,bb,ar,ag,ab,pr,pg,pb,sr,sg,sb;};constexpr ClockPalette palettes[]={{.055f,.058f,.064f,.72f,.73f,.76f,.96f,.96f,.95f,.68f,.69f,.72f},{.90f,.86f,.76f,.58f,.42f,.22f,.16f,.14f,.11f,.38f,.32f,.25f},{0,0,0,1,1,1,1,1,1,.68f,.68f,.68f},{.09f,.06f,.025f,.95f,.60f,.16f,1.f,.88f,.62f,.83f,.60f,.27f},{.025f,.075f,.06f,.24f,.82f,.60f,.90f,1.f,.95f,.48f,.78f,.67f}};const auto&theme=palettes[std::clamp(clockWidgetPalette,0u,4u)];
         const uint32_t clockLayout=std::clamp(clockWidgetTheme,0u,3u);
         const float opacity=(float)clockWidgetOpacity;
+        float timerR=theme.sr,timerG=theme.sg,timerB=theme.sb;
+        if(clockTimerMode>=2&&g_clockTimer.durationMs>0){const double fraction=double(remaining)/double(g_clockTimer.durationMs);
+            if(fraction<=.10){timerR=1.f;timerG=.16f;timerB=.12f;}
+            else if(fraction<=.25){timerR=1.f;timerG=.60f;timerB=.10f;}
+            if(remaining==0&&clockAlarmEnabled&&(nowTick/500u)%2u!=0){timerR=.55f;timerG=.08f;timerB=.06f;}}
 
         static const unsigned char font[14][7]={
             {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E},{0x04,0x0C,0x04,0x04,0x04,0x04,0x0E},
@@ -3900,22 +5510,22 @@ void DrawViewLabOverlaysToTexture(
         }
         const float primaryH=7.f*glyphY*primaryScale,secondaryH=7.f*glyphY*secondaryScale;
         const float timeW=clockTextWidth(text.local.data(),primaryScale);
-        const float sessW=clockSessionTimerEnabled?clockTextWidth(text.session.data(),secondaryScale):0.f;
+        const float sessW=showSecondary?clockTextWidth(text.session.data(),secondaryScale):0.f;
         const float terminalBorder=(std::max)(1.f,glyphX*.8f),terminalHeader=3.f*glyphY;
         const float bannerCap=1.5f*glyphX,bannerDivider=(std::max)(1.f,glyphX*.5f),bannerGap=3.f*glyphX;
         float cardW,cardH;
         switch(clockLayout){
         default:
             cardW=padX*2+iconW+2.f*glyphX+47.f*glyphX*primaryScale;
-            cardH=padY*2+primaryH+(clockSessionTimerEnabled?secondaryH+3.f*glyphY:0.f);break;
+            cardH=padY*2+primaryH+(showSecondary?secondaryH+3.f*glyphY:0.f);break;
         case 1u:
             cardW=padX*2+(std::max)(timeW,sessW);
-            cardH=padY*2+primaryH+(clockSessionTimerEnabled?secondaryH+2.f*glyphY:0.f);break;
+            cardH=padY*2+primaryH+(showSecondary?secondaryH+2.f*glyphY:0.f);break;
         case 2u:
             cardW=terminalBorder*2+padX*2+(std::max)(timeW,sessW);
-            cardH=terminalBorder*2+terminalHeader+padY*2+primaryH+(clockSessionTimerEnabled?secondaryH+2.f*glyphY:0.f);break;
+            cardH=terminalBorder*2+terminalHeader+padY*2+primaryH+(showSecondary?secondaryH+2.f*glyphY:0.f);break;
         case 3u:
-            cardW=padX*2+bannerCap*2+timeW+(clockSessionTimerEnabled?bannerGap*2+bannerDivider+sessW:0.f);
+            cardW=padX*2+bannerCap*2+timeW+(showSecondary?bannerGap*2+bannerDivider+sessW:0.f);
             cardH=padY*2+primaryH;break;
         }
         const float sharedLeft=fullLeft,sharedRight=fullRight;
@@ -3930,7 +5540,7 @@ void DrawViewLabOverlaysToTexture(
             rectFill(x0,y0,x1,y1,theme.br,theme.bg,theme.bb,.92f*opacity); flushFlat(theme.br,theme.bg,theme.bb,.92f*opacity);
             rectFill(x0,y0,x0+glyphX,y1,theme.ar,theme.ag,theme.ab,.90f*opacity); flushFlat(theme.ar,theme.ag,theme.ab,.90f*opacity);
             const float dividerY=y0+padY+primaryH+1.5f*glyphY;
-            if(clockSessionTimerEnabled){rectFill(x0+padX,dividerY,x1-padX,dividerY+(std::max)(1.f,glyphY*.35f),theme.ar,theme.ag,theme.ab,.35f*opacity); flushFlat(theme.ar,theme.ag,theme.ab,.35f*opacity);}
+            if(showSecondary){rectFill(x0+padX,dividerY,x1-padX,dividerY+(std::max)(1.f,glyphY*.35f),theme.ar,theme.ag,theme.ab,.35f*opacity); flushFlat(theme.ar,theme.ag,theme.ab,.35f*opacity);}
             const float iconX=x0+padX, textX=iconX+iconW+2.f*glyphX;
             const float firstY=y0+padY,secondY=dividerY+2.f*glyphY;
             // Square clock face with two hands.
@@ -3939,10 +5549,10 @@ void DrawViewLabOverlaysToTexture(
             rectFill(iconX,firstY,iconX+ith,firstY+7*glyphY,theme.ar,theme.ag,theme.ab,opacity);rectFill(iconX+6*glyphX-ith,firstY,iconX+6*glyphX,firstY+7*glyphY,theme.ar,theme.ag,theme.ab,opacity);
             rectFill(ic-ith*.5f,firstY+glyphY,ic+ith*.5f,iy+.5f*glyphY,theme.ar,theme.ag,theme.ab,opacity);rectFill(ic,iy-ith*.5f,iconX+5*glyphX,iy+ith*.5f,theme.ar,theme.ag,theme.ab,opacity);flushFlat(theme.ar,theme.ag,theme.ab,opacity);
             // Hourglass for elapsed session time.
-            if(clockSessionTimerEnabled){rectFill(iconX,secondY,iconX+6*glyphX,secondY+ith,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX,secondY+7*glyphY-ith,iconX+6*glyphX,secondY+7*glyphY,theme.sr,theme.sg,theme.sb,opacity);
-            for(int step=0;step<3;++step){rectFill(iconX+(step+1)*glyphX,secondY+(step+1)*glyphY,iconX+(step+2)*glyphX,secondY+(step+2)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(step+1)*glyphY,iconX+(5-step)*glyphX,secondY+(step+2)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(step+1)*glyphX,secondY+(5-step)*glyphY,iconX+(step+2)*glyphX,secondY+(6-step)*glyphY,theme.sr,theme.sg,theme.sb,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(5-step)*glyphY,iconX+(5-step)*glyphX,secondY+(6-step)*glyphY,theme.sr,theme.sg,theme.sb,opacity);}flushFlat(theme.sr,theme.sg,theme.sb,opacity);}
+            if(showSecondary){rectFill(iconX,secondY,iconX+6*glyphX,secondY+ith,timerR,timerG,timerB,opacity);rectFill(iconX,secondY+7*glyphY-ith,iconX+6*glyphX,secondY+7*glyphY,timerR,timerG,timerB,opacity);
+            for(int step=0;step<3;++step){rectFill(iconX+(step+1)*glyphX,secondY+(step+1)*glyphY,iconX+(step+2)*glyphX,secondY+(step+2)*glyphY,timerR,timerG,timerB,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(step+1)*glyphY,iconX+(5-step)*glyphX,secondY+(step+2)*glyphY,timerR,timerG,timerB,opacity);rectFill(iconX+(step+1)*glyphX,secondY+(5-step)*glyphY,iconX+(step+2)*glyphX,secondY+(6-step)*glyphY,timerR,timerG,timerB,opacity);rectFill(iconX+(4-step)*glyphX,secondY+(5-step)*glyphY,iconX+(5-step)*glyphX,secondY+(6-step)*glyphY,timerR,timerG,timerB,opacity);}flushFlat(timerR,timerG,timerB,opacity);}
             drawClockText(textX,firstY,text.local.data(),theme.pr,theme.pg,theme.pb,opacity,primaryScale);
-            if(clockSessionTimerEnabled)drawClockText(textX,secondY,text.session.data(),theme.sr,theme.sg,theme.sb,opacity,secondaryScale);
+            if(showSecondary)drawClockText(textX,secondY,text.session.data(),timerR,timerG,timerB,opacity,secondaryScale);
         } else if(clockLayout==1u){
             // Minimal: no card surface at all — large centred digits with a pixel drop shadow
             // for legibility, session lane centred underneath.
@@ -3951,9 +5561,9 @@ void DrawViewLabOverlaysToTexture(
             const float timeX=cx-timeW*.5f,sessX=cx-sessW*.5f;
             drawClockText(timeX+shadow,firstY+shadow,text.local.data(),0.f,0.f,0.f,.75f*opacity,primaryScale);
             drawClockText(timeX,firstY,text.local.data(),theme.pr,theme.pg,theme.pb,opacity,primaryScale);
-            if(clockSessionTimerEnabled){
+            if(showSecondary){
                 drawClockText(sessX+shadow,secondY+shadow,text.session.data(),0.f,0.f,0.f,.75f*opacity,secondaryScale);
-                drawClockText(sessX,secondY,text.session.data(),theme.sr,theme.sg,theme.sb,opacity,secondaryScale);
+                drawClockText(sessX,secondY,text.session.data(),timerR,timerG,timerB,opacity,secondaryScale);
             }
         } else if(clockLayout==2u){
             // Terminal: thick square frame, solid accent header band, tight left-aligned
@@ -3968,7 +5578,7 @@ void DrawViewLabOverlaysToTexture(
             const float textX=x0+terminalBorder+padX;
             const float firstY=y0+terminalBorder+terminalHeader+padY,secondY=firstY+primaryH+2.f*glyphY;
             drawClockText(textX,firstY,text.local.data(),theme.pr,theme.pg,theme.pb,opacity,primaryScale);
-            if(clockSessionTimerEnabled)drawClockText(textX,secondY,text.session.data(),theme.sr,theme.sg,theme.sb,opacity,secondaryScale);
+            if(showSecondary)drawClockText(textX,secondY,text.session.data(),timerR,timerG,timerB,opacity,secondaryScale);
         } else {
             // Banner: one wide row — time and session side by side with a vertical divider,
             // accent end caps and thin horizontal rails instead of a boxed border.
@@ -3981,10 +5591,10 @@ void DrawViewLabOverlaysToTexture(
             flushFlat(theme.ar,theme.ag,theme.ab,opacity);
             const float timeX=x0+bannerCap+padX,timeY=y0+padY;
             drawClockText(timeX,timeY,text.local.data(),theme.pr,theme.pg,theme.pb,opacity,primaryScale);
-            if(clockSessionTimerEnabled){
+            if(showSecondary){
                 const float divX=timeX+timeW+bannerGap;
-                rectFill(divX,y0+padY,divX+bannerDivider,y1-padY,theme.sr,theme.sg,theme.sb,.55f*opacity);flushFlat(theme.sr,theme.sg,theme.sb,.55f*opacity);
-                drawClockText(divX+bannerDivider+bannerGap,timeY+(primaryH-secondaryH),text.session.data(),theme.sr,theme.sg,theme.sb,opacity,secondaryScale);
+                rectFill(divX,y0+padY,divX+bannerDivider,y1-padY,timerR,timerG,timerB,.55f*opacity);flushFlat(timerR,timerG,timerB,.55f*opacity);
+                drawClockText(divX+bannerDivider+bannerGap,timeY+(primaryH-secondaryH),text.session.data(),timerR,timerG,timerB,opacity,secondaryScale);
             }
         }
     }
@@ -5755,7 +7365,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
     // Independent of the visibility-mask path; that path must never suppress this.
 
     if (enabled && ((maskEnabled && g_featurePresentationPlan.drawDirectVisor) ||
-        (AnyDirectOverlay() && g_featurePresentationPlan.drawDirectCommonFeatures) || AnyCalibrationPattern()) &&
+        (AnyDirectOverlay() && g_featurePresentationPlan.drawDirectCommonFeatures) || AnyCalibrationPattern() ||
+        ColourGradeActive() || ColourCalibrationActive() ||
+        (g_colourGrade.mode != ColourGradeMode::Off && !g_colourGrade.prewarmed)) &&
         g_d3d11Mask.initialized && g_d3d11Mask.context && RendererDeviceHealthy("xrReleaseSwapchainImage")) {
         ID3D11Texture2D* tex = nullptr;
         uint32_t arrSize = 1;
@@ -5763,6 +7375,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
         std::vector<EyeView> targetViews;
         std::vector<EyeView> projectionViews;
         std::vector<ID3D11RenderTargetView*> rtvs;
+        std::vector<ID3D11RenderTargetView*> gradeRtvs;
         bool tracked = false, sessionOk = false;
         uint64_t swapchainCreateSerial = 0, releaseSerial = 0, layoutFrameSerial = 0;
         XrTime layoutDisplayTime = 0;
@@ -5794,6 +7407,12 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                     for (const EyeView& ev : targetViews) {
                         rtvs.push_back(CachedRtvFor(ts, ts.lastAcquiredIndex, ev.arraySlice));
                     }
+                    if (ColourGradeActive() || ColourCalibrationActive()) {
+                        gradeRtvs.reserve(targetViews.size());
+                        for (const EyeView& ev : targetViews) {
+                            gradeRtvs.push_back(CachedGradeRtvFor(ts, ts.lastAcquiredIndex, ev.arraySlice));
+                        }
+                    }
                 }
             }
         }
@@ -5818,6 +7437,12 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                 const bool directCommon=g_featurePresentationPlan.drawDirectCommonFeatures||
                     g_topmostLayerBlocked.load(std::memory_order_acquire);
                 bool drewVisor=false, drewBatch=false;
+                // Grade the game image first (all eyes in one pass) so the visor, calibration patterns and
+                // overlays drawn below keep their exact colours. Colour enabled but neutral: pre-create its
+                // resources once so a mid-race setting change allocates nothing.
+                const bool graded = ColourGradeActive() && !gradeRtvs.empty();
+                if (graded) GradeEyes(tex, scFormat, targetViews, gradeRtvs);
+                else if (!g_colourGrade.prewarmed) PrewarmColourGrade(tex, scFormat, targetViews);
                 for (size_t i = 0; i < targetViews.size(); ++i) {
                     if (maskEnabled && g_featurePresentationPlan.drawDirectVisor) {
                         DrawVisorBorderToTexture(tex, arrSize, scFormat, targetViews[i], projectionViews,
@@ -5831,10 +7456,18 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
                             i < rtvs.size() ? rtvs[i] : nullptr,true,directCommon);
                         drewBatch=true;
                     }
+                    // In-headset colour calibration panel sits on top of everything, written through the
+                    // non-sRGB RTV so its values are exactly what the display receives.
+                    if (ColourCalibrationActive() && i < rtvs.size() && rtvs[i]) {
+                        DrawColourCalibrationToTexture(tex, targetViews[i], projectionViews, rtvs[i]);
+                    }
                 }
                 for (ID3D11RenderTargetView* rtv : rtvs) {
                     if (rtv) rtv->Release();
                 }
+                // The overlay draws flush themselves; a grade on its own needs this single flush per image
+                // (it used to flush once per eye).
+                if (graded && !drewBatch && !ColourCalibrationActive()) g_d3d11Mask.context->Flush();
                 const uint32_t n = drewVisor ? g_releaseDrawLogCount.fetch_add(1) : 1;
                 if (drewVisor && n == 0)
                     Log("visor: draw executed (%zu target view(s), %zu projection view(s))\n",
@@ -5845,6 +7478,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrReleaseSwapchainImage(
             for (ID3D11RenderTargetView* rtv : rtvs) {
                 if (rtv) rtv->Release();
             }
+        }
+        for (ID3D11RenderTargetView* rtv : gradeRtvs) {
+            if (rtv) rtv->Release();
         }
         if (tex) tex->Release();
     }
@@ -5882,6 +7518,9 @@ void LoadConfig() {
     // Opt-in foveated-centre compensation (default off): re-centres the runtime's foveated
     // rendering on an asymmetric vertical crop by pitching the eye to the crop centre.
     foveatedCenterCompensation = ReadBoolSetting(L"foveated_center_compensation", false);
+    // Optical centring: global, per-app DWORD overrides (absent = follow global).
+    opticalCentring = ReadBoolSetting(L"optical_centring", false);
+    { DWORD profileOptical = 0; if (ReadProfileDword(L"optical_centring", profileOptical)) opticalCentring = profileOptical != 0; }
     visualMaskOnly = ReadBoolSetting(L"visual_mask_only", false);
     horizontalVisualMaskOnly = ReadBoolSetting(L"horizontal_visual_mask_only", false);
     // There is exactly ONE visor renderer (D3D11 draw into the game's eye textures).
@@ -5905,6 +7544,8 @@ void LoadConfig() {
     calibrationClippingSteps = ReadBoolSetting(L"calibration_clipping_steps", false);
     calibrationMotionStrip = ReadBoolSetting(L"calibration_motion_strip", false);
     hudEnabled = ReadBoolSetting(L"hud_enabled", false);
+    hudVisibilityMode = (uint32_t)std::clamp((int)ReadDoubleSetting(L"hud_visibility_mode",hudEnabled?1.0:0.0),0,2);
+    hudEnabled = hudVisibilityMode != 0;
     hudAnchorX = std::clamp(ReadDoubleSetting(L"hud_anchor_x", 0.04), 0.0, 1.0);
     hudAnchorY = std::clamp(ReadDoubleSetting(L"hud_anchor_y", 0.05), 0.0, 1.0);
     hudScale = std::clamp(ReadDoubleSetting(L"hud_scale", 1.0), 0.15, 3.0);
@@ -5973,11 +7614,21 @@ void LoadConfig() {
         (ReadBoolSetting(L"hud_graph_wait_duration",false)?GraphWaitDuration:0u)|
         (ReadBoolSetting(L"hud_graph_submit_duration",false)?GraphSubmitDuration:0u)|
         (ReadBoolSetting(L"hud_graph_display_period",false)?GraphDisplayPeriod:0u);
-    hudGraphMode=(HudGraphMode)std::clamp((int)ReadDoubleSetting(L"hud_graph_mode",0.0),0,3);
-    topmostVisorOverlays = !ReadBoolSetting(L"overlay_force_direct", false);
+    hudGraphMode=(HudGraphMode)std::clamp((int)ReadDoubleSetting(L"hud_graph_mode",0.0),0,4);
+    if(ReadDoubleSetting(L"hud_trace_theme",0.0)>=0.5)hudGraphMode=HudGraphMode::FrameCost; // legacy theme key
+    hudCostLines=(uint32_t)std::clamp((int)ReadDoubleSetting(L"hud_trace_cost_lines",7.0),0,15);
+    hudCostLabels=(uint32_t)std::clamp((int)ReadDoubleSetting(L"hud_trace_cost_labels",0.0),0,2);
+    // Direct eye-texture presentation is the shipped default: a compositor can accept an extra
+    // projection layer yet never show it. An explicit 0 remains available for ordered-layer diagnosis.
+    topmostVisorOverlays = !ReadBoolSetting(L"overlay_force_direct", true);
     experimentalDrawInVoid = ReadBoolSetting(L"experimental_draw_in_void", false);
-    hudAlarmOnly = ReadBoolSetting(L"hud_alarm_only", false);
     hudAlarmHoldMs = std::clamp(ReadDoubleSetting(L"hud_alarm_hold_ms", 1500.0), 0.0, 10000.0);
+    {
+        const double legacyFade = std::clamp(ReadDoubleSetting(L"hud_trace_fade_ms", 150.0), 0.0, 1000.0);
+        hudTraceFadeInMs = std::clamp(ReadDoubleSetting(L"hud_trace_fade_in_ms", legacyFade), 0.0, 1000.0);
+        hudTraceFadeOutMs = std::clamp(ReadDoubleSetting(L"hud_trace_fade_out_ms", legacyFade), 0.0, 1000.0);
+        hudTraceAlarmSensitivity = std::clamp(ReadDoubleSetting(L"hud_trace_alarm_sensitivity", 0.8), 0.0, 1.0);
+    }
     hudDebugValues = ReadBoolSetting(L"hud_debug_values", false);
     hudDebugCpu = ReadDoubleSetting(L"hud_debug_cpu", 52.0); hudDebugGpu = ReadDoubleSetting(L"hud_debug_gpu", 98.0);
     hudDebugSystem = ReadDoubleSetting(L"hud_debug_app",ReadDoubleSetting(L"hud_debug_system",44.0)); hudDebugVr = ReadDoubleSetting(L"hud_debug_vr", 18.0);
@@ -6007,6 +7658,11 @@ void LoadConfig() {
     notifyDurationMs = std::clamp(ReadDoubleSetting(L"notify_duration_ms", 3000.0), 500.0, 15000.0);
     clockWidgetEnabled = ReadBoolSetting(L"clock_widget_enabled", false);
     clockSessionTimerEnabled=ReadBoolSetting(L"clock_session_timer_enabled",true);clock24Hour=ReadBoolSetting(L"clock_24_hour",true);
+    clockTimerMode=(uint32_t)std::clamp((int)ReadDoubleSetting(L"clock_timer_mode",0),0,3);
+    clockCountdownMinutes=(uint32_t)std::clamp((int)ReadDoubleSetting(L"clock_countdown_minutes",15),1,180);
+    clockTargetSeconds=(uint32_t)std::clamp((int)ReadDoubleSetting(L"clock_target_hour",17),0,23)*3600u+
+        (uint32_t)std::clamp((int)ReadDoubleSetting(L"clock_target_minute",46),0,59)*60u;
+    clockAlarmEnabled=ReadBoolSetting(L"clock_alarm_enabled",true);
     {
         // Migration: legacy configs stored the recolour in clock_widget_theme. When the new
         // palette key is absent, that value becomes the palette and the design stays Classic.
@@ -6060,8 +7716,17 @@ void LoadConfig() {
     iracingRearClosing = ReadBoolSetting(L"iracing_rear_closing", false);
     iracingRearClosingOpacity = std::clamp(ReadDoubleSetting(L"iracing_rear_closing_opacity", 0.9), 0.05, 1.0);
     iracingGripBar = ReadBoolSetting(L"iracing_grip_bar", false);
+    iracingShiftLight = ReadBoolSetting(L"iracing_shift_light", false);
+    iracingSpotterTheme = (uint32_t)std::clamp((int)ReadDoubleSetting(L"iracing_spotter_theme", 0.0), 0, 1);
+    iracingSpotterMode = (uint32_t)std::clamp((int)ReadDoubleSetting(L"iracing_spotter_mode", 0.0), 0, 1);
+    iracingRearClosingTheme = (uint32_t)std::clamp((int)ReadDoubleSetting(L"iracing_rear_closing_theme", 0.0), 0, 1);
+    iracingShiftLightOpacity = std::clamp(ReadDoubleSetting(L"iracing_shift_light_opacity", 0.9), 0.05, 1.0);
+    iracingShiftLightWidth = std::clamp(ReadDoubleSetting(L"iracing_shift_light_width", 1.0), 0.25, 3.0);
+    iracingShiftLightPosition = std::clamp(ReadDoubleSetting(L"iracing_shift_light_position", 0.035), 0.0, 0.35);
     iracingGripBarOpacity = std::clamp(ReadDoubleSetting(L"iracing_grip_bar_opacity", 0.9), 0.05, 1.0);
     iracingSpotterWidth = std::clamp(ReadDoubleSetting(L"iracing_spotter_width", 0.12), 0.03, 0.70);
+    iracingSpotterLineWidth = std::clamp(ReadDoubleSetting(L"iracing_spotter_line_width", ReadDoubleSetting(L"iracing_shift_light_width", 1.0)), 0.25, 3.0);
+    iracingSpotterLineInset = std::clamp(ReadDoubleSetting(L"iracing_spotter_line_inset", ReadDoubleSetting(L"iracing_shift_light_position", 0.18)), 0.0, 0.35);
     iracingSpotterStrength = std::clamp(ReadDoubleSetting(L"iracing_spotter_strength", 1.0), 0.1, 4.0);
     iracingSpotterOpacity = std::clamp(ReadDoubleSetting(L"iracing_spotter_opacity", 0.65), 0.05, 2.0);
     iracingSpotterFade = std::clamp(ReadDoubleSetting(L"iracing_spotter_fade", 1.8), 0.25, 4.0);
@@ -6274,6 +7939,13 @@ void LoadConfig() {
 
         readOverlayBool(L"overlay_override_clock__clock_widget_enabled",clockWidgetEnabled,OverlayFeatureId::Clock);
         readOverlayBool(L"overlay_override_clock__clock_session_timer_enabled",clockSessionTimerEnabled,OverlayFeatureId::Clock);
+        readOverlayU32(L"overlay_override_clock__clock_timer_mode",clockTimerMode,0,3,OverlayFeatureId::Clock);
+        readOverlayU32(L"overlay_override_clock__clock_countdown_minutes",clockCountdownMinutes,1,180,OverlayFeatureId::Clock);
+        {uint32_t hour=clockTargetSeconds/3600u,minute=(clockTargetSeconds/60u)%60u;
+            readOverlayU32(L"overlay_override_clock__clock_target_hour",hour,0,23,OverlayFeatureId::Clock);
+            readOverlayU32(L"overlay_override_clock__clock_target_minute",minute,0,59,OverlayFeatureId::Clock);
+            clockTargetSeconds=hour*3600u+minute*60u;}
+        readOverlayBool(L"overlay_override_clock__clock_alarm_enabled",clockAlarmEnabled,OverlayFeatureId::Clock);
         readOverlayBool(L"overlay_override_clock__clock_24_hour",clock24Hour,OverlayFeatureId::Clock);
         readOverlayDouble(L"overlay_override_clock__clock_widget_x",clockWidgetX,0,1,OverlayFeatureId::Clock);
         readOverlayDouble(L"overlay_override_clock__clock_widget_y",clockWidgetY,0,1,OverlayFeatureId::Clock);
@@ -6283,7 +7955,8 @@ void LoadConfig() {
         readOverlayU32(L"overlay_override_clock__clock_widget_palette",clockWidgetPalette,0,4,OverlayFeatureId::Clock);
 
         readOverlayBool(L"overlay_override_hud__hud_enabled",hudEnabled,OverlayFeatureId::Hud);
-        readOverlayBool(L"overlay_override_hud__hud_alarm_only",hudAlarmOnly,OverlayFeatureId::Hud);
+        readOverlayU32(L"overlay_override_hud__hud_visibility_mode",hudVisibilityMode,0,2,OverlayFeatureId::Hud);
+        hudEnabled = hudEnabled && hudVisibilityMode != 0;
         readOverlayBool(L"overlay_override_hud__hud_clamp_to_visible",hudClampToVisible,OverlayFeatureId::Hud);
         readOverlayDouble(L"overlay_override_hud__hud_anchor_x",hudAnchorX,0,1,OverlayFeatureId::Hud);
         readOverlayDouble(L"overlay_override_hud__hud_anchor_y",hudAnchorY,0,1,OverlayFeatureId::Hud);
@@ -6313,7 +7986,13 @@ void LoadConfig() {
         readOverlayDouble(L"overlay_override_trace__hud_trace_opacity",hudTraceOpacity,.1,1,OverlayFeatureId::Trace);
         readOverlayDouble(L"overlay_override_trace__hud_trace_history",hudTraceHistory,10,600,OverlayFeatureId::Trace);
         readOverlayDouble(L"overlay_override_trace__hud_trace_sensitivity_ms",hudTraceSensitivityMs,.25,8,OverlayFeatureId::Trace);
-        uint32_t graphMode=(uint32_t)hudGraphMode;if(readOverlayU32(L"overlay_override_trace__hud_graph_mode",graphMode,0,3,OverlayFeatureId::Trace))hudGraphMode=(HudGraphMode)graphMode;
+        readOverlayDouble(L"overlay_override_trace__hud_trace_fade_in_ms",hudTraceFadeInMs,0,1000,OverlayFeatureId::Trace);
+        readOverlayDouble(L"overlay_override_trace__hud_trace_alarm_sensitivity",hudTraceAlarmSensitivity,0,1,OverlayFeatureId::Trace);
+        readOverlayDouble(L"overlay_override_trace__hud_trace_fade_out_ms",hudTraceFadeOutMs,0,1000,OverlayFeatureId::Trace);
+        uint32_t graphMode=(uint32_t)hudGraphMode;if(readOverlayU32(L"overlay_override_trace__hud_graph_mode",graphMode,0,4,OverlayFeatureId::Trace))hudGraphMode=(HudGraphMode)graphMode;
+        uint32_t traceTheme=0;if(readOverlayU32(L"overlay_override_trace__hud_trace_theme",traceTheme,0,1,OverlayFeatureId::Trace)&&traceTheme==1)hudGraphMode=HudGraphMode::FrameCost; // legacy
+        readOverlayU32(L"overlay_override_trace__hud_trace_cost_lines",hudCostLines,0,15,OverlayFeatureId::Trace);
+        readOverlayU32(L"overlay_override_trace__hud_trace_cost_labels",hudCostLabels,0,2,OverlayFeatureId::Trace);
         readOverlayBool(L"overlay_override_trace__performance_trace_recording",performanceTraceRecording,OverlayFeatureId::Trace);double markerKey=performanceTraceMarkerKey;if(ReadProfileDouble(L"overlay_override_trace__performance_trace_marker_vk",markerKey)){performanceTraceMarkerKey=(int)std::clamp(markerKey,1.0,255.0);profileOverlayOverrideMask|=1u<<(uint32_t)OverlayFeatureId::Trace;}
         struct ProfileGraphKey{const wchar_t* key;uint32_t flag;};const ProfileGraphKey graphKeys[]={{L"overlay_override_trace__hud_graph_frame_interval",GraphFrameInterval},{L"overlay_override_trace__hud_graph_fps",GraphFps},{L"overlay_override_trace__hud_graph_budget_deviation",GraphBudgetDeviation},{L"overlay_override_trace__hud_graph_app_work",GraphAppWork},{L"overlay_override_trace__hud_graph_wait_duration",GraphWaitDuration},{L"overlay_override_trace__hud_graph_submit_duration",GraphSubmitDuration},{L"overlay_override_trace__hud_graph_display_period",GraphDisplayPeriod}};
         for(const auto& graph:graphKeys){bool enabled=(hudGraphChannels&graph.flag)!=0;if(readOverlayBool(graph.key,enabled,OverlayFeatureId::Trace)){if(enabled)hudGraphChannels|=graph.flag;else hudGraphChannels&=~graph.flag;}}
@@ -6417,6 +8096,7 @@ void LoadConfig() {
         renderScale,
         uevrLikeProcess ? 1 : 0,
         verboseLogging ? 1 : 0);
+    LoadColourGradeConfig();
 }
 
 // Only visor values are refreshed, and only at the end-of-frame safe point while the
@@ -6542,8 +8222,15 @@ void ApplyXRViewLabFov(uint32_t viewIndex, XrView& view, bool& compensated, floa
     }
     const double originalTopTan = (std::max)(0.0, std::tan(static_cast<double>(view.fov.angleUp)));
     const double originalBottomTan = (std::max)(0.0, -std::tan(static_cast<double>(view.fov.angleDown)));
-    const double desiredTopTan = originalTopTan * topScale;
-    const double desiredBottomTan = originalBottomTan * bottomScale;
+    double desiredTopTan = originalTopTan * topScale;
+    double desiredBottomTan = originalBottomTan * bottomScale;
+    if (opticalCentring) {
+        // Same band height, centred on tangent 0; if one side of the lens is too short, the other takes the rest.
+        const double band = desiredTopTan + desiredBottomTan;
+        desiredTopTan = (std::min)(band * 0.5, originalTopTan);
+        desiredBottomTan = (std::min)(band - desiredTopTan, originalBottomTan);
+        desiredTopTan = (std::min)(band - desiredBottomTan, originalTopTan);
+    }
 
     view.fov.angleLeft = static_cast<float>(std::atan(desiredLeftTan));
     view.fov.angleRight = static_cast<float>(std::atan(desiredRightTan));
@@ -6720,6 +8407,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrCreateSession(
     g_d3d11Mask.session = *session;
     g_performanceTraceSession = *session;
     g_clockSessionStartTick.store(GetTickCount64(), std::memory_order_release);
+    ResetClockTimer(GetTickCount64());
     LARGE_INTEGER traceStart{};QueryPerformanceCounter(&traceStart);BeginPerformanceTraceSession(traceStart.QuadPart);
     const auto* d3d11Binding = reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(
         FindStructInChain(createInfo->next, XR_TYPE_GRAPHICS_BINDING_D3D11_KHR));
@@ -6819,6 +8507,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrWaitFrame(
             g_traceMarkerKeyDown=markerDown;
         }
         UpdateOverlayFeatureHotkeys();
+        PollColourCalibrationKeys();
     }
     return result;
 }
@@ -6843,8 +8532,10 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrBeginFrame(
     // has flushed its compositor copy for the previous frame; drawing now keeps ViewLab's
     // selected features on the displayed shared texture for the entire frame window.
     if (XR_SUCCEEDED(result) && !g_rendererDeviceLost.load(std::memory_order_acquire) &&
-        g_d3d11Mask.initialized && session == g_d3d11Mask.session)
+        g_d3d11Mask.initialized && session == g_d3d11Mask.session) {
         DrawObsMirrorSurface();
+        GpuFrameTimerBegin(); // Frame cost trace: GPU span starts after ViewLab's own mirror work
+    }
     QueryPerformanceCounter(&stop);
     if (frameIndex < g_hudTrackedFrames.size()) {
         std::lock_guard<std::mutex> lock(g_hudTimingMutex);
@@ -6874,6 +8565,7 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
     uint64_t pipelineFrameSerial = g_pipelineFrameSerial.load();
     LARGE_INTEGER endStart{};
     QueryPerformanceCounter(&endStart);
+    if (session == g_d3d11Mask.session && !g_rendererDeviceLost.load(std::memory_order_acquire)) GpuFrameTimerEnd();
     {
         std::lock_guard<std::mutex> lock(g_hudTimingMutex);
         for (size_t i = 0; i < g_hudTrackedFrames.size(); ++i) {
@@ -7137,6 +8829,9 @@ XRAPI_ATTR XrResult XRAPI_CALL XRViewLab_xrEndFrame(
             const double appWorkMs=1000.0*(double)(frame.endStart.QuadPart-frame.beginStop.QuadPart)/g_hudQpcFrequency.QuadPart;
             const double submitMs=1000.0*(double)(frame.endStop.QuadPart-frame.endStart.QuadPart)/g_hudQpcFrequency.QuadPart;
             const double budgetMs=g_hudEffectiveBudgetMs>0.0?g_hudEffectiveBudgetMs:(double)frame.displayPeriod/1000000.0;
+            // Many games (iRacing) simulate between xrWaitFrame and xrBeginFrame, which APP work misses.
+            if(frame.waitStop.QuadPart>0&&frame.endStart.QuadPart>=frame.waitStop.QuadPart)
+                g_hudLastCpuFrameMs=1000.0*(double)(frame.endStart.QuadPart-frame.waitStop.QuadPart)/g_hudQpcFrequency.QuadPart;
             RecordHudAppWorkSample(appWorkMs,budgetMs,submitMs);
         }
         frame = HudTrackedFrame{};

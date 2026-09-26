@@ -4,6 +4,9 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
@@ -29,9 +32,44 @@ public class App : Application
 		base.StartupUri = new Uri("MainWindow.xaml", UriKind.Relative);
 	}
 
+	// The mouse wheel must scroll the window, never change a setting by accident. WPF's default lets a
+	// closed ComboBox under the cursor change its selection on the wheel, and a ListBox with nothing to
+	// scroll swallows the wheel so the page stops scrolling. Both now pass the wheel on to the page.
+	private static void RegisterWheelPassThrough()
+	{
+		EventManager.RegisterClassHandler(typeof(ComboBox), UIElement.PreviewMouseWheelEvent, new MouseWheelEventHandler((sender, e) =>
+		{
+			if (sender is ComboBox combo && !combo.IsDropDownOpen) ForwardWheelToParent(combo, e);
+		}));
+		EventManager.RegisterClassHandler(typeof(ListBox), UIElement.PreviewMouseWheelEvent, new MouseWheelEventHandler((sender, e) =>
+		{
+			if (sender is ListBox list && FindDescendant<ScrollViewer>(list) is not { ScrollableHeight: > 0 }) ForwardWheelToParent(list, e);
+		}));
+	}
+
+	private static void ForwardWheelToParent(DependencyObject source, MouseWheelEventArgs e)
+	{
+		if (e.Handled) return;
+		e.Handled = true;
+		if (VisualTreeHelper.GetParent(source) is UIElement parent)
+			parent.RaiseEvent(new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta) { RoutedEvent = UIElement.MouseWheelEvent, Source = source });
+	}
+
+	private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+	{
+		for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+		{
+			DependencyObject child = VisualTreeHelper.GetChild(root, i);
+			if (child is T match) return match;
+			if (FindDescendant<T>(child) is T nested) return nested;
+		}
+		return null;
+	}
+
 	[STAThread]
 	public static void Main(string[] args)
 	{
+		RegisterWheelPassThrough();
 		// Elevated OpenXR layers editor. Machine-wide layer registration lives under HKLM, so editing
 		// it needs Administrator. Rather than making the user close ViewLab and relaunch the whole app
 		// elevated, the layers window relaunches just itself through this verb behind a UAC prompt.

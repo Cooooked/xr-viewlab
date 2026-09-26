@@ -29,9 +29,14 @@ internal enum ViewLabEventKind
     // Rear-closing pressure cue: Value carries a packed state (bit0 active, bits8-15 opacity,
     // bits16-23 glow width, bits24-31 closing intensity, each 0-255). Native draws a top-centre glow.
     RearClosing,
+    // Independent close-range peripheral approach: Value is 0..255 proximity within two metres.
+    SpotterProximity,
     // Grip-O-Bar: Value carries a packed state (bit0 active, bits1-2 dominance, bits3-4 direction
     // [1 left, 2 right], bits8-15 severity 0-255). Native draws a lower-left/right peripheral bar.
     GripOBar,
+    // Rhythm shift light: Value carries a packed state (bit0 active, bit1 at/over the shift point,
+    // bit2 past the blink/limiter RPM, bits8-15 progress 0-255 from first light to shift point).
+    ShiftLight,
 }
 
 internal enum SpotterState
@@ -56,6 +61,9 @@ internal enum RacingFlagState
     Black,
     Disqualified,
     Checkered,
+    // Not an iRacing flag: moving on pit road with the pit limiter off. Appended last so every
+    // existing value and visibility bit keeps its number.
+    PitLimiter,
 }
 
 internal readonly struct ViewLabEvent

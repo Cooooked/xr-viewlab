@@ -4,6 +4,12 @@ using System.IO.MemoryMappedFiles;
 using System.Text;
 using XRViewLab.UI;
 
+Assert(IRacingTelemetryProvider.SpotterProximityByte(40.0, false) == 0, "peripheral cue ignores distant rear traffic");
+Assert(IRacingTelemetryProvider.SpotterProximityByte(2.0, false) == 0, "peripheral cue begins inside two metres");
+Assert(IRacingTelemetryProvider.SpotterProximityByte(1.0, false) is >= 127 and <= 128, "peripheral cue uses intermediate byte values");
+Assert(IRacingTelemetryProvider.SpotterProximityByte(0.01, false) >= 253, "peripheral cue reaches the full near range");
+Assert(IRacingTelemetryProvider.SpotterProximityByte(1.0, true) == 0, "confirmed overlap hands control to the red side cue");
+
 const int Capacity = 8192, Headers = 256, Buffer = 4096, BufferLength = 128;
 string mapName = "Local\\ViewLabIRacingFixture_" + Environment.ProcessId;
 using var map = MemoryMappedFile.CreateNew(mapName, Capacity, MemoryMappedFileAccess.ReadWrite);
@@ -39,7 +45,7 @@ var events = new ConcurrentQueue<ViewLabEvent>();
 string racingMapName = "Local\\ViewLabRacingStateFixture_" + Environment.ProcessId;
 using var racingState = new RacingStateService(racingMapName);
 using var racingMap = MemoryMappedFile.OpenExisting(racingMapName, MemoryMappedFileRights.Read);
-using var racingView = racingMap.CreateViewAccessor(0, 64, MemoryMappedFileAccess.Read);
+using var racingView = racingMap.CreateViewAccessor(0, 76, MemoryMappedFileAccess.Read);
 using var provider = new IRacingTelemetryProvider(mapName);
 provider.EventPublished += (_, e) => { events.Enqueue(e); racingState.Publish(e, 4500); };
 provider.Start();
@@ -169,6 +175,30 @@ Assert(!provider.IsConnected && provider.Status == "Disconnected", "stop is inte
 provider.Start(); Sample(spotter: 6);
 WaitUntil(() => provider.IsConnected, "quick stop/start creates one fresh worker");
 WaitEvent(e => e.Kind == ViewLabEventKind.SpotterGlow && e.Spotter == SpotterState.TwoCarsRight, "quick restart event path");
+provider.Simulate("Left");
+WaitUntil(() => (racingView.ReadUInt32(56) & 1u) != 0 && racingView.ReadUInt32(16) == (uint)SpotterState.CarLeft,
+    "explicit spotter test overrides live right-side telemetry");
+Sample(spotter: 3);
+WaitUntil(() => racingView.ReadUInt32(16) == (uint)SpotterState.CarLeft,
+    "live telemetry updates do not cancel an explicit test");
+provider.Simulate("ClearSpotter");
+WaitUntil(() => (racingView.ReadUInt32(56) & 1u) == 0 && racingView.ReadUInt32(16) == (uint)SpotterState.CarRight,
+    "clearing the test restores the current live spotter cue");
+provider.Simulate("Left");
+WaitUntil(() => (racingView.ReadUInt32(56) & 1u) != 0 && racingView.ReadUInt32(16) == (uint)SpotterState.CarLeft,
+    "timed left test becomes visible during live telemetry");
+var spotterPreviewWatch = Stopwatch.StartNew();
+bool spotterPreviewCleared = false;
+while (spotterPreviewWatch.ElapsedMilliseconds < 4000 && !spotterPreviewCleared)
+{
+    Sample(spotter: 3); // Keep the fixture's live SDK tick fresh during the timed preview.
+    spotterPreviewCleared = (racingView.ReadUInt32(56) & 1u) == 0 && racingView.ReadUInt32(16) == (uint)SpotterState.CarRight;
+    if (!spotterPreviewCleared) Thread.Sleep(50);
+}
+Assert(spotterPreviewCleared, "timed left test clears itself and restores live telemetry");
+provider.Simulate("Lap");
+WaitUntil(() => (racingView.ReadUInt32(56) & 4u) != 0 && racingView.ReadInt32(32) == 12,
+    "lap card test works during live telemetry");
 provider.Stop();
 
 provider.Simulate("Left");
@@ -182,6 +212,25 @@ WaitUntil(() => (racingView.ReadUInt32(56) & 4u) != 0 && racingView.ReadInt32(32
     "lap presentation test bypasses disabled feature gates");
 provider.Simulate("Clear");
 WaitUntil(() => racingView.ReadUInt32(56) == 0, "clear presentation removes every temporary test override");
+
+provider.Simulate("RaceStartSequence");
+WaitUntil(() => racingView.ReadUInt32(44) == 1 && (racingView.ReadUInt32(56) & 8u) != 0, "race-start test begins red");
+WaitUntil(() => racingView.ReadUInt32(44) == 2, "race-start test changes to green", 2000);
+WaitUntil(() => (racingView.ReadUInt32(56) & 8u) == 0, "race-start test clears itself", 2500);
+provider.Simulate("ShiftLight");
+WaitUntil(() => (racingView.ReadUInt32(68) >> 8) >= 80, "shift test drives closing bars with rising progress", 1800);
+WaitUntil(() => (racingView.ReadUInt32(68) & 2u) != 0, "shift test reaches the green window", 2500);
+WaitUntil(() => (racingView.ReadUInt32(68) & 8u) != 0, "shift test reaches the blue near-target state", 1300);
+WaitUntil(() => (racingView.ReadUInt32(68) & 4u) != 0, "shift test demonstrates over-rev", 1300);
+WaitUntil(() => (racingView.ReadUInt32(56) & 64u) == 0, "shift test clears itself", 1100);
+provider.Simulate("RearClosing");
+WaitUntil(() => (racingView.ReadUInt32(60) >> 16 & 255u) >= 140, "rear test grows the selected cue", 1800);
+WaitUntil(() => (racingView.ReadUInt32(56) & 16u) == 0, "rear test recedes and clears", 3500);
+provider.Simulate("Approach");
+WaitUntil(() => (racingView.ReadUInt32(56) & 128u) != 0 && racingView.ReadUInt32(72) != 0, "approach test selects independent peripheral spotter proximity");
+WaitUntil(() => (racingView.ReadUInt32(56) & 128u) == 0 && racingView.ReadUInt32(16) == (uint)SpotterState.CarsBothSides,
+    "approach test turns confirmed synthetic overlap red", 3500);
+WaitUntil(() => racingView.ReadUInt32(16) == (uint)SpotterState.Clear, "approach test clears itself", 1600);
 
 Drain();
 provider.Simulate("LowFuel");

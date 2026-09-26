@@ -210,7 +210,7 @@ internal sealed class NotificationService : IDisposable
         if (_view == null) return;
 
         var s=_settings;
-        _ui.Invoke(() => AddComposedCard(_nextId++, "ViewLab event", e.Title ?? e.Kind.ToString(), e.Body ?? $"Value {e.Value:0.###}", null, s));
+        _ui.Invoke(() => AddComposedCard(_nextId++, "", e.Title ?? e.Kind.ToString(), e.Body ?? $"Value {e.Value:0.###}", null, s));
     }
 
     // Reuses the same shared-memory card pipeline as desktop-notification mirroring: a track

@@ -1,0 +1,202 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <PropertyGroup>
+    <AssemblyName>irSidekickProfiles</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>True</UseWPF>
+    <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>12.0</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <RootNamespace />
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="icons\speed-fast.png" />
+    <None Remove="icons\clone.png" />
+    <None Remove="icons\restore-mask.png" />
+    <None Remove="icons\folder-clone-outline.png" />
+    <None Remove="icons\search.png" />
+    <None Remove="icons\thumb-down.png" />
+    <None Remove="icons\refresh_blue.png" />
+    <None Remove="images\3curvedmonitors.png" />
+    <None Remove="icons\forum.png" />
+    <None Remove="icons\video.png" />
+    <None Remove="icons\refresh_white.png" />
+    <None Remove="icons\replay.png" />
+    <None Remove="icons\export.png" />
+    <None Remove="win-20black.ico" />
+    <None Remove="icons\settings.png" />
+    <None Remove="icons\run.png" />
+    <None Remove="icons\folder-backup.png" />
+    <None Remove="images\angle.png" />
+    <None Remove="icons\import.png" />
+    <None Remove="icons\monitor.png" />
+    <None Remove="icons\speed-slow.png" />
+    <None Remove="winmain.baml" />
+    <None Remove="icons\wizard.png" />
+    <None Remove="icons\speed-medium.png" />
+    <None Remove="icons\speed-medium-mask.png" />
+    <None Remove="winhistorylist.baml" />
+    <None Remove="images\diagonal.png" />
+    <None Remove="icons\thumb-up.png" />
+    <None Remove="icons\minus-thick.png" />
+    <None Remove="icons\speed-slow-mask.png" />
+    <None Remove="icons\backup-mask.png" />
+    <None Remove="winpickcars.baml" />
+    <None Remove="icons\info.png" />
+    <None Remove="icons\question.png" />
+    <None Remove="icons\rename.png" />
+    <None Remove="winimportlist.baml" />
+    <None Remove="icons\save.png" />
+    <None Remove="icons\cross-circle.png" />
+    <None Remove="icons\folder-remove-outline.png" />
+    <None Remove="icons\history-mask.png" />
+    <None Remove="yslider.baml" />
+    <None Remove="icons\run_mask.png" />
+    <None Remove="icons\folder-apply.png" />
+    <None Remove="icons\thumb-up-mask.png" />
+    <None Remove="icons\thumb-down-mask.png" />
+    <None Remove="icons\freesync.png" />
+    <None Remove="images\distance.png" />
+    <None Remove="icons\plus-thick.png" />
+    <None Remove="icons\help.png" />
+    <None Remove="icons\youtube.png" />
+    <None Remove="icons\cog.png" />
+    <None Remove="icons\discord-mask.png" />
+    <None Remove="icons\history.png" />
+    <None Remove="images\picturewidth.jpg" />
+    <None Remove="app.ico" />
+    <None Remove="icons\update.png" />
+    <None Remove="icons\folder-apply-mask.png" />
+    <None Remove="icons\backup.png" />
+    <None Remove="images\wizard.png" />
+    <None Remove="icons\cross-circle-mask.png" />
+    <None Remove="images\monitorwidth.jpg" />
+    <None Remove="winsettings.baml" />
+    <None Remove="icons\folder-backup-mask.png" />
+    <None Remove="icons\close.png" />
+    <None Remove="icons\folder-plus-outline.png" />
+    <None Remove="icons\copy.png" />
+    <None Remove="icons\wizard_rgb.png" />
+    <None Remove="icons\tick-circle.png" />
+    <None Remove="icons\discord.png" />
+    <None Remove="icons\restore-alert.png" />
+    <None Remove="winprofilename.baml" />
+    <None Remove="winuipreview.baml" />
+    <None Remove="images\fov.png" />
+    <None Remove="wintriplecurved.baml" />
+    <None Remove="icons\tick-circle-mask.png" />
+    <None Remove="ctluioffset.baml" />
+    <None Remove="icons\speed-fast-mask.png" />
+    <None Remove="app.baml" />
+    <None Remove="app2.ico" />
+    <None Remove="icons\restore.png" />
+    <None Remove="win-20white.ico" />
+    <None Remove="win.ico" />
+    <None Remove="xslider.baml" />
+    <None Remove="irSidekickProfiles.Audio.CheckFOV.wav" />
+    <None Remove="irSidekickProfiles.Audio.iniModified.wav" />
+    <EmbeddedResource Include="icons\speed-fast.png" LogicalName="icons/speed-fast.png" />
+    <EmbeddedResource Include="icons\clone.png" LogicalName="icons/clone.png" />
+    <EmbeddedResource Include="icons\restore-mask.png" LogicalName="icons/restore-mask.png" />
+    <EmbeddedResource Include="icons\folder-clone-outline.png" LogicalName="icons/folder-clone-outline.png" />
+    <EmbeddedResource Include="icons\search.png" LogicalName="icons/search.png" />
+    <EmbeddedResource Include="icons\thumb-down.png" LogicalName="icons/thumb-down.png" />
+    <EmbeddedResource Include="icons\refresh_blue.png" LogicalName="icons/refresh_blue.png" />
+    <EmbeddedResource Include="images\3curvedmonitors.png" LogicalName="images/3curvedmonitors.png" />
+    <EmbeddedResource Include="icons\forum.png" LogicalName="icons/forum.png" />
+    <EmbeddedResource Include="icons\video.png" LogicalName="icons/video.png" />
+    <EmbeddedResource Include="icons\refresh_white.png" LogicalName="icons/refresh_white.png" />
+    <EmbeddedResource Include="icons\replay.png" LogicalName="icons/replay.png" />
+    <EmbeddedResource Include="icons\export.png" LogicalName="icons/export.png" />
+    <EmbeddedResource Include="win-20black.ico" LogicalName="win%20black.ico" />
+    <EmbeddedResource Include="icons\settings.png" LogicalName="icons/settings.png" />
+    <EmbeddedResource Include="icons\run.png" LogicalName="icons/run.png" />
+    <EmbeddedResource Include="icons\folder-backup.png" LogicalName="icons/folder-backup.png" />
+    <EmbeddedResource Include="images\angle.png" LogicalName="images/angle.png" />
+    <EmbeddedResource Include="icons\import.png" LogicalName="icons/import.png" />
+    <EmbeddedResource Include="icons\monitor.png" LogicalName="icons/monitor.png" />
+    <EmbeddedResource Include="icons\speed-slow.png" LogicalName="icons/speed-slow.png" />
+    <EmbeddedResource Include="winmain.baml" LogicalName="winmain.baml" />
+    <EmbeddedResource Include="icons\wizard.png" LogicalName="icons/wizard.png" />
+    <EmbeddedResource Include="icons\speed-medium.png" LogicalName="icons/speed-medium.png" />
+    <EmbeddedResource Include="icons\speed-medium-mask.png" LogicalName="icons/speed-medium-mask.png" />
+    <EmbeddedResource Include="winhistorylist.baml" LogicalName="winhistorylist.baml" />
+    <EmbeddedResource Include="images\diagonal.png" LogicalName="images/diagonal.png" />
+    <EmbeddedResource Include="icons\thumb-up.png" LogicalName="icons/thumb-up.png" />
+    <EmbeddedResource Include="icons\minus-thick.png" LogicalName="icons/minus-thick.png" />
+    <EmbeddedResource Include="icons\speed-slow-mask.png" LogicalName="icons/speed-slow-mask.png" />
+    <EmbeddedResource Include="icons\backup-mask.png" LogicalName="icons/backup-mask.png" />
+    <EmbeddedResource Include="winpickcars.baml" LogicalName="winpickcars.baml" />
+    <EmbeddedResource Include="icons\info.png" LogicalName="icons/info.png" />
+    <EmbeddedResource Include="icons\question.png" LogicalName="icons/question.png" />
+    <EmbeddedResource Include="icons\rename.png" LogicalName="icons/rename.png" />
+    <EmbeddedResource Include="winimportlist.baml" LogicalName="winimportlist.baml" />
+    <EmbeddedResource Include="icons\save.png" LogicalName="icons/save.png" />
+    <EmbeddedResource Include="icons\cross-circle.png" LogicalName="icons/cross-circle.png" />
+    <EmbeddedResource Include="icons\folder-remove-outline.png" LogicalName="icons/folder-remove-outline.png" />
+    <EmbeddedResource Include="icons\history-mask.png" LogicalName="icons/history-mask.png" />
+    <EmbeddedResource Include="yslider.baml" LogicalName="yslider.baml" />
+    <EmbeddedResource Include="icons\run_mask.png" LogicalName="icons/run_mask.png" />
+    <EmbeddedResource Include="icons\folder-apply.png" LogicalName="icons/folder-apply.png" />
+    <EmbeddedResource Include="icons\thumb-up-mask.png" LogicalName="icons/thumb-up-mask.png" />
+    <EmbeddedResource Include="icons\thumb-down-mask.png" LogicalName="icons/thumb-down-mask.png" />
+    <EmbeddedResource Include="icons\freesync.png" LogicalName="icons/freesync.png" />
+    <EmbeddedResource Include="images\distance.png" LogicalName="images/distance.png" />
+    <EmbeddedResource Include="icons\plus-thick.png" LogicalName="icons/plus-thick.png" />
+    <EmbeddedResource Include="icons\help.png" LogicalName="icons/help.png" />
+    <EmbeddedResource Include="icons\youtube.png" LogicalName="icons/youtube.png" />
+    <EmbeddedResource Include="icons\cog.png" LogicalName="icons/cog.png" />
+    <EmbeddedResource Include="icons\discord-mask.png" LogicalName="icons/discord-mask.png" />
+    <EmbeddedResource Include="icons\history.png" LogicalName="icons/history.png" />
+    <EmbeddedResource Include="images\picturewidth.jpg" LogicalName="images/picturewidth.jpg" />
+    <EmbeddedResource Include="app.ico" LogicalName="app.ico" />
+    <EmbeddedResource Include="icons\update.png" LogicalName="icons/update.png" />
+    <EmbeddedResource Include="icons\folder-apply-mask.png" LogicalName="icons/folder-apply-mask.png" />
+    <EmbeddedResource Include="icons\backup.png" LogicalName="icons/backup.png" />
+    <EmbeddedResource Include="images\wizard.png" LogicalName="images/wizard.png" />
+    <EmbeddedResource Include="icons\cross-circle-mask.png" LogicalName="icons/cross-circle-mask.png" />
+    <EmbeddedResource Include="images\monitorwidth.jpg" LogicalName="images/monitorwidth.jpg" />
+    <EmbeddedResource Include="winsettings.baml" LogicalName="winsettings.baml" />
+    <EmbeddedResource Include="icons\folder-backup-mask.png" LogicalName="icons/folder-backup-mask.png" />
+    <EmbeddedResource Include="icons\close.png" LogicalName="icons/close.png" />
+    <EmbeddedResource Include="icons\folder-plus-outline.png" LogicalName="icons/folder-plus-outline.png" />
+    <EmbeddedResource Include="icons\copy.png" LogicalName="icons/copy.png" />
+    <EmbeddedResource Include="icons\wizard_rgb.png" LogicalName="icons/wizard_rgb.png" />
+    <EmbeddedResource Include="icons\tick-circle.png" LogicalName="icons/tick-circle.png" />
+    <EmbeddedResource Include="icons\discord.png" LogicalName="icons/discord.png" />
+    <EmbeddedResource Include="icons\restore-alert.png" LogicalName="icons/restore-alert.png" />
+    <EmbeddedResource Include="winprofilename.baml" LogicalName="winprofilename.baml" />
+    <EmbeddedResource Include="winuipreview.baml" LogicalName="winuipreview.baml" />
+    <EmbeddedResource Include="images\fov.png" LogicalName="images/fov.png" />
+    <EmbeddedResource Include="wintriplecurved.baml" LogicalName="wintriplecurved.baml" />
+    <EmbeddedResource Include="icons\tick-circle-mask.png" LogicalName="icons/tick-circle-mask.png" />
+    <EmbeddedResource Include="ctluioffset.baml" LogicalName="ctluioffset.baml" />
+    <EmbeddedResource Include="icons\speed-fast-mask.png" LogicalName="icons/speed-fast-mask.png" />
+    <EmbeddedResource Include="app.baml" LogicalName="app.baml" />
+    <EmbeddedResource Include="app2.ico" LogicalName="app2.ico" />
+    <EmbeddedResource Include="icons\restore.png" LogicalName="icons/restore.png" />
+    <EmbeddedResource Include="win-20white.ico" LogicalName="win%20white.ico" />
+    <EmbeddedResource Include="win.ico" LogicalName="win.ico" />
+    <EmbeddedResource Include="xslider.baml" LogicalName="xslider.baml" />
+    <EmbeddedResource Include="irSidekickProfiles.Audio.CheckFOV.wav" LogicalName="irSidekickProfiles.Audio.CheckFOV.wav" />
+    <EmbeddedResource Include="irSidekickProfiles.Audio.iniModified.wav" LogicalName="irSidekickProfiles.Audio.iniModified.wav" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="PresentationCore" />
+    <Reference Include="irSidekick">
+      <HintPath>C:\Users\strif\AppData\Local\Programs\irSidekick\Profiles\irSidekick.dll</HintPath>
+    </Reference>
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="MahApps.Metro">
+      <HintPath>C:\Users\strif\AppData\Local\Programs\irSidekick\Profiles\MahApps.Metro.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Core" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+  </ItemGroup>
+</Project>

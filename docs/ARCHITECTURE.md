@@ -1,5 +1,33 @@
 # Architecture
 
+## Experimental stereo submission (2026-09-10)
+
+`ViewLabBridge/StereoSubmission.h` selects only explicitly proven two-view shader/resource contracts.
+`ViewLabBridge/StereoShader.cpp::BuildGeometryAdapter` reflects vertex DXBC and generates a geometry shader
+which emits primary and secondary clip positions to array slices 0/1. The restricted contract preserves output
+attributes, supports named NV_X_RIGHT or NV_XYZW_RIGHT, and rejects other NVIDIA/system semantics, reduced
+precision, streams and UAV bindings. It does not discover eye transforms or translate arbitrary game shaders.
+`Tools/StereoProbe/` consumes this compiled bridge in an offscreen WARP correctness harness. The reference
+projects separately in VS; comparison paths use instancing, GS projection broadcast, or generated secondary-
+position adaptation. Production OpenXR hooks never call this research code yet. No external runtime dependency
+or installed-game change is introduced. Official contract reference: https://github.com/NVIDIA/nvapi/blob/main/nvapi.h
+
+
+## Standalone DynLOD utility
+
+`Tools/DynLOD/` is an independent WPF executable excluded from `xr-viewlab.csproj`. `MainWindow.xaml.cs` owns
+file selection/read/apply plus World/Cars preset selection and exact preset-to-main/mirror mappings; `RangeRow.cs` owns dual-handle interaction and numeric synchronization; `IniFile.cs`
+owns section-scoped lossless editing and backups. `EditorTheme.xaml` copies the relevant ViewLab window styles
+and merges the utility's bundled `ViewLabTheme.xaml`. `SelfTest.cs` exercises disposable INI fixtures and
+actual WPF controls (`iRacing-DynLOD.exe --self-test --fixture <renderer.ini>`). Build with `Tools/DynLOD/build.ps1`:
+first version 1.0.0, subsequent normal builds increment the minor field; `-NoVersionBump` reproduces a version.
+`version.json` advances only after successful publish/tests/package. The utility is independently buildable from
+its own directory, which contains its icon, theme, synthetic fixture, README and licence. The root ViewLab build
+does not package this separate utility.
+`Test-IracingNormalization.ps1` provides an expandable live launch/INI-write/graceful-close cycle for discovering
+iRacing's startup normalisation rules without desktop-control tooling. It snapshots all 16 Main/Replay LOD values,
+focuses and clicks the visible Test Drive control, waits for the rewrite, closes with `WM_CLOSE`, and prints an exact diff.
+
 ## Overlay profile resolution and factory baseline
 
 `OverlaySettingsModels.cs` owns the six-overlay catalogue and `OverlayProfileOverrides`. `MainWindow` snapshots
@@ -76,6 +104,29 @@ to reconnect at most once per second; it never opens the mapping once per submit
 mapped, it reads the compact generation-stamped snapshot at `xrEndFrame`, so enabled calibration
 and live visor adjustments take effect without INI I/O on the render path.
 
+## Frame cost trace and racing state v4 (2026-09-26)
+
+`GpuFrameTimer` issues D3D11 `TIMESTAMP_DISJOINT` + two `TIMESTAMP` queries on the game's immediate context: begin
+after `xrBeginFrame` returns (after the OBS mirror draw), end at `xrEndFrame` entry. Six slots, results read with
+`D3D11_ASYNC_GETDATA_DONOTFLUSH` and never waited on; a frame whose slot is still pending is simply not timed. Runs only
+while the Frame cost theme is visible. `HudFrameSample::gpuMs` carries the latest value; the Frame cost theme draws
+Total = max(APP work, GPU), CPU = APP work, GPU, Wait against ms axes with the effective budget line.
+The racing state block grew to v4 (76 bytes, `spotterProximity` at offset 72); producer and native consumer must ship together. The new byte is derived independently from nearest rear distance within two metres, separate from the rear-closing pressure state.
+The racing overlay pass draws the rhythm shift light (monocular edge tracks) and theme variants of the spotter and
+rear-closing cues from separate generic state fields; no simulator fields reach native code.
+
+## Colour grade pass (2026-09-26)
+
+`GradeEyeTexture()` ports OpenXR Toolkit's `postprocess.hlsl` (MIT) into the direct D3D11 path. At
+`xrReleaseSwapchainImage`, before the visor, calibration patterns and overlays, each target eye rectangle is copied
+(`CopySubresourceRegion`) to one reusable typeless scratch texture and drawn back through a full-screen triangle
+(`kColourGradeVS`/`kColourGradePS`, `Texture2D.Load`, no sampler). SRV and RTV use the app's own swapchain format
+(`TrackedSwapchain::gradeRtvs`, not the visor's non-sRGB `rtvs`) so the shader sees the same values the Toolkit saw.
+All touched pipeline state (RTVs, viewports, RS/OM/IA, VS/HS/DS/GS/PS, PS t0/b0) is saved and restored. MSAA,
+typeless-only, unknown-format or out-of-bounds eye images are skipped with one log line. Resources are lazy and
+released with the renderer. Settings are a session-start snapshot (`LoadColourGradeConfig`, `docs/CONFIG.md`);
+neutral settings or an in-process OpenXR Toolkit layer leave `ColourGradeActive()` false. D3D11 sessions only.
+
 ## Native layer anatomy (dllmain.cpp — grep these symbols)
 
 | Subsystem | Owning symbols |
@@ -90,12 +141,16 @@ and live visor adjustments take effect without INI I/O on the render path.
 | Calibration diagnostics | `DrawCalibrationPatternsToTexture`, `DrawCalibrationGridToTexture`, `DrawCalibrationOverlayToTexture`, `AnyCalibrationPattern`, `g_calibrationFrameSerial`; ten optional patterns draw after the visor. `CalibrationSuite` waits for six observed submitted-frame heartbeats per pattern; `ProcessCalibrationCaptureRequest` copies the final left-eye sub-image on the render thread and a worker writes PNG plus verified metadata. `Tests/CalibrationReferenceFixtures` pins pattern images and `Tests/CalibrationSuiteFixtures` pins orchestration, cancellation, failure and restoration. Pixel-measurement tools use literal submitted-texture pixels and the complete eye rectangle. See `docs/CALIBRATION.md`. |
 | Overlay coordinates | `OverlayCoordinateResolver`, `OverlayPlacement`; builds shared selected/full-lens tangent bounds from both eyes, chooses one visor-space target, then projects it independently through each eye's read-only FOV and destination viewport. Ordinary overlay anchors and full-widget clamp/size limits use `FullLens`, so crop clips coverage without relocating or deforming features. Current selected FOV still supplies pixels-per-tangent, preserving angular size at the submitted resolution. Literal crop diagnostics may use Render Area. No game projection structure is modified. |
 | FOV crop | `ApplyXRViewLabFov`; scales horizontal and vertical FOV tangents only. Asymmetric split crop never rotates or otherwise mutates `XrView.pose`; the former foveated-centre pose compensation is retired. |
-| Automatic ordered overlays | `ViewLabBridge::SelectOverlayBackend`, `EnsureTopmostLayer`, `RenderTopmostLayer`, `BlockTopmostLayer`, `DestroyTopmostLayer`, `TopmostSubmission`, `LatchTopmostDemand`; projection-only applications retain direct rendering. A distinct application compositor layer latches ordered demand. When a current projection supplies valid geometry, direct owns the allocation frame, then the proven transparent stereo projection is appended after application layers as the sole normal-feature carrier. Composition-only frames do not promote an unverified carrier merely because submission succeeds. Capacity/runtime/D3D failure restores every normal feature to direct together. `overlay_force_direct=1` remains the diagnostic escape. |
+| Ordered overlay diagnostic | `ViewLabBridge::SelectOverlayBackend`, `EnsureTopmostLayer`, `RenderTopmostLayer`, `BlockTopmostLayer`, `DestroyTopmostLayer`, `TopmostSubmission`, `LatchTopmostDemand`; direct eye-texture rendering is the shipped default, including for existing configs missing `overlay_force_direct`. Explicit `overlay_force_direct=0` allows ordered demand after a distinct compositor layer appears. Capacity/runtime/D3D failure restores every normal feature to direct together. |
 | ViewLab Bridge core | `ViewLabBridge/BridgeCore.h/.cpp`: `RuntimeCapabilities`, `SelectOverlayBackend`, `MapTextureBounds`, `OverlayBackendName`. This is the sole policy boundary for staged legacy translation. Next are legacy ABI exports/interface negotiation, compositor timing and D3D11 texture submission; input and overlay APIs follow. |
 | Shared overlay configuration | `OverlaySettingsCatalog`, `LoadCommonOverlaySettings`, `SaveCommonOverlaySettings`, `OverlayControls`, `OverlayResetPosition_Click`, `OverlayFeatureId` and `UpdateOverlayFeatureHotkeys` own enable, optional show/hide key, X/Y, scale, opacity and reset for clock, Performance HUD, trace, sticky note, crosshair and notifications. The global menu uses the same checkbox/label/chevron/divider shell for those sections plus OBS Recording Cue and iRacing Telemetry; expanding the latter two reveals their existing global detail controls. iRacing groups lap, spotter, flag and fuel controls and writes RGB selection through the existing `iracing_spotter_color` key. Spotter timing is part of the existing live-state tail; rear-closing presentation is bottom-edge geometry only. The unchanged ten OBS Mirror visibility switches are the final menu section. Existing key names preserve layouts; the old sticky bind migrates into the catalogue. There is one common persistence path and one native visibility controller. |
+
+Clock timer state is owned by `ClockWidget.h::TimerState` and `ResetClockTimer` in `dllmain.cpp`; `LiveStateService` v19 carries mode, duration, target, transient commands and spotter edge-line width/inset. The HUD's whole-widget alarm visibility lives in `hudFlags` bit 3; the old per-symbol alarm filter is retired. Synthetic iRacing controls send broker commands to `IRacingTelemetryProvider.Simulate`; `RacingStateService` marks each temporary cue and clears it on real telemetry. Native early overlay eligibility includes these presentation flags. `ViewLabTheme.xaml` owns the scrollbar thumb, bar and viewer template used by the game list, detached overlay window, overlay popup and profile window; `BuildOverlaysWindow` applies that style to the code-created viewer.
+
+Proximity-colour Spotter is a global mode in `iracingFlags` bit 8; bit 9 selects spotter glow/edge-line and bit 10 selects rear glow/chevrons live. The provider publishes a packed, hysteretic nearest-behind cue using longitudinal `CarIdxLapDistPct` and a confirmed-side `CarLeftRight` state. `RacingCueGeometry.h::ApproachVisible` routes longitudinal intensity through the same peripheral spotter geometry on both outer edges while no side is confirmed; `SpotterColour` supplies RGB red on confirmed overlap. The separate rear cue retains its own enable and theme. The broker runs bounded, event-driven presentation-test sequences; no extra per-frame telemetry or allocation is introduced.
 | Native performance HUD | `HardwareTelemetry.cpp/.h` own a bounded Windows/PDH/DXGI/ICMP worker and immutable snapshot, started on demand by `EnsureTelemetryWorker` only while recording, the HUD or the trace overlay consumes samples and stopped at `xrDestroySession`; `viewlab::telemetry::Running()` makes the per-frame re-check lock-free. `NetworkProbe.h` owns deterministic rolling probe maths. `HudWidgetId`, `kHudWidgetRegistry`, `ClassifyHudMetric`, `RenderPolicy.h::ClassifyCadenceHealth`, `HudDrawSnapshot`, `DrawCalibrationOverlayToTexture`, and `RenderPolicy.h::UpdateSustainedAlarm` consume it. APP is begin-return to end-entry game-frame wall time divided by the effective budget, not CPU usage. VR/frame interval classify rolling ratio and spread against `predictedDisplayPeriod × detected cadence multiple`; 144 Hz is an explicit fixture, unstable cadence and stable reprojection are distinct, and cadence alone uses 300 ms alarm entry. Every widget has persisted warning/critical values with correct higher/lower semantics. Literal compact labels and explicit units replace unrelated pictograms; the same terminology is used by session events. All enabled widgets pack into one proportional row and both eyes reuse one draw snapshot. |
 | Performance Trace + Session Graph | `hudTraceVisibilityMode`, `CapturePerformanceTraceMarker`, `SavePerformanceTraceSession`, `PerformanceTrace`, `PerformanceTraceWindow` and `PerformanceTraceLibraryWindow`. Recording is opt-in (`performance_trace_recording`, default 0): while off there is no collector thread, no reserved ring, no marker key polling and no CSV. When on, once per second the telemetry worker appends and flushes the current uniquely named `session-*.csv`; `latest.csv` remains a compatibility alias. The DiagMonster-owned browser retains multiple sessions, opens prior graphs, compares selected FPS/P99 results and provides confirmed explicit deletion. Periodic rebuilds preserve the bounded one-hour ring; correctness does not depend on shutdown callbacks. |
-| Visor overlays (boundary/crosshair/notifications/racing events) | `DrawViewLabOverlaysToTexture`, `EnsureNotifyCardTexture`, `ConsumeRacingState`, `AnyViewLabOverlay`, `EvaluateNotificationAnimation`, `kOverlayPS`, `kTexturedPS`; flat overlays use explicit colour and cards use textured quads. The broker composes notification cards via `NotificationService.ComposeCard` and `NotificationCardLayout` (shared fixed 336×96 slot contract); `PadToSlot` expands every theme footprint to the native texture stride. The broker publishes notification lifecycle timestamps; native evaluates fade/slide every VR frame and applies alpha once. `RacingStateService` publishes generic spotter/flag/lap semantics plus non-persistent presentation-test flags through its 64-byte mapping. Native racing edge cues draw against the submitted post-crop eye rectangle: spotter remains side-correct with inward fade and optional timing envelopes, while rear-closing uses paired bottom-edge glows expanding inward from both corners. Desktop previews mirror the current supported cue geometry. Crosshair preview uses `CrosshairPreview` and `CrosshairPreview.Measure` with a shared preview-only display scale; real `CrosshairSettings` (size, thickness, gap, outline, colour, alpha, scale, dot, T-style) and native rendering are unchanged. |
+| Visor overlays (boundary/crosshair/notifications/racing events) | `DrawViewLabOverlaysToTexture`, `EnsureNotifyCardTexture`, `ConsumeRacingState`, `AnyViewLabOverlay`, `EvaluateNotificationAnimation`, `kOverlayPS`, `kTexturedPS`; flat overlays use explicit colour and cards use textured quads. The broker composes notification cards via `NotificationService.ComposeCard` and `NotificationCardLayout` (shared fixed 336×96 slot contract); `PadToSlot` expands every theme footprint to the native texture stride. Racing state v4 carries rear pressure and an independent two-metre spotter proximity byte; native evaluates each cue separately. | 
 | ViewLab Media Capture | `ProduceViewLabMirrorFrame` assembles each frame in the private `g_vlmcCompositor` staging texture (eye blit, ViewLab overlays, quad layers) and publishes it to the `XRViewLabMirrorSurface` ring (v3, 76 bytes) with a single `CopyResource`, matching OXRMC's `_compositorTexture` + `copyToMirror()`. The shared handles are legacy (no keyed mutex), so OBS has no synchronisation with the game device; assembling directly in a shared slot let OBS sample between the eye blit and the later draws, which reads as flickering overlays over a stable base image. Side-by-side was removed. Publication happens before `nextXrEndFrame`: publishing afterwards was tried to catch ReShade's final pass and corrupted the headset render, because the frame is submitted and the runtime owns the swapchain textures by then. ReShade still reaches the capture because it substitutes its own swapchain into the submitted projection layer, and the topology is rebuilt from `frameEndInfo` every frame. |
 | VLMC overlay quad compositing | `SubmittedQuad`, `RecordSubmittedQuads`, `EnsureVlmcQuadFx`, `VlmcQuadSrvFormat`, `VlmcDrawSubmittedQuads`. ViewLab is registered last, so `xrEndFrame` hands it every quad layer submitted above it (ReShade's VR menu, OpenKneeboard, RaceLab). Those are separate composition layers the runtime composites, so a projection copy alone misses them. Ported from OpenXR-Layer-OBSMirror (MIT) `dx11mirror.cpp` `Blend()`: world matrix from the quad pose/size, view from the captured eye pose, `XMMatrixPerspectiveOffCenterRH` from that eye's FOV, and `xrLocateSpace` to resolve each quad's reference space into the projection layer's space. Unlike OXRMC it runs on the game's immediate context, so it binds known rasterizer/depth/blend/sampler states and restores every slot it borrows. Gated on the consumer's `requestedShowOverlays`. |
 | Overlay live-state authority | `liveOwns(OverlayFeatureId)`, `g_liveAuthoritativeMask` and `g_liveScopedMismatchMask` (live-state v15). A profile editor publishes all six fully resolved active-app features authoritatively with its executable key; the layer applies them immediately but rejects that snapshot for any other process. `TelemetryConfigService` v2 carries full per-widget order, symbols, units, thresholds and probe target; `StickyNoteLiveStateService` v3 carries the note collection; `NotificationLiveStateService` v1 carries broker-owned composition, filtering and media settings. The broker accepts unscoped live globals only when the active profile inherits notifications. Save retains, Cancel restores and per-feature Use Global Values publishes the resolved global feature immediately. Render/FOV remain session setup. |
@@ -336,6 +391,8 @@ full-lens shares for native compatibility; main and profile editors convert ×2 
 
 `ProfileWindow.xaml` owns the PowerUp/profile popup chrome, including its dedicated ViewLab-themed
 scroll viewer. The scrollbar occupies a separate grid column, never an overlay on visor controls.
+The window is 415 WPF units wide; overlay headers stretch to the available width and the bottom actions
+use a two-column, two-row grid so the reduced width does not clip them.
 
 ## Overlay coordinate contract
 

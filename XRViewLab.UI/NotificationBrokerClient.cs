@@ -97,6 +97,7 @@ internal sealed class NotificationBrokerClient
 
     public string RefreshStatus()
     {
+        if (!IsRunning) return "Stopped: the notification broker is not running.";
         if (!Changed(StatusPath, ref _statusStamp)) return Status;
         try
         {
@@ -135,6 +136,9 @@ internal sealed class NotificationBrokerClient
 
     public string RefreshIRacingStatus()
     {
+        // The status file only changes when the broker writes it, so a broker that has exited leaves the
+        // last state behind. The broker's single-instance mutex is the liveness check (cheap, no process scan).
+        if (!IsRunning) return "Broker not running — iRacing cues are off until ViewLab starts it again.";
         string path = Path.Combine(ConfigDirectory, "iracing-status.json");
         if (!Changed(path, ref _iracingStamp)) return _iracingStatus;
         try

@@ -20,6 +20,7 @@ inline uint32_t CompatibleGraphChannels(uint32_t mode) {
         case 1: return GraphFrameInterval | GraphAppWork | GraphWaitDuration | GraphSubmitDuration | GraphDisplayPeriod;
         case 2: return GraphFps;
         case 3: return GraphFrameInterval | GraphAppWork;
+        case 4: return GraphFrameInterval | GraphAppWork; // frame cost: draws its own series; these drive alarm visibility
         default: return 0;
     }
 }
@@ -30,6 +31,7 @@ inline uint32_t DefaultGraphChannel(uint32_t mode) {
         case 1: return GraphFrameInterval;
         case 2: return GraphFps;
         case 3: return GraphFrameInterval;
+        case 4: return GraphFrameInterval | GraphAppWork;
         default: return 0;
     }
 }
@@ -68,6 +70,7 @@ struct TraceVisibilityState {
     float alpha = 0.f;
     uint64_t holdUntil = 0;
     uint64_t fadeStart = 0;
+    uint64_t lastTick = 0;
     uint32_t mode = 0;
 };
 
@@ -136,9 +139,13 @@ inline void UpdateSustainedAlarm(SustainedAlarmState& state, int desiredState, i
 }
 
 inline float UpdateTraceVisibility(TraceVisibilityState& state, uint32_t mode, bool trouble,
-    uint64_t now, uint64_t holdMs, uint64_t fadeMs = 500) {
+    uint64_t now, uint64_t holdMs, uint64_t fadeMs = 500, uint64_t fadeInMs = 0) {
+    // Alpha ramps by elapsed time in both directions (fadeInMs up, fadeMs down), starting from its current
+    // value, so alarm-only never pops on or off in a single frame.
     const bool changed = state.mode != mode;
     state.mode = mode;
+    const float dt = state.lastTick != 0 && now >= state.lastTick ? static_cast<float>(now - state.lastTick) : 0.f;
+    state.lastTick = now;
     if (mode == 0) {
         state.alpha = 0.f; state.holdUntil = 0; state.fadeStart = 0; return state.alpha;
     }
@@ -148,16 +155,15 @@ inline float UpdateTraceVisibility(TraceVisibilityState& state, uint32_t mode, b
     if (changed) {
         state.alpha = 0.f; state.holdUntil = 0; state.fadeStart = 0;
     }
-    if (trouble) {
-        state.alpha = 1.f; state.holdUntil = now + holdMs; state.fadeStart = 0; return state.alpha;
-    }
-    if (now < state.holdUntil) {
-        state.alpha = 1.f; return state.alpha;
+    if (trouble) state.holdUntil = now + holdMs;
+    if (trouble || now < state.holdUntil) {
+        state.fadeStart = 0;
+        state.alpha = fadeInMs == 0 ? 1.f : std::clamp(state.alpha + dt / static_cast<float>(fadeInMs), 0.f, 1.f);
+        return state.alpha;
     }
     if (state.alpha <= 0.f) return state.alpha = 0.f;
     if (state.fadeStart == 0) state.fadeStart = now;
-    const float elapsed = static_cast<float>(now - state.fadeStart);
-    state.alpha = fadeMs == 0 ? 0.f : std::clamp(1.f - elapsed / static_cast<float>(fadeMs), 0.f, 1.f);
+    state.alpha = fadeMs == 0 ? 0.f : std::clamp(state.alpha - dt / static_cast<float>(fadeMs), 0.f, 1.f);
     return state.alpha;
 }
 

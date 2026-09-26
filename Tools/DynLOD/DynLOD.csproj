@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>iRacing-DynLOD</AssemblyName>
+    <Version>1.0.0</Version>
+    <Product>iRacing DynLOD</Product>
+    <Title>iRacing DynLOD</Title>
+    <AssemblyTitle>iRacing DynLOD</AssemblyTitle>
+    <Description>Compact direct editor for iRacing Dynamic LOD settings.</Description>
+    <Company>Cooooked</Company>
+    <Copyright>Copyright 2026 Cooooked</Copyright>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+</Project>

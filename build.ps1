@@ -126,7 +126,9 @@ Write-Host "Building medium-integrity notification broker..."
 Invoke-Native dotnet publish $BrokerProject -c $Configuration -r win-x64 --self-contained true /p:PublishSingleFile=true
 
 Write-Host "Building signed notification identity package..."
-$WindowsSdkBinRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+$KitsRoot10 = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows Kits\Installed Roots' -ErrorAction SilentlyContinue).KitsRoot10
+if ([string]::IsNullOrWhiteSpace($KitsRoot10)) { $KitsRoot10 = "${env:ProgramFiles(x86)}\Windows Kits\10" }
+$WindowsSdkBinRoot = Join-Path $KitsRoot10 "bin"
 $WindowsSdkVersionDir = Get-ChildItem $WindowsSdkBinRoot -Directory -ErrorAction Stop |
     Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
     Sort-Object { [version]$_.Name } -Descending |
@@ -248,6 +250,8 @@ foreach ($EffectName in @("fsr.effect", "ffx_a_mod.h", "ffx_fsr1_mod.h")) {
     Copy-Item -Path (Join-Path $Root "ViewLabStabilizerFilter\upstream\LiveVisionKit\OBS\Data\effects\$EffectName") -Destination $StabEffectPublishDir -Force
 }
 
+Write-Host "Compiling colour grade shaders..."
+& (Join-Path $Root "Shaders\Build-Shaders.ps1")
 Write-Host "Building OpenXR API layer (x64)..."
 $Dll64Expected = Join-Path $Root "x64\$Configuration\XR_APILAYER_cooooked_xrviewlab.dll"
 $Dll32Expected = Join-Path $Root "$Configuration\XR_APILAYER_cooooked_xrviewlab32.dll"

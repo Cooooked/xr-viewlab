@@ -7,6 +7,23 @@ then `STATE.md`, then start working. Everything else is read on demand via the i
 Repository memory beats conversation memory: if this file or `STATE.md` disagrees with what you
 remember or assume, the repo wins. If the repo is stale, fix the repo immediately.
 
+## ViewLab's goal — re-read before every change
+
+**To win races: perfectly smooth, low-latency VR with everything you need in view.**
+
+The user is a competitive sim racer (iRacing, Quest 3 via Virtual Desktop, stable 144 Hz). Before every
+design choice, edit and build, check it against this goal:
+- Does it keep frame times perfectly consistent (no per-frame cost, no hitch, no stall)? At 144 Hz even tiny
+  micro-fluctuations are visible.
+- Is it clear and useful on track (no blur, no clutter)?
+- Does it reuse what already works — ViewLab's existing overlay/render paths, or a proven tool such as
+  OpenXR Toolkit copied exactly — instead of inventing something new?
+If the answer to any is no, stop and ask. When asked what ViewLab's goal is, answer with the bold line above.
+
+**The user may ask you to change ViewLab settings live while they race** ("enable the rear-closing glow, hide the
+HUD…"). Do it by editing the settings files directly, never the code: follow `docs/CONFIG.md` →
+"Changing settings live (for AI assistants)".
+
 ## What ViewLab is
 
 An OpenXR **implicit API layer** (`XR_APILAYER_cooooked_xrviewlab`, native C++ in `dllmain.cpp`)
@@ -75,8 +92,8 @@ symbol search, never end-to-end "to get familiar":
 
 | File | Lines | Cost | Open when |
 |---|---|---|---|
-| `dllmain.cpp` | ~3000 | HIGH | editing native behavior — jump to the symbol via grep |
-| `XRViewLab.UI/MainWindow.cs` | ~2200 | HIGH | editing UI logic/persistence — jump to symbol |
+| `dllmain.cpp` | ~8400 | HIGH | editing native behavior — jump to the symbol via grep |
+| `XRViewLab.UI/MainWindow.cs` | ~4700 | HIGH | editing UI logic/persistence — jump to symbol |
 | everything else | <700 | ok | as needed |
 
 `docs/ARCHITECTURE.md` maps every subsystem to its owning symbols so you can grep instead of read.
@@ -94,7 +111,7 @@ symbol search, never end-to-end "to get familiar":
 | Why do crop edges smear? (closed: VD fixed foveation) | `docs/FIXED_FOVEATION.md` (summary), `docs/EDGE_SMEAR_INVESTIGATION.md` (full record) |
 | How do I verify behavior in the headset? | `docs/VERIFICATION.md` |
 | What shipped when? | `CHANGELOG.md` |
-| Older research/plans/journals (rarely needed) | `docs/history/` |
+| Older research/plans/journals (rarely needed) | `docs/history/` (full STATE journal to 2026-09-26: `docs/history/STATE-archive-2026-09-26.md`) |
 | ReShade Remote payload internals | `ReShadePayload/Docs/` |
 | Backup inventory / recovery sources | `docs/history/SOURCE_BACKUP.md` |
 

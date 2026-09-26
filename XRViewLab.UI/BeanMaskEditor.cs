@@ -601,9 +601,15 @@ public sealed class BeanMaskEditor : FrameworkElement
 		ResetViewToStartupFit();e.Handled=true;
 	}
 
+	// Inside a scrolling window (the per-app profile editor) the wheel scrolls the window until the
+	// preview is clicked; leaving the preview hands the wheel back to the window.
+	public bool WheelZoomRequiresClick { get; set; }
+	private bool _wheelEngaged;
+
 	protected override void OnMouseWheel(MouseWheelEventArgs e)
 	{
 		base.OnMouseWheel(e);
+		if (WheelZoomRequiresClick && !_wheelEngaged) return; // unhandled: bubbles to the ScrollViewer
 		Point cursor = e.GetPosition(this);
 		double before = _viewZoom;
 		_viewZoom = Math.Clamp(_viewZoom * (e.Delta > 0 ? 1.15 : 1.0 / 1.15), 1.0, 8.0);
@@ -859,6 +865,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 	protected override void OnPreviewMouseLeftButtonDown(MouseButtonEventArgs e)
 	{
 		base.OnPreviewMouseLeftButtonDown(e);
+		_wheelEngaged = true;
 		Focus();
 		Point sceneMouse=ScenePoint(e.GetPosition(this));
 		var overlayHit=HitOverlayHandle(sceneMouse,PreviewFullArea());
@@ -1010,6 +1017,7 @@ public sealed class BeanMaskEditor : FrameworkElement
 	protected override void OnMouseLeave(MouseEventArgs e)
 	{
 		base.OnMouseLeave(e);
+		_wheelEngaged = false;
 		_inspectorPoint = null;
 		if (_dragTarget == DragTarget.None && (_hoverTarget != DragTarget.None||_overlayHoverHandle!=OverlayPreviewHandle.None))
 		{

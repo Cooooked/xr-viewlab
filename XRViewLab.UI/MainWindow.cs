@@ -58,7 +58,6 @@ public partial class MainWindow : Window
 	private const string PreviewCircleGuidesKey = "preview_circle_guides";
 	private const string PreviewPerEyeFramesKey = "preview_per_eye_frames";
 	private const string PreviewIpdKey = "preview_ipd_mm";
-	private const string PreviewOpticalCentreKey = "preview_optical_centre";
 	private const string ObsMirrorVisorKey = "obs_mirror_show_visor";
 	private const string ObsMirrorClockKey = "obs_mirror_show_clock";
 	private const string ObsMirrorNotificationsKey = "obs_mirror_show_notifications";
@@ -95,17 +94,21 @@ public partial class MainWindow : Window
 	private const string HudTraceWidthKey = "hud_trace_width";
 	private const string HudTraceHistoryKey = "hud_trace_history";
 	private const string HudTraceVisibilityKey = "hud_trace_visibility_mode";
+	private const string HudVisibilityKey = "hud_visibility_mode";
 	private const string PerformanceTraceRecordingKey = "performance_trace_recording";
 	private const string DiagnosticsOptInMarker = "DiagnosticsOptInApplied";
 	private const string Refresh144MetricsMarker = "Refresh144MetricsApplied";
 	private const string PerformanceTraceMarkerVkKey = "performance_trace_marker_vk";
-	private const string HudAlarmOnlyKey = "hud_alarm_only";
 	private const string HudAlarmHoldKey = "hud_alarm_hold_ms";
 	private const string HudSafeMarginKey = "hud_safe_margin";
 	private const string HudClampKey = "hud_clamp_to_visible";
 	private const string HudGraphModeKey = "hud_graph_mode";
+	private const string HudTraceThemeKey = "hud_trace_theme";
+	private const string HudTraceCostLinesKey = "hud_trace_cost_lines";
+	private const string HudTraceCostLabelsKey = "hud_trace_cost_labels";
 	private const string StickyNoteTextKey="sticky_note_text";
 	private const string ClockSessionTimerKey="clock_session_timer_enabled",Clock24HourKey="clock_24_hour",ClockThemeKey="clock_widget_theme",ClockPaletteKey="clock_widget_palette";
+	private uint _clockTimerCommand;
 	private const string NotifyThemeKey="notify_theme",NotifyPaletteKey="notify_palette";
 	private const string TelemetrySettingsVersionKey = "telemetry_settings_version";
 	private static readonly string[] HudWidgetIds = { "cpu", "gpu", "app", "vr", "cpu_peak", "cpu_frequency", "ram", "commit", "vram", "sys", "fps", "frame_interval", "network_ping", "network_loss", "network_jitter", "network_status" };
@@ -162,9 +165,13 @@ public partial class MainWindow : Window
 		("Debris", "iracing_flag_show_debris"), ("Blue", "iracing_flag_show_blue"),
 		("White", "iracing_flag_show_white"), ("Red", "iracing_flag_show_red"),
 		("Black", "iracing_flag_show_black"), ("Disqualified", "iracing_flag_show_disqualified"),
-		("Checkered", "iracing_flag_show_checkered"),
+		("Checkered", "iracing_flag_show_checkered"), ("PitLimiter", "iracing_flag_show_pit_limiter"),
 	};
 	private const string IRacingLapDurationKey = "iracing_lap_duration_ms";
+	private const string IRacingShiftLightWidthKey = "iracing_shift_light_width";
+	private const string IRacingShiftLightPositionKey = "iracing_shift_light_position";
+	private const string IRacingSpotterLineWidthKey = "iracing_spotter_line_width";
+	private const string IRacingSpotterLineInsetKey = "iracing_spotter_line_inset";
 
 	// ReShade MENU � OpenXR
 	private const string XrHmdMenuKey = "reshade_xr_hmd_menu";
@@ -307,6 +314,11 @@ public partial class MainWindow : Window
 			await CheckForUpdatesOnLaunchAsync();
 			CheckManifestHealth();
 		};
+		base.Loaded += (_, _) => StartExternalSettingsWatch();
+		// Any input in this window marks the next settings writes as our own (not external edits).
+		PreviewMouseDown += (_, _) => _lastUserInputTick = Environment.TickCount64;
+		PreviewKeyDown += (_, _) => _lastUserInputTick = Environment.TickCount64;
+		PreviewMouseWheel += (_, _) => _lastUserInputTick = Environment.TickCount64;
 	}
 
 	private DateTime _visualMasksPopupClosedAt = DateTime.MinValue;
@@ -360,6 +372,7 @@ public partial class MainWindow : Window
 
 		var scroller = new ScrollViewer
 		{
+			Style = (Style)FindResource("ViewLabScrollViewer"),
 			VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
 			HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
 			Margin = new Thickness(12, 0, 12, 12),
@@ -966,6 +979,7 @@ public partial class MainWindow : Window
 			bool compact  = w > 0.0 && w < 280.0;   // mini: sliders collapse only when genuinely narrow
 			bool twoCol   = w >= 720.0;              // medium: two usable card columns
 			bool threeCol = w >= 1200.0;             // large: three full-width card columns
+			OptionsButtonsGrid.Columns = threeCol ? 3 : 2;
 
 			MainColumn.Width     = new GridLength(1.0, GridUnitType.Star);
 			WideGapColumn.Width  = twoCol    ? new GridLength(14.0) : new GridLength(0.0);
@@ -1367,7 +1381,7 @@ public partial class MainWindow : Window
 		MaskBeanEditor.NoseSpreadX = MaskNoseSpreadXSlider?.Value ?? 0.0;
 		MaskBeanEditor.UseCircularEyeGuides = PreviewCircleGuidesCheck?.IsChecked == true;
 		MaskBeanEditor.UsePerEyeFrameGuides = PreviewPerEyeFramesCheck?.IsChecked == true;
-		MaskBeanEditor.UseOpticalPreviewCentre = PreviewOpticalCentreCheck?.IsChecked == true;
+		MaskBeanEditor.UseOpticalPreviewCentre = OpticalCentringCheck?.IsChecked == true;
 		MaskBeanEditor.PreviewIpdMillimetres = CurrentPreviewIpd();
 		MaskBeanEditor.InnerBridgeWidth = FixedInnerBridgeWidth;
 		MaskBeanEditor.InnerBridgeRise = FixedInnerBridgeRise;
@@ -1395,6 +1409,7 @@ public partial class MainWindow : Window
 		_viewlabEnabled = ReadBoolSetting("enabled", fallback: true);
 		SplitCheck.IsChecked = value2;
 		if (FoveaCenterCheck != null) FoveaCenterCheck.IsChecked = ReadBoolSetting("foveated_center_compensation", fallback: false);
+		if (OpticalCentringCheck != null) OpticalCentringCheck.IsChecked = ReadBoolSetting("optical_centring", fallback: false);
 		TotalBox.Text = FormatScale(num);
 		// R55: Top/Bottom are shares of the WHOLE screen, stored 1:1 (0.15 vertical == 0.075 + 0.075).
 		// While split is OFF they are not independent — they are simply half the total each, so they are
@@ -1421,7 +1436,6 @@ public partial class MainWindow : Window
 		SyncVisorColorControls((uint)ReadRangeSetting(VisorMaskColorKey, 0, 0, 0xFFFFFF));
 		PreviewCircleGuidesCheck.IsChecked = ReadBoolSetting(PreviewCircleGuidesKey, true);
 		PreviewPerEyeFramesCheck.IsChecked = ReadBoolSetting(PreviewPerEyeFramesKey, false);
-		PreviewOpticalCentreCheck.IsChecked = ReadBoolSetting(PreviewOpticalCentreKey, false);
 		PreviewIpdBox.Text = ReadRangeSetting(PreviewIpdKey, 67.0, 50.0, 80.0).ToString("0.0", CultureInfo.InvariantCulture);
 		ObsMirrorVisorCheck.IsChecked = ReadBoolSetting(ObsMirrorVisorKey, true);
 		ObsMirrorClockCheck.IsChecked = ReadBoolSetting(ObsMirrorClockKey, true);
@@ -1455,13 +1469,17 @@ public partial class MainWindow : Window
 		string traceModeText = ReadSetting(HudTraceVisibilityKey, string.Empty);
 		HudTraceVisibilityCombo.SelectedIndex = int.TryParse(traceModeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int traceMode)
 			? Math.Clamp(traceMode, 0, 2) : (ReadBoolSetting(HudTraceEnabledKey, fallback: false) ? 1 : 0);
+		HudVisibilityCombo.SelectedIndex = Math.Clamp((int)ReadRangeSetting(HudVisibilityKey, ReadBoolSetting("hud_enabled", false) ? 1 : 0, 0, 2), 0, 2);
+		HudEnabledCheck.IsChecked = HudVisibilityCombo.SelectedIndex > 0;
 		TraceEnabledCheck.IsChecked = HudTraceVisibilityCombo.SelectedIndex > 0;
 		PerformanceTraceRecordingCheck.IsChecked = ReadBoolSetting(PerformanceTraceRecordingKey, fallback: false);
 		PerformanceTraceMarkerKeyCombo.SelectedIndex = Math.Clamp((int)ReadRangeSetting(PerformanceTraceMarkerVkKey, 119, 117, 123)-117,0,6);
 		HudTraceSensitivitySlider.Value = ReadRangeSetting(HudTraceSensitivityKey, 2.0, 0.5, 8.0);
 		HudTraceWidthSlider.Value = ReadRangeSetting(HudTraceWidthKey, 0.42, 0.1, 1.0);
 		HudTraceHistorySlider.Value = ReadRangeSetting(HudTraceHistoryKey, 120.0, 30.0, 600.0);
-		HudAlarmOnlyCheck.IsChecked = ReadBoolSetting(HudAlarmOnlyKey, fallback: false);
+		HudTraceAlarmSensitivitySlider.Value = ReadRangeSetting("hud_trace_alarm_sensitivity", 0.8, 0.0, 1.0);
+		HudTraceFadeInSlider.Value =ReadRangeSetting("hud_trace_fade_in_ms", ReadRangeSetting("hud_trace_fade_ms", 150.0, 0.0, 1000.0), 0.0, 1000.0);
+		HudTraceFadeOutSlider.Value = ReadRangeSetting("hud_trace_fade_out_ms", ReadRangeSetting("hud_trace_fade_ms", 150.0, 0.0, 1000.0), 0.0, 1000.0);
 		HudSafeMarginSlider.Value = ReadRangeSetting(HudSafeMarginKey, 0.025, 0.0, 0.25);
 		foreach (HudWidgetOption widget in _hudWidgets)
 		{
@@ -1490,7 +1508,27 @@ public partial class MainWindow : Window
 		var orderedWidgets = _hudWidgets.OrderBy(w => ReadRangeSetting($"hud_widget_{w.Id}_order", Array.IndexOf(HudWidgetIds, w.Id), 0, HudWidgetIds.Length - 1)).ToList();
 		_hudWidgets.Clear(); foreach (HudWidgetOption widget in orderedWidgets) _hudWidgets.Add(widget);
 		NetworkProbeTargetBox.Text = ReadSetting(NetworkProbeTargetKey, "1.1.1.1");
-		HudGraphModeCombo.SelectedIndex = (int)ReadRangeSetting(HudGraphModeKey, 0, 0, 3);
+		// Frame cost is graph mode 4; the legacy hud_trace_theme=1 key selected it before.
+		HudGraphModeCombo.SelectedIndex = ReadRangeSetting(HudTraceThemeKey, 0, 0, 1) >= 1 ? 4 : (int)ReadRangeSetting(HudGraphModeKey, 0, 0, 4);
+		// Colour: 0 off, 1 on (ViewLab values). The removed follow-OpenXR-Toolkit value 2 reads as on.
+		ColourGradeModeCombo.SelectedIndex = ReadRangeSetting("colour_grade_mode", 1, 0, 2) >= 1 ? 1 : 0;
+		ColourLutCheck.IsChecked = ReadBoolSetting("colour_grade_lut", true);
+		ColourGrade_contrast_Slider.Value = ReadRangeSetting("colour_grade_contrast", 500, 0, 1000);
+		ColourGrade_brightness_Slider.Value = ReadRangeSetting("colour_grade_brightness", 500, 0, 1000);
+		ColourGrade_exposure_Slider.Value = ReadRangeSetting("colour_grade_exposure", 500, 0, 1000);
+		ColourGrade_saturation_Slider.Value = ReadRangeSetting("colour_grade_saturation", 500, 0, 1000);
+		ColourGrade_vibrance_Slider.Value = ReadRangeSetting("colour_grade_vibrance", 0, 0, 1000);
+		ColourGrade_highlights_Slider.Value = ReadRangeSetting("colour_grade_highlights", 1000, 0, 1000);
+		ColourGrade_shadows_Slider.Value = ReadRangeSetting("colour_grade_shadows", 0, 0, 1000);
+		ColourGrade_gain_r_Slider.Value = ReadRangeSetting("colour_grade_gain_r", 500, 0, 1000);
+		ColourGrade_gain_g_Slider.Value = ReadRangeSetting("colour_grade_gain_g", 500, 0, 1000);
+		ColourGrade_gain_b_Slider.Value = ReadRangeSetting("colour_grade_gain_b", 500, 0, 1000);
+		int costLines = (int)ReadRangeSetting(HudTraceCostLinesKey, 7, 0, 15);
+		HudCostTotalCheck.IsChecked = (costLines & 1) != 0;
+		HudCostCpuCheck.IsChecked = (costLines & 2) != 0;
+		HudCostGpuCheck.IsChecked = (costLines & 4) != 0;
+		HudCostWaitCheck.IsChecked = (costLines & 8) != 0;
+		HudCostLabelsCombo.SelectedIndex = (int)ReadRangeSetting(HudTraceCostLabelsKey, 0, 0, 2);
 		HudGraphFrameIntervalCheck.IsChecked = ReadBoolSetting("hud_graph_frame_interval", false);
 		HudGraphFpsCheck.IsChecked = ReadBoolSetting("hud_graph_fps", false);
 		HudGraphBudgetDeviationCheck.IsChecked = ReadBoolSetting("hud_graph_budget_deviation", true);
@@ -1539,6 +1577,11 @@ public partial class MainWindow : Window
 		ObsIndicatorOpacitySlider.Value=ReadRangeSetting(ObsIndicatorOpacityKey,.72,.1,1);ObsIndicatorThicknessSlider.Value=ReadRangeSetting(ObsIndicatorThicknessKey,.009,.002,.04);
 		LoadCommonOverlaySettings();
 		ClockSessionTimerCheck.IsChecked=ReadBoolSetting(ClockSessionTimerKey,true);
+		ClockTimerModeCombo.SelectedIndex=(int)ReadRangeSetting("clock_timer_mode",0,0,3);
+		ClockCountdownMinutesSlider.Value=ReadRangeSetting("clock_countdown_minutes",15,1,180);
+		ClockTargetHourSlider.Value=ReadRangeSetting("clock_target_hour",17,0,23);
+		ClockTargetMinuteSlider.Value=ReadRangeSetting("clock_target_minute",46,0,59);
+		ClockAlarmEnabledCheck.IsChecked=ReadBoolSetting("clock_alarm_enabled",true);
 		Clock24HourCheck.IsChecked=ReadBoolSetting(Clock24HourKey,true);
 		{
 			// Same migration for the clock: old clock_widget_theme values were palettes.
@@ -1574,8 +1617,17 @@ public partial class MainWindow : Window
 		IRacingRaceStartRedOpacitySlider.Value = ReadRangeSetting("iracing_race_start_red_opacity", 0.8, 0.05, 1.0);
 		IRacingRaceStartGreenOpacitySlider.Value = ReadRangeSetting("iracing_race_start_green_opacity", 0.8, 0.05, 1.0);
 		IRacingRearClosingCheck.IsChecked = ReadBoolSetting("iracing_rear_closing", false);
+		IRacingSpotterThemeCombo.SelectedIndex = (int)ReadRangeSetting("iracing_spotter_theme", 0, 0, 1);
+		IRacingSpotterLineWidthSlider.Value = ReadRangeSetting(IRacingSpotterLineWidthKey, ReadRangeSetting(IRacingShiftLightWidthKey, 1.0, 0.25, 3.0), 0.25, 3.0);
+		IRacingSpotterLineInsetSlider.Value = ReadRangeSetting(IRacingSpotterLineInsetKey, ReadRangeSetting(IRacingShiftLightPositionKey, 0.18, 0.0, 0.35), 0.0, 0.35);
+		IRacingSpotterModeCombo.SelectedIndex = (int)ReadRangeSetting("iracing_spotter_mode", 0, 0, 1);
+		IRacingRearClosingThemeCombo.SelectedIndex = (int)ReadRangeSetting("iracing_rear_closing_theme", 0, 0, 1);
 		IRacingRearClosingOpacitySlider.Value = ReadRangeSetting("iracing_rear_closing_opacity", 0.9, 0.05, 1.0);
 		IRacingGripBarCheck.IsChecked = ReadBoolSetting("iracing_grip_bar", false);
+		IRacingShiftLightCheck.IsChecked = ReadBoolSetting("iracing_shift_light", false);
+		IRacingShiftLightOpacitySlider.Value = ReadRangeSetting("iracing_shift_light_opacity", 0.9, 0.05, 1.0);
+		IRacingShiftLightWidthSlider.Value = ReadRangeSetting(IRacingShiftLightWidthKey, 1.0, 0.25, 3.0);
+		IRacingShiftLightPositionSlider.Value = ReadRangeSetting(IRacingShiftLightPositionKey, 0.035, 0.0, 0.35);
 		IRacingGripBarOpacitySlider.Value = ReadRangeSetting("iracing_grip_bar_opacity", 0.9, 0.05, 1.0);
 
 		// Gameplay/Tuning + menu/window controls now live in the ReShade Remote pop-out (ReShadeRemoteWindow).
@@ -2056,6 +2108,17 @@ public partial class MainWindow : Window
 		}
 	}
 
+	private void OpticalCentringCheck_Changed(object sender, RoutedEventArgs e)
+	{
+		// One option: the preview shows the optical-centred layout exactly when the headset uses it.
+		if (MaskBeanEditor != null) MaskBeanEditor.UseOpticalPreviewCentre = OpticalCentringCheck.IsChecked == true;
+		if (_loading) return;
+		SaveGlobalSettings();
+		StatusText.Text = OpticalCentringCheck.IsChecked == true
+			? "Optical centring ON — takes effect next game launch."
+			: "Optical centring OFF — takes effect next game launch.";
+	}
+
 	private void FoveaCenterCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading) return;
@@ -2104,6 +2167,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	private void HudLayout_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading || _applyingOverlayPreviewEdit) return;
+		if (sender == HudEnabledCheck) HudVisibilityCombo.SelectedIndex = HudEnabledCheck.IsChecked == true ? Math.Max(1, HudVisibilityCombo.SelectedIndex) : 0;
+		else if (sender == HudVisibilityCombo) HudEnabledCheck.IsChecked = HudVisibilityCombo.SelectedIndex > 0;
 		bool traceEnabled = HudTraceVisibilityCombo.SelectedIndex > 0;
 		if (TraceEnabledCheck.IsChecked != traceEnabled)
 		{
@@ -2117,6 +2182,23 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	}
 
 	private void HudLayoutSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => HudLayout_Changed(sender, e);
+	private void ColourGrade_Changed(object sender, SelectionChangedEventArgs e) => ColourGradeSettingChanged();
+	private void ColourGradeSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => ColourGradeSettingChanged();
+	private void ColourGradeSettingChanged()
+	{
+		if (_loading || !IsLoaded) return;
+		RequestSave(PendingSave.Calibration);
+		StatusText.Text = "Colour settings saved; they take effect the next time the game starts.";
+	}
+	// Colour engine: saved for next launch and switched live in the running game.
+	private void ColourLut_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_loading || !IsLoaded) return;
+		WritePrivateProfileString("Settings", "colour_grade_lut", ColourLutCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		PublishLiveState();
+		StatusText.Text = ColourLutCheck.IsChecked == true ? "Fast colour (lookup table) ON — applied live." : "Fast colour OFF (per-pixel maths) — applied live.";
+	}
+	private void IRacingThemeCombo_Changed(object sender, SelectionChangedEventArgs e) { if (!_loading && IsLoaded) IRacingControl_Changed(sender, e); }
 	private void NetworkProbeTarget_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_loading || NetworkProbeTargetBox == null) return;
@@ -2178,6 +2260,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		if (HudGraphFrameIntervalCheck == null) return;
 		int mode = HudGraphModeCombo?.SelectedIndex ?? 0;
+		if (mode == 4) return; // frame cost draws its own series
 		var compatible = mode switch
 		{
 			0 => new[] { HudGraphBudgetDeviationCheck },
@@ -2199,6 +2282,9 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		HudGraphWaitDurationCheck.IsEnabled = mode == 1;
 		HudGraphSubmitDurationCheck.IsEnabled = mode == 1;
 		HudGraphDisplayPeriodCheck.IsEnabled = mode == 1;
+		// Frame cost has its own series picker instead of the channel list.
+		HudTraceCostViewPanel.Visibility = mode == 4 ? Visibility.Visible : Visibility.Collapsed;
+		HudGraphChannelsExpander.Visibility = mode == 4 ? Visibility.Collapsed : Visibility.Visible;
 	}
 
 	private void SaveExperimentalSettings()
@@ -2216,14 +2302,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		SaveCalibrationSettings();
 		PublishLiveState();
 		StatusText.Text = "Calibration setting applied live.";
-	}
-
-	private void PreviewOpticalCentre_Changed(object sender, RoutedEventArgs e)
-	{
-		if (MaskBeanEditor != null)
-			MaskBeanEditor.UseOpticalPreviewCentre = PreviewOpticalCentreCheck?.IsChecked == true;
-		if (!_loading)
-			SaveGlobalSettings();
 	}
 
 
@@ -2738,12 +2816,21 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		if (_loading || _applyingOverlayPreviewEdit) return;
 		RequestSaveCommonOverlay("clock");
 		WritePrivateProfileString("Settings", ClockSessionTimerKey, ClockSessionTimerCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", "clock_timer_mode", Math.Max(0, ClockTimerModeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "clock_countdown_minutes", ((int)ClockCountdownMinutesSlider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "clock_target_hour", ((int)ClockTargetHourSlider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "clock_target_minute", ((int)ClockTargetMinuteSlider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "clock_alarm_enabled", ClockAlarmEnabledCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", Clock24HourKey, Clock24HourCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", ClockThemeKey, Math.Max(0, ClockThemeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", ClockPaletteKey, Math.Max(0, ClockPaletteCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		PublishLiveState(); StatusText.Text = "Clock and session timer applied live.";
 	}
 	private void ClockWidgetSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => ClockWidgetControl_Changed(sender, e);
+	private void SendClockTimerCommand(uint command){_clockTimerCommand=((_clockTimerCommand+0x100u)&0xFFFFFF00u)|command;PublishLiveState();}
+	private void ClockTimerStart_Click(object sender,RoutedEventArgs e)=>SendClockTimerCommand(1);
+	private void ClockTimerPause_Click(object sender,RoutedEventArgs e)=>SendClockTimerCommand(2);
+	private void ClockTimerReset_Click(object sender,RoutedEventArgs e)=>SendClockTimerCommand(3);
 
 	private void OverlayResetPosition_Click(object sender, RoutedEventArgs e)
 	{
@@ -2787,6 +2874,66 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	// Called by ProfileWindow on every per-app overlay edit. The layer reads profile overrides
 	// once at xrCreateSession, so without this a per-app change could not show until the game
 	// restarted; publishing the resolved values as authoritative makes them apply immediately.
+	// ---- External settings edits apply live -------------------------------------------------------------
+	// When xr-viewlab.ini or a per-app profile in the registry is changed outside this window (for example by
+	// an AI assistant while the user drives), reload and publish it to the running game immediately. Writes
+	// made within 2 s of input in this window are this window's own and are ignored, so it never fights the user.
+	private long _lastUserInputTick;
+	private FileSystemWatcher? _iniWatcher;
+	private System.Windows.Threading.DispatcherTimer? _externalReloadTimer;
+	[DllImport("advapi32.dll")] private static extern int RegNotifyChangeKeyValue(IntPtr hKey, bool watchSubtree, int notifyFilter, IntPtr hEvent, bool asynchronous);
+
+	private void StartExternalSettingsWatch()
+	{
+		if (_iniWatcher != null) return;
+		_externalReloadTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+		_externalReloadTimer.Tick += (_, _) => { _externalReloadTimer.Stop(); ApplyExternalSettingsChange(); };
+		void Schedule() => Dispatcher.BeginInvoke(() => { if (Environment.TickCount64 - _lastUserInputTick < 2000) return; _externalReloadTimer.Stop(); _externalReloadTimer.Start(); });
+		try
+		{
+			Directory.CreateDirectory(ConfigDirectory);
+			_iniWatcher = new FileSystemWatcher(ConfigDirectory, Path.GetFileName(ConfigPath)) { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size };
+			_iniWatcher.Changed += (_, _) => Schedule();
+			_iniWatcher.EnableRaisingEvents = true;
+		}
+		catch { _iniWatcher = null; }
+		var thread = new Thread(() =>
+		{
+			while (true)
+			{
+				try
+				{
+					using RegistryKey? apps = Registry.CurrentUser.CreateSubKey(AppRegistryRoot);
+					if (apps == null) return;
+					// REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_CHANGE_LAST_SET, whole subtree; blocks until something changes.
+					if (RegNotifyChangeKeyValue(apps.Handle.DangerousGetHandle(), true, 0x1 | 0x4, IntPtr.Zero, false) != 0) return;
+				}
+				catch { return; }
+				Schedule();
+			}
+		}) { IsBackground = true, Name = "ViewLab registry watch" };
+		thread.Start();
+	}
+
+	private void ApplyExternalSettingsChange()
+	{
+		if (_loading || OwnedWindows.Count > 0) return; // never while a dialog (e.g. a profile editor) is open
+		LoadSettings();
+		string? active = TryReadActiveProfileKey();
+		if (!string.IsNullOrEmpty(active))
+		{
+			using RegistryKey? appKey = Registry.CurrentUser.OpenSubKey(AppRegistryRoot + "\\" + active);
+			if (appKey != null)
+			{
+				ApplyProfileOverlayLive(active, new Dictionary<string, string>(ReadAppOverlayOverrides(appKey).Values, StringComparer.OrdinalIgnoreCase), OverlaySettingsCatalog.AllFeatureMask);
+				StatusText.Text = $"Settings changed outside the app — applied live to {active}.";
+				return;
+			}
+		}
+		PublishLiveState();
+		StatusText.Text = "Settings changed outside the app — applied live.";
+	}
+
 	internal void ApplyProfileOverlayLive(string profileKey, Dictionary<string,string> values, uint mask)
 	{
 		_liveProfileOverrides.Clear();
@@ -2879,21 +3026,33 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		var graphChecks=new[]{HudGraphFrameIntervalCheck,HudGraphFpsCheck,HudGraphBudgetDeviationCheck,HudGraphAppWorkCheck,HudGraphWaitDurationCheck,HudGraphSubmitDurationCheck,HudGraphDisplayPeriodCheck};
 		uint graphChannels=0; for(int i=0;i<graphChecks.Length;++i)if(LiveB($"trace:hud_graph_{HudGraphChannelIds[i]}",graphChecks[i].IsChecked==true))graphChannels|=1u<<i;
 		// Overlay values, with any per-app override the profile editor has published taking priority.
-		bool pHudEnabled = LiveB("hud:hud_enabled", HudEnabledCheck.IsChecked == true);
+		int pHudMode = Math.Clamp(LiveI("hud:hud_visibility_mode", Math.Max(0, HudVisibilityCombo.SelectedIndex)), 0, 2);
+		if (!LiveB("hud:hud_enabled", HudEnabledCheck.IsChecked == true)) pHudMode = 0;
+		bool pHudEnabled = pHudMode != 0;
 		double pHudX = LiveD("hud:hud_anchor_x", HudXSlider.Value), pHudY = LiveD("hud:hud_anchor_y", HudYSlider.Value);
 		double pHudScale = LiveD("hud:hud_scale", HudScaleSlider.Value) * GlobalOverlayScale;
 		double pHudOpacity = LiveD("hud:hud_opacity", HudOpacitySlider.Value);
 		double pHudSafe = LiveD("hud:hud_safe_margin", HudSafeMarginSlider.Value);
-		bool pHudAlarmOnly = LiveB("hud:hud_alarm_only", HudAlarmOnlyCheck.IsChecked == true);
 		double pHudHold = LiveD("hud:hud_alarm_hold_ms", ReadRangeSetting(HudAlarmHoldKey, 1500.0, 0.0, 10000.0));
 		int pTraceMode = LiveI("trace:hud_trace_visibility_mode", Math.Max(0, HudTraceVisibilityCombo.SelectedIndex));
+		int pTraceFadeIn = (int)Math.Clamp(LiveD("trace:hud_trace_fade_in_ms", HudTraceFadeInSlider.Value), 0.0, 1000.0);
+		int pTraceFadeOut = (int)Math.Clamp(LiveD("trace:hud_trace_fade_out_ms", HudTraceFadeOutSlider.Value), 0.0, 1000.0);
+		int pAlarmSens = (int)Math.Round(Math.Clamp(LiveD("trace:hud_trace_alarm_sensitivity", HudTraceAlarmSensitivitySlider.Value), 0.0, 1.0) * 63.0);
+		// live traceFlags: bits 0-1 mode, 2-7 alarm sensitivity (0..63), 8-19 fade in ms, 20-31 fade out ms
+		int pTraceModeAndFade = unchecked((pTraceMode & 0x3) | (pAlarmSens << 2) | (pTraceFadeIn << 8) | (pTraceFadeOut << 20));
 		double pTraceX = LiveD("trace:hud_trace_x", HudTraceXSlider.Value), pTraceY = LiveD("trace:hud_trace_y", HudTraceYSlider.Value);
 		double pTraceScale = LiveD("trace:hud_trace_scale", HudTraceScaleSlider.Value) * GlobalOverlayScale;
 		double pTraceWidth = LiveD("trace:hud_trace_width", HudTraceWidthSlider.Value);
 		double pTraceHistory = LiveD("trace:hud_trace_history", HudTraceHistorySlider.Value);
 		double pTraceSens = LiveD("trace:hud_trace_sensitivity_ms", HudTraceSensitivitySlider.Value);
 		double pTraceOpacity = LiveD("trace:hud_trace_opacity", HudTraceOpacitySlider.Value);
-		int pGraphMode = LiveI("trace:hud_graph_mode", Math.Max(0, HudGraphModeCombo.SelectedIndex));
+		int pGraphMode = Math.Clamp(LiveI("trace:hud_graph_mode", Math.Max(0, HudGraphModeCombo.SelectedIndex)), 0, 4);
+		if (LiveI("trace:hud_trace_theme", 0) == 1) pGraphMode = 4; // legacy per-app override
+		int defaultCostLines = (HudCostTotalCheck.IsChecked == true ? 1 : 0) | (HudCostCpuCheck.IsChecked == true ? 2 : 0) |
+			(HudCostGpuCheck.IsChecked == true ? 4 : 0) | (HudCostWaitCheck.IsChecked == true ? 8 : 0);
+		int pCostLines = Math.Clamp(LiveI("trace:hud_trace_cost_lines", defaultCostLines), 0, 15);
+		int pCostLabels = Math.Clamp(LiveI("trace:hud_trace_cost_labels", Math.Max(0, HudCostLabelsCombo.SelectedIndex)), 0, 2);
+		pGraphMode |= pCostLines << 8 | pCostLabels << 12; // native unpacks lines and labels from bits 8-13
 		bool pTraceRecording=LiveB("trace:performance_trace_recording",ReadBoolSetting(PerformanceTraceRecordingKey,false));
 		int pTraceMarker=LiveI("trace:performance_trace_marker_vk",117+Math.Max(0,PerformanceTraceMarkerKeyCombo.SelectedIndex));
 		bool pChEnabled = LiveB("crosshair:crosshair_enabled", CrosshairEnabledCheck.IsChecked == true);
@@ -2929,12 +3088,17 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		double pClockOpacity = LiveD("clock:clock_widget_opacity", ClockWidgetOpacitySlider.Value);
 		int pClockTheme = LiveI("clock:clock_widget_theme", Math.Max(0, ClockThemeCombo.SelectedIndex));
 		int pClockPalette = LiveI("clock:clock_widget_palette", Math.Max(0, ClockPaletteCombo.SelectedIndex));
+		int pClockTimerMode= Math.Clamp(LiveI("clock:clock_timer_mode",Math.Max(0,ClockTimerModeCombo.SelectedIndex)),0,3);
+		int pClockCountdown=(int)Math.Clamp(LiveD("clock:clock_countdown_minutes",ClockCountdownMinutesSlider.Value),1,180);
+		int pClockTargetHour=(int)Math.Clamp(LiveD("clock:clock_target_hour",ClockTargetHourSlider.Value),0,23);
+		int pClockTargetMinute=(int)Math.Clamp(LiveD("clock:clock_target_minute",ClockTargetMinuteSlider.Value),0,59);
+		bool pClockAlarm=LiveB("clock:clock_alarm_enabled",ClockAlarmEnabledCheck.IsChecked==true);
 		_liveState.Publish(mask,
-			MaskEnabledCheck.IsChecked == true, !ReadBoolSetting(OverlayForceDirectKey, false), MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
+			MaskEnabledCheck.IsChecked == true, !ReadBoolSetting(OverlayForceDirectKey, true), MaskSizeSlider.Value, 1.0 - MaskRoundnessSlider.Value,
 			MaskApexYSlider.Value, MaskInnerLowerSlider.Value, FixedInnerBridgeWidth,
 			FixedInnerBridgeRise, FixedInnerBridgePeakX, FixedInnerBridgeSteepness, MaskNoseSpreadXSlider.Value,
-			pHudEnabled, pTraceMode, pHudX, pHudY, pHudScale,
-			pHudSafe, true /* clamp-to-visible is an always-on default (no user control) */, pHudAlarmOnly,
+			pHudEnabled, pTraceModeAndFade, pHudX, pHudY, pHudScale,
+			pHudSafe, true /* clamp-to-visible is an always-on default (no user control) */, pHudMode,
 			pTraceSens, pTraceX, pTraceY, pTraceScale,
 			pTraceWidth, pTraceHistory, pHudHold,
 			widgetMask, widgetOrder, graphChannels, (uint)pGraphMode,
@@ -2953,12 +3117,17 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			IRacingFlagWidthSlider.Value, IRacingFlagOpacitySlider.Value,
 			IRacingRaceStartRedOpacitySlider.Value, IRacingRaceStartGreenOpacitySlider.Value, IRacingRaceStartGreenMsSlider.Value, IRacingRaceStartThicknessSlider.Value,
 			IRacingRearClosingOpacitySlider.Value, IRacingGripBarOpacitySlider.Value,
-			pClockEnabled,pClockTimer,pClock24,
+			pClockEnabled,pClockTimer,pClock24,pClockTimerMode,pClockCountdown,pClockTargetHour,pClockTargetMinute,pClockAlarm,_clockTimerCommand,
 			pClockX,pClockY,pClockScale,pClockOpacity,(uint)pClockTheme,(uint)pClockPalette,
 			new[]{LiveI("hud:overlay_hud_toggle_vk",OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudToggleKeyCombo.SelectedIndex)),LiveI("trace:overlay_trace_toggle_vk",OverlaySettingsCatalog.VirtualKeyFromComboIndex(HudTraceToggleKeyCombo.SelectedIndex)),LiveI("clock:overlay_clock_toggle_vk",OverlaySettingsCatalog.VirtualKeyFromComboIndex(ClockWidgetToggleKeyCombo.SelectedIndex)),LiveI("sticky:overlay_sticky_note_toggle_vk",OverlaySettingsCatalog.VirtualKeyFromComboIndex(StickyNoteToggleKeyCombo.SelectedIndex)),LiveI("crosshair:overlay_crosshair_toggle_vk",OverlaySettingsCatalog.VirtualKeyFromComboIndex(CrosshairToggleKeyCombo.SelectedIndex)),LiveI("notifications:overlay_notifications_toggle_vk",OverlaySettingsCatalog.VirtualKeyFromComboIndex(NotifyToggleKeyCombo.SelectedIndex))},
 			CurrentObsMirrorVisibilityMask(),
 			CurrentVisorMaskColor(),
-			_liveProfileKey,pHudOpacity,pTraceOpacity,pTraceRecording,(uint)Math.Clamp(pTraceMarker,1,255));
+			_liveProfileKey,pHudOpacity,pTraceOpacity,pTraceRecording,(uint)Math.Clamp(pTraceMarker,1,255),
+			IRacingShiftLightCheck.IsChecked == true,
+			EffectiveColourLut(), IRacingShiftLightWidthSlider.Value, IRacingShiftLightPositionSlider.Value,
+			IRacingSpotterModeCombo.SelectedIndex==1,
+			IRacingSpotterThemeCombo.SelectedIndex==1, IRacingRearClosingThemeCombo.SelectedIndex==1,
+			IRacingSpotterLineWidthSlider.Value, IRacingSpotterLineInsetSlider.Value);
 		string? hudProfileKey=(_liveAuthoritativeMask&OverlayFeatureBit("hud"))!=0?_liveProfileKey:null;
 		string? stickyProfileKey=(_liveAuthoritativeMask&OverlayFeatureBit("sticky"))!=0?_liveProfileKey:null;
 		_telemetryConfig.Publish(liveWidgets,liveWidgets.Count,hudProfileKey,LiveS("hud:network_probe_target",NetworkProbeTargetBox.Text??"1.1.1.1"));
@@ -2997,6 +3166,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 				: key.StartsWith("iracing_", StringComparison.Ordinal) ? "iracing" : null;
 			if (feature != null) result.Set(feature, key, ReadSetting(key, fallback));
 		}
+		foreach ((string key,string fallback) in new[]{("hud_visibility_mode",HudEnabledCheck.IsChecked==true?"1":"0"),("clock_timer_mode","0"),("clock_countdown_minutes","15"),("clock_target_hour","17"),("clock_target_minute","46"),("clock_alarm_enabled","1")})
+			result.Set(key.StartsWith("clock_",StringComparison.Ordinal)?"clock":"hud",key,ReadSetting(key,fallback));
 		for (int index = 0; index < _hudWidgets.Count; index++)
 		{
 			HudWidgetOption widget = _hudWidgets[index]; string prefix = $"hud_widget_{widget.Id}_";
@@ -3384,8 +3555,17 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", "iracing_race_start_red_opacity", IRacingRaceStartRedOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", "iracing_race_start_green_opacity", IRacingRaceStartGreenOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", "iracing_rear_closing", IRacingRearClosingCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_spotter_theme", Math.Max(0, IRacingSpotterThemeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingSpotterLineWidthKey, IRacingSpotterLineWidthSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingSpotterLineInsetKey, IRacingSpotterLineInsetSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_spotter_mode", Math.Max(0, IRacingSpotterModeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_rear_closing_theme", Math.Max(0, IRacingRearClosingThemeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", "iracing_rear_closing_opacity", IRacingRearClosingOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", "iracing_grip_bar", IRacingGripBarCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_shift_light", IRacingShiftLightCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", "iracing_shift_light_opacity", IRacingShiftLightOpacitySlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingShiftLightWidthKey, IRacingShiftLightWidthSlider.Value.ToString("0.###", c), ConfigPath);
+		WritePrivateProfileString("Settings", IRacingShiftLightPositionKey, IRacingShiftLightPositionSlider.Value.ToString("0.###", c), ConfigPath);
 		WritePrivateProfileString("Settings", "iracing_grip_bar_opacity", IRacingGripBarOpacitySlider.Value.ToString("0.###", c), ConfigPath);
 		EnsureIRacingProvider();
 		StatusText.Text = "iRacing telemetry settings applied.";
@@ -3446,14 +3626,31 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			IRacingStatusText.Text = _notificationBroker.RefreshIRacingStatus();
 	});
 
-	private void SimulateIRacing(string kind){EnsureIRacingProvider();_notificationBroker.SendCommand("simulate-"+kind.ToLowerInvariant());}
+	private void SimulateIRacing(string kind)
+	{
+		EnsureIRacingProvider();
+		bool sent = _notificationBroker.SendCommand("simulate-" + kind.ToLowerInvariant());
+		IRacingTestStatusText.Text = sent
+			? "Test requested; it takes priority while live telemetry continues."
+			: "Could not reach the presentation-test broker.";
+		IRacingTestStatusText.Visibility = Visibility.Visible;
+	}
+	private string _flagTest = "";
+	private bool _gripTest;
+	private void ToggleFlagTest(string kind){SimulateIRacing(_flagTest == kind ? "ClearFlag" : kind);_flagTest = _flagTest == kind ? "" : kind;}
 	private void IRacingTestLeft_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Left");
 	private void IRacingTestRight_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Right");
 	private void IRacingTestBoth_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Both");
 	private void IRacingTestClear_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Clear");
 	private void IRacingTestLap_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Lap");
-	private void IRacingTestYellow_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Yellow");
-	private void IRacingTestBlue_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Blue");
+	private void IRacingTestYellow_Click(object s,RoutedEventArgs e)=>ToggleFlagTest("Yellow");
+	private void IRacingTestBlue_Click(object s,RoutedEventArgs e)=>ToggleFlagTest("Blue");
+	private void IRacingTestLowFuel_Click(object s,RoutedEventArgs e)=>SimulateIRacing("LowFuel");
+	private void IRacingTestRaceStart_Click(object s,RoutedEventArgs e)=>SimulateIRacing("RaceStartSequence");
+	private void IRacingTestApproach_Click(object s,RoutedEventArgs e)=>SimulateIRacing("Approach");
+	private void IRacingTestRearClosing_Click(object s,RoutedEventArgs e)=>SimulateIRacing("RearClosing");
+	private void IRacingTestShiftLight_Click(object s,RoutedEventArgs e)=>SimulateIRacing("ShiftLight");
+	private void IRacingTestGripOBar_Click(object s,RoutedEventArgs e){_gripTest=!_gripTest;SimulateIRacing(_gripTest?"GripOBar":"GripOBarClear");}
 	private void SaveCalibrationSettings()
 	{
 		Directory.CreateDirectory(ConfigDirectory);
@@ -3470,6 +3667,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", CalibrationClippingStepsKey, CalClippingCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", CalibrationMotionStripKey, CalMotionCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		int traceVisibility = Math.Max(0, HudTraceVisibilityCombo.SelectedIndex);
+		WritePrivateProfileString("Settings", HudVisibilityKey, Math.Max(0, HudVisibilityCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudTraceVisibilityKey, traceVisibility.ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudTraceEnabledKey, traceVisibility != 0 ? "1" : "0", ConfigPath); // legacy migration key
 		WritePrivateProfileString("Settings",PerformanceTraceRecordingKey,PerformanceTraceRecordingCheck.IsChecked==true?"1":"0",ConfigPath);
@@ -3477,7 +3675,9 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", HudTraceSensitivityKey, HudTraceSensitivitySlider.Value.ToString("0.##", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudTraceWidthKey, HudTraceWidthSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudTraceHistoryKey, HudTraceHistorySlider.Value.ToString("0", CultureInfo.InvariantCulture), ConfigPath);
-		WritePrivateProfileString("Settings", HudAlarmOnlyKey, HudAlarmOnlyCheck.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", "hud_trace_alarm_sensitivity", HudTraceAlarmSensitivitySlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "hud_trace_fade_in_ms",HudTraceFadeInSlider.Value.ToString("0", CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "hud_trace_fade_out_ms", HudTraceFadeOutSlider.Value.ToString("0", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudSafeMarginKey, HudSafeMarginSlider.Value.ToString("0.###", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", HudClampKey, "1", ConfigPath); // always-on default (no user control)
 		for (int order = 0; order < _hudWidgets.Count; ++order)
@@ -3494,6 +3694,22 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", "hud_max_per_row", HudWidgetIds.Length.ToString(CultureInfo.InvariantCulture), ConfigPath);
 		if (NetworkProbeTargetBox != null) WritePrivateProfileString("Settings",NetworkProbeTargetKey,(NetworkProbeTargetBox.Text??"1.1.1.1").Trim(),ConfigPath);
 		WritePrivateProfileString("Settings", HudGraphModeKey, Math.Max(0, HudGraphModeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudTraceThemeKey, "0", ConfigPath); // legacy key; graph mode 4 owns frame cost
+		WritePrivateProfileString("Settings", "colour_grade_mode", Math.Max(0, ColourGradeModeCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "colour_grade_contrast", Math.Round(ColourGrade_contrast_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "colour_grade_brightness", Math.Round(ColourGrade_brightness_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "colour_grade_exposure", Math.Round(ColourGrade_exposure_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "colour_grade_saturation", Math.Round(ColourGrade_saturation_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "colour_grade_vibrance", Math.Round(ColourGrade_vibrance_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "colour_grade_highlights", Math.Round(ColourGrade_highlights_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "colour_grade_shadows", Math.Round(ColourGrade_shadows_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "colour_grade_gain_r", Math.Round(ColourGrade_gain_r_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "colour_grade_gain_g", Math.Round(ColourGrade_gain_g_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "colour_grade_gain_b", Math.Round(ColourGrade_gain_b_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		int costLines = (HudCostTotalCheck.IsChecked == true ? 1 : 0) | (HudCostCpuCheck.IsChecked == true ? 2 : 0) |
+			(HudCostGpuCheck.IsChecked == true ? 4 : 0) | (HudCostWaitCheck.IsChecked == true ? 8 : 0);
+		WritePrivateProfileString("Settings", HudTraceCostLinesKey, costLines.ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", HudTraceCostLabelsKey, Math.Max(0, HudCostLabelsCombo.SelectedIndex).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		var graphChecks = new[] { HudGraphFrameIntervalCheck, HudGraphFpsCheck, HudGraphBudgetDeviationCheck, HudGraphAppWorkCheck, HudGraphWaitDurationCheck, HudGraphSubmitDurationCheck, HudGraphDisplayPeriodCheck };
 		for (int i = 0; i < graphChecks.Length; ++i)
 			WritePrivateProfileString("Settings", $"hud_graph_{HudGraphChannelIds[i]}", graphChecks[i].IsChecked == true ? "1" : "0", ConfigPath);
@@ -3770,6 +3986,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", "enabled", valueOrDefault2 ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "split_mode", valueOrDefault ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "foveated_center_compensation", FoveaCenterCheck?.IsChecked == true ? "1" : "0", ConfigPath);
+		WritePrivateProfileString("Settings", "optical_centring", OpticalCentringCheck?.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", "total_render_height", FormatStorageScale(value), ConfigPath);
 		WritePrivateProfileString("Settings", "total_share", null, ConfigPath);
 		WritePrivateProfileString("Settings", "vertical_tangent", null, ConfigPath);
@@ -3792,7 +4009,6 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", MaskNoseSpreadXKey, FormatStorageScale(MaskNoseSpreadXSlider.Value), ConfigPath);
 		WritePrivateProfileString("Settings", PreviewCircleGuidesKey, PreviewCircleGuidesCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", PreviewPerEyeFramesKey, PreviewPerEyeFramesCheck.IsChecked == true ? "1" : "0", ConfigPath);
-		WritePrivateProfileString("Settings", PreviewOpticalCentreKey, PreviewOpticalCentreCheck.IsChecked == true ? "1" : "0", ConfigPath);
 		WritePrivateProfileString("Settings", PreviewIpdKey, CurrentPreviewIpd().ToString("0.0", CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", MaskInnerBridgeWidthKey, FormatStorageScale(FixedInnerBridgeWidth), ConfigPath);
 		WritePrivateProfileString("Settings", MaskInnerBridgeRiseKey, FormatStorageScale(FixedInnerBridgeRise), ConfigPath);
@@ -4418,7 +4634,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 
 		var globalMask = CurrentGlobalMaskValues();
-		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, appProfile.VisorSize, appProfile.VisorWidth, appProfile.VisorHeight, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, appProfile.VisorNoseSpreadX, globalMask.visorSize, globalMask.visorWidth, globalMask.visorHeight, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness, globalMask.visorNoseSpreadX, PreviewCircleGuidesCheck.IsChecked == true, PreviewPerEyeFramesCheck.IsChecked == true, PreviewOpticalCentreCheck.IsChecked == true, CurrentPreviewIpd(), true, BuildOverlayPreviewItems(includeDisabled: true, includeFeatureModules: false), appProfile.OverlayPlacements, BuildGlobalOverlaySettings(), appProfile.OverlayOverrides, _hudWidgets, _stickyNotes, _crosshair, CrosshairEnabledCheck.IsChecked == true, CrosshairOffsetXSlider.Value, CrosshairOffsetYSlider.Value) // Stencil outer edges only is permanently enabled
+		ProfileWindow profileWindow = new ProfileWindow(appProfile.DisplayName, appProfile.ExeName, appProfile.Hidden, appProfile.Top, appProfile.Bottom, appProfile.Horizontal, appProfile.RenderScale, appProfile.MaskEnabled, appProfile.MaskVertical, appProfile.MaskHorizontal, appProfile.MaskRounded, appProfile.MaskCorner, appProfile.MaskTopBias, appProfile.MaskBottomBias, appProfile.MaskLeftBias, appProfile.MaskRightBias, appProfile.MaskTopCurve, appProfile.MaskBottomCurve, globalMask.enabled, globalMask.vertical, globalMask.horizontal, globalMask.corner, globalMask.leftBias, globalMask.topBias, appProfile.VisorSize, appProfile.VisorWidth, appProfile.VisorHeight, appProfile.VisorOuterApexY, appProfile.VisorInnerLowerY, appProfile.VisorInnerBridgeWidth, appProfile.VisorInnerBridgeRise, appProfile.VisorInnerBridgePeakX, appProfile.VisorInnerBridgeSteepness, appProfile.VisorNoseSpreadX, globalMask.visorSize, globalMask.visorWidth, globalMask.visorHeight, globalMask.visorOuterApexY, globalMask.visorInnerLowerY, globalMask.visorInnerBridgeWidth, globalMask.visorInnerBridgeRise, globalMask.visorInnerBridgePeakX, globalMask.visorInnerBridgeSteepness, globalMask.visorNoseSpreadX, PreviewCircleGuidesCheck.IsChecked == true, PreviewPerEyeFramesCheck.IsChecked == true, OpticalCentringCheck.IsChecked == true, CurrentPreviewIpd(), true, BuildOverlayPreviewItems(includeDisabled: true, includeFeatureModules: false), appProfile.OverlayPlacements, BuildGlobalOverlaySettings(), appProfile.OverlayOverrides, _hudWidgets, _stickyNotes, _crosshair, CrosshairEnabledCheck.IsChecked == true, CrosshairOffsetXSlider.Value, CrosshairOffsetYSlider.Value) // Stencil outer edges only is permanently enabled
 		{
 			Owner = this
 		};
@@ -4437,7 +4653,20 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 			_notificationBroker.SendTest(requestAccess: false);
 			if (NotifyStatusText != null) NotifyStatusText.Text = "Per-app test presentation requested through the notification broker.";
 		};
+		profileWindow.ColourSummary = DescribeAppColour(appProfile.Key);
+		profileWindow.OpticalCentringChoice = ReadAppOpticalCentring(appProfile.Key);
+		profileWindow.ColourLutChoice = ReadAppTriState(appProfile.Key, "colour_grade_lut");
+		if (profileIsLive)
+			profileWindow.ColourLutLiveChanged = choice => { _liveColourLutChoice = choice; PublishLiveState(); };
 		bool profileSaved = profileWindow.ShowDialog() == true;
+		if (_liveColourLutChoice.HasValue) { _liveColourLutChoice = null; if (!profileSaved) PublishLiveState(); } // cancel restores the saved engine
+		if (profileSaved && profileWindow.ResetColourRequested) ResetAppColour(appProfile.Key);
+		if (profileSaved)
+		{
+			WriteAppOpticalCentring(appProfile.Key, profileWindow.OpticalCentringChoice);
+			WriteAppTriState(appProfile.Key, "colour_grade_lut", profileWindow.ColourLutChoice);
+			PublishLiveState(); // a changed Fast colour choice applies live to the running game
+		}
 		if(!profileSaved&&profileIsLive)ApplyProfileOverlayLive(appProfile.Key,originalLiveValues,originalLiveMask);
 		if (profileSaved)
 		{
@@ -4505,6 +4734,77 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		}
 	}
 
+
+	// Per-game colour values written by the in-headset colour menu (Ctrl+F2) and calibration (Ctrl+Alt+C).
+	private static readonly string[] AppColourValueNames =
+	{
+		"colour_grade_mode", "colour_grade_post_process", "colour_grade_sunglasses", "colour_grade_contrast", "colour_grade_brightness",
+		"colour_grade_exposure", "colour_grade_saturation", "colour_grade_vibrance", "colour_grade_highlights", "colour_grade_shadows",
+		"colour_grade_gain_r", "colour_grade_gain_g", "colour_grade_gain_b",
+		"colour_grade_levels_black", "colour_grade_levels_white", "colour_grade_levels_gamma", "colour_grade_lut",
+	};
+
+	private static string DescribeAppColour(string appKey)
+	{
+		using RegistryKey? key = Registry.CurrentUser.OpenSubKey(AppRegistryRoot + "\\" + appKey);
+		if (key == null || !AppColourValueNames.Any(name => key.GetValue(name) != null))
+			return "Uses the global Colour settings. Change it in the headset with Ctrl+F2.";
+		int V(string name, int fallback) => key.GetValue(name) is int v ? v : fallback;
+		string T(string name, int fallback) => (V(name, fallback) / 10.0).ToString("0.0", CultureInfo.InvariantCulture);
+		return $"Saved from the headset: contrast {T("colour_grade_contrast", 500)}, brightness {T("colour_grade_brightness", 500)}, " +
+			$"exposure {T("colour_grade_exposure", 500)}, saturation {T("colour_grade_saturation", 500)}, vibrance {T("colour_grade_vibrance", 0)}, " +
+			$"highlights {T("colour_grade_highlights", 1000)}, shadows {T("colour_grade_shadows", 0)}. " +
+			$"Levels: black {Math.Round(V("colour_grade_levels_black", 0) * 0.255)}, white {Math.Round(V("colour_grade_levels_white", 1000) * 0.255)}, " +
+			$"gamma {(V("colour_grade_levels_gamma", 1000) / 1000.0).ToString("0.00", CultureInfo.InvariantCulture)}.";
+	}
+
+	// Per-app on/off override stored as a DWORD: absent = use global (0), 1 = on (1), 0 = off (2).
+	private static int ReadAppTriState(string appKey, string name)
+	{
+		using RegistryKey? key = Registry.CurrentUser.OpenSubKey(AppRegistryRoot + "\\" + appKey);
+		return key?.GetValue(name) is int v ? (v != 0 ? 1 : 2) : 0;
+	}
+
+	private static void WriteAppTriState(string appKey, string name, int choice)
+	{
+		using RegistryKey? key = Registry.CurrentUser.OpenSubKey(AppRegistryRoot + "\\" + appKey, writable: true);
+		if (key == null) return;
+		if (choice == 0) key.DeleteValue(name, throwOnMissingValue: false);
+		else key.SetValue(name, choice == 1 ? 1 : 0, RegistryValueKind.DWord);
+	}
+
+	// Fast colour for the running game: its per-app override if it has one, else the Render menu setting.
+	private int? _liveColourLutChoice; // unsaved per-app choice while the running game's profile window is open
+
+	private bool EffectiveColourLut()
+	{
+		bool global = ColourLutCheck?.IsChecked != false;
+		string? active = TryReadActiveProfileKey();
+		if (string.IsNullOrEmpty(active)) return global;
+		int choice = _liveColourLutChoice ?? ReadAppTriState(active, "colour_grade_lut");
+		return choice == 0 ? global : choice == 1;
+	}
+
+	private static int ReadAppOpticalCentring(string appKey)
+	{
+		using RegistryKey? key = Registry.CurrentUser.OpenSubKey(AppRegistryRoot + "\\" + appKey);
+		return key?.GetValue("optical_centring") is int v ? (v != 0 ? 1 : 2) : 0;
+	}
+
+	private static void WriteAppOpticalCentring(string appKey, int choice)
+	{
+		using RegistryKey? key = Registry.CurrentUser.OpenSubKey(AppRegistryRoot + "\\" + appKey, writable: true);
+		if (key == null) return;
+		if (choice == 0) key.DeleteValue("optical_centring", throwOnMissingValue: false);
+		else key.SetValue("optical_centring", choice == 1 ? 1 : 0, RegistryValueKind.DWord);
+	}
+
+	private static void ResetAppColour(string appKey)
+	{
+		using RegistryKey? key = Registry.CurrentUser.OpenSubKey(AppRegistryRoot + "\\" + appKey, writable: true);
+		if (key == null) return;
+		foreach (string name in AppColourValueNames) key.DeleteValue(name, throwOnMissingValue: false);
+	}
 
 	private void ResetApp_Click(object sender, RoutedEventArgs e)
 	{

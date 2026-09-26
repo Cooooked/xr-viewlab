@@ -179,8 +179,9 @@ foreach ($contract in @(
     @{ Text=$profileXaml; Pattern='Name="VisorHeightSlider"[^>]+Minimum="0\.25"[^>]+Maximum="2"'; Name='per-app Height range parity' },
     # Broken by 91746c3 (4.1.295), which inserted the broker 'refresh' send between these two statements;
     # this script was evidently not run then. The contract's intent - reload from the registry before
-    # reporting saved - still holds, so the pattern now tolerates intervening statements.
-    @{ Text=$main; Pattern='LoadAppProfiles\(\);[\s\S]{0,300}?StatusText\.Text = "Saved app profile'; Name='post-save registry reload' },
+    # reporting saved - still holds. Structural since 2026-09-26: same block (no closing brace between
+    # them), any amount of intervening code, and the status may be a live/next-launch ternary.
+    @{ Text=$main; Pattern='LoadAppProfiles\(\);[^}]*StatusText\.Text = [^;]*"Saved app profile'; Name='post-save registry reload' },
     @{ Text=$preview; Pattern='Quest3PreviewGeometry\.FullEyeGuides'; Name='overlapping circular eye guides' },
     @{ Text=$preview; Pattern='double radius = eye\.Width \* 0\.5'; Name='unstretched circle radius' },
     @{ Text=$geometry; Pattern='double width = area\.Width \* horizontal'; Name='single direct horizontal percentage mapping' },
@@ -245,8 +246,8 @@ foreach ($contract in @(
     @{ Text=$main; Pattern='PreviewCircleGuidesKey = "preview_circle_guides"'; Name='persisted preview guide preference' },
     @{ Text=$main; Pattern='PreviewPerEyeFramesKey = "preview_per_eye_frames"'; Name='persisted frame guide preference' },
     @{ Text=$main; Pattern='PreviewIpdKey = "preview_ipd_mm"'; Name='persisted preview IPD preference' },
-    @{ Text=$main; Pattern='PreviewOpticalCentreKey = "preview_optical_centre"'; Name='persisted optical-centre preview preference' },
-    @{ Text=$main; Pattern='PreviewOpticalCentreCheck\.IsChecked = ReadBoolSetting\(PreviewOpticalCentreKey, false\)'; Name='geometric-centre default' },
+    @{ Text=$main; Pattern='MaskBeanEditor\.UseOpticalPreviewCentre = OpticalCentringCheck\.IsChecked == true;'; Name='main preview follows the optical centring render setting (one option)' },
+    @{ Text=$profile; Pattern='MaskBeanEditor\.UseOpticalPreviewCentre = choice == 0 \? _useOpticalPreviewCentre : choice == 1;'; Name='profile preview follows the per-app optical centring choice' },
     @{ Text=$main; Pattern='StepPreviewIpd\(e\.Key == Key\.Up \? 0\.1 : -0\.1\)'; Name='preview IPD 0.1 keyboard steps' },
     @{ Text=$main; Pattern='PreviewIpdUp_Click[^\r\n]+StepPreviewIpd\(0\.1\)'; Name='main visible IPD increment action' },
     @{ Text=$main; Pattern='PreviewIpdDown_Click[^\r\n]+StepPreviewIpd\(-0\.1\)'; Name='main visible IPD decrement action' },
@@ -259,7 +260,7 @@ foreach ($contract in @(
     @{ Text=$geometry; Pattern='calibratedSeparation \* ipd / DefaultIpdMillimetres'; Name='IPD changes guide separation only' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewCircleGuidesCheck"'; Name='main preview guide toggle' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewPerEyeFramesCheck"'; Name='main frame guide toggle' },
-    @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewOpticalCentreCheck"[^>]+preview only'; Name='main optical-centre preview-only toggle' },
+    @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="OpticalCentringCheck"'; Name='single optical centring option (render + preview)' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='Name="PreviewIpdBox"[^>]+Text="67\.0"'; Name='main preview IPD input' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='<RepeatButton[^>]+Click="PreviewIpdUp_Click"'; Name='main visible IPD up arrow' },
     @{ Text=(Get-Content (Join-Path $root 'MainWindow.xaml') -Raw); Pattern='<RepeatButton[^>]+Click="PreviewIpdDown_Click"'; Name='main visible IPD down arrow' },

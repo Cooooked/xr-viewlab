@@ -9,52 +9,74 @@ namespace XRViewLab.UI;
 internal sealed class RacingStateService : IDisposable
 {
     private const string Name = "Local\\XRViewLabRacingState";
-    private const int Size = 68; // v2 adds the packed Grip-O-Bar word at offset 64
+    private const int Size = 76; // v4 adds independent close-range spotter proximity at offset 72
     private const uint Magic = 0x31524C56; // VLR1
     private readonly MemoryMappedFile _map;
     private readonly MemoryMappedViewAccessor _view;
     private uint _generation;
     private SpotterState _spotter;
+    private SpotterState _testSpotter;
     private RacingFlagState _flag;
     private uint _flagColor;
+    private RacingFlagState _testFlag;
+    private uint _testFlagColor;
     private uint _presentationFlags;
     private uint _raceStartPhase; // 0 inactive, 1 waiting/red, 2 started/green (native owns hold+fade)
+    private uint _testRaceStartPhase;
     private uint _rearClosing;    // packed: bit0 active, opacity<<8, width<<16, intensity<<24
+    private uint _testRearClosing;
     private uint _grip;           // packed: bit0 active, dominance<<1, direction<<3, severity<<8
+    private uint _testGrip;
+    private uint _shift;          // packed: bit0 active, bit1 at shift point, bit2 over-rev, progress<<8
+    private uint _testShift;
+    private uint _spotterProximity, _testSpotterProximity;
 
     public RacingStateService() : this(Name) { }
     internal RacingStateService(string name)
     {
         _map = MemoryMappedFile.CreateOrOpen(name, Size, MemoryMappedFileAccess.ReadWrite);
         _view = _map.CreateViewAccessor(0, Size, MemoryMappedFileAccess.ReadWrite);
-        _view.Write(0, Magic); _view.Write(4, 2u); _view.Write(8, (uint)Size);
+        _view.Write(0, Magic); _view.Write(4, 4u); _view.Write(8, (uint)Size);
         PublishState();
     }
 
     public void Publish(ViewLabEvent e, double lapDurationMs)
     {
+        // An explicit test temporarily takes priority over live telemetry. Keep the live values
+        // separately so clearing the test restores the current real cue immediately.
         if (e.ClearPresentationTests) _presentationFlags = 0;
         switch (e.Kind)
         {
             case ViewLabEventKind.SpotterGlow:
-                _spotter = e.Spotter;
-                _presentationFlags = e.IsPresentationTest && e.Spotter != SpotterState.Clear ? _presentationFlags | 1u : _presentationFlags & ~1u;
+                if (e.IsPresentationTest) { _testSpotter = e.Spotter; _presentationFlags = e.Spotter != SpotterState.Clear ? _presentationFlags | 1u : _presentationFlags & ~1u; }
+                else _spotter = e.Spotter;
                 PublishState(); break;
             case ViewLabEventKind.FlagState:
-                _flag = e.Flag; _flagColor = e.Color;
-                _presentationFlags = e.IsPresentationTest && e.Flag != RacingFlagState.Clear ? _presentationFlags | 2u : _presentationFlags & ~2u;
+                if (e.IsPresentationTest) { _testFlag = e.Flag; _testFlagColor = e.Color; _presentationFlags = e.Flag != RacingFlagState.Clear ? _presentationFlags | 2u : _presentationFlags & ~2u; }
+                else { _flag = e.Flag; _flagColor = e.Color; }
                 PublishState(); break;
             case ViewLabEventKind.RaceStart:
-                _raceStartPhase = (uint)Math.Clamp((int)Math.Round(e.Value), 0, 2);
-                _presentationFlags = e.IsPresentationTest && _raceStartPhase != 0 ? _presentationFlags | 8u : _presentationFlags & ~8u;
+                if (e.IsPresentationTest) { _testRaceStartPhase = (uint)Math.Clamp((int)Math.Round(e.Value), 0, 2); _presentationFlags = _testRaceStartPhase != 0 ? _presentationFlags | 8u : _presentationFlags & ~8u; }
+                else _raceStartPhase = (uint)Math.Clamp((int)Math.Round(e.Value), 0, 2);
                 PublishState(); break;
             case ViewLabEventKind.RearClosing:
-                _rearClosing = (uint)e.Value;
-                _presentationFlags = e.IsPresentationTest && (_rearClosing & 1u) != 0 ? _presentationFlags | 16u : _presentationFlags & ~16u;
+                if (e.IsPresentationTest) {
+                    _testRearClosing = (uint)e.Value;
+                    _presentationFlags = (_testRearClosing & 1u) != 0 ? _presentationFlags | 16u : _presentationFlags & ~16u;
+                }
+                else _rearClosing = (uint)e.Value;
+                PublishState(); break;
+            case ViewLabEventKind.SpotterProximity:
+                if (e.IsPresentationTest) { _testSpotterProximity = (uint)Math.Clamp((int)e.Value, 0, 255); _presentationFlags = _testSpotterProximity != 0 ? _presentationFlags | 128u : _presentationFlags & ~128u; }
+                else _spotterProximity = (uint)Math.Clamp((int)e.Value, 0, 255);
                 PublishState(); break;
             case ViewLabEventKind.GripOBar:
-                _grip = (uint)e.Value;
-                _presentationFlags = e.IsPresentationTest && (_grip & 1u) != 0 ? _presentationFlags | 32u : _presentationFlags & ~32u;
+                if (e.IsPresentationTest) { _testGrip = (uint)e.Value; _presentationFlags = (_testGrip & 1u) != 0 ? _presentationFlags | 32u : _presentationFlags & ~32u; }
+                else _grip = (uint)e.Value;
+                PublishState(); break;
+            case ViewLabEventKind.ShiftLight:
+                if (e.IsPresentationTest) { _testShift = (uint)e.Value; _presentationFlags = (_testShift & 1u) != 0 ? _presentationFlags | 64u : _presentationFlags & ~64u; }
+                else _shift = (uint)e.Value;
                 PublishState(); break;
             case ViewLabEventKind.LapTime:
                 _presentationFlags = e.IsPresentationTest ? _presentationFlags | 4u : _presentationFlags & ~4u;
@@ -71,16 +93,21 @@ internal sealed class RacingStateService : IDisposable
 
     public void Clear()
     {
-        _spotter = SpotterState.Clear; _flag = RacingFlagState.Clear; _flagColor = 0; _presentationFlags = 0; _raceStartPhase = 0; _rearClosing = 0; _grip = 0;
+        _spotter = _testSpotter = SpotterState.Clear; _flag = _testFlag = RacingFlagState.Clear; _flagColor = _testFlagColor = 0; _presentationFlags = 0; _raceStartPhase = _testRaceStartPhase = 0; _rearClosing = _testRearClosing = 0; _grip = _testGrip = 0; _shift = _testShift = 0; _spotterProximity = _testSpotterProximity = 0;
         _view.Write(28, 0u); _view.Write(48, 0L); PublishState();
     }
 
     private void PublishState()
     {
-        _view.Write(16, (uint)_spotter); _view.Write(20, (uint)_flag); _view.Write(24, _flagColor); _view.Write(56, _presentationFlags);
-        _view.Write(44, _raceStartPhase); // reserved0: race-start phase (no version bump; old layers ignore it)
-        _view.Write(60, _rearClosing);    // reserved1: packed rear-closing state
-        _view.Write(64, _grip);           // v2: packed Grip-O-Bar state
+        _view.Write(16, (uint)((_presentationFlags & 128u) != 0 ? SpotterState.Clear : (_presentationFlags & 1u) != 0 ? _testSpotter : _spotter));
+        _view.Write(20, (uint)((_presentationFlags & 2u) != 0 ? _testFlag : _flag));
+        _view.Write(24, (_presentationFlags & 2u) != 0 ? _testFlagColor : _flagColor);
+        _view.Write(56, _presentationFlags);
+        _view.Write(44, (_presentationFlags & 8u) != 0 ? _testRaceStartPhase : _raceStartPhase);
+        _view.Write(60, (_presentationFlags & 16u) != 0 ? _testRearClosing : _rearClosing);
+        _view.Write(64, (_presentationFlags & 32u) != 0 ? _testGrip : _grip);
+        _view.Write(68, (_presentationFlags & 64u) != 0 ? _testShift : _shift);
+        _view.Write(72, (_presentationFlags & 128u) != 0 ? _testSpotterProximity : _spotterProximity);
         PublishGeneration();
     }
 

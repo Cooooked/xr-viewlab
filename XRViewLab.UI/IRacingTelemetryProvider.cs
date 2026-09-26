@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace XRViewLab.UI;
 
@@ -47,11 +48,14 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
     private long _lastRearSampleTick;
     private bool _rearActivePublished;
     private uint _lastRearPacked;
+    private uint _lastSpotterProximity;
     private string _playerCarId = "default";
     private readonly GripOMeter _grip = new();
     private readonly GripCalibrationStore _gripStore = new();
     private uint _lastGripPacked;
+    private uint _lastShiftPacked;
     private int _gripSaveCounter;
+    private CancellationTokenSource? _presentationSequence;
 
     // Settable by the broker from its own settings poll; not part of the SDK layout. Clamped to a
     // sane range so a malformed ini value can't disable the warning (0) or fire it constantly (1).
@@ -333,6 +337,10 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         if (spotter != _spotter) { _spotter = spotter; PublishSpotter(spotter); }
 
         RacingFlagState flag = NormalizeFlag(rawFlags);
+        // Pit-limiter warning: moving on pit road with the limiter off. It takes over the flag border
+        // while it lasts. OnPitRoad / EngineWarnings are optional; if either is absent it never fires.
+        if (PitLimiterWarning(ReadValue("OnPitRoad", buffer), ReadValue("EngineWarnings", buffer), ReadValue("Speed", buffer)))
+            flag = RacingFlagState.PitLimiter;
         if (flag != _flag) { _flag = flag; PublishFlag(flag); }
 
         // Race-start border light. iRacing SessionFlags start bits: startReady 0x20000000,
@@ -356,6 +364,14 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         _lastRearSampleTick = nowTick;
         double rearDist = NearestCarBehindMeters(buffer, out int rearCarId);
         bool overlap = spotter != SpotterState.Clear;
+        // A separate, close-range spotter input. Rear pressure may start tens of metres back;
+        // peripheral colour remains off until the nearest car is within two metres.
+        uint spotterProximity = SpotterProximityByte(rearDist, overlap);
+        if (spotterProximity != _lastSpotterProximity)
+        {
+            _lastSpotterProximity = spotterProximity;
+            Publish(new ViewLabEvent { Kind = ViewLabEventKind.SpotterProximity, Value = spotterProximity, SessionId = sessionId, TimestampUtc = DateTimeOffset.UtcNow });
+        }
         _rearCue.Update(rearDist, rearCarId, overlap, !double.IsNaN(rearDist), rearDt);
         uint packed = _rearCue.Active
             ? 1u | ((uint)Math.Clamp((int)Math.Round(_rearCue.Opacity * 255), 0, 255) << 8)
@@ -397,6 +413,17 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         {
             _lastGripPacked = gripPacked;
             Publish(new ViewLabEvent { Kind = ViewLabEventKind.GripOBar, Value = gripPacked, SessionId = sessionId, TimestampUtc = DateTimeOffset.UtcNow });
+        }
+
+        // Rhythm shift light: progress from the car's first shift light to its shift point, from the
+        // per-car values iRacing exposes. Optional variables; absent or zero values mean no cue.
+        uint shiftPacked = ShiftLightPack(ReadValue("RPM", buffer), ReadValue("PlayerCarSLFirstRPM", buffer),
+            ReadValue("PlayerCarSLShiftRPM", buffer), ReadValue("PlayerCarSLBlinkRPM", buffer),
+            OptionalInt("Gear", buffer, 0), onTrack);
+        if (shiftPacked != _lastShiftPacked)
+        {
+            _lastShiftPacked = shiftPacked;
+            Publish(new ViewLabEvent { Kind = ViewLabEventKind.ShiftLight, Value = shiftPacked, SessionId = sessionId, TimestampUtc = DateTimeOffset.UtcNow });
         }
 
         if (_lastLap >= 0 && lap > _lastLap)
@@ -460,6 +487,27 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         _ => SpotterState.Clear
     };
 
+    // EngineWarnings bit 0x10 = pit speed limiter engaged (irsdk_pitSpeedLimiter). Speed in m/s; the
+    // 1 m/s floor ignores sitting stationary in the pit box with the limiter off.
+    internal static bool PitLimiterWarning(double onPitRoad, double engineWarnings, double speedMs) =>
+        double.IsFinite(onPitRoad) && onPitRoad != 0 && double.IsFinite(engineWarnings) &&
+        ((uint)engineWarnings & 0x10u) == 0 && double.IsFinite(speedMs) && speedMs > 1.0;
+
+    // Packs the shift light state. Progress is quantised to 64 steps so a 60 Hz RPM stream publishes
+    // only visible changes. First light falls back to 85% of the shift point when the car reports none.
+    internal static uint ShiftLightPack(double rpm, double firstRpm, double shiftRpm, double blinkRpm, int gear, bool onTrack)
+    {
+        if (!onTrack || gear <= 0 || !double.IsFinite(rpm) || !double.IsFinite(shiftRpm) || shiftRpm <= 0) return 0u;
+        double first = double.IsFinite(firstRpm) && firstRpm > 0 && firstRpm < shiftRpm ? firstRpm : shiftRpm * 0.85;
+        if (rpm < first) return 0u;
+        double progress = Math.Clamp((rpm - first) / (shiftRpm - first), 0.0, 1.0);
+        uint quantised = (uint)Math.Round(progress * 63.0) * 255u / 63u;
+        bool inWindow = rpm >= shiftRpm - 150.0;
+        bool perfect = Math.Abs(rpm - shiftRpm) <= 50.0;
+        bool over = double.IsFinite(blinkRpm) && blinkRpm > shiftRpm && rpm >= blinkRpm;
+        return 1u | (inWindow ? 2u : 0u) | (over ? 4u : 0u) | (perfect ? 8u : 0u) | (quantised << 8);
+    }
+
     internal static RacingFlagState NormalizeFlag(uint raw)
     {
         if ((raw & 0x00020000) != 0) return RacingFlagState.Disqualified;
@@ -493,7 +541,9 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         {
             RacingFlagState.Green => 0x00D060, RacingFlagState.Blue => 0x168CFF, RacingFlagState.White => 0xFFFFFF,
             RacingFlagState.Yellow => 0xFFD000, RacingFlagState.Debris => 0xFF8000, RacingFlagState.Red => 0xFF2020,
-            RacingFlagState.Black => 0x202020, RacingFlagState.Disqualified => 0xFF2020, RacingFlagState.Checkered => 0xFFFFFF, _ => 0
+            RacingFlagState.Black => 0x202020, RacingFlagState.Disqualified => 0xFF2020, RacingFlagState.Checkered => 0xFFFFFF,
+            // Bit 24 asks the native border to pulse; the low 24 bits stay the RGB colour.
+            RacingFlagState.PitLimiter => 0x01FF5A00, _ => 0
         };
         // Per-flag visibility: colour 0 means the native border path draws nothing for this flag. The
         // state itself is still published, so spotter/attention behaviour is unchanged.
@@ -504,6 +554,7 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
 
     private void ClearPresentationState()
     {
+        if (_lastSpotterProximity != 0) { _lastSpotterProximity = 0; Publish(new ViewLabEvent { Kind = ViewLabEventKind.SpotterProximity, Value = 0 }); }
         if (_spotter > SpotterState.Clear) { _spotter = SpotterState.Clear; PublishSpotter(SpotterState.Clear); }
         if (_flag > RacingFlagState.Clear) { _flag = RacingFlagState.Clear; PublishFlag(RacingFlagState.Clear); }
     }
@@ -515,7 +566,9 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         _fuelWarningFired = false;
         _prevRawFlags = 0; _sawRaceWaiting = false; _raceStartLatched = false; _raceStartPhase = -1;
         _rearCue.Reset(); _lastRearSampleTick = 0; _lastRearPacked = 0; _rearActivePublished = false;
+        if (_lastSpotterProximity != 0) { _lastSpotterProximity = 0; Publish(new ViewLabEvent { Kind = ViewLabEventKind.SpotterProximity, Value = 0 }); }
         _grip.Reset(); _lastGripPacked = 0; _gripSaveCounter = 0; _gripStore.Save();
+        if (_lastShiftPacked != 0) { _lastShiftPacked = 0; Publish(new ViewLabEvent { Kind = ViewLabEventKind.ShiftLight, Value = 0, TimestampUtc = DateTimeOffset.UtcNow }); }
     }
 
     private static string FormatLap(double seconds) => TimeSpan.FromSeconds(seconds).ToString(@"m\:ss\.fff");
@@ -523,26 +576,115 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
 
     public void Simulate(string kind)
     {
+        // Explicit presentation tests are allowed during live telemetry. RacingStateService keeps
+        // them separate from real values, with the explicitly requested test taking priority.
         switch (kind)
         {
-            case "Left": PublishSpotter(SpotterState.CarLeft, presentationTest: true); break;
-            case "Right": PublishSpotter(SpotterState.CarRight, presentationTest: true); break;
-            case "Both": PublishSpotter(SpotterState.CarsBothSides, presentationTest: true); break;
+            case "Approach": StartPresentationSequence(async token => {
+                for (int step = 0; step <= 30; ++step) {
+                    token.ThrowIfCancellationRequested();
+                    uint urgency = (uint)Math.Clamp(1 + step * 254 / 30, 1, 255);
+                    Publish(new ViewLabEvent { Kind = ViewLabEventKind.SpotterProximity, Value = urgency, IsPresentationTest = true });
+                    await Task.Delay(70, token);
+                }
+                Publish(new ViewLabEvent { Kind = ViewLabEventKind.SpotterProximity, Value = 0, IsPresentationTest = true });
+                PublishSpotter(SpotterState.CarsBothSides, presentationTest: true);
+                await Task.Delay(900, token);
+                PublishSpotter(SpotterState.Clear, presentationTest: true);
+            }); break;
+            case "Left": SimulateTimedSpotter(SpotterState.CarLeft); break;
+            case "Right": SimulateTimedSpotter(SpotterState.CarRight); break;
+            case "Both": SimulateTimedSpotter(SpotterState.CarsBothSides); break;
             case "TwoLeft": PublishSpotter(SpotterState.TwoCarsLeft, presentationTest: true); break;
             case "TwoRight": PublishSpotter(SpotterState.TwoCarsRight, presentationTest: true); break;
             case "Clear":
                 PublishSpotter(SpotterState.Clear, presentationTest: true, clearPresentationTests: true);
                 PublishFlag(RacingFlagState.Clear, presentationTest: true, clearPresentationTests: true);
                 break;
+            case "ClearSpotter": PublishSpotter(SpotterState.Clear, presentationTest: true); break;
+            case "ClearFlag": PublishFlag(RacingFlagState.Clear, presentationTest: true); break;
             case "Lap": Publish(new ViewLabEvent { Kind = ViewLabEventKind.LapTime, LapNumber = 12, IsValid = true, IsPersonalBest = true,
                 IsPresentationTest = true, SessionId = "fixture:0", Title = "Lap 12", Body = "1:34.221", Value = 94.221, TimestampUtc = DateTimeOffset.UtcNow }); break;
             case "Yellow": PublishFlag(RacingFlagState.Yellow, presentationTest: true); break;
             case "Blue": PublishFlag(RacingFlagState.Blue, presentationTest: true); break;
             case "LowFuel": Publish(new ViewLabEvent { Kind = ViewLabEventKind.FuelWarning, Value = 0.08, SessionId = "fixture:0",
                 IsPresentationTest = true, Title = "Low fuel", Body = "8% remaining", TimestampUtc = DateTimeOffset.UtcNow }); break;
+            case "RaceStartRed": Publish(new ViewLabEvent { Kind = ViewLabEventKind.RaceStart, Value = 1, IsPresentationTest = true, TimestampUtc = DateTimeOffset.UtcNow }); break;
+            case "RaceStartGreen": Publish(new ViewLabEvent { Kind = ViewLabEventKind.RaceStart, Value = 2, IsPresentationTest = true, TimestampUtc = DateTimeOffset.UtcNow }); break;
+            case "RaceStartClear": Publish(new ViewLabEvent { Kind = ViewLabEventKind.RaceStart, Value = 0, IsPresentationTest = true, TimestampUtc = DateTimeOffset.UtcNow }); break;
+            case "RaceStartSequence": StartPresentationSequence(async token => {
+                Publish(new ViewLabEvent { Kind = ViewLabEventKind.RaceStart, Value = 1, IsPresentationTest = true });
+                await Task.Delay(1100, token);
+                Publish(new ViewLabEvent { Kind = ViewLabEventKind.RaceStart, Value = 2, IsPresentationTest = true });
+                await Task.Delay(1300, token);
+                Publish(new ViewLabEvent { Kind = ViewLabEventKind.RaceStart, Value = 0, IsPresentationTest = true });
+            }); break;
+            case "RearClosing": StartPresentationSequence(async token => {
+                for (int step = 0; step <= 30; ++step) {
+                    token.ThrowIfCancellationRequested();
+                    Publish(new ViewLabEvent { Kind = ViewLabEventKind.RearClosing, Value = PackRear((uint)(20 + step * 7)), IsPresentationTest = true });
+                    await Task.Delay(65, token);
+                }
+                await Task.Delay(350, token);
+                for (int step = 29; step >= 0; --step) {
+                    token.ThrowIfCancellationRequested();
+                    Publish(new ViewLabEvent { Kind = ViewLabEventKind.RearClosing, Value = PackRear((uint)(20 + step * 7)), IsPresentationTest = true });
+                    await Task.Delay(45, token);
+                }
+                Publish(new ViewLabEvent { Kind = ViewLabEventKind.RearClosing, Value = 0, IsPresentationTest = true });
+            }); break;
+            case "RearClosingClear": Publish(new ViewLabEvent { Kind = ViewLabEventKind.RearClosing, Value = 0, IsPresentationTest = true, TimestampUtc = DateTimeOffset.UtcNow }); break;
+            case "ShiftLight": StartPresentationSequence(async token => {
+                for (int step = 0; step <= 40; ++step) {
+                    token.ThrowIfCancellationRequested();
+                    uint flags = step >= 36 ? 3u : 1u;
+                    Publish(new ViewLabEvent { Kind = ViewLabEventKind.ShiftLight, Value = flags | ((uint)(step * 255 / 40) << 8), IsPresentationTest = true });
+                    await Task.Delay(65, token);
+                }
+                Publish(new ViewLabEvent { Kind = ViewLabEventKind.ShiftLight, Value = 11u | (255u << 8), IsPresentationTest = true });
+                await Task.Delay(550, token);
+                Publish(new ViewLabEvent { Kind = ViewLabEventKind.ShiftLight, Value = 7u | (255u << 8), IsPresentationTest = true });
+                await Task.Delay(350, token);
+                Publish(new ViewLabEvent { Kind = ViewLabEventKind.ShiftLight, Value = 0, IsPresentationTest = true });
+            }); break;
+            case "ShiftLightClear": Publish(new ViewLabEvent { Kind = ViewLabEventKind.ShiftLight, Value = 0, IsPresentationTest = true, TimestampUtc = DateTimeOffset.UtcNow }); break;
+            case "GripOBar": Publish(new ViewLabEvent { Kind = ViewLabEventKind.GripOBar, Value = 1u | (1u << 1) | (1u << 3) | (180u << 8), IsPresentationTest = true, TimestampUtc = DateTimeOffset.UtcNow }); break;
+            case "GripOBarClear": Publish(new ViewLabEvent { Kind = ViewLabEventKind.GripOBar, Value = 0, IsPresentationTest = true, TimestampUtc = DateTimeOffset.UtcNow }); break;
         }
         Diagnostics = "Simulated through generic event path: " + kind;
         SetStatus("Test presentation", Diagnostics);
+    }
+
+    private static uint PackRear(uint urgency)
+    {
+        uint level = Math.Min(urgency, 255u);
+        return 1u | ((40u + level * 190u / 255u) << 8) | ((25u + level * 220u / 255u) << 16) | (level << 24);
+    }
+
+    internal static uint SpotterProximityByte(double distanceMeters, bool alongside)
+    {
+        if (alongside || !double.IsFinite(distanceMeters) || distanceMeters <= 0 || distanceMeters >= 2.0) return 0;
+        return (uint)Math.Clamp((int)Math.Round((2.0 - distanceMeters) * 127.5), 1, 255);
+    }
+
+    private void SimulateTimedSpotter(SpotterState state) => StartPresentationSequence(async token => {
+        Publish(new ViewLabEvent { Kind = ViewLabEventKind.RearClosing, Value = 0, IsPresentationTest = true });
+        PublishSpotter(state, presentationTest: true);
+        await Task.Delay(2500, token);
+        PublishSpotter(SpotterState.Clear, presentationTest: true);
+    });
+
+    private void StartPresentationSequence(Func<CancellationToken, Task> sequence)
+    {
+        CancellationTokenSource next = new();
+        CancellationTokenSource? previous;
+        lock (_gate) { previous = _presentationSequence; _presentationSequence = next; }
+        previous?.Cancel();
+        _ = Task.Run(async () => {
+            try { await sequence(next.Token); }
+            catch (OperationCanceledException) { }
+            finally { lock (_gate) { if (ReferenceEquals(_presentationSequence, next)) _presentationSequence = null; } next.Dispose(); }
+        });
     }
 
     private void SetStatus(string status, string detail)
@@ -558,5 +700,5 @@ internal sealed class IRacingTelemetryProvider : IViewLabEventProvider
         _lastTick = int.MinValue; _lastTickAt = 0; ResetSessionState();
         if (Status != status) SetStatus(status, "No active SDK mapping.");
     }
-    public void Dispose() { Stop(); _stop?.Dispose(); }
+    public void Dispose() { lock (_gate) _presentationSequence?.Cancel(); Stop(); _stop?.Dispose(); }
 }

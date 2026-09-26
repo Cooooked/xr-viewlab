@@ -101,8 +101,8 @@ internal static class NotificationBrokerProgram
         racingProvider.EventPublished += (_, e) => dispatcher.BeginInvoke(() =>
         {
             racingState.Publish(e, lapDurationMs);
-            if (e.Kind == ViewLabEventKind.SpotterGlow) attentionSpotter = e.Spotter;
-            if (e.Kind == ViewLabEventKind.FlagState) attentionFlag = e.Flag;
+            if (!e.IsPresentationTest && e.Kind == ViewLabEventKind.SpotterGlow) attentionSpotter = e.Spotter;
+            if (!e.IsPresentationTest && e.Kind == ViewLabEventKind.FlagState) attentionFlag = e.Flag;
             bool safetyFlag = attentionFlag is RacingFlagState.Blue or RacingFlagState.Yellow or RacingFlagState.Debris or RacingFlagState.Red or RacingFlagState.Black or RacingFlagState.Disqualified;
             service.SetRacingAttention(attentionSpotter != SpotterState.Clear || safetyFlag);
             if (e.Kind == ViewLabEventKind.LapTime && (lapPopupEnabled || e.IsPresentationTest))
@@ -244,10 +244,23 @@ internal static class NotificationBrokerProgram
                             case "simulate-twoleft": racingProvider.Simulate("TwoLeft"); break;
                             case "simulate-tworight": racingProvider.Simulate("TwoRight"); break;
                             case "simulate-clear": racingProvider.Simulate("Clear"); break;
+                            case "simulate-clearspotter": racingProvider.Simulate("ClearSpotter"); break;
+                            case "simulate-clearflag": racingProvider.Simulate("ClearFlag"); break;
                             case "simulate-lap": racingProvider.Simulate("Lap"); break;
                             case "simulate-yellow": racingProvider.Simulate("Yellow"); break;
                             case "simulate-blue": racingProvider.Simulate("Blue"); break;
                             case "simulate-lowfuel": racingProvider.Simulate("LowFuel"); break;
+                            case "simulate-racestartred": racingProvider.Simulate("RaceStartRed"); break;
+                            case "simulate-racestartsequence": racingProvider.Simulate("RaceStartSequence"); break;
+                            case "simulate-approach": racingProvider.Simulate("Approach"); break;
+                            case "simulate-racestartgreen": racingProvider.Simulate("RaceStartGreen"); break;
+                            case "simulate-racestartclear": racingProvider.Simulate("RaceStartClear"); break;
+                            case "simulate-rearclosing": racingProvider.Simulate("RearClosing"); break;
+                            case "simulate-rearclosingclear": racingProvider.Simulate("RearClosingClear"); break;
+                            case "simulate-shiftlight": racingProvider.Simulate("ShiftLight"); break;
+                            case "simulate-shiftlightclear": racingProvider.Simulate("ShiftLightClear"); break;
+                            case "simulate-gripobar": racingProvider.Simulate("GripOBar"); break;
+                            case "simulate-gripobarclear": racingProvider.Simulate("GripOBarClear"); break;
                             case "shutdown":
 	                                settingsDebounce.Stop(); profileTimer.Stop(); notificationLiveTimer.Stop(); fallbackTimer.Stop(); settingsWatcher?.Dispose(); racingProvider.Dispose(); racingState.Dispose(); mediaProvider.Dispose(); obsProvider.Dispose(); service.Dispose(); Application.Current.Shutdown(); break;
                         }
@@ -357,6 +370,7 @@ internal static class NotificationBrokerProgram
 		Apply(RacingFlagState.Black, "iracing_flag_show_black");
 		Apply(RacingFlagState.Disqualified, "iracing_flag_show_disqualified");
 		Apply(RacingFlagState.Checkered, "iracing_flag_show_checkered");
+		Apply(RacingFlagState.PitLimiter, "iracing_flag_show_pit_limiter");
 		return mask;
 	}
 

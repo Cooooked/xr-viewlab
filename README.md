@@ -140,7 +140,7 @@ ViewLab stands on work from the OpenXR community:
 
 - [fommil/openxr-widescreen](https://github.com/fommil/openxr-widescreen), which continued and adapted the OpenXR FOV modifier idea.
 - [mbucchia/_ARCHIVE_XR_APILAYER_NOVENDOR_fov_modifier](https://github.com/mbucchia/_ARCHIVE_XR_APILAYER_NOVENDOR_fov_modifier), the archived API-layer/FOV modifier foundation.
-- [mbucchia/OpenXR-Toolkit](https://github.com/mbucchia/OpenXR-Toolkit), used as a reference for the companion-app style and per-application enable/profile behaviour.
+- [mbucchia/OpenXR-Toolkit](https://github.com/mbucchia/OpenXR-Toolkit) (MIT), used as a reference for the companion-app style and per-application enable/profile behaviour; ViewLab's colour grade is a port of its post-processing shader and settings scale.
 - [Jabbah/OpenXR-Layer-OBSMirror](https://github.com/Jabbah/OpenXR-Layer-OBSMirror) (MIT), whose OBS mirror layer is the reference for ViewLab Media Capture — the overlay quad compositing and crop behaviour are derived from it.
 - [Crowsinc/LiveVisionKit](https://github.com/Crowsinc/LiveVisionKit) (GPL-3.0), which powers the ViewLab Stabilizer filter.
 

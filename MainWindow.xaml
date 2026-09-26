@@ -305,45 +305,6 @@
           </Setter.Value>
         </Setter>
       </Style>
-      <Style x:Key="{x:Type Thumb}" TargetType="{x:Type Thumb}">
-        <Setter Property="Template">
-          <Setter.Value>
-            <ControlTemplate TargetType="{x:Type Thumb}">
-              <Border Width="6" Margin="0,3" HorizontalAlignment="Center" Background="#80A7A7A7" CornerRadius="4" />
-            </ControlTemplate>
-          </Setter.Value>
-        </Setter>
-      </Style>
-      <Style x:Key="DarkScrollBar" TargetType="{x:Type ScrollBar}">
-        <Setter Property="Background" Value="#00FFFFFF" />
-        <Setter Property="Width" Value="6" />
-        <Setter Property="Template">
-          <Setter.Value>
-            <ControlTemplate TargetType="{x:Type ScrollBar}">
-              <Grid Background="#00FFFFFF">
-                <Track Name="PART_Track" IsDirectionReversed="True" Margin="0,10">
-                  <Track.Thumb>
-                    <Thumb />
-                  </Track.Thumb>
-                </Track>
-              </Grid>
-            </ControlTemplate>
-          </Setter.Value>
-        </Setter>
-      </Style>
-      <Style x:Key="{x:Type ScrollBar}" TargetType="{x:Type ScrollBar}" BasedOn="{StaticResource DarkScrollBar}" />
-      <Style x:Key="DarkScrollViewer" TargetType="{x:Type ScrollViewer}">
-        <Setter Property="Template">
-          <Setter.Value>
-            <ControlTemplate TargetType="{x:Type ScrollViewer}">
-              <Grid>
-                <ScrollContentPresenter Name="PART_ScrollContentPresenter" Content="{TemplateBinding ContentControl.Content}" ContentTemplate="{TemplateBinding ContentControl.ContentTemplate}" CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}" />
-                <ScrollBar Name="PART_VerticalScrollBar" HorizontalAlignment="Right" Orientation="Vertical" Visibility="{TemplateBinding ScrollViewer.ComputedVerticalScrollBarVisibility}" Maximum="{TemplateBinding ScrollViewer.ScrollableHeight}" ViewportSize="{TemplateBinding ScrollViewer.ViewportHeight}" Value="{TemplateBinding ScrollViewer.VerticalOffset}" Style="{StaticResource DarkScrollBar}" />
-              </Grid>
-            </ControlTemplate>
-          </Setter.Value>
-        </Setter>
-      </Style>
     </ResourceDictionary>
   </FrameworkElement.Resources>
   <Border Background="{StaticResource ShellBrush}" BorderBrush="#303236" BorderThickness="1" CornerRadius="10">
@@ -362,7 +323,7 @@
           </StackPanel>
         </Grid>
       </Border>
-      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Style="{StaticResource DarkScrollViewer}">
+      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Style="{StaticResource ViewLabScrollViewer}">
         <StackPanel Margin="12,10,12,10">
           <Grid Name="ContentGrid">
             <Grid.ColumnDefinitions>
@@ -430,20 +391,20 @@
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Vertical" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="How much vertical view the game renders. Keep this generous to avoid LOD pop-in; use Visor Mask below for the visible border." />
                 <TextBox Name="TotalBox" Grid.Row="0" Grid.Column="2" TextChanged="RenderValue_Changed" />
                 <TextBlock Name="TotalHint" Grid.Row="0" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
-                <Slider Name="TotalSlider" Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0.01" Maximum="1" ValueChanged="RenderSlider_Changed" />
+                <Slider Name="TotalSlider" Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0.01" Maximum="1" ValueChanged="RenderSlider_Changed" ToolTip="Takes effect the next time the game starts." />
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Horizontal" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="How much horizontal view the game renders. Keep this generous; use Visor Mask below for the visible border." />
                 <TextBox Name="HorizontalBox" Grid.Row="4" Grid.Column="2" TextChanged="RenderValue_Changed" />
                 <TextBlock Name="HorizontalHint" Grid.Row="4" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
-                <Slider Name="HorizontalSlider" Grid.Row="6" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0.01" Maximum="1" ValueChanged="RenderSlider_Changed" />
-                <CheckBox Name="SplitCheck" Grid.Row="8" Grid.ColumnSpan="5" Content="Split top and bottom" ToolTip="Use separate top and bottom render height values to move the rendered slice up or down. Each is a share of the whole screen and they add up to the total, so Vertical 0.15 becomes Top 0.075 + Bottom 0.075." Checked="SplitCheck_Changed" Unchecked="SplitCheck_Changed" />
+                <Slider Name="HorizontalSlider" Grid.Row="6" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0.01" Maximum="1" ValueChanged="RenderSlider_Changed" ToolTip="Takes effect the next time the game starts." />
+                <CheckBox Name="SplitCheck" Grid.Row="8" Grid.ColumnSpan="5" Content="Split top and bottom" ToolTip="Use separate top and bottom render height values to move the rendered slice up or down. Each is a share of the whole screen and they add up to the total, so Vertical 0.15 becomes Top 0.075 + Bottom 0.075. Takes effect the next time the game starts." Checked="SplitCheck_Changed" Unchecked="SplitCheck_Changed" />
                 <TextBlock Grid.Row="10" Grid.Column="0" Text="Top" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="Share of the WHOLE screen rendered above centre. Top + Bottom is the total render height, so 0.075 + 0.075 equals a 0.15 Vertical setting." />
                 <TextBox Name="TopBox" Grid.Row="10" Grid.Column="2" TextChanged="RenderValue_Changed" />
                 <TextBlock Name="TopHint" Grid.Row="10" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
-                <Slider Name="TopSlider" Grid.Row="12" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="0.5" ValueChanged="RenderSlider_Changed" />
+                <Slider Name="TopSlider" Grid.Row="12" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="0.5" ValueChanged="RenderSlider_Changed" ToolTip="Takes effect the next time the game starts." />
                 <TextBlock Grid.Row="14" Grid.Column="0" Text="Bottom" VerticalAlignment="Center" FontWeight="SemiBold" ToolTip="Share of the WHOLE screen rendered below centre. Top + Bottom is the total render height." />
                 <TextBox Name="BottomBox" Grid.Row="14" Grid.Column="2" TextChanged="RenderValue_Changed" />
                 <TextBlock Name="BottomHint" Grid.Row="14" Grid.Column="4" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
-                <Slider Name="BottomSlider" Grid.Row="16" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="0.5" ValueChanged="RenderSlider_Changed" />
+                <Slider Name="BottomSlider" Grid.Row="16" Grid.Column="2" Grid.ColumnSpan="3" Minimum="0" Maximum="0.5" ValueChanged="RenderSlider_Changed" ToolTip="Takes effect the next time the game starts." />
                 <TextBlock Name="CombinedHint" Grid.Row="18" Grid.ColumnSpan="5" Visibility="Collapsed" />
               </Grid>
             </Border>
@@ -452,14 +413,14 @@
             <Border Name="OptionsCard" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,0">
               <StackPanel>
 
-                <WrapPanel HorizontalAlignment="Center">
-                  <Button Name="VisualMasksButton" Content="Edge Masks ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
+                <UniformGrid Name="OptionsButtonsGrid" Columns="3" HorizontalAlignment="Stretch">
+                  <Button Name="VisualMasksButton" Content="Render ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Original flat-edge visual masks. These remain separate from the optional visor/scuba mask." Click="VisualMasksButton_Click" />
                   <Button Name="ReShadeButton" Content="ReShade ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Optional ReShade controls. ViewLab crop and masks still work without ReShade." Click="OpenReShadeRemote_Click" />
                   <Button Name="PreviewButton" Content="Preview ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Global desktop-preview guide preferences." Click="PreviewButton_Click" />
                   <Button Name="OverlaysButton" Content="Overlays ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Crosshair, desktop notifications, and future integrations." Click="OverlaysButton_Click" />
                   <Button Name="ObsButton" Content="OBS ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="OBS mirror visibility, ViewLab Media Capture, Enhancer and Stabilizer." Click="ObsButton_Click" />
                   <Button Name="OpenXrLayersButton" Content="OpenXR Layers ▾" Style="{StaticResource RedButton}" Padding="10,4" Margin="0,0,8,6" ToolTip="Opens the OpenXR implicit layer manager: enable, disable and reorder the layers that inject into every VR app." Click="OpenXrLayers_Click" />
-                </WrapPanel>
+                </UniformGrid>
                 <Separator Margin="0,9,0,8" Background="{StaticResource BorderBrush}" Height="1" />
                 <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,0,0,8" ShapeChanged="MaskBeanEditor_ShapeChanged" Focusable="True" ToolTip="Binocular preview: the dotted outer reference is Quest 3 at Horizontal 1.00 / Vertical 1.00; the solid inner rectangle is the current post-crop area. Overlay replicas use their configured placement and uniform scale. Hover to inspect live full-lens and crop coordinates." />
                 <TextBox Name="MaskVerticalBox" Visibility="Collapsed" />
@@ -490,18 +451,54 @@
                       <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="What Edge Masks do" MouseLeftButtonUp="EdgeMaskHelp_Click">
                         <TextBlock Text="?" Style="{StaticResource HelpBadgeGlyph}" />
                       </Border>
-                      <TextBlock Text="EDGE MASK" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
+                      <TextBlock Text="RENDER" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,5" />
                     </DockPanel>
                     <CheckBox Name="HorizVisualMaskBothCheck" Content="Mask left and right crop" Foreground="#A8A8A8" Margin="0,0,0,5" ToolTip="Covers both horizontal crop borders in each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                     <CheckBox Name="VertVisualMaskBothCheck" Content="Mask top and bottom crop" Foreground="#A8A8A8" ToolTip="Covers both vertical crop borders in each eye." Checked="ExperimentalCheck_Changed" Unchecked="ExperimentalCheck_Changed" />
                     <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
+                    <CheckBox Name="OpticalCentringCheck" Content="Optical centring (centre the render on the lens)" Foreground="#A8A8A8" Checked="OpticalCentringCheck_Changed" Unchecked="OpticalCentringCheck_Changed" ToolTip="Keeps the same visible height but centres the cropped render on the lens's optical centre (straight ahead) instead of trimming top and bottom in proportion. The visor, HUD, overlays and in-headset menus move with it. Like the optical-centred preview, but in the headset. Per-app profiles can override it. Applies on the next game launch." />
                     <CheckBox Name="FoveaCenterCheck" Content="Recenter foveated rendering (split crop)" Foreground="#A8A8A8" Checked="FoveaCenterCheck_Changed" Unchecked="FoveaCenterCheck_Changed" ToolTip="When Split top/bottom is uneven, re-aims each eye at the centre of the cropped view so the runtime's foveated (sharpest) region stays on what you actually see. Applies on the next game launch. On some titles the re-aim can read as a slight world tilt." />
+                    <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
+                      <Expander IsExpanded="False">
+                        <Expander.Header><TextBlock Text="Colour" Margin="7,0,0,0" FontWeight="SemiBold" Foreground="#C8C8C8" /></Expander.Header>
+                        <StackPanel Margin="20,4,0,4">
+                          <TextBlock Text="Colour adjustment" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,1" />
+                          <ComboBox Name="ColourGradeModeCombo" SelectionChanged="ColourGrade_Changed" ToolTip="ViewLab's replacement for OpenXR Toolkit's colour adjustments (same maths, same scale). The sliders below are the default for every game. In the headset, Ctrl+F2 opens the colour menu (Ctrl+W/S select, Ctrl+A/D change); changes made there are saved for that game only and override these. Ctrl+Alt+C runs brightness calibration. Takes effect the next time the game starts.">
+                            <ComboBoxItem Content="Off"/><ComboBoxItem Content="On"/>
+                          </ComboBox>
+                          <CheckBox Name="ColourLutCheck" Content="Fast colour (lookup table)" IsChecked="True" Foreground="#A8A8A8" Margin="0,6,0,0" Checked="ColourLut_Changed" Unchecked="ColourLut_Changed" ToolTip="On: your colour settings are turned into a small ready-made colour chart, so each pixel is one quick lookup. Same look, lower and perfectly steady cost whatever you set. Off: every pixel runs the full colour maths (the original way). Switches live, so you can compare while driving." />
+                          <Expander Header="ViewLab values" Foreground="#B8B8B8" Margin="0,6,0,0">
+                            <StackPanel Margin="8,3,0,2">
+                          <TextBlock Text="Contrast" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="ColourGrade_contrast_Slider" Minimum="0" Maximum="1000" Value="500" Tag="500" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ColourGradeSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Same scale as OpenXR Toolkit. Right-click to reset." />
+                          <TextBlock Text="Brightness" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="ColourGrade_brightness_Slider" Minimum="0" Maximum="1000" Value="500" Tag="500" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ColourGradeSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Same scale as OpenXR Toolkit. Right-click to reset." />
+                          <TextBlock Text="Exposure" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="ColourGrade_exposure_Slider" Minimum="0" Maximum="1000" Value="500" Tag="500" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ColourGradeSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Same scale as OpenXR Toolkit. Right-click to reset." />
+                          <TextBlock Text="Saturation" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="ColourGrade_saturation_Slider" Minimum="0" Maximum="1000" Value="500" Tag="500" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ColourGradeSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Same scale as OpenXR Toolkit. Right-click to reset." />
+                          <TextBlock Text="Vibrance" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="ColourGrade_vibrance_Slider" Minimum="0" Maximum="1000" Value="0" Tag="0" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ColourGradeSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Same scale as OpenXR Toolkit. Right-click to reset." />
+                          <TextBlock Text="Highlights" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="ColourGrade_highlights_Slider" Minimum="0" Maximum="1000" Value="1000" Tag="1000" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ColourGradeSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Same scale as OpenXR Toolkit. Right-click to reset." />
+                          <TextBlock Text="Shadows" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="ColourGrade_shadows_Slider" Minimum="0" Maximum="1000" Value="0" Tag="0" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ColourGradeSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Same scale as OpenXR Toolkit. Right-click to reset." />
+                          <TextBlock Text="Red gain" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="ColourGrade_gain_r_Slider" Minimum="0" Maximum="1000" Value="500" Tag="500" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ColourGradeSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Same scale as OpenXR Toolkit. Right-click to reset." />
+                          <TextBlock Text="Green gain" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="ColourGrade_gain_g_Slider" Minimum="0" Maximum="1000" Value="500" Tag="500" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ColourGradeSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Same scale as OpenXR Toolkit. Right-click to reset." />
+                          <TextBlock Text="Blue gain" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="ColourGrade_gain_b_Slider" Minimum="0" Maximum="1000" Value="500" Tag="500" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ColourGradeSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Same scale as OpenXR Toolkit. Right-click to reset." />
+                            </StackPanel>
+                          </Expander>
+                        </StackPanel>
+                      </Expander>
                   </StackPanel>
                 </Border>
               </Popup>
               <Popup Name="CalibrationPopup" Visibility="Collapsed" StaysOpen="False" AllowsTransparency="True">
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" MaxHeight="500">
-                  <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" Style="{StaticResource ViewLabScrollViewer}">
                     <StackPanel Width="280">
                       <DockPanel LastChildFill="True">
                         <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="What Calibration Patterns are for" MouseLeftButtonUp="CalibrationHelp_Click">
@@ -547,13 +544,12 @@
                     </Grid>
                     <CheckBox Name="PreviewPerEyeFramesCheck" Content="Per-eye frames" Foreground="#A8A8A8" Margin="0,0,0,5" ToolTip="Switch the dotted frame guide between one combined frame and two overlapping per-eye rectangles." Checked="PreviewFrameMode_Changed" Unchecked="PreviewFrameMode_Changed" />
                     <CheckBox Name="PreviewCircleGuidesCheck" Content="Dual-eye circles" Foreground="#A8A8A8" IsChecked="True" Margin="0,0,0,5" ToolTip="Switch the dotted periphery guide between one binocular oval and two true eye circles." Checked="PreviewGuideMode_Changed" Unchecked="PreviewGuideMode_Changed" />
-                    <CheckBox Name="PreviewOpticalCentreCheck" Content="Optical-centred preview (preview only)" Foreground="#A8A8A8" Margin="0,0,0,5" ToolTip="Moves the complete desktop preview together around the alternate headset optical centre. Does not change headset rendering or saved widget coordinates." Checked="PreviewOpticalCentre_Changed" Unchecked="PreviewOpticalCentre_Changed" />
                   </StackPanel>
                 </Border>
               </Popup>
               <Popup Name="OverlaysPopup" StaysOpen="False" AllowsTransparency="True">
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" MaxHeight="560">
-                  <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" Style="{StaticResource ViewLabScrollViewer}">
                     <StackPanel Name="OverlaysSettingsPanel" Width="300">
                       <DockPanel LastChildFill="True" Margin="0,0,0,6">
                         <Border DockPanel.Dock="Right" Style="{StaticResource HelpBadge}" Margin="6,0,0,0" ToolTip="What overlays are and how to place them" MouseLeftButtonUp="OverlaysHelp_Click">
@@ -618,6 +614,15 @@
                         <Expander.Header><DockPanel Width="275"><CheckBox Name="ClockWidgetEnabledCheck" Checked="ClockWidgetControl_Changed" Unchecked="ClockWidgetControl_Changed"/><TextBlock Text="Clock" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header>
                         <StackPanel Margin="20,4,0,4">
                       <CheckBox Name="ClockSessionTimerCheck" Content="Show VR session timer underneath" Foreground="#A8A8A8" Margin="0,3,0,0" IsChecked="True" Checked="ClockWidgetControl_Changed" Unchecked="ClockWidgetControl_Changed" />
+                      <TextBlock Text="Timer mode" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1"/>
+                      <ComboBox Name="ClockTimerModeCombo" SelectionChanged="ClockWidgetControl_Changed" ToolTip="Session timer preserves the existing clock. Stopwatch, countdown and local target time use the line beneath the current time."><ComboBoxItem Content="Session timer"/><ComboBoxItem Content="Session stopwatch"/><ComboBoxItem Content="Countdown"/><ComboBoxItem Content="Local target time"/></ComboBox>
+                      <TextBlock Text="Countdown minutes" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1"/>
+                      <Slider Name="ClockCountdownMinutesSlider" Minimum="1" Maximum="180" Value="15" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ClockWidgetSlider_Changed" ToolTip="Duration in minutes; starts when the XR session begins."/>
+                      <TextBlock Text="Local target hour (0–23) and minute (0–59)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1"/>
+                      <Slider Name="ClockTargetHourSlider" Minimum="0" Maximum="23" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ClockWidgetSlider_Changed"/>
+                      <Slider Name="ClockTargetMinuteSlider" Minimum="0" Maximum="59" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ClockWidgetSlider_Changed"/>
+                      <CheckBox Name="ClockAlarmEnabledCheck" Content="Alert at zero" Foreground="#A8A8A8" Checked="ClockWidgetControl_Changed" Unchecked="ClockWidgetControl_Changed" ToolTip="Shows a restrained red zero indicator; no audio or haptics."/>
+                      <WrapPanel Margin="0,4,0,0"><Button Content="Start / resume" Click="ClockTimerStart_Click" Padding="6,2"/><Button Content="Pause" Click="ClockTimerPause_Click" Padding="6,2" Margin="4,0,0,0"/><Button Content="Reset" Click="ClockTimerReset_Click" Padding="6,2" Margin="4,0,0,0"/></WrapPanel>
                       <CheckBox Name="Clock24HourCheck" Content="Use 24-hour time" Foreground="#A8A8A8" Margin="0,3,0,0" IsChecked="True" Checked="ClockWidgetControl_Changed" Unchecked="ClockWidgetControl_Changed" />
                       <TextBlock Text="Theme (card design)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
                       <ComboBox Name="ClockThemeCombo" SelectionChanged="ClockWidgetControl_Changed" ToolTip="Changes the actual clock design: layout, type scale, padding, borders, icons and information arrangement.">
@@ -642,8 +647,10 @@
                       </Expander>
                       <Separator Margin="0,8,0,7" Background="{StaticResource BorderBrush}" Height="1" />
                       <Expander IsExpanded="False">
-                        <Expander.Header><DockPanel Width="275"><CheckBox Name="HudEnabledCheck" ToolTip="Modular CPU, GPU, APP-workload, and VR-cadence widgets rendered identically in both eyes." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed"/><TextBlock Text="Performance HUD" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header>
+                        <Expander.Header><DockPanel Width="275"><CheckBox Name="HudEnabledCheck" ToolTip="Enable Performance HUD. The visibility dropdown chooses always visible or alarm only." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed"/><TextBlock Text="Performance HUD" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header>
                         <StackPanel Margin="20,4,0,4">
+                      <TextBlock Text="Visibility" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1" />
+                      <ComboBox Name="HudVisibilityCombo" SelectionChanged="HudLayout_Changed" ToolTip="Off, always visible, or visible during sustained performance alarms with the same hold and fade as Performance Trace."><ComboBoxItem Content="Off"/><ComboBoxItem Content="Always visible"/><ComboBoxItem Content="Alarm only"/></ComboBox>
                       <TextBlock Text="Show / hide hotkey" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,5,0,1" />
                       <ComboBox Name="HudToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
                       <StackPanel Visibility="Collapsed">
@@ -655,7 +662,6 @@
                       <Slider Name="HudScaleSlider" Minimum="0.15" Maximum="3" Value="1" Tag="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Scales rings, icons, numbers, spacing, and padding together. Existing 0.5–3.0 sizes are preserved. Right-click to reset." />
                       <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudOpacitySlider" Minimum="0.1" Maximum="1" Value="0.7" Tag="0.7" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
-                      <CheckBox Name="HudAlarmOnlyCheck" Content="Alarm-only symbols (critical/unstable)" Foreground="#A8A8A8" Margin="0,6,0,0" ToolTip="Shows only widgets with a sustained critical or unstable state; recovery uses hysteresis and a hold." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                       <TextBlock Text="Widgets (enabled and order)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,7,0,2" />
                       <!-- IsSharedSizeScope + the SharedSizeGroup columns below make every row agree on
                            the width of the Symbol/Unit block and the two reorder buttons. Without it each
@@ -725,9 +731,22 @@
                       <ComboBox Name="HudTraceToggleKeyCombo" SelectionChanged="OverlayHotkey_Changed" />
                       <TextBlock Text="Graph mode" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,1" />
                       <ComboBox Name="HudGraphModeCombo" SelectionChanged="HudGraphMode_Changed" ToolTip="Only channels with compatible units are drawn together.">
-                        <ComboBoxItem Content="Budget deviation (ms)"/><ComboBoxItem Content="Absolute milliseconds"/><ComboBoxItem Content="FPS"/><ComboBoxItem Content="Percent of frame budget"/>
+                        <ComboBoxItem Content="Budget deviation (ms)"/><ComboBoxItem Content="Absolute milliseconds"/><ComboBoxItem Content="FPS"/><ComboBoxItem Content="Percent of frame budget"/><ComboBoxItem Content="Frame cost (ms vs budget)" ToolTip="Millisecond axes, a line at the headset's frame budget and a live one-decimal readout of what the game's frame costs."/>
                       </ComboBox>
-                      <Expander Header="Graph channels" Foreground="#B8B8B8" Margin="0,6,0,0">
+                      <StackPanel Name="HudTraceCostViewPanel" Visibility="Collapsed">
+                        <TextBlock Text="Lines (overlaid)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,1" />
+                        <WrapPanel ToolTip="Total = the slower of CPU and GPU. CPU = the game's whole frame, from xrWaitFrame returning to xrEndFrame. GPU = GPU time for the same frame. Wait = time the runtime held the game back.">
+                          <CheckBox Name="HudCostTotalCheck" Content="Total" Margin="0,0,10,0" Checked="HudLayout_Changed" Unchecked="HudLayout_Changed"/>
+                          <CheckBox Name="HudCostCpuCheck" Content="CPU" Margin="0,0,10,0" Checked="HudLayout_Changed" Unchecked="HudLayout_Changed"/>
+                          <CheckBox Name="HudCostGpuCheck" Content="GPU" Margin="0,0,10,0" Checked="HudLayout_Changed" Unchecked="HudLayout_Changed"/>
+                          <CheckBox Name="HudCostWaitCheck" Content="Wait" Checked="HudLayout_Changed" Unchecked="HudLayout_Changed"/>
+                        </WrapPanel>
+                        <TextBlock Text="Labels" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,6,0,1" />
+                        <ComboBox Name="HudCostLabelsCombo" SelectionChanged="HudLayout_Changed" ToolTip="Full: axis values, time span, legend and the big readout. Minimal+: only the big readout. Minimal: lines and the budget line only.">
+                          <ComboBoxItem Content="Full"/><ComboBoxItem Content="Minimal+"/><ComboBoxItem Content="Minimal"/>
+                        </ComboBox>
+                      </StackPanel>
+                      <Expander Name="HudGraphChannelsExpander" Header="Graph channels" Foreground="#B8B8B8" Margin="0,6,0,0">
                         <StackPanel Margin="8,3,0,2">
                           <CheckBox Name="HudGraphFrameIntervalCheck" Content="Frame interval — ms / budget %" ToolTip="QPC interval between consecutive xrWaitFrame returns." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
                           <CheckBox Name="HudGraphFpsCheck" Content="FPS — frames/s" ToolTip="1000 divided by measured frame interval." Checked="HudLayout_Changed" Unchecked="HudLayout_Changed" />
@@ -747,11 +766,17 @@
                       <Slider Name="HudTraceScaleSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Vertical size of the frame-pacing trace. Right-click to reset." />
                       <TextBlock Text="Opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceOpacitySlider" Minimum="0.1" Maximum="1" Value="0.7" Tag="0.7" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" />
+                      <TextBlock Name="HudTraceAlarmSensitivityLabel" Text="Alarm sensitivity (0 - 1)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudTraceAlarmSensitivitySlider" Minimum="0" Maximum="1" Value="0.8" Tag="0.8" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Frame cost alarm: 0 = never, 0.5 = budget, 0.25 = serious overruns only, 0.75 = near-misses, 1 = always visible. Applies live. Right-click to reset." />
+                      <TextBlock Text="Fade in (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudTraceFadeInSlider" Minimum="0" Maximum="1000" Value="150" Tag="150" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Alarm only: how long the trace takes to fade in when it appears. 0 = instant. Right-click to reset." />
+                      <TextBlock Text="Fade out (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <Slider Name="HudTraceFadeOutSlider" Minimum="0" Maximum="1000" Value="150" Tag="150" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Alarm only: how long the trace takes to fade out after the hold ends. 0 = instant. Right-click to reset." />
                       <TextBlock Text="Graph width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceWidthSlider" Minimum="0.1" Maximum="1" Value="0.42" Tag="0.42" ValueChanged="HudLayoutSlider_Changed" Thumb.DragStarted="BoundaryDrag_Start" Thumb.DragCompleted="BoundaryDrag_End" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Width of the frame-pacing trace as a fraction of the visible view. Right-click to reset." />
                       <TextBlock Text="Graph history (samples)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceHistorySlider" Minimum="30" Maximum="600" Value="120" Tag="120" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Number of frames kept in the trace; newest at the right, scrolling left. Right-click to reset." />
-                      <TextBlock Text="Deviation sensitivity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                      <TextBlock Name="HudTraceSensitivityLabel" Text="Deviation sensitivity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudTraceSensitivitySlider" Minimum="0.5" Maximum="8" Value="2" Tag="2" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Deviation mode uses ±ms; absolute-ms mode uses this as a minimum scale before budget auto-scaling. Right-click to reset." />
                       <TextBlock Text="Safe margin" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,0" />
                       <Slider Name="HudSafeMarginSlider" Minimum="0" Maximum="0.25" Value="0.025" Tag="0.025" ValueChanged="HudLayoutSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
@@ -905,14 +930,24 @@
                         <Expander.Header><DockPanel Width="275"><CheckBox Name="IRacingEnabledCheck" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed"/><TextBlock Text="iRacing Telemetry" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header>
                         <StackPanel Margin="20,4,0,4">
                           <TextBlock Name="IRacingStatusText" Text="Disconnected" Foreground="{StaticResource MutedBrush}" FontSize="9" TextWrapping="Wrap" Margin="0,0,0,6" />
+                          <TextBlock Name="IRacingTestStatusText" Visibility="Collapsed" Foreground="#C08A2A" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,6" />
 
                           <TextBlock Text="Lap Time Pop-up" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" />
                           <CheckBox Name="IRacingLapPopupCheck" Content="Enable lap-time pop-up" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
                           <TextBlock Text="Pop-up duration (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingLapDurationSlider" Minimum="1000" Maximum="15000" Value="4500" Tag="4500" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <Button Content="Test lap card" Style="{StaticResource RedButton}" Padding="6,2" Margin="0,4,0,0" HorizontalAlignment="Left" Click="IRacingTestLap_Click" ToolTip="Shows one synthetic lap card for the configured duration; does not save or enable the feature." />
 
                           <TextBlock Text="Peripheral Spotter Glow" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
                           <CheckBox Name="IRacingSpotterGlowCheck" Content="Enable peripheral spotter glow" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                          <TextBlock Text="Spotter mode" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1" />
+                          <ComboBox Name="IRacingSpotterModeCombo" SelectionChanged="IRacingThemeCombo_Changed" ToolTip="Classic uses the chosen side colour. Proximity colour uses the same side glow or edge line: yellow to orange on both peripheral edges while a car closes from behind, then red only on the side iRacing confirms as alongside. Before overlap, the telemetry does not identify a side."><ComboBoxItem Content="Classic"/><ComboBoxItem Content="Proximity colour: yellow → orange → red"/></ComboBox>
+                          <TextBlock Text="Side cue style" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1" />
+                          <ComboBox Name="IRacingSpotterThemeCombo" Margin="0,3,0,0" SelectionChanged="IRacingThemeCombo_Changed" ToolTip="Glow: soft glow fading in from the edge. Edge line: a crisp bar on the outer edge, split in two for two cars. Changes live."><ComboBoxItem Content="Glow"/><ComboBoxItem Content="Edge line"/></ComboBox>
+                          <TextBlock Text="Edge line width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingSpotterLineWidthSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Thickness of the side line. Right-click to reset." />
+                          <TextBlock Text="Edge line position (inward)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingSpotterLineInsetSlider" Minimum="0" Maximum="0.35" Value="0.18" Tag="0.18" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Moves the line in from the outer eye edge, like shift-light position. Right-click to reset." />
                           <TextBlock Text="Glow width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingSpotterWidthSlider" Minimum="0.03" Maximum="0.70" Value="0.12" Tag="0.12" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                           <TextBlock Text="Glow strength" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
@@ -925,7 +960,7 @@
                           <Slider Name="IRacingSpotterFadeInSlider" Minimum="0" Maximum="2000" Value="0" Tag="0" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Time for the glow to reach full strength after activation. Right-click to reset." />
                           <TextBlock Text="Fade-Out Time (ms)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingSpotterFadeOutSlider" Minimum="0" Maximum="3000" Value="0" Tag="0" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Time for the glow to disappear after deactivation. Right-click to reset." />
-                          <TextBlock Text="Glow colour (RGB)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1" />
+                          <TextBlock Text="Classic glow colour (RGB)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,4,0,1" />
                           <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
                             <TextBlock Text="R" VerticalAlignment="Center"/><Slider Name="IRacingSpotterRedSlider" Grid.Column="1" Minimum="0" Maximum="255" TickFrequency="1" IsSnapToTickEnabled="True" Tag="255" ValueChanged="IRacingSpotterRgb_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Red 0-255. Right-click to reset."/><TextBlock Grid.Column="2" Text="{Binding ElementName=IRacingSpotterRedSlider, Path=Value, StringFormat={}{0:0}}" TextAlignment="Right" VerticalAlignment="Center"/>
@@ -937,6 +972,8 @@
                             <TextBox Name="IRacingSpotterColorBox" Width="90" Text="FF4500" ToolTip="Hex RRGGBB" />
                             <Button Content="Apply colour" Style="{StaticResource RedButton}" Padding="8,2" Margin="6,0,0,0" Click="IRacingSpotterColor_Apply" />
                           </WrapPanel>
+                          <Button Content="Test proximity colour sequence" Style="{StaticResource RedButton}" Padding="6,2" Margin="0,4,0,0" HorizontalAlignment="Left" Click="IRacingTestApproach_Click" ToolTip="Runs yellow to orange on both peripheral edges, then a synthetic red overlap, and clears automatically. Uses the selected glow or edge-line style." />
+                          <WrapPanel Margin="0,4,0,0"><Button Content="Test left" Style="{StaticResource RedButton}" Padding="6,2" Click="IRacingTestLeft_Click" ToolTip="Shows a synthetic left cue for 2.5 seconds, then clears."/><Button Content="Test right" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestRight_Click" ToolTip="Shows a synthetic right cue for 2.5 seconds, then clears."/><Button Content="Test both" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestBoth_Click" ToolTip="Shows synthetic cues on both sides for 2.5 seconds, then clears."/></WrapPanel>
 
                           <TextBlock Text="Flag State Border" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
                           <CheckBox Name="IRacingFlagBorderCheck" Content="Enable flag-state border" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
@@ -951,11 +988,13 @@
                             <CheckBox Name="IRacingFlagShowBlackCheck" Content="Black" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
                             <CheckBox Name="IRacingFlagShowDisqualifiedCheck" Content="Disqualified" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
                             <CheckBox Name="IRacingFlagShowCheckeredCheck" Content="Checkered" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" />
+                            <CheckBox Name="IRacingFlagShowPitLimiterCheck" Content="Pit limiter off" Foreground="#A8A8A8" Margin="0,0,12,2" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Pulses while you are moving on pit road with the pit limiter off." />
                           </WrapPanel>
                           <TextBlock Text="Border width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingFlagWidthSlider" Minimum="0.003" Maximum="0.12" Value="0.018" Tag="0.018" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                           <TextBlock Text="Border opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingFlagOpacitySlider" Minimum="0.05" Maximum="1" Value="0.6" Tag="0.6" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <WrapPanel Margin="0,4,0,0"><Button Content="Test yellow" Style="{StaticResource RedButton}" Padding="6,2" Click="IRacingTestYellow_Click" ToolTip="Click again to clear the synthetic yellow border."/><Button Content="Test blue" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestBlue_Click" ToolTip="Click again to clear the synthetic blue border."/></WrapPanel>
 
                           <TextBlock Text="Race Start Light" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
                           <CheckBox Name="IRacingRaceStartCheck" Content="Enable race-start border light" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Red while officially waiting for the start, one green when the race officially begins (standing startGo or rolling green after a waiting phase), then fades. Never triggers from movement, replay, garage, reconnect, tick reset or joining a race already in progress." />
@@ -967,26 +1006,38 @@
                           <Slider Name="IRacingRaceStartRedOpacitySlider" Minimum="0.05" Maximum="1" Value="0.8" Tag="0.8" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                           <TextBlock Text="Green opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingRaceStartGreenOpacitySlider" Minimum="0.05" Maximum="1" Value="0.8" Tag="0.8" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <Button Content="Test start: red → green → clear" Style="{StaticResource RedButton}" Padding="6,2" Margin="0,4,0,0" HorizontalAlignment="Left" Click="IRacingTestRaceStart_Click" ToolTip="One click runs the complete red, green and clear sequence. No saved settings change." />
 
                           <TextBlock Text="Rear-Closing Pressure Cue" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
-                          <CheckBox Name="IRacingRearClosingCheck" Content="Enable rear-closing glow" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Paired bottom-edge glows warn when the nearest car behind is rapidly gaining. Closer = wider inward expansion, faster closing = brighter. Clears once a car draws alongside, when the left/right spotter takes over. No approach side is inferred." />
+                          <CheckBox Name="IRacingRearClosingCheck" Content="Enable rear-closing cue" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="A separate top-centre glow or mirror-chevron cue grows as a car closes from behind. It is independent of the peripheral spotter colour mode." />
+                          <ComboBox Name="IRacingRearClosingThemeCombo" Margin="0,3,0,0" SelectionChanged="IRacingThemeCombo_Changed" ToolTip="Glow: a top-centre glow that widens and brightens as a car closes. Mirror chevrons: up to three chevrons, lighting progressively. Changes live."><ComboBoxItem Content="Glow"/><ComboBoxItem Content="Mirror chevrons"/></ComboBox>
                           <TextBlock Text="Glow opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingRearClosingOpacitySlider" Minimum="0.05" Maximum="1" Value="0.9" Tag="0.9" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <Button Content="Test rear closing sequence" Style="{StaticResource RedButton}" Padding="6,2" Margin="0,4,0,0" HorizontalAlignment="Left" Click="IRacingTestRearClosing_Click" ToolTip="One click shows the selected cue grow from off to full, recede and clear. No saved settings change." />
+
+                          <TextBlock Text="Rhythm Shift Light" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
+                          <CheckBox Name="IRacingShiftLightCheck" Content="Enable rhythm shift light" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Two lines converge into one at the car-reported shift RPM. Green is within 150 RPM, blue within 50 RPM, and red is past the reported blink RPM." />
+                          <TextBlock Text="Shift light opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingShiftLightOpacitySlider" Minimum="0.05" Maximum="1" Value="0.9" Tag="0.9" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Takes effect the next time the game starts. Right-click to reset." />
+                          <TextBlock Text="Shift light width" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingShiftLightWidthSlider" Minimum="0.25" Maximum="3" Value="1" Tag="1" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Scales the shift-light lines. Right-click to reset." />
+                          <TextBlock Text="Shift light position (inward)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
+                          <Slider Name="IRacingShiftLightPositionSlider" Minimum="0" Maximum="0.35" Value="0.035" Tag="0.035" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Moves the shift light inward from the outer lens edge. Right-click to reset." />
+                          <Button Content="Test shift light sequence" Style="{StaticResource RedButton}" Padding="6,2" Margin="0,4,0,0" HorizontalAlignment="Left" Click="IRacingTestShiftLight_Click" ToolTip="One click simulates rising RPM: two lines converge, turn green in the shift window, blue near the shift point, red at over-rev, then clear." />
 
                           <TextBlock Visibility="Collapsed" Text="Grip-O-Bar" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
                           <CheckBox Name="IRacingGripBarCheck" Visibility="Collapsed" Content="Enable Grip-O-Bar" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="A lower-left/right peripheral bar showing whole-car grip loss: it compares actual yaw with a per-car calibrated expected yaw plus lateral slip. Yellow/orange/red by severity. Needs per-car calibration (built up automatically while driving cleanly); it never claims an individual tyre." />
                           <TextBlock Visibility="Collapsed" Text="Bar opacity" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingGripBarOpacitySlider" Visibility="Collapsed" Minimum="0.05" Maximum="1" Value="0.9" Tag="0.9" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
                           <Button Name="IRacingGripResetButton" Visibility="Collapsed" Content="Reset grip calibration" Padding="8,2" Margin="0,4,0,0" HorizontalAlignment="Left" Click="IRacingGripReset_Click" ToolTip="Clears the accumulated per-car grip calibration so it re-learns from scratch." />
+                          <Button Content="Test Grip-O-Bar (toggle)" Visibility="Collapsed" Style="{StaticResource RedButton}" Padding="6,2" Margin="0,4,0,0" HorizontalAlignment="Left" Click="IRacingTestGripOBar_Click" ToolTip="Click once to show the synthetic grip cue; click again to clear it. No saved settings change." />
 
                           <TextBlock Text="Low Fuel Warning" Foreground="#C08A2A" FontSize="10" FontWeight="SemiBold" Margin="0,8,0,0" />
                           <CheckBox Name="IRacingFuelWarningCheck" Content="Enable low fuel warning card" Foreground="#A8A8A8" Margin="0,3,0,0" Checked="IRacingControl_Changed" Unchecked="IRacingControl_Changed" ToolTip="Fires once per crossing below the threshold, from the SDK's FuelLevelPct — absent on cars/tracks that don't report it." />
                           <TextBlock Text="Fuel threshold (%)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,3,0,0" />
                           <Slider Name="IRacingFuelWarningThresholdSlider" Minimum="1" Maximum="50" Value="10" Tag="10" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="IRacingControlSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Right-click to reset." />
+                          <Button Content="Test low fuel card" Style="{StaticResource RedButton}" Padding="6,2" Margin="0,4,0,0" HorizontalAlignment="Left" Click="IRacingTestLowFuel_Click" ToolTip="Shows one synthetic low-fuel card; does not save or enable the feature." />
 
-                          <TextBlock Text="Presentation tests (no live connection required)" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="0,8,0,2" />
-                          <WrapPanel><Button Content="Left" Style="{StaticResource RedButton}" Padding="6,2" Click="IRacingTestLeft_Click" /><Button Content="Right" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestRight_Click" /><Button Content="Both" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestBoth_Click" /><Button Content="Clear" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestClear_Click" /></WrapPanel>
-                          <WrapPanel Margin="0,4,0,0"><Button Content="Lap" Style="{StaticResource RedButton}" Padding="6,2" Click="IRacingTestLap_Click" /><Button Content="Yellow" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestYellow_Click" /><Button Content="Blue" Style="{StaticResource RedButton}" Padding="6,2" Margin="4,0,0,0" Click="IRacingTestBlue_Click" /></WrapPanel>
                         </StackPanel>
                       </Expander>
 

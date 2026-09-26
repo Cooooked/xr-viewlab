@@ -1,5 +1,51 @@
 # Regression memory
 
+## R68 — Shared scrollbar thumb squeezed to a hairline (fixed in source 2026-09-26)
+
+**What:** the shared viewer reserved exactly six WPF units for a six-unit thumb, leaving no layout room for the scrollbar track in the overlay and profile windows.
+
+**Never again:** reserve twelve units for the track while keeping the visible rounded grey thumb six units wide, as in the game list. Keep the shared viewer and bar slot widths equal.
+
+## R66 — Spotter test left stayed alongside indefinitely (fixed in source 2026-09-26)
+
+**What:** Left/right/both test buttons latched a presentation override until clicked again or cleared. It could mask live telemetry for the rest of a drive.
+
+**Never again:** these buttons run a bounded 2.5-second cue and publish a presentation clear, restoring the latest live spotter state. The iRacing shared-memory fixture waits for that restoration while telemetry is active.
+
+## R67 — Rear cue test also lit peripheral spotter (fixed in source 2026-09-26)
+
+**What:** proximity-colour mode derives peripheral amber from rear-closing telemetry. A synthetic rear-only test used the same packed state and therefore also drew the spotter, obscuring faint mirror chevrons.
+
+**Never again:** the native overlay pass suppresses spotter drawing when presentation flag 16 indicates a rear-only test without approach flag 128. The explicit approach test retains its peripheral cue. Chevron line alpha is strengthened separately from the top-glow theme.
+
+## R65 — Three scrollbar appearances despite one declared style (fixed in source 2026-09-26)
+
+**What:** the detached Overlays window creates its `ScrollViewer` in C# and resolved WPF's default white scrollbar. The profile used a separate viewer template. Sharing only the bar style left three visible results.
+
+**Never again:** apply `ViewLabScrollViewer` explicitly to the detached overlay window, popup and profile, and keep its scrollbar template in `ViewLabTheme.xaml`. Contract checks cover the code-created window as well as XAML.
+
+## R64 — Racing cue themes appeared identical and edge line disappeared (fixed in source 2026-09-26)
+
+**What:** mirror chevrons were three small V shapes stacked at the top-centre glow position; low opacity made the selected mode look like the glow. The spotter edge line sat only two pixels from the eye edge, where it could be clipped.
+
+**Never again:** keep the theme selector's live bit wired UI → live state → native, draw chevrons with visibly separate geometry, and give the edge line an adjustable inward position. Contract checks pin the live theme bit.
+
+## R63 — Performance HUD enable checkbox disappeared from both editors (fixed in source 2026-09-26)
+
+**What:** adding the whole-HUD visibility dropdown left the existing global and per-app enable checkboxes marked `Visibility="Collapsed"`, so the Performance HUD header had no checkbox while neighbouring overlays did.
+
+**Never again:** keep both header checkboxes visible and synchronised with the visibility dropdown. The dropdown owns the alarm-only choice; the checkbox gives the immediate on/off control. Contract assertions reject a collapsed HUD checkbox in either editor.
+
+## R62 — Rear-closing, race-start and Grip-O-Bar cues only drew alongside another overlay (fixed in source 2026-09-26)
+
+**What:** the racing overlay pass returned early unless the boundary flash, clock, sticky notes, OBS indicator,
+trace marker, crosshair, notifications, spotter or flag border wanted drawing. Race start, rear-closing and
+Grip-O-Bar were added later and never joined that list, so on their own they drew nothing; they only appeared when
+some other overlay happened to be active (for example the spotter while a car was alongside).
+
+**Never again:** every `want*` racing cue (including the new shift light) is part of the early-return condition in
+the racing overlay pass. A new cue must be added there in the same change that adds its `want*` flag.
+
 ## R61 — 144 Hz cadence drops were averaged out while APP appeared alone (fixed 4.1.351, 2026-08-30)
 
 **What:** on Quest 3 at 144 Hz, APP could enter alarm while a fluctuating 140–120 FPS cadence produced no useful
@@ -866,3 +912,21 @@ before `stab_estimate`, without a diagnostic.
 have room for the matcher margins and two separated feature rows/columns. The 3072x656 source becomes
 338x72 rather than 192x41. OBS logs the selected analysis geometry and the first valid motion estimate;
 contracts pin the minimum-axis invariant, panoramic scale and activation diagnostic.
+
+## R25 - Live iRacing presentation tests must remain available (4.1.397; 2026-09-26)
+
+**What:** test buttons silently refused to run when iRacing telemetry was connected. An installed config missing overlay_force_direct also selected a separate projection carrier that Virtual Desktop could accept without displaying.
+
+**Why:** IRacingTelemetryProvider.Simulate returned early on IsConnected; the native renderer defaulted the missing config key to false. Bundled ini values did not repair existing installed configs.
+
+**Never again:** explicit test events override the matching live racing cue without changing saved controls; clearing restores the latest live value. Direct eye-texture presentation is the native default. Offline fixtures exercise test, live update and clear while connected; contracts pin the native default.
+
+
+## R26 - iRacing cue tests and live themes must exercise the visible behaviour (4.1.398; 2026-09-26)
+
+**What:** the proximity mode drew the rear cue at the lens top instead of changing the peripheral spotter cue. Both theme dropdowns saved to ini but were absent from the live-state map, so switching appeared to leave the previous theme. Race-start, shift and rear test controls showed fixed states rather than the labelled progression; racing cards had a generic ViewLab event caption.
+
+**Why:** renderer gating coupled the approach cue to rear-closing presentation; live-state flags carried only the spotter mode; synthetic broker events carried one fixed value.
+
+**Never again:** peripheral spotter colour and rear presentation remain separate gates. Both theme bits are published and consumed live. Broker sequences drive red/green/clear, RPM rise/shift/over-rev/clear, and closing/receding/clear; deterministic fixtures inspect the shared racing state at each phase. Racing cards pass no generic app caption.
+

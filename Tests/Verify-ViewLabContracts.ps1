@@ -147,8 +147,10 @@ Assert-Contains 'MainWindow.xaml' 'Name="MaskInnerLowerSlider"[^>]*Minimum="0"[^
 Assert-NotContains 'MainWindow.xaml' 'Name="MaskInnerBridge(Slider|RiseSlider|PeakXSlider|SteepnessSlider)"' 'removed notch-detail sliders are absent from the main window'
 Assert-Contains 'ProfileWindow.xaml' 'Name="VisorApexYSlider"[^>]*Minimum="-0\.5"[^>]*Maximum="0\.5"' 'profile Apex Y slider range'
 Assert-Contains 'ProfileWindow.xaml' 'Name="VisorInnerLowerSlider"[^>]*Minimum="0"[^>]*Maximum="0\.666"' 'profile Inner low slider range'
-Assert-Contains 'ProfileWindow.xaml' 'x:Key="ProfileScrollViewer"' 'PowerUp/profile window uses a ViewLab-themed scroll viewer'
-Assert-Contains 'ProfileWindow.xaml' 'Grid\.Column="1" Name="PART_VerticalScrollBar"' 'PowerUp/profile scrollbar has its own reserved layout column'
+Assert-Contains 'ProfileWindow.xaml' 'Style="\{StaticResource ViewLabScrollViewer\}"' 'profile uses the game-list scrollbar viewer'
+Assert-Contains 'ViewLabTheme.xaml' 'Grid\.Column="1" Name="PART_VerticalScrollBar"' 'shared scrollbar has a reserved layout column'
+Assert-Contains 'ViewLabTheme.xaml' 'Property="Width" Value="12"' 'scrollbar track has room beyond the six-unit visible thumb'
+Assert-Contains 'ViewLabTheme.xaml' 'ColumnDefinition Width="12"' 'scroll viewer reserves the full scrollbar track width'
 Assert-Contains 'ProfileWindow.xaml' 'ProfileClockEnabled[\s\S]*ProfileHudEnabled[\s\S]*ProfileTraceEnabled[\s\S]*ProfileStickyEnabled[\s\S]*ProfileCrosshairEnabled[\s\S]*ProfileNotifyEnabled' 'profile uses the six configurable overlay rows'
 Assert-Contains 'ProfileWindow.xaml' 'Name="ProfileHudWidgetList"' 'profile HUD expansion reuses the complete widget catalogue'
 Assert-Contains 'ProfileWindow.xaml' 'Name="ProfileStickyNotesList"' 'profile Sticky Notes expansion exposes the bounded note collection'
@@ -222,9 +224,32 @@ Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterStrengthSlider"[^>]*Maxim
 Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterOpacitySlider"[^>]*Maximum="2"' 'spotter opacity maximum is raised for visible peripheral coverage'
 Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterFadeInSlider"' 'spotter fade-in timing control exists'
 Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterFadeOutSlider"' 'spotter fade-out timing control exists'
+Assert-Contains 'ProfileWindow.xaml' 'Title="ViewLab App Profile" Width="415"' 'per-app profile uses the requested narrower width'
+Assert-NotContains 'ProfileWindow.xaml' '<DockPanel Width="445">' 'overlay headers cannot force the old profile width'
+Assert-Contains 'ProfileWindow.xaml' 'Grid\.Row="21" Grid\.ColumnSpan="3"[\s\S]*?<Button Grid\.Row="1" Grid\.Column="1" Content="Cancel"' 'profile actions fit in two rows at the narrower width'
 Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterRedSlider"[\s\S]*Name="IRacingSpotterGreenSlider"[\s\S]*Name="IRacingSpotterBlueSlider"' 'iRacing spotter exposes an RGB colour picker'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'IRacingSpotterRgb_Changed[\s\S]*IRacingSpotterColorKey' 'RGB picker persists through the existing telemetry colour key'
-Assert-Contains 'MainWindow.xaml' 'Presentation tests \(no live connection required\)[\s\S]*IRacingTestLeft_Click[\s\S]*IRacingTestBlue_Click' 'iRacing presentation tests remain available without a connection'
+Assert-Contains 'MainWindow.xaml' 'IRacingTestLap_Click[\s\S]*IRacingTestLeft_Click[\s\S]*IRacingTestRaceStart_Click[\s\S]*IRacingTestLowFuel_Click' 'iRacing tests sit with their features'
+foreach ($section in @(
+    @('IRacingLapDurationSlider','IRacingTestLap_Click','Peripheral Spotter Glow'),
+    @('IRacingSpotterColor_Apply','IRacingTestBoth_Click','Flag State Border'),
+    @('IRacingFlagOpacitySlider','IRacingTestBlue_Click','Race Start Light'),
+    @('IRacingRaceStartGreenOpacitySlider','IRacingTestRaceStart_Click','Rear-Closing Pressure Cue'),
+    @('IRacingRearClosingOpacitySlider','IRacingTestRearClosing_Click','Rhythm Shift Light'),
+    @('IRacingShiftLightPositionSlider','IRacingTestShiftLight_Click','Grip-O-Bar'),
+    @('IRacingGripReset_Click','IRacingTestGripOBar_Click','Low Fuel Warning'),
+    @('IRacingFuelWarningThresholdSlider','IRacingTestLowFuel_Click','</StackPanel>')
+)) {
+    $pattern = [regex]::Escape($section[0]) + '[\s\S]*?' + [regex]::Escape($section[1]) + '[\s\S]*?' + [regex]::Escape($section[2])
+    Assert-Contains 'MainWindow.xaml' $pattern "iRacing $($section[1]) test follows its section settings"
+}
+foreach ($overlay in @('clock','hud','trace','sticky','crosshair','notifications')) {
+    Assert-Contains 'ProfileWindow.xaml' ('<StackPanel Margin="20,4,0,5">\s*<CheckBox Content="Use global values" Tag="inherit:' + $overlay + '"') "Use global values is first in the $overlay submenu"
+}
+Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '\(_presentationFlags & 128u\) != 0 \? SpotterState.Clear : \(_presentationFlags & 1u\) != 0 \? _testSpotter : _spotter' 'approach and explicit spotter tests take priority over live telemetry'
+Assert-Contains 'dllmain.cpp' 'RacingPresentationActive\(\)' 'synthetic cues request rendering even with production controls off'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'hudVisibilityMode == 2 \? 8u' 'HUD alarm visibility remains distinct from symbol filtering'
+Assert-Contains 'ClockWidget.h' 'SecondsUntilLocalTarget' 'target time rolls into the next local day'
 Assert-Contains 'MainWindow.xaml' 'Text="Performance Trace"[\s\S]*</Expander>\s*<Separator Margin="0,8,0,7"[^>]*/>\s*<Expander IsExpanded="False">\s*<Expander.Header><DockPanel Width="275"><CheckBox Name="StickyNoteEnabledCheck"' 'Performance Trace and Sticky Notes retain the standard divider'
 Assert-Contains 'MainWindow.xaml' 'Text="Performance HUD"' 'HUD is presented as Performance HUD'
 Assert-Contains 'ProfileWindow.xaml' 'Text="Performance HUD"' 'per-app HUD uses the corrected name'
@@ -492,32 +517,43 @@ Assert-Contains 'dllmain.cpp' 'UpdateHudCadence' 'VR frame time uses wait-to-wai
 Assert-Contains 'dllmain.cpp' 'std::sort' 'cadence classification uses a rolling distribution, never a single slow frame'
 Assert-Contains 'dllmain.cpp' 'g_hudCadenceStable >= 20' 'cadence multiple switches only after sustained agreement'
 Assert-Contains 'dllmain.cpp' 'std::lround\(medianMs / g_hudDisplayPeriodMs\)' 'effective cadence is an integer multiple of the runtime display period, never hardcoded'
-Assert-Contains 'dllmain.cpp' 'hudAlarmOnly && !snap\.alarm\[id\]' 'alarm-only mode hides each widget independently while not critical'
+Assert-Contains 'dllmain.cpp' 'g_hudVisibilityAlpha=viewlab::policy::UpdateTraceVisibility' 'alarm-only visibility applies to the whole HUD'
 Assert-Contains 'dllmain.cpp' 'UpdateSustainedAlarm' 'every HUD symbol uses the shared bounded alarm state machine'
 Assert-Contains 'Tests\RenderPolicyFixtures.cpp' 'post-recovery hold expires instead of extending itself forever' 'alarm recovery cannot refresh its own hold indefinitely'
 Assert-NotContains 'dllmain.cpp' 'Network Interface' 'network placeholder telemetry is removed'
 Assert-Contains 'MainWindow.xaml' 'Name="HudEnabledCheck"' 'UI exposes a Performance HUD checkbox'
+Assert-NotContains 'MainWindow.xaml' 'Name="HudEnabledCheck"[^>]*Visibility="Collapsed"' 'global Performance HUD enable checkbox stays visible'
+Assert-NotContains 'ProfileWindow.xaml' 'Name="ProfileHudEnabled"[^>]*Visibility="Collapsed"' 'per-app Performance HUD enable checkbox stays visible'
 Assert-Contains 'XRViewLab.UI\OverlaySettingsModels.cs' '"hud_enabled"' 'shared overlay catalogue persists the HUD enabled setting'
 Assert-Contains 'MainWindow.xaml' 'Name="HudXSlider"' 'HUD X control exists'
 Assert-Contains 'MainWindow.xaml' 'Name="HudYSlider"' 'HUD Y control exists'
 Assert-Contains 'MainWindow.xaml' 'Name="HudScaleSlider"' 'HUD scale control exists'
 Assert-Contains 'MainWindow.xaml' 'Name="HudTraceSensitivitySlider"' 'HUD trace sensitivity control exists'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'HudTraceSensitivityKey' 'HUD trace sensitivity persists to the ini'
-foreach ($ctl in @('HudTraceXSlider', 'HudTraceYSlider', 'HudTraceScaleSlider', 'HudTraceWidthSlider', 'HudTraceHistorySlider', 'HudAlarmOnlyCheck')) {
+foreach ($ctl in @('HudTraceXSlider', 'HudTraceYSlider', 'HudTraceScaleSlider', 'HudTraceWidthSlider', 'HudTraceHistorySlider', 'HudVisibilityCombo')) {
     Assert-Contains 'MainWindow.xaml' "Name=`"$ctl`"" "live trace/alarm control $ctl exists"
 }
-foreach ($key in @('hud_trace_x', 'hud_trace_y', 'hud_trace_scale', 'hud_trace_width', 'hud_trace_history', 'hud_alarm_only', 'hud_alarm_hold_ms')) {
+foreach ($key in @('hud_trace_x', 'hud_trace_y', 'hud_trace_scale', 'hud_trace_width', 'hud_trace_history', 'hud_visibility_mode', 'hud_alarm_hold_ms')) {
     Assert-Contains 'dllmain.cpp' $key "DLL reads HUD key $key"
     Assert-Contains 'xr-viewlab.ini' $key "default ini carries HUD key $key"
 }
 Assert-Contains 'MainWindow.xaml' 'Name="HudSafeMarginSlider"' 'HUD safe-margin control exists'
 Assert-Contains 'dllmain.cpp' 'hudClampToVisible' 'HUD clamps complete bounds to the visible eye rectangle'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 608' 'live state carries scoped per-app overlay state plus every live overlay field'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 15u\)' 'live state contract is version 15'
-Assert-Contains 'dllmain.cpp' 'snapshot\.version != 15' 'DLL consumes live-state contract version 15'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'private const int Size = 644' 'live state carries spotter edge-line geometry'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(4, 19u\)' 'live state contract is version 19'
+Assert-Contains 'dllmain.cpp' 'snapshot\.version != 19' 'DLL consumes live-state contract version 19'
 # Item 21: versioned visor colour field (0x00RRGGBB); default 0 = black.
 Assert-Contains 'XRViewLab.UI\LiveStateService.cs' '_view\.Write\(268, visorColor & 0xFFFFFFu\)' 'live state publishes the visor colour'
-Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(LiveStateBlock\)==608' 'native live-state struct grew to the v15 size'
+Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(LiveStateBlock\)==644' 'native live-state struct matches v19 size'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'iracingRearChevrons \? 1024u' 'rear theme selection publishes the live chevron bit'
+Assert-Contains 'dllmain.cpp' 'iracingRearClosingTheme = \(stable.iracingFlags & 1024u\)' 'native rear cue consumes the live chevron bit'
+Assert-Contains 'dllmain.cpp' 'rearOnlyTest = \(g_racingStable.presentationFlags & 16u\) != 0' 'rear-only test is distinct from approach test'
+Assert-Contains 'dllmain.cpp' 'ApproachVisible\(g_racingStable.spotterProximity!=0' 'spotter approach uses its independent close-range signal'
+Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(72, \(_presentationFlags & 128u\) != 0 \? _testSpotterProximity : _spotterProximity\)' 'racing state publishes separate proximity byte'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'OptionsButtonsGrid.Columns = threeCol \? 3 : 2' 'triple layout keeps three menu buttons per row'
+Assert-Contains 'dllmain.cpp' '!rearOnlyTest && spotterEnabled' 'rear-only test suppresses the peripheral cue'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'Style = \(Style\)FindResource\("ViewLabScrollViewer"\)' 'detached overlay window uses the game-list scrollbar viewer'
+Assert-Contains 'MainWindow.xaml' 'Name="OverlaysPopup"[\s\S]*?Style="\{StaticResource ViewLabScrollViewer\}"' 'overlay popup uses the game-list scrollbar viewer'
 # v15: per-app profile overrides are read once at xrCreateSession, so the layer used to discard every
 # live update for a feature the running profile customised — dragging in the per-app editor's preview
 # only showed up after a game restart. The publisher now marks such values authoritative.
@@ -564,7 +600,7 @@ Assert-Contains 'dllmain.cpp' 'PSSetConstantBuffers\(0, 1, &g_d3d11Mask.visorCol
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'VisorMaskColorKey = "mask_color"' 'UI persists the visor colour key'
 Assert-Contains 'MainWindow.xaml' 'Name="VisorColorRedSlider"' 'visor RGB sliders are present'
 Assert-NotContains 'MainWindow.xaml' 'TopmostVisorOverlaysCheck' 'ordinary UI does not expose backend implementation choice'
-Assert-Contains 'dllmain.cpp' '!ReadBoolSetting\(L"overlay_force_direct", false\)' 'automatic topmost is the normal session policy'
+Assert-Contains 'dllmain.cpp' '!ReadBoolSetting\(L"overlay_force_direct", true\)' 'missing legacy config key defaults to proven direct overlay presentation'
 Assert-Contains 'dllmain.cpp' 'maskEnabled && g_featurePresentationPlan\.drawDirectVisor' 'central policy gates the direct visor path'
 Assert-Contains 'dllmain.cpp' 'AnyDirectOverlay\(\) && g_featurePresentationPlan\.drawDirectCommonFeatures' 'central policy gates the direct common-feature path'
 Assert-Contains 'dllmain.cpp' 'XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT' 'topmost layer submits transparent source alpha'
@@ -763,7 +799,8 @@ Assert-Contains 'dllmain.cpp' 'ConsumeRacingState' 'native renderer consumes gen
 Assert-Contains 'MainWindow.xaml' 'Name="HudTraceVisibilityCombo"' 'trace exposes explicit visibility modes'
 Assert-Contains 'dllmain.cpp' 'UpdateTraceVisibility' 'native trace delegates explicit visibility transitions to the tested policy'
 Assert-Contains 'Tests\RenderPolicyFixtures.cpp' 'trace fades and remains hidden' 'alarm-only trace recovery hold and fade are executable fixtures'
-Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'traceVisibilityMode == 2 \? 2u' 'live contract carries trace alarm-only mode'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'traceMode == 2 \? 2u' 'live contract carries trace alarm-only mode'
+Assert-Contains 'dllmain.cpp' 'hudTraceFadeInMs = \(double\)\(\(stable\.traceFlags >> 8\) & 0xFFFu\);hudTraceFadeOutMs = \(double\)\(\(stable\.traceFlags >> 20\) & 0xFFFu\);' 'trace fade in/out are live (traceFlags bits 8-19 / 20-31)'
 Assert-Contains 'dllmain.cpp' 'uint32_t magic, version, count, generation' 'native notification header order matches managed writer'
 Assert-Contains 'dllmain.cpp' 'state==1\|\|state==3\|\|state==4' 'left and two-left remain left-side spatial cues'
 Assert-Contains 'dllmain.cpp' 'state==2\|\|state==3\|\|state==5' 'right and two-right remain right-side spatial cues'
@@ -1074,7 +1111,7 @@ Assert-Contains 'XRViewLab.UI\ViewLabEvents.cs' 'RaceStart,' 'race-start event k
 Assert-Contains 'XRViewLab.UI\IRacingCues.cs' 'internal static class RaceStartFlags' 'race-start phase mapping is a shared testable helper'
 Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' 'RaceStartFlags\.Phase\(rawFlags, _prevRawFlags' 'provider computes the race-start phase from SessionFlags'
 Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' 'Kind = ViewLabEventKind\.RaceStart' 'provider publishes the race-start phase'
-Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(44, _raceStartPhase\)' 'racing state publishes the race-start phase at reserved0'
+Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(44, \(_presentationFlags & 8u\) != 0 \? _testRaceStartPhase : _raceStartPhase\)' 'racing state publishes the selected race-start phase at reserved0'
 Assert-Contains 'dllmain.cpp' 'const bool wantRaceStart = IncludesMirrorFeature' 'native gates the race-start border on enable + mirror feature'
 Assert-Contains 'dllmain.cpp' 'iracingRaceStart = ReadBoolSetting\(L"iracing_race_start"' 'native reads the race-start enable at session start'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"iracing_race_start", IRacingRaceStartCheck.IsChecked' 'UI persists the race-start enable'
@@ -1084,7 +1121,7 @@ Assert-Contains 'XRViewLab.UI\ViewLabEvents.cs' 'RearClosing,' 'rear-closing eve
 Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' 'double NearestCarBehindMeters\(int buffer' 'provider derives nearest-car-behind distance from CarIdxLapDistPct'
 Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' '_rearCue\.Update\(rearDist, rearCarId, overlap' 'provider runs the shared rear-closing state machine'
 Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' 'TrackLength:' 'provider parses track length for a metres-based distance'
-Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(60, _rearClosing\)' 'racing state publishes the packed rear-closing state at reserved1'
+Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(60, \(_presentationFlags & 16u\) != 0 \? _testRearClosing : _rearClosing\)' 'racing state publishes the selected packed rear-closing state at reserved1'
 Assert-Contains 'dllmain.cpp' 'const bool wantRearClosing = IncludesMirrorFeature' 'native gates the rear-closing glow on enable + mirror feature'
 Assert-Contains 'dllmain.cpp' 'iracingRearClosing = ReadBoolSetting\(L"iracing_rear_closing"' 'native reads the rear-closing enable at session start'
 Assert-Contains 'MainWindow.xaml' 'Name="IRacingRearClosingCheck"' 'rear-closing enable control is present'
@@ -1092,10 +1129,10 @@ Assert-Contains 'MainWindow.xaml' 'Name="IRacingRearClosingCheck"' 'rear-closing
 Assert-Contains 'XRViewLab.UI\ViewLabEvents.cs' 'GripOBar,' 'grip-o-bar event kind exists'
 Assert-Contains 'XRViewLab.UI\GripCalibrationStore.cs' 'internal sealed class GripCalibrationStore' 'per-car grip calibration store exists'
 Assert-Contains 'XRViewLab.UI\IRacingTelemetryProvider.cs' '_grip\.Update\(cal, steering, speed, yawRate' 'provider runs the grip meter with per-car calibration'
-Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(64, _grip\)' 'racing state v2 publishes the packed grip state'
-Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(4, 2u\)' 'racing state contract is version 2'
-Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(RacingStateBlock\)==68' 'native racing state struct grew to v2 (68 bytes)'
-Assert-Contains 'dllmain.cpp' 'g_racing->version!=2' 'native consumes racing state version 2'
+Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(64, \(_presentationFlags & 32u\) != 0 \? _testGrip : _grip\)' 'racing state v2 publishes the selected packed grip state'
+Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(4, 4u\)' 'racing state contract is version 4 (independent proximity)'
+Assert-Contains 'dllmain.cpp' 'static_assert\(sizeof\(RacingStateBlock\)==76' 'native racing state struct is v4 (76 bytes)'
+Assert-Contains 'dllmain.cpp' 'g_racing->version!=4' 'native consumes racing state version 4'
 Assert-Contains 'dllmain.cpp' 'const bool wantGripBar = IncludesMirrorFeature' 'native gates the grip bar on enable + mirror feature'
 Assert-Contains 'MainWindow.xaml' 'Name="IRacingGripBarCheck" Visibility="Collapsed"' 'legacy grip-o-bar control remains hidden for config compatibility'
 # ViewLab Media Capture (VLMC): OBS identity is unique and does not collide with the third-party source.
@@ -1234,5 +1271,48 @@ Assert-NotContains 'XRViewLab.UI\Quest3PreviewGeometry.cs' 'LensNasalChordX' 'le
 Assert-NotContains 'XRViewLab.UI\BeanMaskEditor.cs' 'ShowQuest3LensOutlines' 'lens outline rendering is gone'
 Assert-NotContains 'XRViewLab.UI\MainWindow.cs' 'preview_lens_outlines' 'lens outline persistence is gone'
 Assert-NotContains 'MainWindow.xaml' 'PreviewLensOutlinesCheck' 'lens outline toggle is gone'
+
+# ---- Colour grade (OpenXR Toolkit port) ------------------------------------------
+Assert-Contains 'dllmain.cpp' 'ReadDoubleSetting\(L"colour_grade_mode", 1\.0\)' 'colour grade defaults to ViewLab values (it replaces OpenXR Toolkit)'
+Assert-NotContains 'dllmain.cpp' 'SOFTWARE\\\\OpenXR_Toolkit' 'ViewLab never reads OpenXR Toolkit settings (follow mode removed)'
+Assert-Contains 'dllmain.cpp' 'XR_APILAYER_MBUCCHIA_toolkit\.dll' 'colour grade stands down when OpenXR Toolkit is loaded in-process'
+Assert-Contains 'dllmain.cpp' 'if \(graded\) GradeEyes\(tex, scFormat, targetViews, gradeRtvs\);[\s\S]{0,200}for \(size_t i = 0; i < targetViews\.size\(\); \+\+i\) \{\s+if \(maskEnabled' 'colour grade runs (all eyes, one pass) before the visor and overlays'
+Assert-Contains 'dllmain.cpp' 'CreatePixelShader\(g_ColourGradePSMath, sizeof\(g_ColourGradePSMath\)' 'colour shaders come from precompiled byte code (no in-game compile hitch)'
+Assert-Contains 'dllmain.cpp' '#include "Shaders/ColourGrade_PSLut\.h"' 'colour LUT shader is precompiled'
+Assert-Contains 'dllmain.cpp' 'g_colourUseLut = \(stable\.colourFlags & 1u\) != 0;' 'colour engine (LUT / maths) switches live'
+Assert-Contains 'dllmain.cpp' 'LoadColourGradeConfig\(\);\s*\}' 'colour grade settings load with the session config'
+
+# ---- Racing cues / frame cost trace (2026-09-26) -------------------------------------
+Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(4, 4u\)' 'racing state producer writes version 4'
+Assert-Contains 'XRViewLab.UI\RacingStateService.cs' '_view\.Write\(68, \(_presentationFlags & 64u\) != 0 \? _testShift : _shift\)' 'racing state v3 publishes the selected packed shift light state'
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterModeCombo"' 'spotter exposes Classic and radar-style modes'
+Assert-Contains 'MainWindow.xaml' 'Name="IRacingSpotterModeCombo" SelectionChanged="IRacingThemeCombo_Changed"' 'spotter mode change enters the live update handler'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"iracing_spotter_mode"' 'spotter mode persists globally'
+Assert-Contains 'XRViewLab.UI\LiveStateService.cs' 'iracingRadarStyleSpotter \? 256u' 'spotter mode publishes live without changing racing state layout'
+Assert-Contains 'dllmain.cpp' 'iracingSpotterMode = \(stable\.iracingFlags & 256u\)[^\r\n]*;[\s\S]*?if\(!profileIRacingFeatureOverride\)' 'native switches global spotter mode live even with a legacy per-app iRacing override'
+Assert-Contains 'dllmain.cpp' 'g_racingStable\.spotterState==0 &&\s*viewlab::racing::ApproachVisible' 'peripheral approach clears on confirmed side overlap'
+Assert-Contains 'dllmain.cpp' 'iracingSpotterTheme = \(stable\.iracingFlags & 512u\)' 'native switches spotter edge-line theme live'
+Assert-Contains 'dllmain.cpp' 'iracingRearClosingTheme = \(stable\.iracingFlags & 1024u\)' 'native switches rear-closing theme live'
+Assert-Contains 'dllmain.cpp' 'viewlab::racing::SpotterColour\(iracingSpotterMode,iracingSpotterColor\)' 'confirmed side colour follows the selected mode'
+Assert-Contains 'XRViewLab.UI\RacingStateService.cs' 'private const int Size = 76;' 'racing state producer and native agree on 76 bytes'
+Assert-Contains 'XRViewLab.UI\ViewLabEvents.cs' 'Checkered,\s+(//[^\n]*\s+)*PitLimiter,' 'PitLimiter is appended after Checkered so existing flag values and visibility bits keep their numbers'
+Assert-Contains 'NotificationBroker\Program.cs' 'Apply\(RacingFlagState\.PitLimiter, "iracing_flag_show_pit_limiter"\)' 'broker honours the pit limiter visibility key'
+Assert-Contains 'dllmain.cpp' '!wantRaceStart && !wantRearClosing && !wantGripBar && !wantShiftLight\) return;' 'R62: every racing cue participates in the overlay early-return'
+Assert-Contains 'dllmain.cpp' 'GpuFrameTimerBegin\(\);' 'frame cost trace starts its GPU timer at xrBeginFrame'
+Assert-Contains 'dllmain.cpp' 'GpuFrameTimerEnd\(\);' 'frame cost trace ends its GPU timer at xrEndFrame'
+Assert-Contains 'XRViewLab.UI\NotificationBrokerClient.cs' 'if \(!IsRunning\) return "Broker not running' 'iRacing status reports a stopped broker instead of stale state'
+
+Assert-Contains 'dllmain.cpp' 'PollColourCalibrationKeys\(\);' 'in-headset colour calibration polls its keys every frame'
+Assert-Contains 'dllmain.cpp' 'L"colour_grade_levels_black"' 'calibration levels persist under the documented key'
+Assert-Contains 'MainWindow.xaml' 'Name="ColourGradeModeCombo"' 'settings expose the colour grade mode'
+Assert-Contains 'dllmain.cpp' 'const auto centre = co\.ResolveSharedTangent\(offX \+ depthTan, bandTan \+ offY, false\);' 'colour panels anchor at one shared tangent (render-band centre, depth = per-eye convergence) so both eyes fuse them'
+Assert-Contains 'dllmain.cpp' 'hudGraphMode=\(HudGraphMode\)std::clamp\(stable\.hudGraphMode&0xFFu,0u,4u\);hudCostLines=\(stable\.hudGraphMode>>8\)&0xFu;hudCostLabels=' 'frame cost is live graph mode 4; line mask in bits 8-11, label mode in bits 12-13'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'pGraphMode \|= pCostLines << 8 \| pCostLabels << 12;' 'UI packs the frame cost lines and labels into the live graph mode'
+Assert-Contains 'dllmain.cpp' 'g_hudLastCpuFrameMs=1000\.0\*\(double\)\(frame\.endStart\.QuadPart-frame\.waitStop\.QuadPart\)' 'frame cost CPU spans xrWaitFrame return to xrEndFrame (APP work misses simulation before xrBeginFrame)'
+Assert-Contains 'dllmain.cpp' 'if \(opticalCentring\) \{\s+// Same band height, centred on tangent 0' 'optical centring keeps the crop band height and centres it on straight ahead'
+Assert-Contains 'dllmain.cpp' 'ReadProfileDword\(L"optical_centring", profileOptical\)' 'optical centring has a per-app override'
+Assert-Contains 'dllmain.cpp' 'kColourMenuTabs\[\] = \{' 'colour menu uses OpenXR Toolkit style tabs'
+Assert-Contains 'XRViewLab.UI\App.cs' 'if \(sender is ComboBox combo && !combo\.IsDropDownOpen\) ForwardWheelToParent\(combo, e\);' 'the mouse wheel never changes a closed dropdown in any window; it scrolls the page'
+Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'if \(WheelZoomRequiresClick && !_wheelEngaged\) return;' 'profile preview only zooms after a click so the wheel scrolls the window'
 
 Write-Host 'ViewLab contract verification passed.'

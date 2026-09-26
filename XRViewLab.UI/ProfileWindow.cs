@@ -19,6 +19,46 @@ public partial class ProfileWindow : Window
 
 	public bool UseGlobalValues { get; private set; }
 	public bool UseGlobalVisor { get; private set; }
+	public bool ResetColourRequested { get; private set; }
+	// 0 use global, 1 on, 2 off (per-app DWORD colour_grade_lut: absent / 1 / 0).
+	public int ColourLutChoice
+	{
+		get => Math.Max(0, ProfileColourLut.SelectedIndex);
+		set { _settingColourLut = true; ProfileColourLut.SelectedIndex = Math.Clamp(value, 0, 2); _settingColourLut = false; }
+	}
+	private bool _settingColourLut;
+	// Raised as the user changes Fast colour, so the running game switches immediately (before Save).
+	public Action<int>? ColourLutLiveChanged { get; set; }
+
+	private void ProfileColourLut_Changed(object sender, SelectionChangedEventArgs e)
+	{
+		if (!_settingColourLut) ColourLutLiveChanged?.Invoke(ColourLutChoice);
+	}
+	// 0 use global, 1 on, 2 off (per-app DWORD optical_centring: absent / 1 / 0).
+	public int OpticalCentringChoice
+	{
+		get => Math.Max(0, ProfileOpticalCentring.SelectedIndex);
+		set { ProfileOpticalCentring.SelectedIndex = Math.Clamp(value, 0, 2); ApplyOpticalPreview(); }
+	}
+
+	// The preview shows the optical-centred layout exactly when this game renders with it.
+	private void ApplyOpticalPreview()
+	{
+		int choice = Math.Max(0, ProfileOpticalCentring.SelectedIndex);
+		MaskBeanEditor.UseOpticalPreviewCentre = choice == 0 ? _useOpticalPreviewCentre : choice == 1;
+	}
+
+	private void ProfileOpticalCentring_Changed(object sender, SelectionChangedEventArgs e)
+	{
+		if (MaskBeanEditor != null) ApplyOpticalPreview();
+	}
+	public string ColourSummary { set { ProfileColourSummary.Text = value; } }
+
+	private void ResetColour_Click(object sender, RoutedEventArgs e)
+	{
+		ResetColourRequested = true;
+		ProfileColourSummary.Text = "Will reset to the global Colour settings when you save.";
+	}
 
 	public bool HiddenValue { get; private set; }
 
@@ -424,6 +464,23 @@ public partial class ProfileWindow : Window
 				case TextBox text: text.Text = value; break;
 			}
 		}
+		int costLines = int.TryParse(OverlayValue("trace", "hud_trace_cost_lines"), out int parsedLines) ? Math.Clamp(parsedLines, 0, 15) : 7;
+		ProfileCostTotal.IsChecked = (costLines & 1) != 0;
+		ProfileCostCpu.IsChecked = (costLines & 2) != 0;
+		ProfileCostGpu.IsChecked = (costLines & 4) != 0;
+		ProfileCostWait.IsChecked = (costLines & 8) != 0;
+	}
+
+	private void ProfileTraceCost_Changed(object sender, RoutedEventArgs e)
+	{
+		if (!_initialized || _syncingControls) return;
+		EnsureFeatureCustom("trace");
+		int lines = (ProfileCostTotal.IsChecked == true ? 1 : 0) | (ProfileCostCpu.IsChecked == true ? 2 : 0) |
+			(ProfileCostGpu.IsChecked == true ? 4 : 0) | (ProfileCostWait.IsChecked == true ? 8 : 0);
+		_overlayOverrides.Set("trace", "hud_trace_cost_lines", lines.ToString(CultureInfo.InvariantCulture));
+		SetInheritCheckbox("trace", false);
+		ApplyOverlayPreviewState();
+		PublishOverlayLive();
 	}
 
 	// ---- Per-overlay "Use Global Values" inheritance (item 24) ----------------------------------
@@ -557,6 +614,11 @@ public partial class ProfileWindow : Window
 		if (sender is CheckBox check)
 		{
 			RecordOverlaySetting(check, check.IsChecked == true ? "1" : "0");
+			if (check == ProfileHudEnabled && _initialized && !_syncingControls)
+			{
+				_overlayOverrides.Set("hud", "hud_visibility_mode", check.IsChecked == true ? Math.Max(1, ProfileHudVisibility.SelectedIndex).ToString(CultureInfo.InvariantCulture) : "0");
+				ProfileHudVisibility.SelectedIndex = check.IsChecked == true ? Math.Max(1, ProfileHudVisibility.SelectedIndex) : 0;
+			}
 			// Only mirror the enable checkbox into the visibility-mode override for a genuine user edit.
 			// During initial hydration (_syncingControls / before _initialized) this must NOT run, or it
 			// creates a spurious "trace" override that makes the trace section load un-inherited.
@@ -568,6 +630,11 @@ public partial class ProfileWindow : Window
 		}
 		else if (sender is ComboBox combo)
 		{
+			if (combo == ProfileHudVisibility && _initialized && !_syncingControls)
+			{
+				_overlayOverrides.Set("hud", "hud_enabled", combo.SelectedIndex > 0 ? "1" : "0");
+				ProfileHudEnabled.IsChecked = combo.SelectedIndex > 0;
+			}
 			bool hotkey = combo.Tag is string tag && tag.EndsWith("_toggle_vk", StringComparison.Ordinal);
 			bool marker = combo.Tag is string markerTag && markerTag.EndsWith(":performance_trace_marker_vk", StringComparison.Ordinal);
 			int value = hotkey ? OverlaySettingsCatalog.VirtualKeyFromComboIndex(combo.SelectedIndex) : marker ? 117 + Math.Max(0, combo.SelectedIndex) : Math.Max(0, combo.SelectedIndex);

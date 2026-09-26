@@ -34,7 +34,7 @@
       <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreaded</RuntimeLibrary>
     </ClCompile>
   </ItemDefinitionGroup>
-  <ItemGroup><ClInclude Include="BridgeCore.h" /></ItemGroup>
-  <ItemGroup><ClCompile Include="BridgeCore.cpp" /></ItemGroup>
+  <ItemGroup><ClInclude Include="BridgeCore.h" /><ClInclude Include="StereoSubmission.h" /><ClInclude Include="StereoShader.h" /></ItemGroup>
+  <ItemGroup><ClCompile Include="BridgeCore.cpp" /><ClCompile Include="StereoShader.cpp" /></ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

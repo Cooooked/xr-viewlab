@@ -10,7 +10,7 @@ namespace XRViewLab.UI;
 internal sealed class LiveStateService : IDisposable
 {
     private const string Name = "Local\\XRViewLabLiveState";
-    private const int Size = 608;
+    private const int Size = 644;
     private const uint Magic = 0x534C4C56; // VLLS
     private MemoryMappedFile? _map;
     private MemoryMappedViewAccessor? _view;
@@ -20,14 +20,14 @@ internal sealed class LiveStateService : IDisposable
     {
         _map = MemoryMappedFile.CreateOrOpen(Name, Size, MemoryMappedFileAccess.ReadWrite);
         _view = _map.CreateViewAccessor(0, Size, MemoryMappedFileAccess.ReadWrite);
-        _view.Write(0, Magic); _view.Write(4, 15u); _view.Write(8, (uint)Size);
+        _view.Write(0, Magic); _view.Write(4, 19u); _view.Write(8, (uint)Size);
     }
 
     public void Publish(uint calibrationMask,
         bool maskEnabled, bool topmostOverlays, double size, double corner, double apex, double innerLow,
         double bridgeWidth, double bridgeRise, double bridgePeakX, double bridgeSteepness, double noseSpreadX,
         bool hudEnabled, int traceVisibilityMode, double hudX, double hudY, double hudScale, double hudSafeMargin, bool hudClamp,
-        bool hudAlarmOnly, double hudTraceSensitivityMs, double traceX, double traceY, double traceScale,
+        int hudVisibilityMode, double hudTraceSensitivityMs, double traceX, double traceY, double traceScale,
         double traceWidth, double traceHistory, double alarmHoldMs,
         uint hudWidgetMask, uint hudWidgetOrder, uint hudGraphChannels, uint hudGraphMode,
         bool boundaryDrag,
@@ -43,14 +43,18 @@ internal sealed class LiveStateService : IDisposable
         double irFlagWidth, double irFlagOpacity,
         double irRaceStartRedOpacity, double irRaceStartGreenOpacity, double irRaceStartGreenMs, double irRaceStartThickness,
         double irRearClosingOpacity, double irGripBarOpacity,
-        bool clockEnabled, bool sessionTimerEnabled, bool clock24Hour, double clockX, double clockY,
+        bool clockEnabled, bool sessionTimerEnabled, bool clock24Hour, int clockTimerMode, int clockCountdownMinutes,
+        int clockTargetHour, int clockTargetMinute, bool clockAlarmEnabled, uint clockTimerCommand, double clockX, double clockY,
         double clockScale, double clockOpacity, uint clockTheme, uint clockPalette,
         IReadOnlyList<int> overlayToggleKeys,
         uint obsMirrorVisibilityMask,
         uint visorColor,
         string? liveProfileKey,
         double hudOpacity, double traceOpacity,
-        bool performanceTraceRecording, uint performanceTraceMarkerKey)
+        bool performanceTraceRecording, uint performanceTraceMarkerKey, bool iracingShiftLight = false, bool colourUseLut = true,
+        double iracingShiftLightWidth = 1.0, double iracingShiftLightPosition = 0.035, bool iracingRadarStyleSpotter = false,
+        bool iracingSpotterEdgeLine = false, bool iracingRearChevrons = false,
+        double iracingSpotterLineWidth = 1.0, double iracingSpotterLineInset = 0.18)
     {
         if (_view == null) return;
         _view.Write(16, calibrationMask);
@@ -59,7 +63,7 @@ internal sealed class LiveStateService : IDisposable
         _view.Write(36, (float)innerLow); _view.Write(40, (float)bridgeWidth); _view.Write(44, (float)bridgeRise);
         _view.Write(48, (float)bridgePeakX); _view.Write(52, (float)bridgeSteepness);
         _view.Write(56, (float)hudX); _view.Write(60, (float)hudY); _view.Write(64, (float)hudScale); _view.Write(68, (float)hudSafeMargin);
-        _view.Write(72, (hudEnabled ? 1u : 0u) | (hudClamp ? 2u : 0u) | (hudAlarmOnly ? 4u : 0u));
+        _view.Write(72, (hudEnabled ? 1u : 0u) | (hudClamp ? 2u : 0u) | (hudVisibilityMode == 2 ? 8u : 0u));
         _view.Write(76, (float)hudTraceSensitivityMs);
         _view.Write(80, (float)traceX); _view.Write(84, (float)traceY); _view.Write(88, (float)traceScale);
         _view.Write(92, (float)traceWidth); _view.Write(96, (float)traceHistory); _view.Write(100, (float)alarmHoldMs);
@@ -74,8 +78,12 @@ internal sealed class LiveStateService : IDisposable
         _view.Write(156, (float)notifyOpacity); _view.Write(160, (float)notifyDurationMs);
         _view.Write(164, notifyMaxVisible); _view.Write(168, notifyPrivacy);
         _view.Write(172, (iracingEnabled ? 1u : 0u) | (iracingLapPopup ? 2u : 0u) | (iracingSpotterGlow ? 4u : 0u) | (iracingFlagBorder ? 8u : 0u)
-            | (iracingRaceStart ? 16u : 0u) | (iracingRearClosing ? 32u : 0u) | (iracingGripBar ? 64u : 0u));
-        _view.Write(176, traceVisibilityMode == 0 ? 0u : 1u | (traceVisibilityMode == 2 ? 2u : 0u));
+            | (iracingRaceStart ? 16u : 0u) | (iracingRearClosing ? 32u : 0u) | (iracingGripBar ? 64u : 0u) | (iracingShiftLight ? 128u : 0u) | (iracingRadarStyleSpotter ? 256u : 0u)
+            | (iracingSpotterEdgeLine ? 512u : 0u) | (iracingRearChevrons ? 1024u : 0u));
+        // traceFlags: bit0 enabled, bit1 alarm-only, bits 2-7 alarm sensitivity 0..63, bits 8-19 fade in ms,
+        // bits 20-31 fade out ms. The caller packs mode (bits 0-1) and the rest.
+        int traceMode = traceVisibilityMode & 0x3;
+        _view.Write(176, (traceMode == 0 ? 0u : 1u | (traceMode == 2 ? 2u : 0u)) | (unchecked((uint)traceVisibilityMode) & 0xFFFFFFFCu));
         _view.Write(180, (float)chOffsetX); _view.Write(184, (float)chOffsetY);
         _view.Write(188, topmostOverlays ? 1u : 0u);
         _view.Write(192, hudWidgetMask); _view.Write(196, hudWidgetOrder);
@@ -100,6 +108,15 @@ internal sealed class LiveStateService : IDisposable
         WriteFixedString(336, 128, liveProfileKey);
         _view.Write(592, (float)hudOpacity); _view.Write(596, (float)traceOpacity);
         _view.Write(600, performanceTraceRecording ? 1u : 0u); _view.Write(604, performanceTraceMarkerKey);
+        _view.Write(608, colourUseLut ? 1u : 0u); // v16 colourFlags bit0 = LUT engine
+        _view.Write(612, (float)iracingShiftLightWidth);
+        _view.Write(616, (float)iracingShiftLightPosition);
+        _view.Write(620, (uint)Math.Clamp(clockTimerMode, 0, 3));
+        _view.Write(624, (uint)Math.Clamp(clockCountdownMinutes, 1, 180));
+        _view.Write(628, (uint)(Math.Clamp(clockTargetHour, 0, 23) * 3600 + Math.Clamp(clockTargetMinute, 0, 59) * 60));
+        _view.Write(632, (clockAlarmEnabled ? 0x80000000u : 0u) | (clockTimerCommand & 0x7FFFFFFFu));
+        _view.Write(636, (float)iracingSpotterLineWidth);
+        _view.Write(640, (float)iracingSpotterLineInset);
         Thread.MemoryBarrier();
         _view.Write(12, unchecked(++_generation));
     }

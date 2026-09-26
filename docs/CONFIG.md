@@ -1,5 +1,58 @@
 # Config contract — every key, both sides
 
+## Changing settings live (for AI assistants) — read this when the user asks you to change a setting
+
+The user wants to say things like "enable the rear-closing glow, disable the HUD and clock, make the trace less
+sensitive, add a sticky note" and watch it happen in the headset without restarting the sim. That works when:
+the **ViewLab settings app is open** (it watches the files below and publishes changes live) and you edit files
+directly — never through the GUI.
+
+1. **Global settings:** `%LOCALAPPDATA%\XR ViewLab\xr-viewlab.ini`, section `[Settings]`, `key=value`. Edit only the
+   lines you need; keep everything else. Booleans are `1`/`0`.
+2. **Per-app settings WIN over global.** Find the running game's key: the newest `app=` in
+   `%LOCALAPPDATA%\XR ViewLab\Logs\ViewLab.log` (iRacing = `iRacingSim64DX11.exe`). Its profile is
+   `HKCU\Software\cooooked\xr-viewlab\Apps\<exe>`. Overlay overrides there are `REG_SZ` values named
+   `overlay_override_<feature>__<key>` (features: `clock`, `hud`, `trace`, `sticky`, `crosshair`, `notifications`).
+   If the game has ANY `overlay_override_<feature>__*` value, change that feature THERE (same key, as a string), or
+   delete all of that feature's override values to make it follow global. Colour/optical-centring per-app values are
+   `REG_DWORD`s with the plain key name (`colour_grade_*`, `optical_centring`).
+3. Save once; the app reloads within ~0.3 s and the game updates live. Changes to render crop / FOV / resolution
+   (`top_render_height`, `split_mode`, `optical_centring`, …) only apply at the next game start — tell the user.
+4. Afterwards, say in one line what you changed and where.
+
+Common requests (overlay keys below are the global ini names; per-app use `overlay_override_<feature>__<key>`):
+
+| Request | Key(s) |
+|---|---|
+| Performance HUD on/off | `hud_enabled` (feature `hud`) |
+| Clock on/off | `clock_widget_enabled` (feature `clock`) |
+| Performance Trace: off / always / alarm only | `hud_trace_visibility_mode` `0`/`1`/`2` (+ `hud_trace_enabled`) (feature `trace`) |
+| Performance HUD: off / always / alarm only | `hud_visibility_mode` `0`/`1`/`2` (+ legacy `hud_enabled`) (feature `hud`) |
+| Trace less/more sensitive (alarm only, frame cost) | `hud_trace_alarm_sensitivity` 0–1 (lower = less sensitive) |
+| Trace fade in / out | `hud_trace_fade_in_ms`, `hud_trace_fade_out_ms` (0–1000) |
+| Trace graph mode | `hud_graph_mode` (4 = frame cost) |
+| Rear-closing glow / spotter / flags / race start / grip bar / shift light | `iracing_rear_closing`, `iracing_spotter_glow`, `iracing_flag_border`, `iracing_race_start`, `iracing_grip_bar`, `iracing_shift_light` (global only) |
+| Low fuel warning | `iracing_fuel_warning` (global; the notification broker applies it) |
+| Sticky note | `sticky_note_enabled=1`, `sticky_note_count=N`, then per note `i` from 0: `sticky_note_{i}_enabled`, `_text`, `_x`, `_y` (0–1, 0 = left/top), `_scale`, `_opacity`, `_theme` (0 Classic yellow, 1 Rose — use for pink/magenta, 2 Mint, 3 Sky, 4 Paper), `_style` (0 standard, 1 HD paper) |
+| Colour | `colour_grade_*` (see Colour grade below); engine `colour_grade_lut` |
+
+## Standalone DynLOD editor
+
+`Tools/DynLOD/IniFile.cs` reads/writes only nine existing keys in the selected iRacing renderer INI.
+Main is `[Graphics Options]`; Replay is `[Replay Graphics]`, verified in the local OpenXR renderer INI.
+Following iRacing's own UI writes and current iRSidekick, World Main maps to `LODPctDynoMin`/`LODPctDynoMax`
+and Cars Main maps to `LODPctMin`/`LODPctMax`; the corresponding mirror keys use the same family plus `Mirrors`.
+World and Cars selectors reproduce the six iRacing preset value sets; direct numeric edits select Custom.
+LOD values are whole numbers 25–500 with Min <= Max. iRacing also requires World Max >= Cars Min independently
+for Main and Mirrors; startup expands World Max to Cars Min when violated, so validation and slider bounds prevent it.
+Drag/track clicks snap within 4 points of multiples of 25; typed values
+remain unsnapped. `LODMinFPSTarget` is the literal nonnegative integer text,
+without a refresh-rate transform. Existing invalid values remain visible for correction; missing/duplicate keys
+or sections fail explicitly. Neither loading nor Refresh changes the INI. Apply rereads the latest file and replaces
+only the target numeric tokens, retaining comments, whitespace, encoding and newlines. Atomic file replacement
+creates `<ini>.dynlod-<timestamp>-<id>.bak`. Only the selected path persists in `%LOCALAPPDATA%/DynLOD/selected-ini.txt`;
+the edit buffer stays in memory after Apply, and Refresh/source selection replaces it with disk values.
+
 ## Factory baseline and per-app overlays
 
 `config/factory-baseline-v4.1.255.json` is the machine-readable clean-install and missing-key baseline. Startup
@@ -59,6 +112,64 @@ DiagMon capture policy is deliberately separate from the native layer ini. It li
 Retention limits are warnings rather than silent deletion. The user deletes a session explicitly in
 the Session Library, with confirmation; valid raw evidence is never removed by a background policy.
 
+## Racing cues and Performance Trace additions (2026-09-26, source only)
+
+| Key | Where | Default | Meaning |
+|---|---|---|---|
+| `iracing_flag_show_pit_limiter` | ini; broker `ReadFlagVisibilityMask` | `1` | Show the pit-limiter warning border (flag state `PitLimiter`, value 10) |
+| `iracing_shift_light` | ini; live `iracingFlags` bit 128 | `0` | Rhythm shift light |
+| `iracing_shift_light_opacity` | ini (session start) | `0.9` | Shift light opacity 0.05–1 |
+| `iracing_shift_light_width` | ini; live state | `1.0` | Shift-light line width multiplier 0.25–3.0 |
+| `iracing_shift_light_position` | ini; live state | `0.035` | Inward position from the outer eye edge, 0–0.35 of eye width |
+| `iracing_spotter_theme` | ini + live state | `0` | `0` glow · `1` edge line. Switching in the settings UI applies live. |
+| `iracing_spotter_line_width` | ini + live state v19 | `1.0` | Edge-line thickness multiplier 0.25–3.0; initial fallback is the shift-light width. |
+| `iracing_spotter_line_inset` | ini + live state v19 | `0.18` | Inward position from the outer eye edge, 0–0.35 of eye width; initial fallback is the shift-light position. |
+| `iracing_rear_closing_theme` | ini + live state | `0` | `0` glow · `1` mirror chevrons. Switching in the settings UI applies live. |
+| `hud_trace_theme` | legacy (read only) | `0` | Retired: `1` is read as `hud_graph_mode=4`. The UI always writes `0`. |
+| `hud_trace_cost_lines` | ini; per-app `overlay_override_trace__hud_trace_cost_lines`; live bits 8–11 of the live graph mode | `7` | Frame cost lines, overlaid (bitmask): `1` total · `2` CPU · `4` GPU · `8` wait; `0` reads as `7`. CPU = xrWaitFrame return → xrEndFrame entry. |
+| `hud_trace_cost_labels` | ini; per-app `overlay_override_trace__hud_trace_cost_labels`; live bits 12–13 | `0` | `0` full (axis values, time span, legend, big readout) · `1` minimal+ (big readout only) · `2` minimal (lines + budget line) |
+| `hud_trace_alarm_sensitivity` | ini; per-app `overlay_override_trace__hud_trace_alarm_sensitivity`; live traceFlags bits 2–7 (×63) | `0.8` | Frame-cost alarm trigger: 0 = never, 0.5 = the frame budget, 0.25 = serious overruns only, 0.75 = near-misses and overruns, 1 = always visible. One effective trigger line; no rolling frame-count rule. |
+| `hud_trace_fade_in_ms` / `hud_trace_fade_out_ms` | ini; per-app `overlay_override_trace__hud_trace_fade_in_ms` / `_out_ms`; live in traceFlags bits 8–19 / 20–31 | `150` / `150` | Alarm-only fade in / fade out time (0 = instant). The short-lived `hud_trace_fade_ms` is read as the default for both. |
+| `hud_trace_cost_view` | retired | — | Replaced by `hud_trace_cost_lines`; no longer read. |
+
+Racing state mapping `Local\\XRViewLabRacingState` is now **version 4, 76 bytes**: `shiftState` at offset 68 (bit0
+active, bit1 in shift window, bit2 over-rev, bit3 within 50 RPM of the reported shift point, bits 8–15 progress); `spotterProximity` at offset 72 carries the independent 0–255 value for a car behind within two metres. `flagColor` bit 24 asks the native border to pulse.
+
+## Colour grade (OpenXR Toolkit post-processing port)
+
+Native-only; read once at session start by `LoadColourGradeConfig()` (called at the end of `LoadConfig()`).
+Values use OpenXR Toolkit's own 0–1000 units and defaults so imported values match exactly.
+
+| Key | Where | Default | Meaning |
+|---|---|---|---|
+| `colour_grade_mode` | ini `[Settings]`; per-app DWORD overrides | `1` | `0` off · `1` on (ViewLab values below). The removed follow-OpenXR-Toolkit value `2` reads as `1`; ViewLab never reads Toolkit settings. |
+| `colour_grade_lut` | ini `[Settings]`; per-app DWORD override (absent = global); live (live state v16 `colourFlags` bit 0, the settings app publishes the running game's effective value) | `1` | Colour engine: `1` baked 33³ lookup table (constant per-pixel cost), `0` per-pixel maths. |
+| `colour_grade_post_process` | ini; per-app DWORD overrides | `1` | Toolkit "post-processing" switch: `0` applies colour gains only |
+| `optical_centring` | ini `[Settings]`; per-app DWORD override (absent = global) | `0` | `1` keeps the vertical crop band's height but centres it on straight ahead (tangent 0 = the Quest 3 lens optical centre) instead of trimming top/bottom in proportion. Band-anchored overlays follow. Next launch. |
+| `colour_menu_scale` / `_x` / `_y` | per-app DWORD (written by the in-headset menu) | `100` / `1000` / `1000` | Colour menu size in percent (50–200) and offset in 1/1000 tangent units + 1000 (x right, y up). The menu is a fixed tangent size in every game, centred on the shared render band. |
+| `colour_grade_contrast` / `_brightness` / `_exposure` / `_saturation` | ini; per-app DWORD overrides | `500` | Toolkit Contrast/Brightness/Exposure/Saturation (500 = neutral) |
+| `colour_grade_gain_r` / `_gain_g` / `_gain_b` | ini; per-app DWORD overrides | `500` | Toolkit colour gains (500 = neutral) |
+| `colour_grade_vibrance` / `_shadows` | ini; per-app DWORD overrides | `0` | Toolkit Vibrance / Shadows (0 = neutral) |
+| `colour_grade_highlights` | ini; per-app DWORD overrides | `1000` | Toolkit Highlights (1000 = neutral) |
+| `colour_grade_sunglasses` | ini; per-app DWORD overrides | `0` | Toolkit preset: 0 none, 1 light, 2 dark, 3 night |
+| `colour_grade_levels_black` / `_white` / `_gamma` | ini (0–1 / 0–1 / 0.4–2.5); per-app DWORD ×1000 overrides | `0` / `1` / `1` | Levels from the in-headset calibration, applied after the Toolkit stage in display encoding: `black + (white − black) · value^gamma` |
+
+The Settings app writes `colour_grade_mode` and the ten `colour_grade_*` values (Colour section) as the global
+default. The in-headset colour menu (any Ctrl+W/A/S/D or Ctrl+arrow opens it, Ctrl+F2 toggles, 15 s idle closes; Ctrl+W/S or Ctrl+Up/Down select, Ctrl+A/D or Ctrl+Left/Right change)
+writes every `colour_grade_*` value, including the levels and `colour_grade_mode=1`, as DWORDs to the running game's
+profile key on close or after 1.5 s idle. The in-headset calibration (Ctrl+Alt+C; Left/Right adjust, Enter
+next/confirm, Backspace back, Esc cancel) writes the three `colour_grade_levels_*` DWORDs to the same key. The
+per-app profile window shows these values and can delete them ("Reset this game's colour to global"). The levels stage still runs when OpenXR Toolkit is
+loaded; only the Toolkit-equivalent stage stands down.
+
+Mode `2` reads `HKCU\SOFTWARE\OpenXR_Toolkit\<XrApplicationInfo::applicationName>` (`post_process`, `post_sunglasses`,
+`post_contrast`, `post_brightness`, `post_exposure`, `post_saturation`, `post_vibrance`, `post_highlights`,
+`post_shadows`, `post_gain_r/g/b`), falling back to `HKLM\SOFTWARE\OpenXR_Toolkit` exactly as the Toolkit does.
+Toolkit `post_process=0` (Off) or `2` (CA correction) applies only colour gains, as the Toolkit's pass-through shader does;
+`1` applies the full grade. CA correction itself is not ported. Missing values are Toolkit defaults (neutral).
+When every resulting shader parameter is neutral the pass is skipped (zero GPU cost). When the OpenXR Toolkit layer DLL
+is loaded in the same process ViewLab stands down so the image is never graded twice.
+
 ## Render crop (core perf feature)
 
 | ini key | range/default | DLL global | per-app | Notes |
@@ -93,7 +204,7 @@ the Session Library, with confirmation; valid raw evidence is never removed by a
 | `visor_antialiasing` | 0 | — | — | **Removed** — code disabled; key ignored. |
 | `preview_circle_guides` | 1 | UI-only | — | Preview calibration preference. `1` shows two overlapping true circles; `0` shows one binocular oval. Both use the same 85% width / 90% height periphery boundary and do not alter runtime. |
 | `preview_per_eye_frames` | 0 | UI-only | — | Independent frame-guide preference. `0` shows one combined binocular outer frame; `1` shows two overlapping per-eye rectangles at the actual `2064:2208` eye aspect. Guide-only; crop and runtime are unchanged. |
-| `preview_optical_centre` | 0 | UI-only | — | Optional Preview-menu display mode. `0` uses the geometric centre. `1` moves the complete preview coordinate system—frame/lens guides, crop, visor, crosshair, widgets and feature guides—together around the alternate optical centre. It never changes saved widget coordinates or runtime output. |
+| `preview_optical_centre` | — | retired | — | The separate preview-only toggle was removed: the main and per-app previews now show the optical-centred layout exactly when `optical_centring` (global, or the app's override) is on. |
 | `preview_ipd_mm` | 50.0..80.0 / 67.0 | UI-only | — | Calibration-helper IPD with 0.1 mm input steps. Changes only centre separation/overlap for the two-circle and two-per-eye-frame guides. It never changes crop, visor, overlays or native runtime output. |
 
 Global visor controls are always published through the generation-stamped live-state mapping while
@@ -130,8 +241,9 @@ visor-only checkbox as permission to discard the profile.
 | `calibration_motion_strip` | 0 | `calibrationMotionStrip` | Frame-serial-driven moving stripe marker for temporal artefacts. |
 | `hud_enabled` | 0 | `hudEnabled` | Enables the modular performance-widget row as one stereo-coherent visor-space element. |
 | `hud_trace_visibility_mode` | 0 | graph visibility | 0 off, 1 always visible, 2 alarm only. Alarm-only records while hidden, uses sustained widget alarm state, recovery hold and a 500 ms fade. |
+| `hud_visibility_mode` | derived from `hud_enabled` | whole HUD visibility | 0 off, 1 always visible, 2 alarm only. Alarm mode uses enabled widget alarms and the trace hold/fade durations. This is the sole HUD alarm setting. The visible section-header enable checkbox mirrors off/on with this dropdown in the global and per-app editors. |
 | `hud_trace_enabled` | 0 | migration only | Legacy boolean read only when `hud_trace_visibility_mode` is absent; saves mirror mode != off for older builds. |
-| `overlay_force_direct` | 0 | backend diagnostics | Automatic selection keeps projection-only applications on direct eye-texture rendering and demands Topmost only after a distinct application compositor layer appears. Set to 1 only for diagnostics. Topmost gets one stable allocation attempt per session; any failure latches direct fallback. |
+| `overlay_force_direct` | 1 | backend diagnostics | Direct eye-texture rendering is the default even when this key is absent from an existing installed config. Set to 0 only to try the ordered Topmost carrier. Topmost gets one stable allocation attempt per session; any failure latches direct fallback. Restart the game after changing this setting. |
 | `topmost_visor_overlays` | — | — | Legacy experimental switch; ignored. Backend choice is automatic. |
 | `hud_anchor_x`, `hud_anchor_y` | 0.04, 0.05 | `hudAnchorX`, `hudAnchorY` | Full-lens normalized position in the shared binocular coordinate system; crop clips rather than redefining X/Y. Live HUD sliders retain the full 0–1 range. |
 | `hud_scale`, `hud_spacing`, `hud_opacity` | 1.0, 0.018, 0.70 | shared overlay/HUD layout | Whole-widget scale (0.15–3.0), normalized gap, and opacity. Rings, literal labels, unit-bearing values, spacing, and padding scale together. |
@@ -143,7 +255,7 @@ visor-only checkbox as permission to discard the profile.
 | `hud_widget_{...}_order` | CPU,GPU,SYS,VR then catalogue | widget registry | Persisted order. Invalid/duplicate positions normalize to one occurrence of every widget. |
 | `hud_widget_{...}_warning`, `hud_widget_{...}_critical` | widget-specific | widget registry | Independent warning and critical thresholds for every active widget. VR/frame interval default to 102/105 percent of `predictedDisplayPeriod × detected cadence multiple`; their rolling distribution can also report unstable cadence or stable reprojection. SYS is inverse remaining headroom; network widgets use their displayed units. Legacy SYS/network keys are read only as migration fallbacks. `0/0` disables an alarm where there is no honest universal default. |
 | `hud_max_per_row` | 16 | migration only | Legacy field retained in the mapping/ini. Current HUD layout deliberately packs every enabled widget into one row; there is no row-limit control. |
-| `hud_graph_mode` | 0 | `HudGraphMode` | 0 deviation ms, 1 absolute milliseconds, 2 FPS, 3 percentage of cadence-aware budget. Incompatible channels are not mixed. |
+| `hud_graph_mode` | 0 | `HudGraphMode` | 0 deviation ms, 1 absolute milliseconds, 2 FPS, 3 percentage of cadence-aware budget, 4 frame cost (ms axes, budget line, CPU/GPU/Wait/Total readout; series from `hud_trace_cost_view`). Live. Incompatible channels are not mixed. |
 | `hud_graph_frame_interval`, `hud_graph_fps`, `hud_graph_budget_deviation`, `hud_graph_app_work`, `hud_graph_wait_duration`, `hud_graph_submit_duration`, `hud_graph_display_period` | 0,0,1,0,0,0,0 | graph channels | Independent bounded-history lines. Sources/units are defined in `PERFORMANCE_HUD_REDESIGN.md`; default remains one understandable deviation line. |
 | `hud_trace_sensitivity_ms` | 2 | `hudTraceSensitivityMs` | Deviation mode vertical range (±ms); in absolute-ms mode it supplies a minimum scale before automatic budget scaling. |
 | `hud_trace_x`, `hud_trace_y` | 0.05, 0.75 | graph layout | Live graph position within the shared binocular overlap. Legacy key names are retained for migration. |
@@ -152,11 +264,15 @@ visor-only checkbox as permission to discard the profile.
 | `performance_trace_recording` | 0 | native trace recorder | **Opt-in since 4.1.295.** While off the layer starts no hardware-telemetry collector thread, reserves no sample ring and writes no `session-*.csv`; the Session Graph and DiagMon simply have no new evidence. The collector also runs whenever `hud_enabled` or the Performance Trace overlay is on, because those overlays consume its samples. Recording resolves at session start, while HUD/trace enable arrives live and starts the collector mid-session. An upgrade clears a pre-4.1.295 stored `1` exactly once, tracked by the `DiagnosticsOptInApplied` marker under `HKCU\Software\cooooked\xr-viewlab`. Retains a bounded one-hour ring of the same QPC samples used by the visor graph. Each session checkpoints to a unique `%LOCALAPPDATA%\XR ViewLab\PerformanceTraces\session-*.csv`; `latest.csv` remains a hard-link/copy compatibility alias. The DiagMonster Session Graph browser opens, compares and explicitly deletes retained sessions. Abrupt exit does not require a shutdown callback. |
 | `performance_trace_marker_vk` | 119 (F8) | native trace marker | Windows virtual-key code for a rising-edge marker bind (UI offers F6–F12). Each press receives an exact QPC timestamp, numbered visor confirmation and post-session graph marker. Read at session startup. |
 | `crosshair_offset_x`, `crosshair_offset_y` | 0, 0 | `crosshairOffsetX`, `crosshairOffsetY` | User calibration in normalized full-lens tangent coordinates. Applied to the lens-centre target before Lens Pinned clamping. |
-| `hud_alarm_only` | 0 | `hudAlarmOnly` | Hides widgets unless their sustained state is critical/unstable or within the post-recovery hold. Enabled alarming widgets pack together; the graph remains independent. |
+| `hud_alarm_only` | retired | ignored | Legacy alarm-only symbols filter; the single Visibility dropdown now controls the whole HUD. |
 | `hud_alarm_hold_ms` | 1500 | `hudAlarmHoldMs` | How long a red indicator stays visible from the first non-critical input (0–10000 ms). The deadline is not refreshed by the latched red display state. Cadence metrics enter after 300 ms so high-refresh bursts remain visible; all other metrics retain 750 ms sustained entry and every metric retains 750 ms recovery. |
 | `hud_debug_values` | 0 | HUD telemetry | Development values: `hud_debug_cpu`, `hud_debug_gpu`, `hud_debug_app` percentages and `hud_debug_vr` milliseconds. Old `hud_debug_system` is accepted as APP fallback. Normal APP is begin-return→end-entry wall time / cadence-aware budget; VR is wait-return cadence relative to `predictedDisplayPeriod × detected multiple` (1–4). |
 | `network_probe_target` | 1.1.1.1 | network worker | Numeric IPv4 target for optional network HUD probes. It describes that path only; it is not automatically a game server. Global and active per-app changes apply live. |
 | `clock_widget_enabled`, `clock_session_timer_enabled` | 0, 1 | clock card | Clock visibility and the independent elapsed-session lane. With the timer disabled the card collapses to one lane. Both apply live. |
+| `clock_timer_mode` | 0 | lower clock lane | 0 existing session timer, 1 pausable session stopwatch, 2 countdown, 3 next local target time. The current local time remains on the upper lane. |
+| `clock_countdown_minutes` | 15 | countdown | 1–180 minutes, starts on successful XR session creation. |
+| `clock_target_hour`, `clock_target_minute` | 17, 46 | target clock | Local 24-hour time. A target at or before the current local second resolves to tomorrow; the remaining interval then advances monotonically, so wall-clock adjustments during the session do not jump the timer. |
+| `clock_alarm_enabled` | 1 | zero indicator | At zero the lower lane turns red with a restrained 1 Hz visual pulse; no audio or haptics. Amber begins at 25% remaining, red at 10%. |
 | `clock_24_hour`, `clock_widget_theme`, `clock_widget_palette` | 1, 0, 0 | clock presentation | Selects 24-hour versus 12-hour AM/PM text, card design (Classic/Minimal/Terminal/Banner) and colours (Graphite/Paper/OLED/Amber/Mint). Global and active per-app changes apply live. |
 | `clock_widget_x`, `clock_widget_y` | 0.50, 0.10 | clock layout | Widget centre in the shared binocular render-area frame (0–1). Bounds are clamped to the current shared overlap. |
 | `clock_widget_scale`, `clock_widget_opacity` | 1.0, 0.82 | clock layout | Whole-widget angular scale (0.1-2.0) and card/text opacity (0.1-1.0). The slider and preview resize pin share this scale range. Applies live. |
@@ -183,6 +299,7 @@ visor-only checkbox as permission to discard the profile.
 | `iracing_spotter_width`, `iracing_spotter_strength`, `iracing_spotter_opacity`, `iracing_spotter_fade` | 0.12, 1.0, 0.65, 1.8 | racing renderer | Peripheral width (0.03–0.70), intensity multiplier (0.1–4.0), edge-alpha control (0.05–2.0) and inward falloff exponent. |
 | `iracing_spotter_fade_in_ms`, `iracing_spotter_fade_out_ms` | 0, 0 | racing renderer | Optional activation/deactivation envelope durations in milliseconds; zero preserves immediate transitions. |
 | `iracing_spotter_color` | 16729344 (`FF4500`) | racing renderer | Decimal `0xRRGGBB` colour for side glows. |
+| `iracing_spotter_mode` | 0 | racing renderer | 0 Classic keeps the existing side cue and chosen colour. 1 Proximity colour uses its own 0–255 signal only when the nearest car behind is within two metres, drawing yellow through orange to red on both outer edges. `CarLeftRight` overlap replaces it with red `FF0000` on the confirmed side. Before overlap the data does not identify a side. The rear-closing cue has separate pressure detection, enable and theme. Published live in `iracingFlags` bit 8; spotter and rear themes use bits 9 and 10. |
 | `iracing_flag_width`, `iracing_flag_opacity` | 0.018, 0.60 | racing renderer | Inner flag-border width as eye-min-dimension fraction and alpha. Flag colour comes from the generic prioritised state. |
 | `iracing_lap_duration_ms` | 4500 | broker card queue | Lap result card lifetime, clamped to 1000–15000 ms. Independent of Windows-notification permission. |
 | `iracing_fuel_warning`, `iracing_fuel_warning_threshold_pct` | 0, 10 | iRacing provider | Fires a transient card once per crossing below the threshold, from the SDK's optional `FuelLevelPct`. Absent on cars/tracks that don't report it — no warning fires in that case. Clears via hysteresis (1.5× the threshold) rather than the instant fuel ticks back above the raw cutoff. |

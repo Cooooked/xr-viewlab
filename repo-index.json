@@ -35,6 +35,46 @@
     "neverReferenceFromCode": ["backups/", "reference/", "docs/history/"]
   },
   "subsystems": {
+    "frameCostTrace": {
+      "what": "Performance Trace Frame cost theme and D3D11 GPU frame timer",
+      "files": ["dllmain.cpp", "MainWindow.xaml", "XRViewLab.UI/MainWindow.cs"],
+      "symbols": ["GpuFrameTimerBegin", "GpuFrameTimerEnd", "g_hudLastGpuMs", "HudTraceTheme", "HudCostView", "hudTraceTheme"],
+      "tests": ["Tests/Verify-ViewLabContracts.ps1"],
+      "docs": ["docs/CONFIG.md", "docs/ARCHITECTURE.md"],
+      "keywords": ["frame cost", "GPU ms", "timestamp", "trace theme", "budget line"]
+    },
+    "racingCues2026": {
+      "what": "Pit limiter, rhythm shift light, spotter modes, rear-closing cue, racing state v3",
+      "files": ["XRViewLab.UI/IRacingTelemetryProvider.cs", "XRViewLab.UI/RacingStateService.cs", "XRViewLab.UI/ViewLabEvents.cs", "NotificationBroker/Program.cs", "RacingCueGeometry.h", "dllmain.cpp", "MainWindow.xaml", "XRViewLab.UI/MainWindow.cs", "XRViewLab.UI/LiveStateService.cs", "ProfileWindow.xaml", "ViewLabTheme.xaml"],
+      "symbols": ["PitLimiterWarning", "ShiftLightPack", "RacingFlagState.PitLimiter", "ViewLabEventKind.ShiftLight", "wantShiftLight", "iracingSpotterMode", "ApproachVisible", "SpotterColour", "iracingRearClosingTheme"],
+      "tests": ["Tests/Verify-ViewLabContracts.ps1", "Tests/RenderPolicyFixtures.cpp", "Tests/IRacingCuesFixtures/Program.cs"],
+      "docs": ["docs/CONFIG.md", "docs/ARCHITECTURE.md", "docs/REGRESSIONS.md"],
+      "keywords": ["pit limiter", "shift light", "RPM", "spotter mode", "radar", "amber approach", "red overlap", "rear closing theme", "chevrons"]
+    },
+    "colourGrade": {
+      "what": "OpenXR Toolkit post-processing port: per-eye full-screen colour grade in the direct D3D11 release path, before visor/overlays",
+      "files": ["dllmain.cpp", "docs/CONFIG.md", "docs/ARCHITECTURE.md"],
+      "symbols": ["LoadColourGradeConfig", "ComputeColourGradeParams", "GradeEyeTexture", "CachedGradeRtvFor", "EnsureColourGradePipeline", "ColourGradeActive", "kColourGradePS", "g_colourGrade"],
+      "tests": ["Tests/Verify-ViewLabContracts.ps1"],
+      "docs": ["docs/CONFIG.md", "docs/ARCHITECTURE.md"],
+      "keywords": ["colour", "color", "grade", "OpenXR Toolkit", "OXRTK", "post_process", "saturation", "contrast", "brightness", "exposure", "vibrance", "sunglasses"]
+    },
+    "stereoSubmissionResearch": {
+      "what": "Restricted secondary-position stereo shader adapter and offscreen software correctness harness; no game integration yet",
+      "files": ["ViewLabBridge/StereoSubmission.h", "ViewLabBridge/StereoShader.h", "ViewLabBridge/StereoShader.cpp", "Tools/StereoProbe/main.cpp", "Tools/StereoProbe/StereoProbe.vcxproj", "Tools/StereoProbe/build.ps1"],
+      "symbols": ["viewlab::bridge::stereo::Select", "viewlab::bridge::stereo::BuildGeometryAdapter", "Probe::Render"],
+      "tests": ["Tools/StereoProbe/build.ps1 -Test"],
+      "docs": ["docs/ARCHITECTURE.md", "docs/VERIFICATION.md", "docs/DECISIONS.md"],
+      "keywords": ["SPS", "AMD", "stereo", "NV_X_RIGHT", "NV_XYZW_RIGHT", "WARP", "instancing"]
+    },
+    "standaloneDynLod": {
+      "what": "Portable iRacing nine-key Dynamic LOD editor with World/Cars presets and Custom ranges alongside iRSidekick; no ViewLab runtime integration",
+      "files": ["Tools/DynLOD/MainWindow.xaml", "Tools/DynLOD/MainWindow.xaml.cs", "Tools/DynLOD/RangeRow.cs", "Tools/DynLOD/IniFile.cs", "Tools/DynLOD/Test-IracingNormalization.ps1", "Tools/DynLOD/EditorTheme.xaml", "Tools/DynLOD/ViewLabTheme.xaml", "Tools/DynLOD/build.ps1", "Tools/DynLOD/version.json", "Tools/DynLOD/README.md", "Tools/DynLOD/Assets/app.ico"],
+      "symbols": ["IniFile.Read", "IniFile.Apply", "RangeTrack.Snap", "MainWindow.Reload", "MainWindow.ApplyPreset", "MainWindow.DetectPresets"],
+      "tests": ["Tools/DynLOD/SelfTest.cs"],
+      "docs": ["docs/CONFIG.md", "docs/ARCHITECTURE.md"],
+      "keywords": ["DynLOD", "iRacing", "iRSidekick", "LODMinFPSTarget", "Replay Graphics"]
+    },
     "renderCrop": {
       "what": "Core perf feature: crops FOV tangents + recommended render size the game sees",
       "files": ["dllmain.cpp"],
@@ -128,13 +168,13 @@
       "keywords": ["DiagMon", "session library", "PresentMon", "capture", "baseline", "validation", "annotations", "AI export", "WPR", "recovery", "retention"]
     },
     "clockWidget": {
-      "what": "Live configurable one/two-lane stereo clock card with 12/24-hour time, elapsed session time and theme presets",
+      "what": "Live stereo clock card with session stopwatch, countdown and next local target time",
       "files": ["ClockWidget.h", "dllmain.cpp", "MainWindow.xaml", "XRViewLab.UI/MainWindow.cs", "XRViewLab.UI/LiveStateService.cs", "xr-viewlab.ini"],
-      "symbols": ["viewlab::clock_widget::Format", "clockWidgetEnabled", "g_clockSessionStartTick", "DrawViewLabOverlaysToTexture", "XRViewLab_xrCreateSession", "XRViewLab_xrDestroySession", "SaveCommonOverlaySettings"],
+      "symbols": ["viewlab::clock_widget::Format", "viewlab::clock_widget::TimerState", "ResetClockTimer", "clockWidgetEnabled", "g_clockSessionStartTick", "DrawViewLabOverlaysToTexture", "XRViewLab_xrCreateSession", "XRViewLab_xrDestroySession", "SaveCommonOverlaySettings"],
       "tests": ["Tests/RenderPolicyFixtures.cpp", "Tests/Invoke-RenderPolicyFixtures.ps1", "Tests/Verify-ViewLabContracts.ps1"],
       "docs": ["docs/ARCHITECTURE.md", "docs/CONFIG.md", "docs/DECISIONS.md#d22"],
       "invariants": ["elapsed time uses monotonic uptime and never wall-clock subtraction", "the epoch is successful xrCreateSession and resets at xrDestroySession", "timer visibility is independent and collapses the card to one lane", "theme format placement scale opacity and bind publish live", "the widget is independent of notifications and performance alarms", "both eyes use the common shared-tangent Direct/Topmost overlay path"],
-      "keywords": ["clock", "local time", "VR session", "session timer", "elapsed", "visor widget"]
+      "keywords": ["clock", "local time", "VR session", "session timer", "countdown", "stopwatch", "target alarm", "elapsed", "visor widget"]
     },
     "stickyNoteWidget": {
       "what": "Bounded collection of independently styled 8-bit or HD Paper native visor notes with a shared visibility bind",

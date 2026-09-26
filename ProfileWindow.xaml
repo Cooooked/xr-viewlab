@@ -1,5 +1,5 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Window x:Class="XRViewLab.UI.ProfileWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="ViewLab App Profile" Width="560" Height="720" ResizeMode="NoResize" WindowStyle="None" AllowsTransparency="True" WindowStartupLocation="CenterOwner" Background="#00FFFFFF" Foreground="#E8E8E8" FontFamily="Segoe UI" FontSize="14" xmlns:ui="clr-namespace:XRViewLab.UI">
+<?xml version="1.0" encoding="utf-8"?>
+<Window x:Class="XRViewLab.UI.ProfileWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="ViewLab App Profile" Width="415" Height="720" ResizeMode="NoResize" WindowStyle="None" AllowsTransparency="True" WindowStartupLocation="CenterOwner" Background="#00FFFFFF" Foreground="#E8E8E8" FontFamily="Segoe UI" FontSize="14" xmlns:ui="clr-namespace:XRViewLab.UI">
   <FrameworkElement.Resources>
     <ResourceDictionary>
       <!-- Supplies the CheckBox and ComboBox styles this window never declared: without them WPF's
@@ -100,45 +100,6 @@
           </Setter.Value>
         </Setter>
       </Style>
-      <Style x:Key="ProfileScrollBar" TargetType="{x:Type ScrollBar}">
-        <Setter Property="Background" Value="#0B0C0D" />
-        <Setter Property="Width" Value="8" />
-        <Setter Property="Template">
-          <Setter.Value>
-            <ControlTemplate TargetType="{x:Type ScrollBar}">
-              <Border Background="{TemplateBinding Background}" CornerRadius="4">
-                <Track Name="PART_Track" IsDirectionReversed="True" Margin="1,4">
-                  <Track.Thumb>
-                    <Thumb>
-                      <Thumb.Template>
-                        <ControlTemplate TargetType="{x:Type Thumb}">
-                          <Border Background="#C90012" BorderBrush="#FF5960" BorderThickness="1" CornerRadius="4" MinHeight="24" />
-                        </ControlTemplate>
-                      </Thumb.Template>
-                    </Thumb>
-                  </Track.Thumb>
-                </Track>
-              </Border>
-            </ControlTemplate>
-          </Setter.Value>
-        </Setter>
-      </Style>
-      <Style x:Key="ProfileScrollViewer" TargetType="{x:Type ScrollViewer}">
-        <Setter Property="Template">
-          <Setter.Value>
-            <ControlTemplate TargetType="{x:Type ScrollViewer}">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="8" />
-                </Grid.ColumnDefinitions>
-                <ScrollContentPresenter Grid.Column="0" Name="PART_ScrollContentPresenter" Content="{TemplateBinding ContentControl.Content}" ContentTemplate="{TemplateBinding ContentControl.ContentTemplate}" CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}" />
-                <ScrollBar Grid.Column="1" Name="PART_VerticalScrollBar" Orientation="Vertical" Visibility="{TemplateBinding ScrollViewer.ComputedVerticalScrollBarVisibility}" Maximum="{TemplateBinding ScrollViewer.ScrollableHeight}" ViewportSize="{TemplateBinding ScrollViewer.ViewportHeight}" Value="{TemplateBinding ScrollViewer.VerticalOffset}" Style="{StaticResource ProfileScrollBar}" />
-              </Grid>
-            </ControlTemplate>
-          </Setter.Value>
-        </Setter>
-      </Style>
     </ResourceDictionary>
   </FrameworkElement.Resources>
   <Border Background="#171819" BorderBrush="#303236" BorderThickness="1" CornerRadius="10">
@@ -154,7 +115,7 @@
         </Grid>
       </Border>
       <Border Grid.Row="1" Margin="16" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="18">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Style="{StaticResource ProfileScrollViewer}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Style="{StaticResource ViewLabScrollViewer}">
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="90" />
@@ -236,15 +197,34 @@
 			  <TextBlock Grid.Row="6" Grid.Column="0" Text="Nose Spread X" Visibility="Collapsed" />
 			  <Slider Name="VisorNoseSpreadXSlider" Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="0.5" Visibility="Collapsed" />
             </Grid>
-            <ui:BeanMaskEditor x:Name="MaskBeanEditor" Margin="0,4,0,0" ShapeChanged="MaskBeanEditor_ShapeChanged" OverlayPreviewChanged="MaskBeanEditor_OverlayPreviewChanged" ToolTip="Hover to inspect live full-lens and crop coordinates. Drag handles use the same coordinates as the main preview." />
+            <ui:BeanMaskEditor x:Name="MaskBeanEditor" WheelZoomRequiresClick="True" Margin="0,4,0,0" ShapeChanged="MaskBeanEditor_ShapeChanged" OverlayPreviewChanged="MaskBeanEditor_OverlayPreviewChanged" ToolTip="Hover to inspect live full-lens and crop coordinates. Drag handles use the same coordinates as the main preview." />
           </StackPanel>
           <StackPanel Grid.Row="13" Grid.RowSpan="6" Grid.ColumnSpan="3" Margin="0,4,0,10">
             <Rectangle Height="1" Fill="{StaticResource BorderBrush}" Margin="0,4,0,8" />
+            <TextBlock Text="OPTICAL CENTRING" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
+            <ComboBox Name="ProfileOpticalCentring" SelectionChanged="ProfileOpticalCentring_Changed" HorizontalAlignment="Left" MinWidth="160" ToolTip="Centre this game's cropped render on the lens's optical centre. Use global follows the main window setting. Applies on the next game launch.">
+              <ComboBoxItem Content="Use global"/><ComboBoxItem Content="On"/><ComboBoxItem Content="Off"/>
+            </ComboBox>
+            <Rectangle Height="1" Fill="{StaticResource BorderBrush}" Margin="0,8,0,8" />
+            <TextBlock Text="COLOUR" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
+            <TextBlock Name="ProfileColourSummary" Foreground="#C8C8C8" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,4" />
+            <TextBlock Text="In the headset: Ctrl+F2 opens the colour menu (Ctrl+W/S select, Ctrl+A/D change). Ctrl+Alt+C runs brightness calibration. Both save for this game only." Foreground="{StaticResource MutedBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,4" />
+            <TextBlock Text="Fast colour (lookup table)" FontSize="10" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,1"/>
+            <ComboBox Name="ProfileColourLut" SelectionChanged="ProfileColourLut_Changed" HorizontalAlignment="Left" MinWidth="160" Margin="0,0,0,4" ToolTip="Colour engine for this game. Use global follows the Render menu. On = one quick lookup per pixel (steady cost); Off = full per-pixel maths. Applies live when this game is running.">
+              <ComboBoxItem Content="Use global"/><ComboBoxItem Content="On"/><ComboBoxItem Content="Off"/>
+            </ComboBox>
+            <Button Content="Reset this game's colour to global" HorizontalAlignment="Left" Padding="8,2" Click="ResetColour_Click" />
+            <Rectangle Height="1" Fill="{StaticResource BorderBrush}" Margin="0,8,0,8" />
             <TextBlock Text="OVERLAYS" Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" Margin="0,0,0,5" />
             <TextBlock Text="Enabled widgets use this app's layout in the preview. Expand a row to edit its app-specific presentation." Foreground="{StaticResource MutedBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,5" />
-            <Expander IsExpanded="False"><Expander.Header><DockPanel Width="445"><CheckBox Name="ProfileClockEnabled" Tag="clock:clock_widget_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/><TextBlock Text="Clock" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
+            <Expander IsExpanded="False"><Expander.Header><DockPanel><CheckBox Name="ProfileClockEnabled" Tag="clock:clock_widget_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/><TextBlock Text="Clock" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
               <CheckBox Content="Use global values" Tag="inherit:clock" Foreground="#8AB4F8" Margin="0,0,0,4" Checked="OverlayInherit_Changed" Unchecked="OverlayInherit_Changed" ToolTip="When ticked, this overlay uses the global settings and follows future global changes. Untick to customise it for this app only."/>
               <CheckBox Name="ProfileClockTimer" Content="Show VR session timer underneath" Tag="clock:clock_session_timer_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/>
+              <TextBlock Text="Timer mode" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Tag="clock:clock_timer_mode" SelectionChanged="OverlaySetting_Changed"><ComboBoxItem Content="Session timer"/><ComboBoxItem Content="Session stopwatch"/><ComboBoxItem Content="Countdown"/><ComboBoxItem Content="Local target time"/></ComboBox>
+              <TextBlock Text="Countdown minutes" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Minimum="1" Maximum="180" TickFrequency="1" IsSnapToTickEnabled="True" Tag="clock:clock_countdown_minutes" ValueChanged="OverlaySlider_Changed"/>
+              <TextBlock Text="Local target hour (0–23)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Minimum="0" Maximum="23" TickFrequency="1" IsSnapToTickEnabled="True" Tag="clock:clock_target_hour" ValueChanged="OverlaySlider_Changed"/>
+              <TextBlock Text="Local target minute (0–59)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Minimum="0" Maximum="59" TickFrequency="1" IsSnapToTickEnabled="True" Tag="clock:clock_target_minute" ValueChanged="OverlaySlider_Changed"/>
+              <CheckBox Content="Alert at zero" Tag="clock:clock_alarm_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/>
               <CheckBox Name="ProfileClock24Hour" Content="Use 24-hour time" Tag="clock:clock_24_hour" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/>
               <TextBlock Text="Show / hide hotkey" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileClockHotkey" Tag="clock:overlay_clock_toggle_vk" SelectionChanged="OverlaySetting_Changed"/>
               <TextBlock Text="Theme (design)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileClockTheme" Tag="clock:clock_widget_theme" SelectionChanged="OverlaySetting_Changed"><ComboBoxItem Content="Classic Card"/><ComboBoxItem Content="Minimal"/><ComboBoxItem Content="Terminal"/><ComboBoxItem Content="Banner"/></ComboBox>
@@ -253,28 +233,34 @@
               <TextBlock Text="Opacity" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Name="ProfileClockOpacity" Minimum="0.1" Maximum="1" Tag="clock:clock_widget_opacity" ValueChanged="OverlaySlider_Changed"/>
             </StackPanel></Expander>
             <Separator Margin="0,5"/>
-            <Expander IsExpanded="False"><Expander.Header><DockPanel Width="445"><CheckBox Name="ProfileHudEnabled" Tag="hud:hud_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/><TextBlock Text="Performance HUD" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
+            <Expander IsExpanded="False"><Expander.Header><DockPanel><CheckBox Name="ProfileHudEnabled" Tag="hud:hud_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed" ToolTip="Enable Performance HUD for this app. The visibility dropdown chooses always visible or alarm only."/><TextBlock Text="Performance HUD" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
               <CheckBox Content="Use global values" Tag="inherit:hud" Foreground="#8AB4F8" Margin="0,0,0,4" Checked="OverlayInherit_Changed" Unchecked="OverlayInherit_Changed" ToolTip="When ticked, this overlay uses the global settings and follows future global changes. Untick to customise it for this app only."/>
-              <CheckBox Name="ProfileHudAlarmOnly" Content="Alarm-only symbols" Tag="hud:hud_alarm_only" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/>
+              <TextBlock Text="Visibility" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileHudVisibility" Tag="hud:hud_visibility_mode" SelectionChanged="OverlaySetting_Changed"><ComboBoxItem Content="Off"/><ComboBoxItem Content="Always visible"/><ComboBoxItem Content="Alarm only"/></ComboBox>
               <TextBlock Text="Show / hide hotkey" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileHudHotkey" Tag="hud:overlay_hud_toggle_vk" SelectionChanged="OverlaySetting_Changed"/>
               <TextBlock Text="Scale" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Name="ProfileHudScale" Minimum="0.15" Maximum="3" Tag="hud:hud_scale" ValueChanged="OverlaySlider_Changed"/>
               <TextBlock Text="Opacity" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Name="ProfileHudOpacity" Minimum="0.1" Maximum="1" Tag="hud:hud_opacity" ValueChanged="OverlaySlider_Changed"/>
               <TextBlock Text="Widgets (enabled and order)" FontSize="10" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,2"/>
-              <ListBox Name="ProfileHudWidgetList" Background="Transparent" BorderThickness="0"><ListBox.ItemTemplate><DataTemplate><Grid Margin="0,1"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <ListBox Name="ProfileHudWidgetList" Background="Transparent" BorderThickness="0" Foreground="#E8E8E8"><ListBox.ItemTemplate><DataTemplate><Grid Margin="0,1"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <CheckBox IsChecked="{Binding Enabled,Mode=TwoWay}" Checked="ProfileHudWidget_Changed" Unchecked="ProfileHudWidget_Changed"/><TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="10" Margin="5,0"/><CheckBox Grid.Column="2" Content="Symbol" IsChecked="{Binding UseSymbol,Mode=TwoWay}" Checked="ProfileHudWidget_Changed" Unchecked="ProfileHudWidget_Changed" FontSize="9"/><Button Grid.Column="3" Content="↑" CommandParameter="{Binding Id}" Click="ProfileHudWidgetUp_Click" Padding="5,1"/><Button Grid.Column="4" Content="↓" CommandParameter="{Binding Id}" Click="ProfileHudWidgetDown_Click" Padding="5,1"/>
                 <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="65"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="65"/></Grid.ColumnDefinitions><TextBlock Text="Warn" FontSize="9"/><TextBox Grid.Column="1" Text="{Binding Warning,Mode=TwoWay,UpdateSourceTrigger=LostFocus,StringFormat=0.###}" LostFocus="ProfileHudThreshold_Changed"/><TextBlock Grid.Column="2" Text="Critical" FontSize="9" Margin="6,0,3,0"/><TextBox Grid.Column="3" Text="{Binding Critical,Mode=TwoWay,UpdateSourceTrigger=LostFocus,StringFormat=0.###}" LostFocus="ProfileHudThreshold_Changed"/></Grid>
               </Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
               <TextBlock Text="Network probe target (IPv4)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBox Name="ProfileNetworkTarget" Tag="hud:network_probe_target" LostFocus="OverlayText_Changed"/>
             </StackPanel></Expander>
             <Separator Margin="0,5"/>
-            <Expander IsExpanded="False"><Expander.Header><DockPanel Width="445"><CheckBox Name="ProfileTraceEnabled" Tag="trace:hud_trace_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/><TextBlock Text="Performance Trace" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
+            <Expander IsExpanded="False"><Expander.Header><DockPanel><CheckBox Name="ProfileTraceEnabled" Tag="trace:hud_trace_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/><TextBlock Text="Performance Trace" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
               <CheckBox Content="Use global values" Tag="inherit:trace" Foreground="#8AB4F8" Margin="0,0,0,4" Checked="OverlayInherit_Changed" Unchecked="OverlayInherit_Changed" ToolTip="When ticked, this overlay uses the global settings and follows future global changes. Untick to customise it for this app only."/>
               <TextBlock Text="Visibility" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileTraceVisibility" Tag="trace:hud_trace_visibility_mode" SelectionChanged="OverlaySetting_Changed"><ComboBoxItem Content="Off"/><ComboBoxItem Content="Always visible"/><ComboBoxItem Content="Alarm only"/></ComboBox>
-              <TextBlock Text="Graph mode" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileTraceGraphMode" Tag="trace:hud_graph_mode" SelectionChanged="OverlaySetting_Changed"><ComboBoxItem Content="Budget deviation (ms)"/><ComboBoxItem Content="Absolute milliseconds"/><ComboBoxItem Content="FPS"/><ComboBoxItem Content="Percent of frame budget"/></ComboBox>
+              <TextBlock Text="Graph mode" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileTraceGraphMode" Tag="trace:hud_graph_mode" SelectionChanged="OverlaySetting_Changed"><ComboBoxItem Content="Budget deviation (ms)"/><ComboBoxItem Content="Absolute milliseconds"/><ComboBoxItem Content="FPS"/><ComboBoxItem Content="Percent of frame budget"/><ComboBoxItem Content="Frame cost (ms vs budget)"/></ComboBox>
+              <TextBlock Text="Frame cost lines (overlaid)" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
+              <WrapPanel ToolTip="Total = the slower of CPU and GPU. CPU covers xrWaitFrame returning through xrEndFrame. GPU is measured with D3D11 timestamps."><CheckBox Name="ProfileCostTotal" Content="Total" Margin="0,0,8,2" Checked="ProfileTraceCost_Changed" Unchecked="ProfileTraceCost_Changed"/><CheckBox Name="ProfileCostCpu" Content="CPU" Margin="0,0,8,2" Checked="ProfileTraceCost_Changed" Unchecked="ProfileTraceCost_Changed"/><CheckBox Name="ProfileCostGpu" Content="GPU" Margin="0,0,8,2" Checked="ProfileTraceCost_Changed" Unchecked="ProfileTraceCost_Changed"/><CheckBox Name="ProfileCostWait" Content="Wait" Checked="ProfileTraceCost_Changed" Unchecked="ProfileTraceCost_Changed"/></WrapPanel>
+              <TextBlock Text="Frame cost labels" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileCostLabels" Tag="trace:hud_trace_cost_labels" SelectionChanged="OverlaySetting_Changed"><ComboBoxItem Content="Full"/><ComboBoxItem Content="Minimal+"/><ComboBoxItem Content="Minimal"/></ComboBox>
               <TextBlock Text="Show / hide hotkey" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileTraceHotkey" Tag="trace:overlay_trace_toggle_vk" SelectionChanged="OverlaySetting_Changed"/>
               <CheckBox Name="ProfileTraceRecording" Content="Record real session trace" Tag="trace:performance_trace_recording" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/>
               <TextBlock Text="Numbered marker bind" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileTraceMarker" Tag="trace:performance_trace_marker_vk" SelectionChanged="OverlaySetting_Changed"><ComboBoxItem Content="F6"/><ComboBoxItem Content="F7"/><ComboBoxItem Content="F8"/><ComboBoxItem Content="F9"/><ComboBoxItem Content="F10"/><ComboBoxItem Content="F11"/><ComboBoxItem Content="F12"/></ComboBox>
-              <TextBlock Text="Alarm sensitivity (ms)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Name="ProfileTraceSensitivity" Minimum="0.5" Maximum="8" Tag="trace:hud_trace_sensitivity_ms" ValueChanged="OverlaySlider_Changed"/>
+              <TextBlock Name="ProfileTraceSensitivityLabel" Text="Deviation sensitivity (ms)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Name="ProfileTraceSensitivity" Minimum="0.5" Maximum="8" Tag="trace:hud_trace_sensitivity_ms" ValueChanged="OverlaySlider_Changed"/>
+              <TextBlock Name="ProfileTraceAlarmSensitivityLabel" Text="Alarm sensitivity (0 - 1)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Name="ProfileTraceAlarmSensitivity" Minimum="0" Maximum="1" Tag="trace:hud_trace_alarm_sensitivity" ValueChanged="OverlaySlider_Changed" ToolTip="Frame cost, Alarm only: 1 = pops up on a single over-budget frame, 0 = practically never."/>
+              <TextBlock Text="Fade in (ms)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Name="ProfileTraceFadeIn" Minimum="0" Maximum="1000" Tag="trace:hud_trace_fade_in_ms" ValueChanged="OverlaySlider_Changed" ToolTip="Alarm only: how long the trace fades in. 0 = instant."/>
+              <TextBlock Text="Fade out (ms)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Name="ProfileTraceFadeOut" Minimum="0" Maximum="1000" Tag="trace:hud_trace_fade_out_ms" ValueChanged="OverlaySlider_Changed" ToolTip="Alarm only: how long the trace fades out. 0 = instant."/>
               <TextBlock Text="Width" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Name="ProfileTraceWidth" Minimum="0.1" Maximum="1" Tag="trace:hud_trace_width" ValueChanged="OverlaySlider_Changed"/>
               <TextBlock Text="History (seconds)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Name="ProfileTraceHistory" Minimum="30" Maximum="600" Tag="trace:hud_trace_history" ValueChanged="OverlaySlider_Changed"/>
               <TextBlock Text="Scale" FontSize="10" Foreground="{StaticResource MutedBrush}"/><Slider Name="ProfileTraceScale" Minimum="0.25" Maximum="3" Tag="trace:hud_trace_scale" ValueChanged="OverlaySlider_Changed"/>
@@ -282,7 +268,7 @@
               <TextBlock Text="Graph channels" FontSize="10" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,2"/><WrapPanel><CheckBox Content="Frame interval" Tag="trace:hud_graph_frame_interval" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed" Margin="0,0,8,2"/><CheckBox Content="FPS" Tag="trace:hud_graph_fps" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed" Margin="0,0,8,2"/><CheckBox Content="Budget" Tag="trace:hud_graph_budget_deviation" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed" Margin="0,0,8,2"/><CheckBox Content="APP work" Tag="trace:hud_graph_app_work" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed" Margin="0,0,8,2"/><CheckBox Content="Wait" Tag="trace:hud_graph_wait_duration" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed" Margin="0,0,8,2"/><CheckBox Content="Submit" Tag="trace:hud_graph_submit_duration" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed" Margin="0,0,8,2"/><CheckBox Content="Display period" Tag="trace:hud_graph_display_period" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/></WrapPanel>
             </StackPanel></Expander>
             <Separator Margin="0,5"/>
-            <Expander IsExpanded="False"><Expander.Header><DockPanel Width="445"><CheckBox Name="ProfileStickyEnabled" Tag="sticky:sticky_note_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/><TextBlock Text="Sticky Notes" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
+            <Expander IsExpanded="False"><Expander.Header><DockPanel><CheckBox Name="ProfileStickyEnabled" Tag="sticky:sticky_note_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/><TextBlock Text="Sticky Notes" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
               <CheckBox Content="Use global values" Tag="inherit:sticky" Foreground="#8AB4F8" Margin="0,0,0,4" Checked="OverlayInherit_Changed" Unchecked="OverlayInherit_Changed" ToolTip="When ticked, this overlay uses the global settings and follows future global changes. Untick to customise it for this app only."/>
               <TextBlock Text="Show / hide hotkey" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileStickyHotkey" Tag="sticky:overlay_sticky_note_toggle_vk" SelectionChanged="OverlaySetting_Changed"/>
               <ItemsControl Name="ProfileStickyNotesList" Style="{StaticResource StickyNoteCollection}">
@@ -303,7 +289,7 @@
               <Button Content="Add sticky note" Click="ProfileStickyAdd_Click" Padding="7,2" HorizontalAlignment="Left"/>
             </StackPanel></Expander>
             <Separator Margin="0,5"/>
-            <Expander IsExpanded="False"><Expander.Header><DockPanel Width="445"><CheckBox Name="ProfileCrosshairEnabled" Tag="crosshair:crosshair_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/><TextBlock Text="Crosshair" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
+            <Expander IsExpanded="False"><Expander.Header><DockPanel><CheckBox Name="ProfileCrosshairEnabled" Tag="crosshair:crosshair_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/><TextBlock Text="Crosshair" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
               <CheckBox Content="Use global values" Tag="inherit:crosshair" Foreground="#8AB4F8" Margin="0,0,0,4" Checked="OverlayInherit_Changed" Unchecked="OverlayInherit_Changed" ToolTip="When ticked, this overlay uses the global settings and follows future global changes. Untick to customise it for this app only."/>
               <TextBlock Text="Show / hide hotkey" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileCrosshairHotkey" Tag="crosshair:overlay_crosshair_toggle_vk" SelectionChanged="OverlaySetting_Changed"/>
               <WrapPanel><CheckBox Name="ProfileCrosshairDot" Content="Centre dot" Tag="crosshair:crosshair_dot" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed" Margin="0,0,10,0"/><CheckBox Name="ProfileCrosshairOutline" Content="Outline" Tag="crosshair:crosshair_outline" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed" Margin="0,0,10,0"/><CheckBox Name="ProfileCrosshairTStyle" Content="T-style" Tag="crosshair:crosshair_tstyle" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/></WrapPanel>
@@ -316,7 +302,7 @@
               <TextBlock Text="Colour (decimal RGB)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBox Name="ProfileCrosshairColor" Tag="crosshair:crosshair_color" LostFocus="OverlayText_Changed"/>
             </StackPanel></Expander>
             <Separator Margin="0,5"/>
-            <Expander IsExpanded="False"><Expander.Header><DockPanel Width="445"><CheckBox Name="ProfileNotifyEnabled" Tag="notifications:notify_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/><TextBlock Text="Notifications" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
+            <Expander IsExpanded="False"><Expander.Header><DockPanel><CheckBox Name="ProfileNotifyEnabled" Tag="notifications:notify_enabled" Checked="OverlaySetting_Changed" Unchecked="OverlaySetting_Changed"/><TextBlock Text="Notifications" Margin="7,0,0,0" FontWeight="SemiBold"/></DockPanel></Expander.Header><StackPanel Margin="20,4,0,5">
               <CheckBox Content="Use global values" Tag="inherit:notifications" Foreground="#8AB4F8" Margin="0,0,0,4" Checked="OverlayInherit_Changed" Unchecked="OverlayInherit_Changed" ToolTip="When ticked, this overlay uses the global settings and follows future global changes. Untick to customise it for this app only."/>
               <TextBlock Text="Show / hide hotkey" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileNotifyHotkey" Tag="notifications:overlay_notifications_toggle_vk" SelectionChanged="OverlaySetting_Changed"/>
               <TextBlock Text="Theme (design)" FontSize="10" Foreground="{StaticResource MutedBrush}"/><ComboBox Name="ProfileNotifyTheme" Tag="notifications:notify_theme" SelectionChanged="OverlaySetting_Changed"><ComboBoxItem Content="Classic"/><ComboBoxItem Content="Compact Banner"/><ComboBoxItem Content="Minimal"/><ComboBoxItem Content="Bold"/></ComboBox>
@@ -342,12 +328,14 @@
             <TextBlock Text="This feature module uses its existing global detailed configuration." FontSize="10" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="20,2,0,0"/>
           </StackPanel>
           <TextBlock Name="CombinedHint" Grid.Row="19" Grid.ColumnSpan="3" Foreground="{StaticResource MutedBrush}" />
-          <StackPanel Grid.Row="21" Grid.ColumnSpan="3" Orientation="Horizontal">
-            <Button Content="Save" Style="{StaticResource RedButton}" MinWidth="86" Click="Save_Click" />
-            <Button Content="Use Global Values" MinWidth="132" Margin="10,0,0,0" Click="UseGlobal_Click" />
-            <Button Name="HideShowButton" Content="Hide Selected" MinWidth="112" Margin="10,0,0,0" Click="HideShow_Click" />
-            <Button Content="Cancel" MinWidth="86" Margin="10,0,0,0" Click="Cancel_Click" />
-          </StackPanel>
+          <Grid Grid.Row="21" Grid.ColumnSpan="3">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <Button Grid.Row="0" Grid.Column="0" Content="Save" Style="{StaticResource RedButton}" Margin="0,0,5,5" Click="Save_Click" />
+            <Button Grid.Row="0" Grid.Column="1" Content="Use Global Values" Margin="5,0,0,5" Click="UseGlobal_Click" />
+            <Button Grid.Row="1" Grid.Column="0" Name="HideShowButton" Content="Hide Selected" Margin="0,5,5,0" Click="HideShow_Click" />
+            <Button Grid.Row="1" Grid.Column="1" Content="Cancel" Margin="5,5,0,0" Click="Cancel_Click" />
+          </Grid>
         </Grid>
         </ScrollViewer>
       </Border>

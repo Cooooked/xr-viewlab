@@ -1,5 +1,21 @@
 # Decision log
 
+## Stereo research uses software correctness first (2026-09-10)
+
+The user is gaming during implementation. Standalone stereo correctness tests therefore use D3D11 WARP,
+not their hardware adapter or VR runtime. No game is launched until an integration candidate is ready.
+The first translator targets explicit secondary clip-position semantics; it never infers missing geometry
+from a finished eye image. Synthetic draw/VS reductions are not evidence of iRacing performance. Protected
+iRacing interception retains the existing acceptance gate; independent implementation continues beforehand.
+
+
+## Standalone DynLOD companion (2026-09-07)
+
+DynLOD is a direct nine-key editor alongside iRSidekick, not a profile manager. Both Apply actions use the same
+displayed values, merge into a fresh disk read, and retain the edit buffer. No automatic watching or fighting
+other writers. Refresh/source selection intentionally rereads disk. UI language describes detail/render cost;
+100 is neutral and FPS Target is literal. It is delivered as a portable executable with no installer.
+
 ## D33 — Cadence health is runtime-relative and burst-aware (2026-08-30)
 
 Performance health never selects policy by headset name or a fixed refresh allowlist. ViewLab divides each real
@@ -277,7 +293,10 @@ composition backend is prepared without submission on that transition frame, the
 scene drawing is suppressed and Topmost is appended on following frames. Literal-pixel calibration
 continues to measure the submitted game texture. Any Topmost failure permanently selects direct for
 that session. Keep `overlay_force_direct` as an advanced diagnostic escape. The one-attempt,
-no-duplicate-transition and device-loss latches are release invariants.
+no-duplicate-transition and device-loss latches are release invariants. Since 4.1.397, direct
+presentation is the shipped default even when an installed config lacks the key: Virtual Desktop
+can accept the separate projection carrier without visibly compositing it. Explicit 0 remains an
+ordered-carrier diagnostic.
 
 ## D17 — Performance markers are events in the real QPC trace (2026-07-14)
 
@@ -458,3 +477,15 @@ Because the viable routes require in-process D3D11 or NVAPI interception and iRa
 no protected-session test or distributable iRacing integration proceeds without written acceptance from the
 relevant vendor(s). Public-interface research and a synthetic D3D11 harness may proceed independently. Binary
 patching, private-interface reverse engineering, and generic post-hoc eye-pass merging are rejected.
+# 2026-09-26: RaceLab radar colour and iRacing spotter data
+
+RaceLab's public [Radar description](https://racelab.app/) says it shows opponents ahead, behind and to the sides, but does not publish the orange/red rule or thresholds. A [user report](https://www.reddit.com/r/iRacing/comments/1c00ags) describes a yellow approach glow and red bars beside the car; that is observational evidence, not RaceLab's algorithm. iRacing's [release notes](https://us.v-cdn.net/6034148/uploads/OWC6QXAD3CYE/release-notes-history.pdf) describe `CarLeftRight` as a left/right spotter enum. The current provider reads that enum and `CarIdxLapDistPct`, which gives longitudinal track position but no lateral gap or precise side overlap. The optional Radar-style spotter mode therefore reuses the existing nearest-behind closing cue for a side-neutral amber approach, then uses `CarLeftRight` for a red confirmed-side cue. The 40 m, 1.5 m/s entry and 0.6 m/s release thresholds are ViewLab's existing rear-cue values, not claimed as RaceLab's. Classic remains the default and keeps its colour and independent rear cue. Revisit precision only with verified positional data or a documented RaceLab rule.
+
+# 2026-09-26: Clock timer timing
+
+The countdown and target timer resolve a duration when the XR session starts, then measure it with monotonic `GetTickCount64`. Pause/resume accumulates elapsed time. A local target at or before the current local second means the next day. No per-frame persistence, audio, haptics, or worker is introduced; the fused clock card draws the second lane using existing block glyphs.
+
+## D30 — Proximity colour stays inside the peripheral spotter (2026-09-26)
+
+The colour mode changes the existing spotter glow or edge line. Longitudinal closing telemetry can justify a side-neutral yellow/orange warning on both outer edges, but cannot justify assigning left or right before iRacing's CarLeftRight reports overlap. Confirmed overlap is RGB red on the reported side. The independent rear-closing cue retains its own enable, theme and test. Both theme selectors publish live bits; synthetic tests run bounded off-render-thread event sequences, never per-frame simulations inside the layer.
+

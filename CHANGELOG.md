@@ -1,5 +1,81 @@
 # Changelog
 
+## Unreleased — colour menu, stereo panels, frame cost graph mode
+
+- Proximity-colour spotter now has an independent 0–255 distance signal active only within two metres; it no longer borrows the rear-closing pressure state. Yellow phases continuously through orange to red as distance closes, with iRacing-confirmed side overlap red. Rear glow/chevrons also use continuous green-channel colour progression rather than a few hue stages.
+- The six menu buttons in the three-panel main layout now occupy a guaranteed three-column, two-row grid, independent of scrollbar width.
+- Corrected the shared scrollbar layout: a 12-unit track slot now gives the 6-unit grey thumb room to render at its intended width in the overlay and per-app viewers.
+- Spotter Test left/right/both now show a 2.5-second preview and clear automatically, restoring the current live telemetry cue. The previous toggle could leave a synthetic car alongside indefinitely.
+- Rear-closing presentation tests now suppress the peripheral proximity cue while they run. Mirror chevrons use stronger alpha for visible line work at the same saved opacity.
+- The game list, detached overlay window, overlay popup and per-app profile now use one thin grey scrollbar style and a shared scroll-viewer template. The detached overlay window previously created a default Windows scrollbar in code.
+- Rear-closing mirror chevrons are larger, thicker and spaced side by side to distinguish them from the top glow. Spotter edge lines now have live width and inward-position controls so they can sit within the visible lens.
+- Rhythm shift light now draws two converging lines that become one at the car-reported shift RPM. Green begins within 150 RPM, blue marks within 50 RPM, and red marks the reported blink RPM; the synthetic test runs those stages.
+- Corrected the iRacing proximity-colour mode to use the selected peripheral spotter glow or edge line throughout yellow → orange → confirmed-side red, leaving the separate rear-closing cue independent. Spotter and rear-closing theme switches now apply live.
+- Race-start, rear-closing, proximity-colour and shift-light test buttons now run complete timed sequences and clear themselves. Lap and fuel cards no longer display the generic "ViewLab event" caption.
+
+- iRacing presentation test buttons now work during live telemetry. An explicitly requested test overrides that cue until cleared, then the current live cue returns. Lap-card tests work while connected and test events do not change notification attention policy.
+- Direct eye-texture overlay presentation is now the built-in default when an existing installed config lacks the setting; this no longer depends on manually editing that config.
+
+- Narrowed the per-app profile window from 560 to 415 WPF units (roughly 1120 to 830 pixels at the screenshot's scaling). Overlay headers now follow the window width, and the four bottom actions use two rows so they remain visible.
+
+- Spotter mode now offers Classic or Approach amber → Side red. The new mode reuses the nearest-behind closing cue for a side-neutral amber warning, then uses iRacing's confirmed left/right spotter state for red overlap. Classic remains the default and keeps the existing colour and independent rear cue. Switching modes applies live, including with a legacy per-app iRacing enable override.
+
+- iRacing synthetic presentation controls now sit at the bottom of their respective lap, spotter, flag, race-start, rear-closing, shift-light and fuel sections. Persistent cues toggle; race start cycles red, green, clear. They use the broker's generic event path and do not save production settings.
+- Every expandable per-app overlay section now places "Use global values" first; Performance HUD's Visibility selector follows it.
+- Performance HUD now offers one Visibility choice: Off / Always visible / Alarm only, globally and per app. The old alarm-only symbols filter is retired. Restored the enable checkbox in both HUD section headers; it stays in sync with Visibility.
+- Clock gained stopwatch, countdown and next local target-time modes, with monotonic timing, start/pause/reset commands, and amber/red countdown feedback. Existing session timer remains the default.
+
+- Colour menu: new EXIT MENU entry at the bottom (Ctrl+W from the top reaches it, Ctrl+D selects it); MENU SIZE, MENU X and MENU Y move and scale it in game; it is the same size in every game and sits in the middle of the render area.
+- Brightness calibration now uses Ctrl+W/A/S/D too (A/D adjust, S next, W back) and returns to the menu when started from it.
+- Frame cost graph: CPU now covers the game's whole frame, so Total is no longer just GPU. Pick which lines to overlay (Total, CPU, GPU, Wait) and the label style (Full, Minimal+, Minimal), globally or per app.
+
+- ViewLab now replaces OpenXR Toolkit's colour adjustments outright: the "Follow OpenXR Toolkit" option is gone. Colour is simply Off or On.
+- New **in-headset colour menu**: Ctrl+W/A/S/D opens it like OpenXR Toolkit (Ctrl+F2 also toggles; it closes after 15 s idle), Ctrl+W/S picks an item, Ctrl+A/D changes it (hold to repeat). Same items and 0–100 scale as the Toolkit's post-processing page, plus black level, white level, gamma, run calibration and reset. Saved for that game.
+- The calibration panel and the colour menu now fuse into one panel in both eyes instead of showing a separate, non-overlapping panel per eye.
+- Calibration step 3 used too bright a target, which pushed people to a dark gamma. The target is now much dimmer.
+- **Frame cost** is now a Graph mode (not a separate theme), applies live, and follows global and per-app settings. Its series picker only shows in that mode.
+- The per-app window has a Colour section showing what the headset saved for that game, with a reset button, plus the Frame cost graph mode.
+- In the per-app window, the mouse wheel scrolls the window; the visor preview only zooms after you click it.
+- Everywhere in the app, the mouse wheel no longer changes a dropdown it passes over, and lists with nothing to scroll no longer stop the page scrolling.
+
+## 4.1.363 — OpenXR Toolkit colour port
+
+- ViewLab can now apply OpenXR Toolkit's colour adjustments itself (contrast, brightness, exposure, saturation, vibrance, highlights, shadows, colour gains and the sunglasses presets), using the Toolkit's exact maths.
+- By default it follows the settings you already saved in OpenXR Toolkit for each game, so the Toolkit can be switched off without losing the look. If the Toolkit is still running, ViewLab stands down instead of grading twice.
+- The grade costs nothing when the settings are neutral, and never recolours the visor, HUD or overlays.
+- Fixed unreadable black HUD metric and Warn/Critical labels in the per-app profile editor.
+- Added a **pit limiter warning**: the flag border pulses orange while you are moving on pit road with the pit limiter off. It has its own checkbox in the flag list.
+- Added a **Frame cost** theme for the Performance Trace: millisecond axes, a line at the headset's frame budget, and a live readout to one decimal of what the game's frame costs. Views: Total, CPU, GPU, Wait or All. GPU is now measured in milliseconds, not just usage %.
+- Added a **rhythm shift light**: bars close in on a centre pill at the outer edge of each eye and meet it at the car's shift point, where the pill flashes green; a red strobe means you are past the limiter point.
+- Added new looks: **Edge line** for the spotter and **Mirror chevrons** for the rear-closing cue. The original glows remain the default.
+- Fixed the race-start light, rear-closing cue and Grip-O-Bar not drawing unless another overlay was also showing.
+- The iRacing and notification status lines now say when the broker is not running instead of showing its last state.
+- Settings that only apply when the game next starts now say so in their tooltips.
+- Added a **Colour** section to the settings: follow OpenXR Toolkit's saved colours, use ViewLab's own sliders (same scale as the Toolkit), or turn it off.
+- Added **in-headset colour calibration** (Ctrl+Alt+C), copying Monster Hunter Wilds' three steps: minimum luminosity, maximum luminosity and overall luminosity. The result is saved for that game.
+
+## iRacing DynLOD 1.1.0 — 2026-09-15
+
+- Added World and Cars preset selectors for Main and Replay while retaining exact Custom Min/Max controls.
+- Matched all six current iRacing presets, including their separate mirror values; iRSidekick's additional Stable preset is deliberately excluded.
+- Corrected World to the `LODPctDyno*` family and Cars to plain `LODPct*`, based on direct iRacing UI writes.
+
+## iRacing DynLOD 1.0.0 — 2026-09-07
+
+- Added a dedicated Windows icon, full IRACING DYNLOD title, version metadata and softer controls within the selected compact layout.
+- Made the utility independently buildable with bundled theme resources, documentation, licence and synthetic INI checks.
+- Added release ZIP/checksum generation and successful-build minor version increments: 1.0.0, 1.1.0, 1.2.0. The user confirmed INI editing works and authorised publication of the standalone utility.
+
+## 2026-09-07 — Standalone DynLOD editor / ViewLab build 4.1.352
+
+- Added a portable iRacing DynLOD editor with ViewLab styling, literal FPS Target, four Min/Max sliders and numeric fields.
+- Read Main or Replay, refresh from disk, and apply the displayed values separately to either section. Each write preserves unrelated contents and creates a backup; values stay available for reapplication after iRSidekick.
+- No DynLOD installer or ViewLab runtime changes. The required repository build produced ViewLab 4.1.352.
+- Visual follow-up (required ViewLab rebuild 4.1.353): equal Min/Max values now form one horizontally split grip instead of stacked dots; both halves remain independently draggable.
+- Final snapping correction: smooth absolute-pointer dragging with gentle attraction within 4 points of each multiple of 25; direct numeric entry remains unsnapped.
+- Reduced DynLOD to a compact 460 × 510 window and removed explanatory annotations.
+- Implemented the selected layout C at 260 × 285: narrow stacked controls, inline FPS/section selection and compact icon toolbar. Gentle snapping and INI handling are unchanged.
+
 ## 4.1.351 - 2026-08-30 (Quest 3 144 Hz performance metrics)
 
 - Rebuilt VR/frame-interval health around the runtime's actual display period, with explicit 144 Hz fixtures: 6.944 ms is the native target, sustained 140 FPS is warning territory, and 120 FPS is critical.
@@ -1796,3 +1872,9 @@ See git history.
 - Unified eye-texture overlays behind Render Area, Full Lens, and Lens Pinned coordinate modes.
 - Made Performance HUD and Performance Trace independent, left-eye-only controls and removed repeated OpenComposite projection-layer draws.
 - Added normalized crosshair X/Y calibration and reset controls; zero remains the resolved full-lens centre.
+# Unreleased
+
+- DynLOD now reflects iRacing's verified `World Max >= Cars Min` constraint and includes an automated launch, normalization diff and graceful-close test harness.
+- Fixed racing presentation tests and the rhythm shift light disappearing on runtimes that accept but do not
+  visibly composite ViewLab's separate projection overlay layer; direct eye-texture presentation is now the
+  safe default for this configuration.

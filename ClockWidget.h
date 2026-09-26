@@ -28,4 +28,29 @@ inline Text Format(uint32_t localHour, uint32_t localMinute, uint64_t elapsedMil
     return result;
 }
 
+// All durations advance from a monotonic tick. Target time is resolved once from the local
+// time at reset/session start, with a same-minute target scheduled for tomorrow.
+inline uint32_t SecondsUntilLocalTarget(uint32_t nowSeconds, uint32_t targetSeconds) {
+    nowSeconds %= 86400; targetSeconds %= 86400;
+    const uint32_t delta = (targetSeconds + 86400 - nowSeconds) % 86400;
+    return delta == 0 ? 86400 : delta;
+}
+
+struct TimerState {
+    uint64_t startedTick = 0;
+    uint64_t accumulatedMs = 0;
+    uint64_t durationMs = 0;
+    bool running = false;
+
+    void Reset(uint64_t now, uint64_t duration, bool start = true) {
+        startedTick = now; accumulatedMs = 0; durationMs = duration; running = start;
+    }
+    void Pause(uint64_t now) {
+        if (running) { accumulatedMs += now >= startedTick ? now - startedTick : 0; running = false; }
+    }
+    void Resume(uint64_t now) { if (!running) { startedTick = now; running = true; } }
+    uint64_t Elapsed(uint64_t now) const { return accumulatedMs + (running && now >= startedTick ? now - startedTick : 0); }
+    uint64_t Remaining(uint64_t now) const { const auto elapsed = Elapsed(now); return elapsed >= durationMs ? 0 : durationMs - elapsed; }
+};
+
 } // namespace viewlab::clock_widget

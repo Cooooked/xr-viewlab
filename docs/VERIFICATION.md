@@ -21,6 +21,8 @@ affected subsystem in the relevant runtime. Reserve the broader Pistol Whip + Di
 release candidates and changes to shared projection, rendering, device lifetime, installer or
 profile state. Do not treat an omitted test as a failure, nor a narrow pass as global acceptance.
 
+For Radar-style Spotter: select **Approach amber → Side red**, enable iRacing telemetry and Spotter, and first use the synthetic Test approach and Test left/right controls without a live connection. In a live race, verify amber appears only for a car closing from behind, centred with no implied side, and clears when iRacing confirms overlap; red must appear only on the confirmed left or right eye edge. Switch to Classic and verify the original custom side colour and independent Rear-Closing switch still behave as before. Record headset observations before any push.
+
 ## Test environment (do not guess alternate paths)
 
 - **Game:** Pistol Whip — `D:\VR Games\Pistol Whip-working\Pistol Whip.exe`
@@ -29,6 +31,16 @@ profile state. Do not treat an omitted test as a failure, nor a narrow pass as g
   Home (36) = overlay menu, PrintScreen (42) = screenshot
 - **Screenshots land in:** `%USERPROFILE%\Documents\ReShade\Screenshots\`
 - Secondary title for OpenComposite/OpenVR timing paths: DiRT Rally 2.
+
+### iRacing performance-meter caveat
+
+The user's current iRacing meter picker does not expose a `T` meter. Although iRacing's support documentation
+describes `T`, do not present that documentation as evidence that the control is selectable in the installed UI.
+For live 144 Hz race diagnosis, request the available numerical `R`, `G`, `C`, and `P` meters and the Virtual
+Desktop performance overlay. Verify a diagnostic control exists in the live UI before directing the user to it.
+Do not infer the headset's configured refresh target from the instantaneous FPS counter: the 2026-08-30 capture
+showing `120 FPS`, `R 8.5 ms`, and `G 6.3 ms` was taken while Quest 3 was configured for 144 Hz. Record the selected
+target separately; at 144 Hz, that capture's `R` exceeds the 6.944 ms budget and is a renderer-side miss.
 
 ## Rules
 
@@ -89,3 +101,10 @@ or runtime-side.
 18. What exact OpenComposite installation path, headset, and active OpenXR runtime are used?
 19. Which other API layers remain enabled when duplication occurs?
 20. Which should be validated first: crosshair/pinning, HUD duplication, HUD/Trace separation, or calibration stability?
+# Stereo submission research checks (2026-09-10)
+
+Run `Tools\StereoProbe\build.ps1 -Test` for offscreen software-only correctness. It checks exact two-eye
+colour parity against two-pass stereo, distinct eyes, overlapping indexed instances, alpha blending, depth
+occlusion and MSAA 1/4. Pipeline queries check nonempty rendering and halved broadcast VS invocations.
+No headset or active runtime is required. These checks do not validate game integration, GPU speed, latency,
+arbitrary shader semantics or iRacing R time. Hardware/game measurements remain a later stage.

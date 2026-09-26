@@ -47,6 +47,16 @@ int main() {
     Check(Format(19, 5, 0, false).local == std::array<char, 9>{'0','7',':','0','5',' ','P','M','\0'}, "clock supports an explicit 12-hour display");
     Check(Format(23, 59, 3723000).session == std::array<char, 9>{'0','1',':','0','2',':','0','3','\0'}, "session timer formats monotonic elapsed time");
     Check(Format(0, 0, 500000000).session == std::array<char, 9>{'9','9',':','5','9',':','5','9','\0'}, "session timer has a stable display cap");
+    using viewlab::clock_widget::TimerState;
+    using viewlab::clock_widget::SecondsUntilLocalTarget;
+    Check(SecondsUntilLocalTarget(17*3600+45*60,17*3600+46*60)==60,"target clock resolves same-day minute");
+    Check(SecondsUntilLocalTarget(17*3600+46*60,17*3600+46*60)==86400,"target clock rolls equal time to tomorrow");
+    Check(SecondsUntilLocalTarget(23*3600+59*60,60)==120,"target clock crosses midnight");
+    TimerState raceTimer;raceTimer.Reset(1000,15*60000);Check(raceTimer.Remaining(61000)==14*60000,"countdown advances from monotonic ticks");
+    raceTimer.Pause(61000);Check(raceTimer.Remaining(121000)==14*60000,"paused countdown does not advance");
+    raceTimer.Resume(121000);Check(raceTimer.Remaining(181000)==13*60000,"resumed countdown keeps prior elapsed");
+    Check(raceTimer.Remaining(2000000)==0,"countdown clamps at zero");
+    raceTimer.Reset(2000000,15*60000);Check(raceTimer.Remaining(2000000)==15*60000,"reset restores full duration");
     const auto note=viewlab::sticky_note::Wrap(L"bring fuel and check the very long setup note",12);
     Check(note.count>=2&&note.lines[0]=="BRING FUEL", "sticky note wraps words and normalizes case");
     const auto clipped=viewlab::sticky_note::Wrap(std::wstring(140,L'X'),10);
@@ -223,6 +233,12 @@ int main() {
     Check(std::abs(SpotterBandAlpha(1.f, 0.3f, 2.0, true) - SpotterBandAlpha(1.f, 0.7f, 2.0, false)) < 1e-6f,
         "spotter: left and right edges are mirror images");
     Check(RearGlowHalfWidth(0.9, vw) > RearGlowHalfWidth(0.2, vw), "rear-closing: closer car widens the top-centre glow");
+    Check(!ApproachVisible(true,true,true,0,false), "classic spotter does not add peripheral approach colour");
+    Check(ApproachVisible(true,true,true,1,false), "colour mode shows a peripheral approach cue");
+    Check(!ApproachVisible(false,true,true,1,false), "colour mode does not show an inactive approach");
+    Check(ApproachVisible(true,false,false,1,true), "synthetic approach remains testable without production enablement");
+    Check(SpotterColour(0,0xFF4500u)==0xFF4500u && SpotterColour(1,0xFF4500u)==0xFF0000u,
+        "classic keeps its configured colour and radar-style marks confirmed overlap red");
     Check(GripBarWidth(0.9, vw) > GripBarWidth(0.2, vw), "grip: higher severity widens the bar");
     Check(GripSeverityBand(0.1) == 0 && GripSeverityBand(0.5) == 1 && GripSeverityBand(0.9) == 2,
         "grip: severity maps to yellow/orange/red bands");
