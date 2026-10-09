@@ -489,3 +489,13 @@ The countdown and target timer resolve a duration when the XR session starts, th
 
 The colour mode changes the existing spotter glow or edge line. Longitudinal closing telemetry can justify a side-neutral yellow/orange warning on both outer edges, but cannot justify assigning left or right before iRacing's CarLeftRight reports overlap. Confirmed overlap is RGB red on the reported side. The independent rear-closing cue retains its own enable, theme and test. Both theme selectors publish live bits; synthetic tests run bounded off-render-thread event sequences, never per-frame simulations inside the layer.
 
+## D34 — Colour profiles are global value sets applied into the existing per-app colour values (2026-10-10)
+
+Profiles (`colour_preset_<n>_*`, six slots) live in the global ini, not per app: a look such as "night" or "rain"
+is reused across games and tracks, and the per-app registry already holds each game's live colour values. Selecting
+a profile on the in-headset PROFILES strip copies its values into the live settings through the same path as moving
+an entry (`ApplyColourMenuSettings` → params → one-off LUT re-bake), so the menu saves them to that game's
+`colour_grade_*` DWORDs; only the applied slot number (`colour_preset_active`) is new per-app state. No per-frame
+work is added. Names and values are edited in the settings app (typing in the headset is impractical) and reach the
+headset at the next game session; the ini is not re-read mid-session to avoid file I/O on the render thread. The
+strip sits on every tab directly above EXIT MENU, keeping EXIT MENU last (the Ctrl+W wrap target).

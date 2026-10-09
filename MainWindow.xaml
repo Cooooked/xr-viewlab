@@ -493,6 +493,12 @@
                           <Slider Name="ColourGrade_gain_b_Slider" Minimum="0" Maximum="1000" Value="500" Tag="500" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="ColourGradeSlider_Changed" MouseRightButtonUp="SliderResetToTag_RightClick" ToolTip="Same scale as OpenXR Toolkit. Right-click to reset." />
                             </StackPanel>
                           </Expander>
+                          <Expander Header="Colour profiles" Foreground="#B8B8B8" Margin="0,6,0,0">
+                            <StackPanel Margin="8,3,0,2">
+                              <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="10" Text="Named looks for the PROFILES row of the in-headset colour menu (Ctrl+F2; Ctrl+A/D on that row switches profile live, for the running game). Store sliders saves the ViewLab values above into a slot; empty slots are hidden in the headset. Names and stored values reach the headset the next time the game starts." />
+                              <StackPanel Name="ColourPresetPanel" />
+                            </StackPanel>
+                          </Expander>
                         </StackPanel>
                       </Expander>
                   </StackPanel>

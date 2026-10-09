@@ -2998,6 +2998,64 @@ static void ComputeColourGradeParams(const ColourGradeSettings& s) {
     g_colourGrade.shadowDepthAmount = s.fullGrade ? (1000 - std::clamp(s.shadowDepth, 0, 1000)) * 0.0005f : 0.f;
 }
 
+// Colour profiles (the in-headset PROFILES strip): global named value sets in the ini, colour_preset_<n>_* for
+// n = 1..kColourPresetSlots, in the colour_grade_* units. Selecting one copies its values into the live settings
+// exactly like moving each slider (same params, same one-off LUT re-bake, saved to this game's profile by
+// SaveColourMenu), so it adds no per-frame work. Slot 1 always exists, seeded below for any value the ini lacks
+// (the settings app's Store sliders writes every value); slots 2..n appear once the settings app stores values
+// into them (colour_preset_<n>_enabled=1). Read once per session with the colour config.
+constexpr int kColourPresetSlots = 6;
+struct ColourPreset {
+    bool populated = false;
+    std::string name;            // upper-cased for the block font; "PROFILE n" when unnamed
+    ColourGradeSettings s;
+    float black = 0.f, white = 1.f, gamma = 1.f;
+};
+ColourPreset g_colourPresets[kColourPresetSlots];
+int g_colourPresetActive = 0;    // 1-based slot last applied in this game (per-app colour_preset_active), 0 = none
+
+static void LoadColourPresets() {
+    for (int i = 0; i < kColourPresetSlots; ++i) {
+        ColourPreset& p = g_colourPresets[i];
+        p = ColourPreset{};
+        auto key = [i](const wchar_t* field) { return L"colour_preset_" + std::to_wstring(i + 1) + L"_" + field; };
+        p.populated = i == 0 || ReadBoolSetting(key(L"enabled").c_str(), false);
+        if (!p.populated) continue;
+        if (i == 0) { p.s.exposure = 600; p.s.saturation = 600; p.s.shadowDepth = 650; } // Profile 1 seed
+        auto readInt = [&](const wchar_t* field, int& v, int hi) {
+            v = std::clamp(static_cast<int>(std::lround(ReadDoubleSetting(key(field).c_str(), v))), 0, hi);
+        };
+        readInt(L"contrast", p.s.contrast, 1000);
+        readInt(L"brightness", p.s.brightness, 1000);
+        readInt(L"exposure", p.s.exposure, 1000);
+        readInt(L"saturation", p.s.saturation, 1000);
+        readInt(L"vibrance", p.s.vibrance, 1000);
+        readInt(L"highlights", p.s.highlights, 1000);
+        readInt(L"shadows", p.s.shadows, 1000);
+        readInt(L"shadow_depth", p.s.shadowDepth, 1000);
+        readInt(L"gain_r", p.s.gainR, 1000);
+        readInt(L"gain_g", p.s.gainG, 1000);
+        readInt(L"gain_b", p.s.gainB, 1000);
+        readInt(L"sunglasses", p.s.sunglasses, 3);
+        int post = 1;
+        readInt(L"post_process", post, 1);
+        p.s.fullGrade = post != 0;
+        p.black = static_cast<float>(std::clamp(ReadDoubleSetting(key(L"levels_black").c_str(), 0.0), 0.0, 0.25));
+        p.white = static_cast<float>(std::clamp(ReadDoubleSetting(key(L"levels_white").c_str(), 1.0), 0.6, 1.0));
+        p.gamma = static_cast<float>(std::clamp(ReadDoubleSetting(key(L"levels_gamma").c_str(), 1.0), 0.4, 2.5));
+        for (wchar_t c : ReadStringSetting(key(L"name").c_str(), L"")) {
+            if (p.name.size() >= 20) break;
+            p.name += (c >= L'a' && c <= L'z') ? static_cast<char>(c - L'a' + 'A') : (c < 128 ? static_cast<char>(c) : ' ');
+        }
+        while (!p.name.empty() && p.name.back() == ' ') p.name.pop_back();
+        while (!p.name.empty() && p.name.front() == ' ') p.name.erase(p.name.begin());
+        if (p.name.empty()) p.name = "PROFILE " + std::to_string(i + 1);
+    }
+    DWORD active = 0;
+    g_colourPresetActive = ReadProfileDword(L"colour_preset_active", active) ? std::clamp(static_cast<int>(active), 0, kColourPresetSlots) : 0;
+    if (g_colourPresetActive && !g_colourPresets[g_colourPresetActive - 1].populated) g_colourPresetActive = 0;
+}
+
 void LoadColourGradeConfig() {
     // Global default is ViewLab values (neutral until changed, so zero cost). Per-app registry value
     // overrides the global mode; the legacy follow-the-Toolkit value 2 reads as ViewLab.
@@ -3065,6 +3123,7 @@ void LoadColourGradeConfig() {
         s.contrast, s.brightness, s.exposure, s.saturation, s.vibrance, s.highlights, s.shadows, s.shadowDepth,
         s.gainR, s.gainG, s.gainB, s.sunglasses);
     Log("colour grade: levels black=%.3f white=%.3f gamma=%.3f\n", g_colourGrade.levelsBlack, g_colourGrade.levelsWhite, g_colourGrade.levelsGamma);
+    LoadColourPresets();
 }
 
 // Colour grade shaders, compiled at build time from Shaders\ColourGrade.hlsl by Shaders\Build-Shaders.ps1:
@@ -3467,7 +3526,7 @@ ColourCalibrationState g_colourCal;
 enum ColourMenuItem : int {
     CmPost = 0, CmSunglasses, CmContrast, CmBrightness, CmExposure, CmSaturation, CmVibrance,
     CmHighlights, CmShadows, CmShadowDepth, CmGainR, CmGainG, CmGainB, CmBlack, CmWhite, CmGamma, CmCalibrate, CmReset,
-    CmMenuSize, CmMenuX, CmMenuY, CmMenuDepth, CmExit, CmCount
+    CmMenuSize, CmMenuX, CmMenuY, CmMenuDepth, CmPreset, CmExit, CmCount
 };
 struct ColourMenuState {
     bool open = false;
@@ -3486,14 +3545,14 @@ struct ColourMenuState {
 };
 ColourMenuState g_colourMenu;
 
-// OpenXR Toolkit layout: a tab row first (A/D switches tab when it is selected), then the tab's entries,
-// EXIT MENU last on every tab.
-struct ColourMenuTab { const char* name; int items[11]; int count; };
+// OpenXR Toolkit layout: a tab row first (A/D switches tab when it is selected), then the tab's entries, then
+// the PROFILES strip (CmPreset) on every tab, EXIT MENU last on every tab.
+struct ColourMenuTab { const char* name; int items[12]; int count; };
 static const ColourMenuTab kColourMenuTabs[] = {
-    {"COLOUR", {CmPost, CmSunglasses, CmContrast, CmBrightness, CmExposure, CmSaturation, CmVibrance, CmHighlights, CmShadows, CmShadowDepth, CmExit}, 11},
-    {"GAINS", {CmGainR, CmGainG, CmGainB, CmExit}, 4},
-    {"LEVELS", {CmBlack, CmWhite, CmGamma, CmCalibrate, CmReset, CmExit}, 6},
-    {"MENU", {CmMenuSize, CmMenuX, CmMenuY, CmMenuDepth, CmExit}, 5},
+    {"COLOUR", {CmPost, CmSunglasses, CmContrast, CmBrightness, CmExposure, CmSaturation, CmVibrance, CmHighlights, CmShadows, CmShadowDepth, CmPreset, CmExit}, 12},
+    {"GAINS", {CmGainR, CmGainG, CmGainB, CmPreset, CmExit}, 5},
+    {"LEVELS", {CmBlack, CmWhite, CmGamma, CmCalibrate, CmReset, CmPreset, CmExit}, 7},
+    {"MENU", {CmMenuSize, CmMenuX, CmMenuY, CmMenuDepth, CmPreset, CmExit}, 6},
 };
 constexpr int kColourMenuTabCount = (int)(sizeof(kColourMenuTabs) / sizeof(kColourMenuTabs[0]));
 
@@ -3555,6 +3614,7 @@ static void SaveColourMenu() {
     SetRegistryDwordValue(key, L"colour_grade_levels_black", static_cast<DWORD>(std::lround(g_colourGrade.levelsBlack * 1000.f)));
     SetRegistryDwordValue(key, L"colour_grade_levels_white", static_cast<DWORD>(std::lround(g_colourGrade.levelsWhite * 1000.f)));
     SetRegistryDwordValue(key, L"colour_grade_levels_gamma", static_cast<DWORD>(std::lround(g_colourGrade.levelsGamma * 1000.f)));
+    SetRegistryDwordValue(key, L"colour_preset_active", static_cast<DWORD>(g_colourPresetActive));
     SetRegistryDwordValue(key, L"colour_menu_size", static_cast<DWORD>(g_colourMenu.scalePct));
     SetRegistryDwordValue(key, L"colour_menu_distance", static_cast<DWORD>(g_colourMenu.depthCm));
     SetRegistryDwordValue(key, L"colour_menu_x", static_cast<DWORD>(g_colourMenu.offX + 1000));
@@ -3579,6 +3639,16 @@ static void ApplyColourMenuSettings() {
     RefreshColourGradeActive();
     g_colourMenu.dirty = true;
     g_colourMenu.lastChange = GetTickCount64();
+}
+
+// Loads a profile into the live settings exactly as if each entry had been moved to its value.
+static void ApplyColourPreset(int slot) {
+    const ColourPreset& p = g_colourPresets[slot - 1];
+    g_colourGrade.settings = p.s;
+    g_colourGrade.levelsBlack = p.black; g_colourGrade.levelsWhite = p.white; g_colourGrade.levelsGamma = p.gamma;
+    g_colourPresetActive = slot;
+    ApplyColourMenuSettings();
+    Log("colour menu: profile %d (%s) applied\n", slot, p.name.c_str());
 }
 
 static void ApplyCalibrationToGrade() {
@@ -3631,11 +3701,19 @@ static void AdjustColourMenuItem(int item, int dir) {
     case CmMenuSize: g_colourMenu.scalePct = std::clamp(g_colourMenu.scalePct + dir * 5, 25, 200); g_colourMenu.dirty = true; g_colourMenu.lastChange = GetTickCount64(); return;
     case CmMenuX: g_colourMenu.offX = std::clamp(g_colourMenu.offX + dir * 10, -500, 500); g_colourMenu.dirty = true; g_colourMenu.lastChange = GetTickCount64(); return;
     case CmMenuY: g_colourMenu.offY = std::clamp(g_colourMenu.offY + dir * 10, -500, 500); g_colourMenu.dirty = true; g_colourMenu.lastChange = GetTickCount64(); return; // D = up (tangent y is up)
+    case CmPreset: { // A/D steps to the previous/next populated profile (wrapping) and applies it live
+        int slot = g_colourPresetActive;
+        for (int n = 0; n < kColourPresetSlots; ++n) {
+            slot = slot == 0 ? (dir > 0 ? 1 : kColourPresetSlots) : (slot - 1 + (dir > 0 ? 1 : kColourPresetSlots - 1)) % kColourPresetSlots + 1;
+            if (g_colourPresets[slot - 1].populated) { ApplyColourPreset(slot); break; }
+        }
+        return;
+    }
     case CmExit:
         if (dir > 0) { g_colourMenu.open = false; Log("colour menu: closed (exit)\n"); if (g_colourMenu.dirty) SaveColourMenu(); }
         return;
     case CmReset:
-        if (dir > 0) { s = ColourGradeSettings{}; g_colourGrade.levelsBlack = 0.f; g_colourGrade.levelsWhite = 1.f; g_colourGrade.levelsGamma = 1.f; }
+        if (dir > 0) { s = ColourGradeSettings{}; g_colourGrade.levelsBlack = 0.f; g_colourGrade.levelsWhite = 1.f; g_colourGrade.levelsGamma = 1.f; g_colourPresetActive = 0; }
         else return;
         break;
     default: return;
@@ -3700,7 +3778,7 @@ static void PollColourMenuKeys() {
         } else {
             const int item = tab.items[std::clamp(m.selected - 1, 0, tab.count - 1)];
             // Actions (calibrate/reset/exit/choices) fire once per press, never on repeat.
-            const bool once = item == CmCalibrate || item == CmReset || item == CmExit || item == CmPost || item == CmSunglasses;
+            const bool once = item == CmCalibrate || item == CmReset || item == CmExit || item == CmPost || item == CmSunglasses || item == CmPreset;
             if (once && !p) continue;
             AdjustColourMenuItem(item, g == 2 ? -1 : 1);
             if (!m.open) return;
@@ -3894,9 +3972,9 @@ void DrawColourCalibrationToTexture(ID3D11Texture2D* tex, const EyeView& eye, co
     const auto centre = co.ResolveSharedTangent(offX + depthTan, bandTan + offY, false);
     const float cx = centre.first, cy = centre.second;
     const float unitPx = co.tangentValid ? co.width / (co.selectedR - co.selectedL) : (float)(std::min)(r.extent.width, r.extent.height) * .9f;
-    // Menu: OpenXR Toolkit layout, fixed size for every tab (the tallest tab: tab row + 11 entries) so it never
-    // jumps when switching tabs; 153 x 262 font px.
-    const float unitsTall = menu ? 153.f : 190.f, unitsWide = menu ? 262.f : 232.f;
+    // Menu: OpenXR Toolkit layout, fixed size for every tab (the tallest tab: tab row + 12 entries) so it never
+    // jumps when switching tabs; 164 x 262 font px.
+    const float unitsTall = menu ? 164.f : 190.f, unitsWide = menu ? 262.f : 232.f;
     // Menu: sized like OpenXR Toolkit's, in eye-image pixels (the Toolkit: 44 pt x 0.75 = 33 px font, menu.cpp /
     // layer.cpp defaults). Matching its ~22 px capital height with our 7-row block glyphs gives 3 image px per
     // font px (4.5, matching its 49.5 px row pitch instead, made the chunky block font look far bigger).
@@ -3977,6 +4055,28 @@ void DrawColourCalibrationToTexture(ID3D11Texture2D* tex, const EyeView& eye, co
             const char* label = "";
             const char* const* choices = nullptr; int choiceCount = 0, current = 0;
             value[0] = 0;
+            if (item == CmPreset) {
+                // PROFILES strip: one full-width row of the populated profiles' names (unpopulated slots hidden),
+                // the applied one boxed like a current choice; names shorten to share the row.
+                if (sel) { quad(left - px * 3.f, y - px * 2.f, right + px * 3.f, y + px * 9.f); red(); }
+                int shown[kColourPresetSlots]{}, count = 0;
+                for (int i = 0; i < kColourPresetSlots; ++i) if (g_colourPresets[i].populated) shown[count++] = i;
+                const float gap = px * 10.f;
+                const int maxChars = (std::max)(1, (int)(((right - left) - gap * (count - 1)) / (std::max)(1, count) / (px * 6.f)));
+                float sx = left;
+                for (int j = 0; j < count; ++j) {
+                    const int i = shown[j];
+                    char name[24]{};
+                    snprintf(name, sizeof(name), "%.*s", (std::min)(maxChars, 20), g_colourPresets[i].name.c_str());
+                    const float w = textWidth(name, px);
+                    const bool cur = g_colourPresetActive == i + 1;
+                    if (cur) box(sx - px * 3.f, y - px * 2.f, sx + w + px * 3.f, y + px * 9.f, sel);
+                    textAt(sx, y, name, px); grey(cur || sel ? 0.97f : 0.55f);
+                    sx += w + gap;
+                }
+                y += px * 11.f;
+                continue;
+            }
             switch (item) {
             case CmPost: label = "POST-PROCESSING"; choices = kOnOff; choiceCount = 2; current = s.fullGrade ? 1 : 0; break;
             case CmSunglasses: label = "SUNGLASSES"; choices = kSun; choiceCount = 4; current = std::clamp(s.sunglasses, 0, 3); break;

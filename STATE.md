@@ -6,6 +6,11 @@
 
 **Updated:** 2026-10-10
 
+- **Colour profiles (2026-10-10, D34, built 4.1.418 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.418.msi`, not headset-tested):** PROFILES strip (`CmPreset`) on every colour-menu tab above
+  EXIT MENU (menu 164 font px tall); A/D applies the previous/next populated slot via `ApplyColourPreset` →
+  `ApplyColourMenuSettings`. Global ini slots `colour_preset_<n>_*` (n 1–6), slot 1 seeded (exp 600 / sat 600 /
+  shadow depth 650), per-app `colour_preset_active`. WPF: Colour → Colour profiles (name, Store sliders, Clear).
+  Names/values load at session start only. Seed values and strip readability need the user's in-headset check.
 - **SHADOW DEPTH colour control (2026-10-10, built 4.1.417 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.417.msi`, not headset-tested):** new `colour_grade_shadow_depth` (0–1000,
   1000 = vanilla), menu COLOUR tab after SHADOWS (menu now 153 font px tall for 11 entries) + WPF slider. Shader
   `AdjustShadowDepth` in `Grade()`, amount via `Levels.w` (hashed with levels → LUT re-bake, zero extra per-frame cost

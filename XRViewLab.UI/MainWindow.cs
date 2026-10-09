@@ -1524,6 +1524,7 @@ public partial class MainWindow : Window
 		ColourGrade_gain_r_Slider.Value = ReadRangeSetting("colour_grade_gain_r", 500, 0, 1000);
 		ColourGrade_gain_g_Slider.Value = ReadRangeSetting("colour_grade_gain_g", 500, 0, 1000);
 		ColourGrade_gain_b_Slider.Value = ReadRangeSetting("colour_grade_gain_b", 500, 0, 1000);
+		LoadColourPresetRows();
 		int costLines = (int)ReadRangeSetting(HudTraceCostLinesKey, 7, 0, 15);
 		HudCostTotalCheck.IsChecked = (costLines & 1) != 0;
 		HudCostCpuCheck.IsChecked = (costLines & 2) != 0;
@@ -2191,6 +2192,71 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		RequestSave(PendingSave.Calibration);
 		StatusText.Text = "Colour settings saved; they take effect the next time the game starts.";
 	}
+	// Colour profiles: global named value sets (colour_preset_<n>_*) that the in-headset colour menu's PROFILES strip
+	// applies live. Slot 1 always exists (seeded in dllmain.cpp LoadColourPresets until values are stored into it);
+	// other slots appear in the headset once values are stored into them (colour_preset_<n>_enabled=1).
+	private const int ColourPresetSlots = 6;
+	private static string ColourPresetKey(int slot, string field) => $"colour_preset_{slot}_{field}";
+	private static bool ColourPresetPopulated(int slot) => slot == 1 || ReadBoolSetting(ColourPresetKey(slot, "enabled"), false);
+
+	private void LoadColourPresetRows()
+	{
+		ColourPresetPanel.Children.Clear();
+		for (int slot = 1; slot <= ColourPresetSlots; slot++)
+		{
+			int s = slot;
+			var row = new DockPanel { Margin = new Thickness(0, 4, 0, 0) };
+			var number = new TextBlock { Text = s.ToString(CultureInfo.InvariantCulture), Width = 14, VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("MutedBrush") };
+			var state = new TextBlock { Width = 56, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, FontSize = 10, Foreground = (Brush)FindResource("MutedBrush") };
+			void ShowState() => state.Text = ColourPresetPopulated(s) ? "in headset" : "empty";
+			var store = new Button { Content = "Store sliders", Style = (Style)FindResource("RedButton"), Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(6, 0, 0, 0),
+				ToolTip = "Save the ViewLab values sliders (plus the global levels, sunglasses and post-processing) into this profile." };
+			store.Click += (_, _) => { StoreColourPreset(s); ShowState(); StatusText.Text = $"Colour profile {s} stored; it appears in the headset the next time the game starts."; };
+			DockPanel.SetDock(number, Dock.Left);
+			DockPanel.SetDock(state, Dock.Right);
+			DockPanel.SetDock(store, Dock.Right);
+			row.Children.Add(number);
+			row.Children.Add(state);
+			if (s > 1)
+			{
+				var clear = new Button { Content = "Clear", Style = (Style)FindResource("RedButton"), Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(4, 0, 0, 0), ToolTip = "Hide this profile from the headset." };
+				clear.Click += (_, _) => { WritePrivateProfileString("Settings", ColourPresetKey(s, "enabled"), "0", ConfigPath); ShowState(); StatusText.Text = $"Colour profile {s} cleared."; };
+				DockPanel.SetDock(clear, Dock.Right);
+				row.Children.Add(clear);
+			}
+			row.Children.Add(store);
+			var name = new TextBox { Text = ReadSetting(ColourPresetKey(s, "name"), ""), MaxLength = 20, VerticalContentAlignment = VerticalAlignment.Center,
+				ToolTip = $"Name shown in the headset (capitals; letters, digits, . - /). Empty = \"Profile {s}\"." };
+			name.LostFocus += (_, _) => WritePrivateProfileString("Settings", ColourPresetKey(s, "name"), name.Text.Trim(), ConfigPath);
+			row.Children.Add(name);
+			ShowState();
+			ColourPresetPanel.Children.Add(row);
+		}
+	}
+
+	private void StoreColourPreset(int slot)
+	{
+		void W(string field, double value) => WritePrivateProfileString("Settings", ColourPresetKey(slot, field), value.ToString(CultureInfo.InvariantCulture), ConfigPath);
+		W("contrast", Math.Round(ColourGrade_contrast_Slider.Value));
+		W("brightness", Math.Round(ColourGrade_brightness_Slider.Value));
+		W("exposure", Math.Round(ColourGrade_exposure_Slider.Value));
+		W("saturation", Math.Round(ColourGrade_saturation_Slider.Value));
+		W("vibrance", Math.Round(ColourGrade_vibrance_Slider.Value));
+		W("highlights", Math.Round(ColourGrade_highlights_Slider.Value));
+		W("shadows", Math.Round(ColourGrade_shadows_Slider.Value));
+		W("shadow_depth", Math.Round(ColourGrade_shadow_depth_Slider.Value));
+		W("gain_r", Math.Round(ColourGrade_gain_r_Slider.Value));
+		W("gain_g", Math.Round(ColourGrade_gain_g_Slider.Value));
+		W("gain_b", Math.Round(ColourGrade_gain_b_Slider.Value));
+		// Not on the sliders: the global values the native layer reads (defaults when absent).
+		W("sunglasses", Math.Round(ReadRangeSetting("colour_grade_sunglasses", 0, 0, 3)));
+		W("post_process", ReadRangeSetting("colour_grade_post_process", 1, 0, 1) >= 0.5 ? 1 : 0);
+		W("levels_black", ReadRangeSetting("colour_grade_levels_black", 0, 0, 0.25));
+		W("levels_white", ReadRangeSetting("colour_grade_levels_white", 1, 0.6, 1));
+		W("levels_gamma", ReadRangeSetting("colour_grade_levels_gamma", 1, 0.4, 2.5));
+		WritePrivateProfileString("Settings", ColourPresetKey(slot, "enabled"), "1", ConfigPath);
+	}
+
 	// Colour engine: saved for next launch and switched live in the running game.
 	private void ColourLut_Changed(object sender, RoutedEventArgs e)
 	{
@@ -4744,6 +4810,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		"colour_grade_exposure", "colour_grade_saturation", "colour_grade_vibrance", "colour_grade_highlights", "colour_grade_shadows",
 		"colour_grade_shadow_depth", "colour_grade_gain_r", "colour_grade_gain_g", "colour_grade_gain_b",
 		"colour_grade_levels_black", "colour_grade_levels_white", "colour_grade_levels_gamma", "colour_grade_lut",
+		"colour_preset_active",
 	};
 
 	private static string DescribeAppColour(string appKey)

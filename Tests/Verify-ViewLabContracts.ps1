@@ -1315,12 +1315,21 @@ Assert-Contains 'dllmain.cpp' 'kColourMenuTabs\[\] = \{' 'colour menu uses OpenX
 # SHADOW DEPTH (2026-10-10): one key end to end, baked into the LUT through Levels.w (no new per-frame pass).
 Assert-Contains 'dllmain.cpp' 'readValue\(L"colour_grade_shadow_depth", s\.shadowDepth\)' 'native reads SHADOW DEPTH (ini + per-app)'
 Assert-Contains 'dllmain.cpp' 'SetRegistryDwordValue\(key, L"colour_grade_shadow_depth"' 'in-headset menu persists SHADOW DEPTH per app'
-Assert-Contains 'dllmain.cpp' 'CmShadows, CmShadowDepth, CmExit\}, 11\}' 'SHADOW DEPTH sits after SHADOWS on the COLOUR tab'
+Assert-Contains 'dllmain.cpp' 'CmShadows, CmShadowDepth,' 'SHADOW DEPTH sits after SHADOWS on the COLOUR tab'
 Assert-Contains 'dllmain.cpp' 'cbData\.levels\[3\] = g_colourGrade\.shadowDepthAmount;' 'SHADOW DEPTH rides the hashed levels constant, so the LUT re-bakes on change'
 Assert-Contains 'Shaders\ColourGrade.hlsl' 'if \(Levels\.w > 0\.0001\) color = AdjustShadowDepth\(color, Levels\.w\);' 'shader applies SHADOW DEPTH inside Grade() (baked by PSBake)'
 Assert-Contains 'MainWindow.xaml' 'Name="ColourGrade_shadow_depth_Slider"[^>]*Tag="1000"[^>]*SliderResetToTag_RightClick' 'settings slider for SHADOW DEPTH resets to vanilla on right-click'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", "colour_grade_shadow_depth"' 'settings app writes the global SHADOW DEPTH'
 Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"colour_grade_shadow_depth", "colour_grade_gain_r"' 'per-app colour reset/summary includes SHADOW DEPTH'
+# Colour profiles (2026-10-10, D34): global slots, applied through the menu's own settings path, strip above EXIT MENU.
+Assert-Contains 'dllmain.cpp' 'CmShadowDepth, CmPreset, CmExit\}, 12\}' 'PROFILES strip sits above EXIT MENU on the COLOUR tab'
+Assert-Contains 'dllmain.cpp' 'g_colourPresetActive = slot;\s+ApplyColourMenuSettings\(\);' 'selecting a profile reuses the menu settings path (params, LUT re-bake, per-app save)'
+Assert-Contains 'dllmain.cpp' 'L"colour_preset_" \+ std::to_wstring\(i \+ 1\)' 'native reads indexed colour_preset_<n>_* keys'
+Assert-Contains 'dllmain.cpp' 'SetRegistryDwordValue\(key, L"colour_preset_active"' 'menu persists the applied profile per app'
+Assert-Contains 'dllmain.cpp' 'p\.s\.exposure = 600; p\.s\.saturation = 600; p\.s\.shadowDepth = 650;' 'Profile 1 seed'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'colour_preset_\{slot\}_\{field\}' 'settings app writes the same indexed profile keys'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"colour_preset_active",' 'per-app colour reset removes the applied profile'
+Assert-Contains 'MainWindow.xaml' 'Name="ColourPresetPanel"' 'settings app exposes profile names in the colour section'
 Assert-Contains 'XRViewLab.UI\App.cs' 'if \(sender is ComboBox combo && !combo\.IsDropDownOpen\) ForwardWheelToParent\(combo, e\);' 'the mouse wheel never changes a closed dropdown in any window; it scrolls the page'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'if \(WheelZoomRequiresClick && !_wheelEngaged\) return;' 'profile preview only zooms after a click so the wheel scrolls the window'
 

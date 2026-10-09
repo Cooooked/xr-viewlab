@@ -2,6 +2,7 @@
 
 ## Unreleased — colour menu, stereo panels, frame cost graph mode
 
+- **Colour profiles** in the in-headset colour menu: a PROFILES row (on every tab, above EXIT MENU) shows your named looks side by side; Ctrl+A/D on it switches the running game to the previous/next profile instantly, exactly as if every slider had moved (saved for that game like any menu change). Name profiles and store the current ViewLab values into up to six slots in Settings → Colour → Colour profiles; empty slots are hidden. Ships with **Profile 1** (exposure 60, saturation 60, shadow depth 65) as a starting point.
 - New colour control **Shadow Depth** (in-headset menu COLOUR tab, after SHADOWS; Settings → Colour → ViewLab values). 100 = vanilla; lower values lift dark areas toward mid grey like a local-exposure shadow control, leaving midtones and highlights alone and true black black. Saved per game from the headset, right-click resets the slider, and it is baked into the same colour lookup table, so it adds no per-frame cost.
 
 - Updated the `?` help panels: clock modes, independent two-metre proximity colour, rear-closing themes, spotter edge line, live switching and individual iRacing test sequences are now described accurately.
