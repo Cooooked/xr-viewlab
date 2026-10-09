@@ -151,10 +151,11 @@ Values use OpenXR Toolkit's own 0–1000 units and defaults so imported values m
 | `colour_grade_gain_r` / `_gain_g` / `_gain_b` | ini; per-app DWORD overrides | `500` | Toolkit colour gains (500 = neutral) |
 | `colour_grade_vibrance` / `_shadows` | ini; per-app DWORD overrides | `0` | Toolkit Vibrance / Shadows (0 = neutral) |
 | `colour_grade_highlights` | ini; per-app DWORD overrides | `1000` | Toolkit Highlights (1000 = neutral) |
+| `colour_grade_shadow_depth` | ini `[Settings]`; per-app DWORD overrides (written by the in-headset menu) | `1000` | ViewLab SHADOW DEPTH (not a Toolkit control; menu COLOUR tab after SHADOWS, shown 0–100). 1000 = vanilla. Lower values compress luminance below mid grey toward mid grey in log2 space (up to half the stops at 0), faded in over the first 3 stops below mid grey and held constant past 6, so midtones/highlights are untouched and true black stays black. Shader `Levels.w`; baked into the LUT. Gated by `colour_grade_post_process`; keeps running when OpenXR Toolkit is loaded. |
 | `colour_grade_sunglasses` | ini; per-app DWORD overrides | `0` | Toolkit preset: 0 none, 1 light, 2 dark, 3 night |
 | `colour_grade_levels_black` / `_white` / `_gamma` | ini (0–1 / 0–1 / 0.4–2.5); per-app DWORD ×1000 overrides | `0` / `1` / `1` | Levels from the in-headset calibration, applied after the Toolkit stage in display encoding: `black + (white − black) · value^gamma` |
 
-The Settings app writes `colour_grade_mode` and the ten `colour_grade_*` values (Colour section) as the global
+The Settings app writes `colour_grade_mode` and the eleven `colour_grade_*` values (Colour section) as the global
 default. The in-headset colour menu (any Ctrl+W/A/S/D or Ctrl+arrow opens it, Ctrl+F2 toggles, 15 s idle closes; Ctrl+W/S or Ctrl+Up/Down select, Ctrl+A/D or Ctrl+Left/Right change)
 writes every `colour_grade_*` value, including the levels and `colour_grade_mode=1`, as DWORDs to the running game's
 profile key on close or after 1.5 s idle. The in-headset calibration (Ctrl+Alt+C; Left/Right adjust, Enter

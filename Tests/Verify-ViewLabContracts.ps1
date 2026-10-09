@@ -1312,6 +1312,15 @@ Assert-Contains 'dllmain.cpp' 'g_hudLastCpuFrameMs=1000\.0\*\(double\)\(frame\.e
 Assert-Contains 'dllmain.cpp' 'if \(opticalCentring\) \{\s+// Same band height, centred on tangent 0' 'optical centring keeps the crop band height and centres it on straight ahead'
 Assert-Contains 'dllmain.cpp' 'ReadProfileDword\(L"optical_centring", profileOptical\)' 'optical centring has a per-app override'
 Assert-Contains 'dllmain.cpp' 'kColourMenuTabs\[\] = \{' 'colour menu uses OpenXR Toolkit style tabs'
+# SHADOW DEPTH (2026-10-10): one key end to end, baked into the LUT through Levels.w (no new per-frame pass).
+Assert-Contains 'dllmain.cpp' 'readValue\(L"colour_grade_shadow_depth", s\.shadowDepth\)' 'native reads SHADOW DEPTH (ini + per-app)'
+Assert-Contains 'dllmain.cpp' 'SetRegistryDwordValue\(key, L"colour_grade_shadow_depth"' 'in-headset menu persists SHADOW DEPTH per app'
+Assert-Contains 'dllmain.cpp' 'CmShadows, CmShadowDepth, CmExit\}, 11\}' 'SHADOW DEPTH sits after SHADOWS on the COLOUR tab'
+Assert-Contains 'dllmain.cpp' 'cbData\.levels\[3\] = g_colourGrade\.shadowDepthAmount;' 'SHADOW DEPTH rides the hashed levels constant, so the LUT re-bakes on change'
+Assert-Contains 'Shaders\ColourGrade.hlsl' 'if \(Levels\.w > 0\.0001\) color = AdjustShadowDepth\(color, Levels\.w\);' 'shader applies SHADOW DEPTH inside Grade() (baked by PSBake)'
+Assert-Contains 'MainWindow.xaml' 'Name="ColourGrade_shadow_depth_Slider"[^>]*Tag="1000"[^>]*SliderResetToTag_RightClick' 'settings slider for SHADOW DEPTH resets to vanilla on right-click'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' 'WritePrivateProfileString\("Settings", "colour_grade_shadow_depth"' 'settings app writes the global SHADOW DEPTH'
+Assert-Contains 'XRViewLab.UI\MainWindow.cs' '"colour_grade_shadow_depth", "colour_grade_gain_r"' 'per-app colour reset/summary includes SHADOW DEPTH'
 Assert-Contains 'XRViewLab.UI\App.cs' 'if \(sender is ComboBox combo && !combo\.IsDropDownOpen\) ForwardWheelToParent\(combo, e\);' 'the mouse wheel never changes a closed dropdown in any window; it scrolls the page'
 Assert-Contains 'XRViewLab.UI\BeanMaskEditor.cs' 'if \(WheelZoomRequiresClick && !_wheelEngaged\) return;' 'profile preview only zooms after a click so the wheel scrolls the window'
 

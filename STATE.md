@@ -4,7 +4,12 @@
 > unbuilt work, active queue, open issues. Update it in the same commit as any behaviour change. Completed
 > history goes to `CHANGELOG.md`; the full pre-2026-09-26 journal is `docs/history/STATE-archive-2026-09-26.md`.
 
-**Updated:** 2026-09-26
+**Updated:** 2026-10-10
+
+- **SHADOW DEPTH colour control (2026-10-10, built 4.1.417 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.417.msi`, not headset-tested):** new `colour_grade_shadow_depth` (0–1000,
+  1000 = vanilla), menu COLOUR tab after SHADOWS (menu now 153 font px tall for 11 entries) + WPF slider. Shader
+  `AdjustShadowDepth` in `Grade()`, amount via `Levels.w` (hashed with levels → LUT re-bake, zero extra per-frame cost
+  with the LUT engine). Needs in-headset tuning of the strength curve (max = half the shadow stops, 3-stop fade, 6-stop cap).
 
 - **Built for headset test:** 4.1.406 — `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.406.msi`. Help panels now describe the current clock, iRacing cue and test behaviour. Proximity colour remains independent inside two metres; the three-panel button row is fixed to 3×2.
 

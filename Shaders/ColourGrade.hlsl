@@ -19,11 +19,13 @@
 //   PSMath  per-pixel maths (the original path)
 //   PSLut   one 3D lookup per pixel into a LUT baked from the same maths (constant cost for any settings)
 //   PSBake  writes one slice of that LUT (run only when a setting changes)
+//
+// AdjustShadowDepth is ViewLab's own (not in OpenXR Toolkit); everything else is the Toolkit port.
 
 cbuffer Grade : register(b0) {
     float4 Params1; float4 Params2; float4 Params3;
     int4 RectOffset;   // xy = eye rect offset, z = 1 for an sRGB swapchain view
-    float4 Levels;     // x black, y white, z gamma (display encoding)
+    float4 Levels;     // x black, y white, z gamma (display encoding), w shadow depth amount (0 = vanilla)
     float4 Bake;       // x = LUT slice being baked, y = LUT size
 };
 Texture2D Source : register(t0);
@@ -63,6 +65,19 @@ float3 AdjustHighlightsShadows(float3 color, float2 amount) {
     return (color / luma) * (h + s - luma);
 }
 
+// SHADOW DEPTH: a per-pixel form of a local-exposure "shadow contrast" control. Luminance below mid grey
+// (0.18 linear) is compressed toward mid grey in log2 space by `amount` (0 = vanilla, 0.5 = halve the shadow
+// stops), faded in over the first three stops below mid grey so midtones and highlights are untouched, and
+// held constant past six stops down so near-black gets a finite gain (true black stays black). Monotonic for
+// amount < 0.59. Works on linear light: UNORM views are treated as display-encoded, like the levels stage.
+float3 AdjustShadowDepth(float3 color, float amount) {
+    float3 c = RectOffset.z != 0 ? color : SrgbToLinear(saturate(color));
+    float luma = dot(max(c, 0.0), float3(0.2126, 0.7152, 0.0722));
+    float stops = clamp(log2(max(luma, FLT_EPS) / 0.18), -6.0, 0.0);
+    c *= exp2(-stops * amount * smoothstep(0.0, 3.0, -stops));
+    return RectOffset.z != 0 ? c : LinearToSrgb(c);
+}
+
 // The whole grade, in the swapchain view's space (linear for sRGB views, stored values otherwise).
 float3 Grade(float3 color) {
     if (any(Params2.rgb)) color = AdjustGains(color, Params2.rgb);
@@ -76,6 +91,7 @@ float3 Grade(float3 color) {
         if (any(Params3.z)) color = AdjustVibrance(color, Params3.z);
         if (any(Params3.xy)) color = AdjustHighlightsShadows(color, Params3.xy);
     }
+    if (Levels.w > 0.0001) color = AdjustShadowDepth(color, Levels.w);
     if (Levels.x > 0.0001 || Levels.y < 0.9999 || abs(Levels.z - 1.0) > 0.0001) {
         float3 e = saturate(color); if (RectOffset.z != 0) e = LinearToSrgb(e);
         e = Levels.x + (Levels.y - Levels.x) * pow(max(e, 0.0), Levels.z);

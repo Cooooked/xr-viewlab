@@ -1520,6 +1520,7 @@ public partial class MainWindow : Window
 		ColourGrade_vibrance_Slider.Value = ReadRangeSetting("colour_grade_vibrance", 0, 0, 1000);
 		ColourGrade_highlights_Slider.Value = ReadRangeSetting("colour_grade_highlights", 1000, 0, 1000);
 		ColourGrade_shadows_Slider.Value = ReadRangeSetting("colour_grade_shadows", 0, 0, 1000);
+		ColourGrade_shadow_depth_Slider.Value = ReadRangeSetting("colour_grade_shadow_depth", 1000, 0, 1000);
 		ColourGrade_gain_r_Slider.Value = ReadRangeSetting("colour_grade_gain_r", 500, 0, 1000);
 		ColourGrade_gain_g_Slider.Value = ReadRangeSetting("colour_grade_gain_g", 500, 0, 1000);
 		ColourGrade_gain_b_Slider.Value = ReadRangeSetting("colour_grade_gain_b", 500, 0, 1000);
@@ -3703,6 +3704,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		WritePrivateProfileString("Settings", "colour_grade_vibrance", Math.Round(ColourGrade_vibrance_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", "colour_grade_highlights", Math.Round(ColourGrade_highlights_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", "colour_grade_shadows", Math.Round(ColourGrade_shadows_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
+		WritePrivateProfileString("Settings", "colour_grade_shadow_depth", Math.Round(ColourGrade_shadow_depth_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", "colour_grade_gain_r", Math.Round(ColourGrade_gain_r_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", "colour_grade_gain_g", Math.Round(ColourGrade_gain_g_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
 		WritePrivateProfileString("Settings", "colour_grade_gain_b", Math.Round(ColourGrade_gain_b_Slider.Value).ToString(CultureInfo.InvariantCulture), ConfigPath);
@@ -4740,7 +4742,7 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 	{
 		"colour_grade_mode", "colour_grade_post_process", "colour_grade_sunglasses", "colour_grade_contrast", "colour_grade_brightness",
 		"colour_grade_exposure", "colour_grade_saturation", "colour_grade_vibrance", "colour_grade_highlights", "colour_grade_shadows",
-		"colour_grade_gain_r", "colour_grade_gain_g", "colour_grade_gain_b",
+		"colour_grade_shadow_depth", "colour_grade_gain_r", "colour_grade_gain_g", "colour_grade_gain_b",
 		"colour_grade_levels_black", "colour_grade_levels_white", "colour_grade_levels_gamma", "colour_grade_lut",
 	};
 
@@ -4753,7 +4755,8 @@ private void ExperimentalCheck_Changed(object sender, RoutedEventArgs e)
 		string T(string name, int fallback) => (V(name, fallback) / 10.0).ToString("0.0", CultureInfo.InvariantCulture);
 		return $"Saved from the headset: contrast {T("colour_grade_contrast", 500)}, brightness {T("colour_grade_brightness", 500)}, " +
 			$"exposure {T("colour_grade_exposure", 500)}, saturation {T("colour_grade_saturation", 500)}, vibrance {T("colour_grade_vibrance", 0)}, " +
-			$"highlights {T("colour_grade_highlights", 1000)}, shadows {T("colour_grade_shadows", 0)}. " +
+			$"highlights {T("colour_grade_highlights", 1000)}, shadows {T("colour_grade_shadows", 0)}, " +
+			$"shadow depth {T("colour_grade_shadow_depth", 1000)}. " +
 			$"Levels: black {Math.Round(V("colour_grade_levels_black", 0) * 0.255)}, white {Math.Round(V("colour_grade_levels_white", 1000) * 0.255)}, " +
 			$"gamma {(V("colour_grade_levels_gamma", 1000) / 1000.0).ToString("0.00", CultureInfo.InvariantCulture)}.";
 	}

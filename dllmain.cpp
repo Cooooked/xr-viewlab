@@ -2913,6 +2913,7 @@ struct ColourGradeSettings {
     int gainR = 500, gainG = 500, gainB = 500;
     int highlights = 1000, shadows = 0, vibrance = 0;
     int sunglasses = 0;        // 0 none, 1 light, 2 dark, 3 night (OpenXR Toolkit presets)
+    int shadowDepth = 1000;    // ViewLab SHADOW DEPTH (not a Toolkit control): 1000 = vanilla, lower lifts shadows
     bool fullGrade = true;     // OpenXR Toolkit post_process On; Off still applies colour gains
 };
 
@@ -2927,6 +2928,9 @@ struct ColourGradeState {
     // Levels stage (in-headset calibration, applied after the Toolkit stage in display encoding):
     // encoded = black + (white - black) * encoded ^ gamma.
     float levelsBlack = 0.f, levelsWhite = 1.f, levelsGamma = 1.f;
+    // SHADOW DEPTH amount (shader Levels.w): 0 = vanilla .. 0.5 at SHADOW DEPTH 0. ViewLab-only, so it keeps
+    // running when OpenXR Toolkit is loaded; gated by post-processing like the other COLOUR entries.
+    float shadowDepthAmount = 0.f;
     // Renderer resources (created lazily on first graded frame).
     ID3D11VertexShader* vs = nullptr;
     ID3D11PixelShader* ps = nullptr;       // per-pixel maths
@@ -2954,7 +2958,7 @@ inline bool ColourLevelsActive() {
 }
 void RefreshColourGradeActive() {
     const bool stage = g_colourGrade.stageActive && !g_colourGrade.toolkitLoaded;
-    g_colourGrade.active = stage || ColourLevelsActive();
+    g_colourGrade.active = stage || ColourLevelsActive() || g_colourGrade.shadowDepthAmount > 1e-4f;
 }
 
 static int ClampGradeValue(DWORD v) { return static_cast<int>(std::min<DWORD>(v, 1000u)); }
@@ -2991,6 +2995,7 @@ static void ComputeColourGradeParams(const ColourGradeSettings& s) {
         nz(g_colourGrade.p1[3]) || nz(g_colourGrade.p3[0]) || nz(g_colourGrade.p3[1]) || nz(g_colourGrade.p3[2]));
     g_colourGrade.stageActive = gains || grade;
     g_colourGrade.active = g_colourGrade.stageActive;
+    g_colourGrade.shadowDepthAmount = s.fullGrade ? (1000 - std::clamp(s.shadowDepth, 0, 1000)) * 0.0005f : 0.f;
 }
 
 void LoadColourGradeConfig() {
@@ -3032,6 +3037,7 @@ void LoadColourGradeConfig() {
         readValue(L"colour_grade_vibrance", s.vibrance);
         readValue(L"colour_grade_highlights", s.highlights);
         readValue(L"colour_grade_shadows", s.shadows);
+        readValue(L"colour_grade_shadow_depth", s.shadowDepth);
         readValue(L"colour_grade_gain_r", s.gainR);
         readValue(L"colour_grade_gain_g", s.gainG);
         readValue(L"colour_grade_gain_b", s.gainB);
@@ -3054,9 +3060,9 @@ void LoadColourGradeConfig() {
         Log("colour grade: OpenXR Toolkit is loaded in this process; ViewLab's Toolkit stage stands down to avoid grading twice\n");
     RefreshColourGradeActive();
     Log("colour grade: source=%s app=%ls active=%d full=%d contrast=%d brightness=%d exposure=%d saturation=%d "
-        "vibrance=%d highlights=%d shadows=%d gain=%d/%d/%d sunglasses=%d\n",
+        "vibrance=%d highlights=%d shadows=%d shadow_depth=%d gain=%d/%d/%d sunglasses=%d\n",
         g_colourGrade.source, currentOpenXrAppName.c_str(), g_colourGrade.active ? 1 : 0, s.fullGrade ? 1 : 0,
-        s.contrast, s.brightness, s.exposure, s.saturation, s.vibrance, s.highlights, s.shadows,
+        s.contrast, s.brightness, s.exposure, s.saturation, s.vibrance, s.highlights, s.shadows, s.shadowDepth,
         s.gainR, s.gainG, s.gainB, s.sunglasses);
     Log("colour grade: levels black=%.3f white=%.3f gamma=%.3f\n", g_colourGrade.levelsBlack, g_colourGrade.levelsWhite, g_colourGrade.levelsGamma);
 }
@@ -3299,6 +3305,7 @@ void GradeEyes(ID3D11Texture2D* tex, int64_t scFormat, const std::vector<EyeView
     memcpy(cbData.p3, g_colourGrade.p3, sizeof(cbData.p3));
     cbData.offset[2] = srgb;
     cbData.levels[0] = g_colourGrade.levelsBlack; cbData.levels[1] = g_colourGrade.levelsWhite; cbData.levels[2] = g_colourGrade.levelsGamma;
+    cbData.levels[3] = g_colourGrade.shadowDepthAmount; // hashed with the levels, so the LUT re-bakes on change
     cbData.bake[1] = static_cast<float>(kColourLutSize);
     auto upload = [&]() {
         D3D11_MAPPED_SUBRESOURCE mapped{};
@@ -3459,7 +3466,7 @@ ColourCalibrationState g_colourCal;
 // this game's profile when the menu closes or after 1.5 s without changes.
 enum ColourMenuItem : int {
     CmPost = 0, CmSunglasses, CmContrast, CmBrightness, CmExposure, CmSaturation, CmVibrance,
-    CmHighlights, CmShadows, CmGainR, CmGainG, CmGainB, CmBlack, CmWhite, CmGamma, CmCalibrate, CmReset,
+    CmHighlights, CmShadows, CmShadowDepth, CmGainR, CmGainG, CmGainB, CmBlack, CmWhite, CmGamma, CmCalibrate, CmReset,
     CmMenuSize, CmMenuX, CmMenuY, CmMenuDepth, CmExit, CmCount
 };
 struct ColourMenuState {
@@ -3481,9 +3488,9 @@ ColourMenuState g_colourMenu;
 
 // OpenXR Toolkit layout: a tab row first (A/D switches tab when it is selected), then the tab's entries,
 // EXIT MENU last on every tab.
-struct ColourMenuTab { const char* name; int items[10]; int count; };
+struct ColourMenuTab { const char* name; int items[11]; int count; };
 static const ColourMenuTab kColourMenuTabs[] = {
-    {"COLOUR", {CmPost, CmSunglasses, CmContrast, CmBrightness, CmExposure, CmSaturation, CmVibrance, CmHighlights, CmShadows, CmExit}, 10},
+    {"COLOUR", {CmPost, CmSunglasses, CmContrast, CmBrightness, CmExposure, CmSaturation, CmVibrance, CmHighlights, CmShadows, CmShadowDepth, CmExit}, 11},
     {"GAINS", {CmGainR, CmGainG, CmGainB, CmExit}, 4},
     {"LEVELS", {CmBlack, CmWhite, CmGamma, CmCalibrate, CmReset, CmExit}, 6},
     {"MENU", {CmMenuSize, CmMenuX, CmMenuY, CmMenuDepth, CmExit}, 5},
@@ -3541,6 +3548,7 @@ static void SaveColourMenu() {
     SetRegistryDwordValue(key, L"colour_grade_vibrance", static_cast<DWORD>(s.vibrance));
     SetRegistryDwordValue(key, L"colour_grade_highlights", static_cast<DWORD>(s.highlights));
     SetRegistryDwordValue(key, L"colour_grade_shadows", static_cast<DWORD>(s.shadows));
+    SetRegistryDwordValue(key, L"colour_grade_shadow_depth", static_cast<DWORD>(s.shadowDepth));
     SetRegistryDwordValue(key, L"colour_grade_gain_r", static_cast<DWORD>(s.gainR));
     SetRegistryDwordValue(key, L"colour_grade_gain_g", static_cast<DWORD>(s.gainG));
     SetRegistryDwordValue(key, L"colour_grade_gain_b", static_cast<DWORD>(s.gainB));
@@ -3554,9 +3562,9 @@ static void SaveColourMenu() {
     RegCloseKey(key);
     g_colourMenu.dirty = false;
     Log("colour menu: saved post=%d sunglasses=%d contrast=%d brightness=%d exposure=%d saturation=%d vibrance=%d "
-        "highlights=%d shadows=%d gain=%d/%d/%d levels=%.3f/%.3f/%.3f for %ls\n",
+        "highlights=%d shadows=%d shadow_depth=%d gain=%d/%d/%d levels=%.3f/%.3f/%.3f for %ls\n",
         s.fullGrade ? 1 : 0, s.sunglasses, s.contrast, s.brightness, s.exposure, s.saturation, s.vibrance,
-        s.highlights, s.shadows, s.gainR, s.gainG, s.gainB,
+        s.highlights, s.shadows, s.shadowDepth, s.gainR, s.gainG, s.gainB,
         g_colourGrade.levelsBlack, g_colourGrade.levelsWhite, g_colourGrade.levelsGamma, currentAppKey.c_str());
 }
 
@@ -3607,6 +3615,7 @@ static void AdjustColourMenuItem(int item, int dir) {
     case CmVibrance: step(s.vibrance, 0, 1000); break;
     case CmHighlights: step(s.highlights, 0, 1000); break;
     case CmShadows: step(s.shadows, 0, 1000); break;
+    case CmShadowDepth: step(s.shadowDepth, 0, 1000); break;
     case CmGainR: step(s.gainR, 0, 1000); break;
     case CmGainG: step(s.gainG, 0, 1000); break;
     case CmGainB: step(s.gainB, 0, 1000); break;
@@ -3885,9 +3894,9 @@ void DrawColourCalibrationToTexture(ID3D11Texture2D* tex, const EyeView& eye, co
     const auto centre = co.ResolveSharedTangent(offX + depthTan, bandTan + offY, false);
     const float cx = centre.first, cy = centre.second;
     const float unitPx = co.tangentValid ? co.width / (co.selectedR - co.selectedL) : (float)(std::min)(r.extent.width, r.extent.height) * .9f;
-    // Menu: OpenXR Toolkit layout, fixed size for every tab (the tallest tab: tab row + 10 entries) so it never
-    // jumps when switching tabs; 142 x 262 font px.
-    const float unitsTall = menu ? 142.f : 190.f, unitsWide = menu ? 262.f : 232.f;
+    // Menu: OpenXR Toolkit layout, fixed size for every tab (the tallest tab: tab row + 11 entries) so it never
+    // jumps when switching tabs; 153 x 262 font px.
+    const float unitsTall = menu ? 153.f : 190.f, unitsWide = menu ? 262.f : 232.f;
     // Menu: sized like OpenXR Toolkit's, in eye-image pixels (the Toolkit: 44 pt x 0.75 = 33 px font, menu.cpp /
     // layer.cpp defaults). Matching its ~22 px capital height with our 7-row block glyphs gives 3 image px per
     // font px (4.5, matching its 49.5 px row pitch instead, made the chunky block font look far bigger).
@@ -3978,6 +3987,7 @@ void DrawColourCalibrationToTexture(ID3D11Texture2D* tex, const EyeView& eye, co
             case CmVibrance: label = "VIBRANCE"; fmt(s.vibrance); break;
             case CmHighlights: label = "HIGHLIGHTS"; fmt(s.highlights); break;
             case CmShadows: label = "SHADOWS"; fmt(s.shadows); break;
+            case CmShadowDepth: label = "SHADOW DEPTH"; fmt(s.shadowDepth); break;
             case CmGainR: label = "RED GAIN"; fmt(s.gainR); break;
             case CmGainG: label = "GREEN GAIN"; fmt(s.gainG); break;
             case CmGainB: label = "BLUE GAIN"; fmt(s.gainB); break;

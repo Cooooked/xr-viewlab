@@ -2,6 +2,8 @@
 
 ## Unreleased — colour menu, stereo panels, frame cost graph mode
 
+- New colour control **Shadow Depth** (in-headset menu COLOUR tab, after SHADOWS; Settings → Colour → ViewLab values). 100 = vanilla; lower values lift dark areas toward mid grey like a local-exposure shadow control, leaving midtones and highlights alone and true black black. Saved per game from the headset, right-click resets the slider, and it is baked into the same colour lookup table, so it adds no per-frame cost.
+
 - Updated the `?` help panels: clock modes, independent two-metre proximity colour, rear-closing themes, spotter edge line, live switching and individual iRacing test sequences are now described accurately.
 - Proximity-colour spotter now has an independent 0–255 distance signal active only within two metres; it no longer borrows the rear-closing pressure state. Yellow phases continuously through orange to red as distance closes, with iRacing-confirmed side overlap red. Rear glow/chevrons also use continuous green-channel colour progression rather than a few hue stages.
 - The six menu buttons in the three-panel main layout now occupy a guaranteed three-column, two-row grid, independent of scrollbar width.
