@@ -1,5 +1,7 @@
 # Decision log
 
+- **17 November 2026: native-panel void ownership repair. Live 1920x1080 panel labelled RaceLab matched ViewLab TV size (2.36m x 1.3275m). Clearing its saved in_game route restored void drawing, confirmed by user. Devin transcript node 3139 proves Devin explicitly sent id=1,in_game=true; node 3142 acknowledged this persisted workaround, then later mistook the same RaceLab-labelled TV for a missing overlay. Installed runtime binary contains no ViewLab owner recognition despite newer dirty source having it. Added creation-only, thread-local ViewLabNativePanelCreationActive export; VLXR uses that explicit signal instead of guessing ownership from forwarding/end-frame hooks. Real RaceLab/OKB attribution remains separate. No new per-frame GPU work; capture and Panel FPS graph unchanged. Built and installed ViewLab 4.1.479 and matched VLXR 0.5.206 MSI/runtime/APK. Contracts, creation-scope and nested-owner fixtures pass. New live session inventory owner=ViewLab,in_game=false; actual runtime path/hash verified; headset reports panel updates at 60.0fps and game submits about 414/2s with zero failures. User confirms TV in void and smooth. Driving endurance capture in progress.**
+
 ## Stereo research uses software correctness first (2026-09-10)
 
 The user is gaming during implementation. Standalone stereo correctness tests therefore use D3D11 WARP,

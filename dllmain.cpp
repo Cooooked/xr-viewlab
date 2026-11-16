@@ -11,6 +11,12 @@
 #include "ClockWidget.h"
 #include "StickyNote.h"
 #include "StickyNoteHdRenderer.h"
+#include "NativePanelCreationScope.h"
+// Creation-only attribution: forwarding hooks on the stack do not own this panel.
+extern "C" int __cdecl ViewLabNativePanelCreationActive() noexcept {
+    return viewlab::panels::NativePanelCreationScope::Active() ? 1 : 0;
+}
+
 #include <io.h>
 
 namespace {

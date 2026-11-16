@@ -151,7 +151,12 @@ struct Engine {
             if(!surface.chain){
                 XrSwapchainCreateInfo ci{XR_TYPE_SWAPCHAIN_CREATE_INFO};ci.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT|XR_SWAPCHAIN_USAGE_SAMPLED_BIT|XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
                 ci.format=swapchainFormat;ci.sampleCount=1;ci.width=w;ci.height=h;ci.faceCount=1;ci.arraySize=1;ci.mipCount=1;
-                if(XR_FAILED(nextXrCreateSwapchain(current,&ci,&surface.chain))){surface.blocked=true;continue;}
+                XrResult created;
+                {
+                    viewlab::panels::NativePanelCreationScope creationScope;
+                    created=nextXrCreateSwapchain(current,&ci,&surface.chain);
+                }
+                if(XR_FAILED(created)){surface.blocked=true;continue;}
                 surface.width=w;surface.height=h;uint32_t n=0;
                 if(XR_FAILED(nextXrEnumerateSwapchainImages(surface.chain,0,&n,nullptr))||!n){surface.blocked=true;continue;}
                 surface.images.resize(n,{XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
