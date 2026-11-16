@@ -1,1884 +1,3912 @@
-# Changelog
+﻿# Changelog
+
+- Native VR desktop-window panels: reusable sources, named layouts, fixed/head-following placement and configurable mouse editing with in-VR selection guidance. Capture now uses DXGI Desktop Duplication per monitor (immune to the Windows Graphics Capture silent-stall freezes), publishes at a paced 60 fps only when pixels change, and can capture a whole monitor as a panel source. Static content is retained, resized sources recover, failed capture retries, and input releases on exit/focus loss/shutdown. Import OpenKneeboard window sources read-only; Brave retains its correct identity. Desktop/contract validation is separate from pending live VR/performance validation. File/PDF/native-browser sources, original controllers and automatic cockpit attachment are not included.
+
+- LFE Minimum activation now gates low-level audio without dulling the colour or intensity of real-load signals that pass the threshold.
+
+- LFE narrow frequency ranges now interpolate FFT bins into a continuous haze instead of showing visible bin bands.
+
+
+- LFE haze now preserves amplitude differences instead of compressing quiet and strong signals into similar intensity. Mirrored peripheral mode puts spectrum coordinate 0 at both outer lens edges, with the selected Minimum frequency setting defining its Hz; unwanted frequency numbers are removed.
+
+
+
+- LFE spectrogram: a subtle transparent frequency haze from a selected real Windows audio endpoint, with live range/size/position/intensity/attack/decay/persistence/softness/palette controls. Optional peripheral copies share one mono capture and analysis result. CABLE-B Output is preferred automatically; VoiceMeeter A5 and playback taps are selectable. Audio routing is unchanged.
+
+
+
+- Driving assistance: one movable ABS / wheelspin / wheel-lock group, using approved automotive warning graphics. Independent live enablement, fades, thresholds, colours and timed tests. ABS is real binary intervention; wheelspin/lock reuse Marvin’s estimates. TC omitted at user request.
+
+
+
+- **iRacing launch clicks tolerate concurrent mouse movement:** navigation now submits move/down/up in one Windows input batch, with foreground and injection-result checks. No direct simulator launch, readiness bypass or input blocking was added.
+
+
+
+- **App-profile Render % now follows externally saved supersampling changes**, including an open editor, without discarding an unsaved percentage edit.
+
+
 
 ## Unreleased — colour menu, stereo panels, frame cost graph mode
 
-- **Colour profiles** in the in-headset colour menu: a PROFILES row (on every tab, above EXIT MENU) shows your named looks side by side; Ctrl+A/D on it switches the running game to the previous/next profile instantly, exactly as if every slider had moved (saved for that game like any menu change). Name profiles and store the current ViewLab values into up to six slots in Settings → Colour → Colour profiles; empty slots are hidden. Ships with **Profile 1** (exposure 60, saturation 60, shadow depth 65) as a starting point.
+
+
+- **Native VR panels: fixed ~4 fps in-headset display.** Panel images were consumed at ~50 fps but the headset only updated ~4 fps because a timed-out swapchain wait left the image acquired across frames, starving the runtime compositor; timed-out waits now release the image immediately. Panel swapchains also declare sampled usage so runtimes can texture them correctly.
+
+
+
+- **Sticky notes now appear in the headset exactly where the layout editor shows them.** The editor could show an older saved position than the one the headset used.
+
+
+
+- **Less GPU-queue flushing.** The visor, overlays and Performance HUD/Trace used to each force a GPU submission per eye every frame on the game's render thread; they now share a single flush per frame.
+
+
+
+- **Performance HUD and Performance Trace no longer slow the game.** In alarm-only mode they used to save and restore the game's whole graphics state, allocate a vertex buffer and flush the GPU queue every frame even while invisible, and when shown they uploaded and drew once per colour. They now skip all of that while faded out and draw in a single batch when shown. Measured in an iRacing VR replay at 144 Hz: the alerts cost ~0.45 ms of the game's ~6.5 ms render-thread frame (cadence misses 23 → 1 with them off).
+
+
+
+- **ViewLab hotkeys only work while the game is in front.** The colour menu, calibration, overlay toggle keys and trace marker used to react to keys pressed in any app, so Ctrl+A/S/D in Adrenalin, a browser or Explorer could open the colour menu and switch post-processing off for the game. Opening the colour menu now always starts on the tab row, so a stray key can only change tabs, never a setting.
+
+
+
+- **Colour profiles:** profiles 1, 2 and 3 are always available (2 and 3 initially neutral). The PROFILES selector appears only on COLOUR and switches only that tab’s controls. Gains, calibration levels and menu settings remain independent. Optional slots 4–6 appear once stored; names and stored values load on the next game launch. Profile 1 retains exposure 60, saturation 60 and shadow depth 65.
+
+
+
 - New colour control **Shadow Depth** (in-headset menu COLOUR tab, after SHADOWS; Settings → Colour → ViewLab values). 100 = vanilla; lower values lift dark areas toward mid grey like a local-exposure shadow control, leaving midtones and highlights alone and true black black. Saved per game from the headset, right-click resets the slider, and it is baked into the same colour lookup table, so it adds no per-frame cost.
 
+
+
+- VLXR 0.4.6 visual-quality candidate: corrected AV1 SDR colour metadata to explicit full-range BT.709, disabled the Quest shader that compressed decoded RGB into video-limited 16–235, removed the unconditional second REC.709 mapping, and kept retained decoded images paired with their original presentation timestamps. Performance/settings now render as native Quest compositor quads outside ViewLab's crop; removed unsupported spacewarp/foveation rows and the inactive-panel border leak. Direct USB streaming and isolated H.264 were verified at 144/144 without a freeze. Added bounded fresh/repeated/display-age diagnostics plus fixed colour patches for the 144 Hz VDXR comparison.
+
+
+
+- **New rear-closing mode: Attacks only.** Classic popped the cue at most corners because braking first makes the gap to the car behind shrink fast for a moment. Attacks only ignores that: no new cue while you are braking or cornering, or for 0.6 s after, so it fires for real runs down a straight, and a run already showing stays on into the corner. Classic is unchanged and remains the default.
+
+- **Proximity-colour spotter reworked: a car on one side now only lights that side.** The old yellow → orange phase fired inside 2 m, where the car is already beside you, so it lit both glows for a car on your left. Now a car 14 m → 5 m behind (two car lengths down to nose on your bumper) phases both glows smoothly from yellow to deep orange; once it is alongside, only the side iRacing reports turns red. The test button ramps yellow → orange, then shows a left car in red on the left only.
+
+- New Performance HUD widget **DWM**: how much of the game's GPU the Windows desktop compositor is using (monitor symbol). Amber from 25 %, red from 40 %. A 4K 144 Hz desktop playing video with a mirrored monitor measured ~75 % and made a 144 Hz game miss frames; ~5–20 % is normal. Read from the same GPU counter pass as the GPU widget, so it adds no per-frame cost.
+
+
+
+- New rhythm shift light theme **Shift Hero** (Guitar Hero style). A note glides down a highway and lands on the strike line exactly at the car's shift point, with scrolling fret bars, five fret buttons and hit flames in the shift window. Every full-throttle upshift is scored: PERFECT / GREAT / GOOD / EARLY / LATE, and bouncing on the limiter is a MISS. Hits build a combo and the multiplier (x1–x4, pips beside the strike line); 16 in a row lights Star Power (x8, blue highway). Popups rise off the strike line with points, sparks and X2!/STAR POWER!/STREAK call-outs; score, accuracy, combo and a rock meter sit beside the highway. Downshifts, part-throttle and pit-road shifts are never judged. Shift Hero is a single highway seen by both eyes, placed at the **bottom, top, left or right** of the view (Shift Hero placement); the position slider moves it in from that edge. Theme and placement apply live; the shift light test now plays a nine-note demo run.
+
+
+
 - Updated the `?` help panels: clock modes, independent two-metre proximity colour, rear-closing themes, spotter edge line, live switching and individual iRacing test sequences are now described accurately.
+
 - Proximity-colour spotter now has an independent 0–255 distance signal active only within two metres; it no longer borrows the rear-closing pressure state. Yellow phases continuously through orange to red as distance closes, with iRacing-confirmed side overlap red. Rear glow/chevrons also use continuous green-channel colour progression rather than a few hue stages.
+
 - The six menu buttons in the three-panel main layout now occupy a guaranteed three-column, two-row grid, independent of scrollbar width.
+
 - Corrected the shared scrollbar layout: a 12-unit track slot now gives the 6-unit grey thumb room to render at its intended width in the overlay and per-app viewers.
+
 - Spotter Test left/right/both now show a 2.5-second preview and clear automatically, restoring the current live telemetry cue. The previous toggle could leave a synthetic car alongside indefinitely.
+
 - Rear-closing presentation tests now suppress the peripheral proximity cue while they run. Mirror chevrons use stronger alpha for visible line work at the same saved opacity.
+
 - The game list, detached overlay window, overlay popup and per-app profile now use one thin grey scrollbar style and a shared scroll-viewer template. The detached overlay window previously created a default Windows scrollbar in code.
+
 - Rear-closing mirror chevrons are larger, thicker and spaced side by side to distinguish them from the top glow. Spotter edge lines now have live width and inward-position controls so they can sit within the visible lens.
+
 - Rhythm shift light now draws two converging lines that become one at the car-reported shift RPM. Green begins within 150 RPM, blue marks within 50 RPM, and red marks the reported blink RPM; the synthetic test runs those stages.
+
 - Corrected the iRacing proximity-colour mode to use the selected peripheral spotter glow or edge line throughout yellow → orange → confirmed-side red, leaving the separate rear-closing cue independent. Spotter and rear-closing theme switches now apply live.
+
 - Race-start, rear-closing, proximity-colour and shift-light test buttons now run complete timed sequences and clear themselves. Lap and fuel cards no longer display the generic "ViewLab event" caption.
 
+
+
 - iRacing presentation test buttons now work during live telemetry. An explicitly requested test overrides that cue until cleared, then the current live cue returns. Lap-card tests work while connected and test events do not change notification attention policy.
+
 - Direct eye-texture overlay presentation is now the built-in default when an existing installed config lacks the setting; this no longer depends on manually editing that config.
+
+
 
 - Narrowed the per-app profile window from 560 to 415 WPF units (roughly 1120 to 830 pixels at the screenshot's scaling). Overlay headers now follow the window width, and the four bottom actions use two rows so they remain visible.
 
+
+
 - Spotter mode now offers Classic or Approach amber → Side red. The new mode reuses the nearest-behind closing cue for a side-neutral amber warning, then uses iRacing's confirmed left/right spotter state for red overlap. Classic remains the default and keeps the existing colour and independent rear cue. Switching modes applies live, including with a legacy per-app iRacing enable override.
 
+
+
 - iRacing synthetic presentation controls now sit at the bottom of their respective lap, spotter, flag, race-start, rear-closing, shift-light and fuel sections. Persistent cues toggle; race start cycles red, green, clear. They use the broker's generic event path and do not save production settings.
+
 - Every expandable per-app overlay section now places "Use global values" first; Performance HUD's Visibility selector follows it.
+
 - Performance HUD now offers one Visibility choice: Off / Always visible / Alarm only, globally and per app. The old alarm-only symbols filter is retired. Restored the enable checkbox in both HUD section headers; it stays in sync with Visibility.
+
 - Clock gained stopwatch, countdown and next local target-time modes, with monotonic timing, start/pause/reset commands, and amber/red countdown feedback. Existing session timer remains the default.
 
+
+
 - Colour menu: new EXIT MENU entry at the bottom (Ctrl+W from the top reaches it, Ctrl+D selects it); MENU SIZE, MENU X and MENU Y move and scale it in game; it is the same size in every game and sits in the middle of the render area.
+
 - Brightness calibration now uses Ctrl+W/A/S/D too (A/D adjust, S next, W back) and returns to the menu when started from it.
+
 - Frame cost graph: CPU now covers the game's whole frame, so Total is no longer just GPU. Pick which lines to overlay (Total, CPU, GPU, Wait) and the label style (Full, Minimal+, Minimal), globally or per app.
 
+
+
 - ViewLab now replaces OpenXR Toolkit's colour adjustments outright: the "Follow OpenXR Toolkit" option is gone. Colour is simply Off or On.
+
 - New **in-headset colour menu**: Ctrl+W/A/S/D opens it like OpenXR Toolkit (Ctrl+F2 also toggles; it closes after 15 s idle), Ctrl+W/S picks an item, Ctrl+A/D changes it (hold to repeat). Same items and 0–100 scale as the Toolkit's post-processing page, plus black level, white level, gamma, run calibration and reset. Saved for that game.
+
 - The calibration panel and the colour menu now fuse into one panel in both eyes instead of showing a separate, non-overlapping panel per eye.
+
 - Calibration step 3 used too bright a target, which pushed people to a dark gamma. The target is now much dimmer.
+
 - **Frame cost** is now a Graph mode (not a separate theme), applies live, and follows global and per-app settings. Its series picker only shows in that mode.
+
 - The per-app window has a Colour section showing what the headset saved for that game, with a reset button, plus the Frame cost graph mode.
+
 - In the per-app window, the mouse wheel scrolls the window; the visor preview only zooms after you click it.
+
 - Everywhere in the app, the mouse wheel no longer changes a dropdown it passes over, and lists with nothing to scroll no longer stop the page scrolling.
+
+
 
 ## 4.1.363 — OpenXR Toolkit colour port
 
+
+
 - ViewLab can now apply OpenXR Toolkit's colour adjustments itself (contrast, brightness, exposure, saturation, vibrance, highlights, shadows, colour gains and the sunglasses presets), using the Toolkit's exact maths.
+
 - By default it follows the settings you already saved in OpenXR Toolkit for each game, so the Toolkit can be switched off without losing the look. If the Toolkit is still running, ViewLab stands down instead of grading twice.
+
 - The grade costs nothing when the settings are neutral, and never recolours the visor, HUD or overlays.
+
 - Fixed unreadable black HUD metric and Warn/Critical labels in the per-app profile editor.
+
 - Added a **pit limiter warning**: the flag border pulses orange while you are moving on pit road with the pit limiter off. It has its own checkbox in the flag list.
+
 - Added a **Frame cost** theme for the Performance Trace: millisecond axes, a line at the headset's frame budget, and a live readout to one decimal of what the game's frame costs. Views: Total, CPU, GPU, Wait or All. GPU is now measured in milliseconds, not just usage %.
+
 - Added a **rhythm shift light**: bars close in on a centre pill at the outer edge of each eye and meet it at the car's shift point, where the pill flashes green; a red strobe means you are past the limiter point.
+
 - Added new looks: **Edge line** for the spotter and **Mirror chevrons** for the rear-closing cue. The original glows remain the default.
+
 - Fixed the race-start light, rear-closing cue and Grip-O-Bar not drawing unless another overlay was also showing.
+
 - The iRacing and notification status lines now say when the broker is not running instead of showing its last state.
+
 - Settings that only apply when the game next starts now say so in their tooltips.
+
 - Added a **Colour** section to the settings: follow OpenXR Toolkit's saved colours, use ViewLab's own sliders (same scale as the Toolkit), or turn it off.
+
 - Added **in-headset colour calibration** (Ctrl+Alt+C), copying Monster Hunter Wilds' three steps: minimum luminosity, maximum luminosity and overall luminosity. The result is saved for that game.
+
+
 
 ## iRacing DynLOD 1.1.0 — 2026-09-15
 
+
+
 - Added World and Cars preset selectors for Main and Replay while retaining exact Custom Min/Max controls.
+
 - Matched all six current iRacing presets, including their separate mirror values; iRSidekick's additional Stable preset is deliberately excluded.
+
 - Corrected World to the `LODPctDyno*` family and Cars to plain `LODPct*`, based on direct iRacing UI writes.
+
+
 
 ## iRacing DynLOD 1.0.0 — 2026-09-07
 
+
+
 - Added a dedicated Windows icon, full IRACING DYNLOD title, version metadata and softer controls within the selected compact layout.
+
 - Made the utility independently buildable with bundled theme resources, documentation, licence and synthetic INI checks.
+
 - Added release ZIP/checksum generation and successful-build minor version increments: 1.0.0, 1.1.0, 1.2.0. The user confirmed INI editing works and authorised publication of the standalone utility.
+
+
 
 ## 2026-09-07 — Standalone DynLOD editor / ViewLab build 4.1.352
 
+
+
 - Added a portable iRacing DynLOD editor with ViewLab styling, literal FPS Target, four Min/Max sliders and numeric fields.
+
 - Read Main or Replay, refresh from disk, and apply the displayed values separately to either section. Each write preserves unrelated contents and creates a backup; values stay available for reapplication after iRSidekick.
+
 - No DynLOD installer or ViewLab runtime changes. The required repository build produced ViewLab 4.1.352.
+
 - Visual follow-up (required ViewLab rebuild 4.1.353): equal Min/Max values now form one horizontally split grip instead of stacked dots; both halves remain independently draggable.
+
 - Final snapping correction: smooth absolute-pointer dragging with gentle attraction within 4 points of each multiple of 25; direct numeric entry remains unsnapped.
+
 - Reduced DynLOD to a compact 460 × 510 window and removed explanatory annotations.
+
 - Implemented the selected layout C at 260 × 285: narrow stacked controls, inline FPS/section selection and compact icon toolbar. Gentle snapping and INI handling are unchanged.
+
+
 
 ## 4.1.351 - 2026-08-30 (Quest 3 144 Hz performance metrics)
 
+
+
 - Rebuilt VR/frame-interval health around the runtime's actual display period, with explicit 144 Hz fixtures: 6.944 ms is the native target, sustained 140 FPS is warning territory, and 120 FPS is critical.
+
 - Restored active unstable-cadence and stable-reprojection classification that had survived only in dead reference code. A bouncing 140–120 FPS distribution now raises an unstable cadence alarm even before its rolling median settles.
+
 - Reduced cadence-only alarm entry from 750 ms to 300 ms while retaining the shared time-based recovery and hold policy. CPU, GPU, APP and hardware metrics keep their existing sustained entry.
+
 - Clarified APP as game-frame wall time from `xrBeginFrame` return to `xrEndFrame` entry. It can expose main/render-thread pressure even when total CPU and GPU utilisation appear healthy.
+
 - Migrated untouched VR/frame-interval defaults from 103/108% to 102/105% of the active cadence budget; customised global and all per-app thresholds remain untouched.
+
+
 
 ## 4.1.350 - 2026-08-28 (ReShade Remote persistence and Home repair)
 
+
+
 - Unified ReShade Remote mode, menu/window and hotkey preferences in ViewLab's LocalAppData INI. The payload reads old ProgramData window values only as migration fallback, so game/ViewLab launch order can no longer reset Borderless, Always on top or menu state.
+
 - Split the former combined menu checkbox into independent `Show desktop preview` and `Show in-HMD menu` controls. Home now changes the in-HMD state only unless its explicit desktop option is enabled.
+
 - Made Home a no-repeat Windows hotkey, mirrored payload-originated menu changes durably, and stopped opening the Remote from overwriting a valid live control block.
+
 - Fresh installs start with the in-HMD ReShade menu hidden and the desktop preview visible. Changing Borderless preserves whether that preview is currently shown or hidden.
+
+
 
 ## 4.1.349 - 2026-08-28 (Overlay theme and sticky-note scale repair)
 
+
+
 - Restored ViewLab's dark TextBlock, CheckBox, Slider, ComboBox, ComboBoxItem, TextBox and Button styles in the detached global Overlays window, including styles supplied by the merged shared theme.
+
 - Made global and per-app Sticky Notes use the same shared dark card, border, padding, title, label and spacing resources, with explicit readable foregrounds throughout.
+
 - Lowered Sticky Notes Scale from 0.5 to 0.1 in both editors, both previews, live state, startup, legacy-profile and canonical per-app override clamps. The default remains 1.0 and the maximum remains 2.5.
+
 - Removed the green HD Paper annotation from the global editor. Position remains preview-only and global/per-app changes remain live.
+
+
 
 ## 4.1.348 - 2026-08-28 (Consistent overlay size controls)
 
+
+
 - Made the global and per-app editors expose the same clearly labelled `Scale` and `Opacity` controls for Clock, Performance HUD, Performance Trace, Sticky Notes, Crosshair and Notifications.
+
 - Added the missing per-app Scale sliders, including the sticky-note Scale control that was absent beside its unlabelled opacity slider.
+
 - Removed duplicate position and position-reset controls from the visible global overlay sections. Position remains editable through the binocular preview, which is the single placement surface; existing position values and live persistence are unchanged.
+
 - Renamed Crosshair `Alpha` to `Opacity`, distinguished its feature-specific `Crosshair arm size` from whole-overlay `Scale`, and renamed the trace sensitivity control so it no longer masquerades as a second scale setting.
+
+
 
 ## 4.1.347 - 2026-08-28 (Complete live-overlay contract)
 
+
+
 - Completed the interrupted live per-app overlay work: every editable property of clock, HUD, Performance Trace, sticky notes, crosshair and notifications now publishes into the running executable without recreating the OpenXR session.
+
 - Added a scoped notification-composition live channel for unsaved design, palette, resolution, privacy, icon/image, filters, allowlist, media-card and queue settings. Test Presentation now consumes that state before composing instead of saving and testing the global configuration.
+
 - Per-feature Use Global Values now publishes all six resolved overlays authoritatively, while Cancel restores the original resolved profile. Restored saved per-app HUD unit/network settings and notification duration at session startup; resolution-only broker changes are no longer ignored.
+
+
 
 ## 4.1.346 - 2026-08-28 (Live per-app overlays)
 
+
+
 - Per-app changes to clock, HUD, Performance Trace, sticky notes, crosshair and notification placement now apply to the currently running game without restarting it. This includes enable/disable, position, scale, opacity, hotkeys, HUD widgets/thresholds, trace channels, sticky-note content/style, crosshair colour, and clock design/palette.
+
 - Live state is explicitly scoped to the active executable, so an edit for one profile cannot bleed into another VR title. Saving retains the live result; cancelling restores the profile that was running. Render/FOV settings still apply when a new VR session starts.
+
 - Fixed the sticky-note and HUD collection channels so they publish the active profile rather than stale global values. Added the missing live fields and corrected the per-app clock/notification design-versus-palette controls.
+
+
 
 ## 4.1.345 - 2026-08-27 (Sticky-note visual themes and HD Paper)
 
+
+
 - Added an independent per-note **Style** choice. Existing and unversioned notes retain the exact **8-bit** renderer; newly added notes default to **HD Paper**. Paper colour remains a separate Classic yellow/Rose/Mint/Sky/Paper choice in both global and per-app editors.
+
 - HD Paper is a native 1024×1024 composition with anti-aliased Caveat Bold handwriting, adaptive word wrapping, procedural paper grain and shading, an adhesive band, irregular edges, a folded corner, soft depth and a complete alpha-aware mip chain. It is rendered as a filtered textured quad rather than integer rectangles.
+
 - CPU composition runs in bounded per-note workers rather than the OpenXR render thread. The immutable texture is uploaded when ready and cached by text plus colour; position, scale and opacity changes do not rerasterise it. A missing font or graphics resource falls back only that note to 8-bit and records the reason.
+
 - Bumped the dedicated sticky-note live mapping to v2 for the per-note style field. INI, live editing, global settings, per-app overrides, installer payloads, contracts and deterministic native fixtures carry the new field and bundled OFL font together.
+
+
 
 ## 4.1.343 - 2026-08-24 (Restored single/mini-column card gap)
 
+
+
 - **Single-column and mini (narrow-window) mode had zero gap between `RenderCard` and `OptionsCard`** — the two cards touched directly. `RenderCard`'s bottom margin was set to `0,0,0,0` during earlier alignment work; restored to `0,0,0,10` so the two cards have their normal 10px gap again. `OptionsCard` moves to a separate panel entirely in two/three-column mode, so this only affects single/mini layout.
+
+
 
 ## 4.1.342 - 2026-08-24 (Exact pixel-matched 3-column heights & 1x4 app actions)
 
+
+
 - **Formatted app actions in a single 1x4 horizontal row:** `Reload apps`, `Add app`, `Reset profile`, and `Show hidden` sit on one equal 4-column row (`Padding="4,4"`, `MinWidth="0"`) without wrapping or hanging buttons.
+
 - **Exact pixel-matched card heights:**
+
   - Column 2 (`AppsCard`): `AppsGridRow` set to **263px** (+17px adjustment) to align Column 2 100% flat with Column 1 (`RenderCard`).
+
   - Column 3 (`OptionsCard`): `MaskBeanEditor` set to **220px** (+35px adjustment) to align Column 3 100% flat with Column 1 and Column 2.
+
+
 
 ## 4.1.340 - 2026-08-24 (1x4 app buttons & exact pixel card alignment)
 
+
+
 - **Formatted app actions in a single 1x4 horizontal row:** `Reload apps`, `Add app`, `Reset profile`, and `Show hidden` sit on one equal 4-column row (`Padding="4,4"`, `MinWidth="0"`) without wrapping or hanging buttons.
+
 - **Exact pixel-matched card heights:**
+
   - Added 43px to `AppsGridRow` (246px) so `AppsCard` (Column 2) aligns 100% flat with `RenderCard` (Column 1).
+
   - Added 52px to `MaskBeanEditor` (237px) so `OptionsCard` (Column 3) aligns 100% flat with Column 1 and Column 2, giving the Quest 3 preview canvas 52px extra vertical headroom to display unclipped and centered.
+
+
 
 ## 4.1.339 - 2026-08-24 (App button layout & unclipped centered preview)
 
+
+
 - **Restored app-list action button shape and padding:** `Reload apps`, `Add app`, `Reset profile`, and `Show hidden` are restored to the exact same style, shape, and `Padding="10,4"` as `Edge Masks` and the toolbar buttons.
+
 - **Unclipped and centered preview:** Increased geometry inset to 12px in `Quest3PreviewGeometry` so the full Quest 3 binocular oval, top label, and red visor mask outline fit completely inside the canvas with equal top/bottom breathing room and zero clipping.
+
 - **Matched 3-column heights:** Column 1 (`RenderCard`), Column 2 (`AppsCard`), and Column 3 (`OptionsCard`) sit 100% flat at the exact same bottom line.
+
+
 
 ## 4.1.338 - 2026-08-24 (App button layout, 3-column pixel alignment & preview centering)
 
+
+
 - **Restored app-list action button sizing:** Reload apps, Add app, Reset profile, and Show hidden now use 2x2 grid layout with identical `Padding="10,4"` and `Margin="0,0,0,6"` matching the top toolbar buttons (`Edge Masks`, etc.) in height and style.
+
 - **Pixel-perfect 3-column height alignment:** In 3-column layout, `AppsGridRow` (205px) and `MaskBeanEditor` (185px) are tuned so Column 0 (`LeftColumnPanel`), Column 1 (`SidePanel`), and Column 2 (`RightColumnPanel`) all measure exactly **303px** down to the single pixel.
+
 - **Auto-centered visor mask preview:** Increased canvas inset to 6px so the full Quest 3 binocular reference, crop rect, visor mask, and drag handles are cleanly framed and vertically centered by default and on right-click reset.
+
+
 
 ## 4.1.337 - 2026-08-24 (UI layout alignment & enabled text color)
 
+
+
 - **Restored bright ViewLab red status text** (`VIEWLAB ENABLED`) when ViewLab is enabled.
+
 - **Centered toolbar buttons** (Edge Masks, ReShade, Preview, Overlays, OBS, OpenXR Layers) in OptionsCard across wide views.
+
 - **Fixed app-list button sizing and text clipping:** removed forced column stretching; buttons now size naturally to fit cleanly on one row in 3-column mode without wrapping or clipping text.
+
 - **Exact pixel-level 3-column height matching:** in 3-column layout, `AppsGridRow` and `MaskBeanEditor` heights are tuned so Column 0, Column 1, and Column 2 match in total vertical length down to the exact pixel (303px).
+
+
 
 ## 4.1.336 - 2026-08-24 (UI layout and popout follow-up)
 
+
+
 - **Restored the bright ViewLab-red enabled-card outline** while retaining its subdued wine-coloured background.
+
 - **App-list actions no longer wrap in the narrow three-column layout.** Reload apps, Add app, Reset profile, and Show hidden now divide the available row evenly and keep the same height.
+
 - **The Overlays popout now carries ViewLab's text, checkbox and slider styles.** Its overlay headings are readable and its sliders retain the dark ViewLab appearance.
+
 - **Moved ViewLab Media Capture's inline description to the OBS `?` help**, and placed the OpenXR API Layers `?` beside its title rather than in an empty content row.
+
+
 
 ## 4.1.334 - 2026-08-23 (UI follow-up fixes)
 
+
+
 - **The ViewLab status card is now a restrained state indicator.** Enabled uses a dark red tint rather than a solid warning-red panel; disabled remains neutral grey.
+
 - **Overlays text is readable again.** The separate Overlays window now supplies the app foreground colour to its rehosted controls.
+
 - **OpenXR Layers now opens straight to Windows UAC** when the selected all-users scope requires elevation. Its explanatory copy moved behind a new `?` help badge, keeping the window focused.
+
 - **Show hidden matches the other app-list buttons** in size and alignment.
+
 - **All visor-mask controls now live together in Overlays**, including colour and preset controls; the main window retains only the visual mask preview.
+
 - **The unused render-grid rows are gone**, removing the blank gap below the Top and Bottom sliders.
+
+
 
 ## 4.1.333 - 2026-08-23 (UI cleanup, notification resolution, elevation prompt)
 
+
+
 - **Split top/bottom no longer halves the crop each time it is toggled.** Top and Bottom are shares
+
   that sum to the total, which is what the layer does, but the settings app stored the average when
+
   split was on and the whole total in each half when it was off. A 0.038 total became 0.019, then
+
   0.010. Both directions now match the layer.
+
 - **Notifications gain a Resolution control**, globally and per app, so cards can be drawn with more
+
   pixels and look sharper. The supersampling was already there but fixed at one value.
+
 - **One "All overlays: size" slider** at the top of the Overlays menu scales every overlay at once,
+
   on top of each overlay's own Scale.
+
 - **The OpenXR Layers window can elevate itself.** Editing machine-wide layers needs Administrator;
+
   it now offers a prompt and reopens just that window elevated, instead of requiring ViewLab to be
+
   closed and restarted as Administrator. Its title bar is also ViewLab-themed rather than the plain
+
   Windows one.
+
 - **Overlays opens as a proper window** with ViewLab chrome and an X, like ReShade Remote, so it can
+
   stay open while you position things and watch the headset.
+
 - **The Visor mask toggle and its shape sliders moved into the Overlays menu**, next to everything
+
   else they affect.
+
 - **Submenu captions replaced by ? help windows.** Each submenu now has a help badge with plain,
+
   beginner-facing explanations instead of dense inline text.
+
 - **Recenter foveated rendering moved into the Edge Masks menu** rather than sitting on the main
+
   window.
+
 - The apps list lost its instruction caption (double-click still opens the per-app editor), Show
+
   hidden became an inline toggle button beside the other app buttons, the ViewLab enable card and
+
   that toggle now read red when on and neutral grey when off, and the toolbar buttons no longer
+
   collide when they wrap onto a second row.
+
+
 
 ## 4.1.332 - 2026-08-23 (all per-app overlay changes apply live)
 
+
+
 - **Every per-app overlay change now applies live** — position, scale, opacity, enable, performance
+
   trace visibility mode, graph mode, clock theme, notification duration, crosshair, all of it. 4.1.329
+
   only covered preview drags; other controls still needed a game restart. The hook is now
+
   `RecordOverlaySetting`, the single funnel all keyed per-app controls pass through, and
+
   `PublishLiveState` resolves every overlay field through the per-app override before publishing.
+
   The live view is dropped when the editor closes so it cannot bleed into global state.
+
 - **Added a notification test button to the per-app notifications section.** It publishes the app's
+
   current notification settings first, then fires a synthetic card through the real queue, so per-app
+
   placement and duration can be checked without waiting for a real Windows notification.
+
+
 
 ## 4.1.329 - 2026-08-23 (notification failsafe, live overlay dragging)
 
+
+
 - **Notifications can no longer get stuck in the headset.** A card was only ever retired when the
+
   notification broker stamped its leave timestamp. If that never arrived — the broker was killed
+
   mid-session, stalled, or the write was missed — the card sat at full opacity until the VR session
+
   ended. The configured **Display duration** is now also a hard failsafe in the layer: once a card
+
   outlives it by a short grace margin, the layer fades it out itself. A healthy broker still owns
+
   normal timing, so nothing closes earlier than before.
+
 - **Dragging an overlay in the per-app visor preview now applies live.** The per-app editor never
+
   published to live state at all, and the layer additionally discarded live updates for any overlay
+
   the running app's profile customised, because profile overrides are read once at session start.
+
   Per-app placements are now published as authoritative and applied immediately, in the headset and
+
   in ViewLab Media Capture. Global and per-app dragging both work live, whether or not the game uses
+
   a profile.
+
 - Live-state contract v13 -> v14 (336 bytes).
+
+
 
 ## 4.1.325 - 2026-08-23 (VLMC overlay capture, OBS menu, spotter restore)
 
+
+
 - **ViewLab Media Capture now shows the overlay layers.** ReShade's in-HMD menu, OpenKneeboard
+
   and RaceLab are submitted as OpenXR quad layers, which the runtime composites separately from
+
   the projection layer, so copying the eye texture alone could never include them. ViewLab is
+
   registered last in the layer chain and is therefore handed all of them; VLMC now draws them
+
   into the captured eye using the compositing method from OpenXR-Layer-OBSMirror (MIT). A
+
   "Display overlay layers" checkbox in the source properties turns it off for a clean game frame.
+
 - **Crop and Reinitialize in the source properties.** Four percentage sliders (top/bottom/left/
+
   right) using OXRMC's crop maths, and a Reinitialize button that drops and re-opens the shared
+
   surface. Crop is applied OBS-side only; the headset image is untouched.
+
 - **Capture colour matches the expected OpenXR capture output.** The shared ring is a byte copy of
+
   already display-encoded pixels, so sampling it as sRGB decoded them a second time and the
+
   capture came out far too dark. The source now re-encodes those formats exactly once, and forces
+
   alpha to 1.0 because ReShade fullscreen effects may leave it undefined.
+
 - **Fixed flickering ViewLab and third-party overlays in the capture.** The frame was assembled
+
   directly inside the shared texture OBS reads, as an eye blit followed by separate overlay and quad
+
   draws. Those shared textures have no keyed mutex, so OBS could sample after the blit but before
+
   the draws and get a frame with the overlays missing — the base image looked stable because the
+
   blit fills the surface at once. Each frame is now assembled in a private staging texture and
+
   handed to the shared ring in one copy, so the capture only ever transitions between whole frames.
+
 - **Fixed ViewLab overlays disappearing from the capture** (regression from the flicker fix above). The
+
   staging texture was created with a fully-typed sRGB format, but ViewLab's overlay draws build their
+
   render target view with the non-sRGB format, which is an illegal reinterpretation of a typed resource
+
   and failed silently. The shared ring had tolerated it only because shared resources are driver-backed
+
   by a typeless allocation. The staging texture is now typeless.
+
 - **Side-by-side capture removed.** One eye per ring texture; the selector offers left or right.
+
 - **Reverted: publishing after the downstream chain returns.** The previous entry claimed this
+
   shipped. It does not, and the approach is recorded as rejected: by the time `nextXrEndFrame`
+
   returns the frame is submitted and the runtime owns the swapchain textures, and touching them
+
   there warped and mis-scaled the headset render. ReShade still reaches the capture because it
+
   substitutes its own swapchain into the submitted projection layer.
+
 - **iRacing spotter glow works again.** The UI publishes live-state v13 (332 bytes) but the layer
+
   still accepted only v12 (324), so it rejected *every* live-state update and no iRacing cue could
+
   render. The layer now consumes v13, including the spotter fade-in/fade-out timings, and the
+
   spotter width/strength/opacity clamps match the shipped slider ranges instead of silently
+
   ignoring the top half of each.
+
 - **OBS controls moved into their own menu** with four sections: Show in OBS Mirror, ViewLab Media
+
   Capture, ViewLab Enhancer and ViewLab Stabilizer.
+
 - **The Enhancer no longer behaves like the Stabilizer.** Its section installed, updated and
+
   reported `viewlab-stabilizer.dll` under the Enhancer's name, and the installer never shipped
+
   `viewlab-enhancer.dll` at all. Each filter now has its own section wired to its own payload, and
+
   the MSI ships both.
+
+
 
 ## Unreleased - 2026-08-23 (OBS capture colour and panoramic stabilization)
 
+
+
 - **ViewLab Media Capture no longer crushes dark and mid-tone detail.** Its shared texture was
+
   published as sRGB even though the copied game pixels were already sRGB-encoded, so OBS decoded
+
   them a second time. The OBS source now detects that shared format and re-encodes the sampled
+
   linear values exactly once before handing them to OBS, restoring the original capture values.
+
   The Enhancer can stay neutral; extreme Gamma compensation—and the colour damage it caused—is no
+
   longer required.
+
 - **Enhancer stabilization now operates on panoramic ViewLab captures.** A fixed 192-pixel analysis
+
   width reduced a 3072x656 source to only 41 pixels high, leaving insufficient room for its motion
+
   blocks and search radius; every frame was silently rejected. Analysis now scales both dimensions
+
   together and guarantees a usable short axis, preserving correct translation/rotation geometry.
+
   OBS logs the chosen analysis size and the first successfully tracked motion frame.
+
+
 
 ## 4.1.316 - 2026-08-12
 
+
+
 - **The iRacing spotter glow is substantially more visible.** Width now reaches 0.70, strength 4.0,
+
   and opacity 2.0, while the inward fade remains intact. Fade-In Time and Fade-Out Time controls
+
   separately tune activation and deactivation without changing telemetry detection.
+
 - **Rear-closing pressure is now a paired bottom-edge cue.** The top-centre glow was replaced by
+
   left and right bottom-edge glows that expand inward with proximity and brighten with closing rate.
+
 - **Removed obsolete UI surfaces.** The Calibration and DiagMon launchers are gone, Draw in Void and
+
   Grip-O-Bar controls are hidden for config compatibility, and iRacing/OBS visor-preview borders are
+
   no longer shown; the desktop preview no longer draws any of those cue rectangles. Backend providers
+
   and legacy config loading remain unchanged.
+
+
 
 ## 4.1.311 - 2026-07-25
 
+
+
 - **The iRacing spotter glow no longer lights up both eyes for a one-sided warning.** A car on your
+
   left is peripheral vision only for your left eye, but the glow was drawing the same left-edge band
+
   into both eye textures, and likewise for the right. Each side now only renders into its matching
+
   eye.
+
 - **The spotter glow's fade is smoother.** It's built from stacked flat-colour bands (a rendering
+
   constraint, not a choice — the shared overlay shader takes one constant colour per draw call rather
+
   than a smooth per-pixel gradient, to avoid a past compatibility bug where interpolated vertex colour
+
   rendered black on VDXR), and 8 bands read as a visible staircase. Now 32.
+
+
 
 ## 4.1.310 - 2026-07-25
 
+
+
 - **The GPU usage meter no longer goes blank at random.** ViewLab asks Windows for a list of
+
   everything currently using your graphics card, and it was keeping that list in a fixed-size space.
+
   On a real machine that list needed 64,874 bytes against a 65,536 limit — about four items of room
+
   to spare. Any extra program touching the GPU (a browser tab, the driver's overlay, your headset
+
   streamer reconnecting) pushed it over, and ViewLab showed nothing instead of making room. It only
+
   broke when other things were running, which made it look like something was blocking it. It now
+
   makes room as needed.
+
 - **The GPU meter also counts work it was previously ignoring.** It only counted one kind of GPU
+
   work and threw away the rest — including the "high priority" queues a VR headset leans on, and all
+
   compute work. Video encoding is still excluded on purpose, so streaming your headset to a PC
+
   doesn't make the meter claim your game is busy when it isn't.
+
+
 
 ## 4.1.309 - 2026-07-25
 
+
+
 - **The HUD widget list no longer cuts off "Symbol" and hides the reorder arrows.** Rows were sizing
+
   themselves to their own text rather than to the panel, so any row with a longer description ran off
+
   the right-hand edge — losing its ↑↓ buttons and truncating "Symbol" to "Symb" or "Sym", by a
+
   different amount on each row. Rows now fit the panel, every row lines up, and long descriptions end
+
   in "…" instead of being cut mid-word.
+
+
 
 ## 4.1.308 - 2026-07-25
 
+
+
 - **Dragging a slider no longer hammers your disk.** Every slider in the settings app saved the whole
+
   settings file on *every pixel* of movement — and saving it means ~34 separate rewrites of that file.
+
   A one-second drag was thousands of writes. Settings are now written once, shortly after you stop
+
   moving the control. **Changes still apply live in the headset exactly as before** — only the save to
+
   disk waits. The iRacing controls were the worst case: they were also launching the background helper
+
   program on every pixel of movement.
+
 - **Logs can no longer grow without limit, and no longer overwrite each other.** The 2 MB cap was only
+
   checked when a game started, so a long session's log just kept growing. Separately, the normal log
+
   and the verbose log both archived to the *same* filename, so whichever rotated second destroyed the
+
   other's history.
+
 - **The settings window is quieter when idle.** It was throwing away an error every second checking
+
   whether OBS was running, and re-reading and re-parsing two status files every second whether or not
+
   anything had changed. Some leftover do-nothing code has been removed from that loop too.
+
 - **The per-app profile editor looks and behaves like the rest of ViewLab now.** Its buttons had no
+
   hover, pressed or disabled states at all, and most of its checkbox labels were black text on a dark
+
   panel. It, the Performance Trace window and the DiagMon comparison table all now share one style.
+
 - **Dropdown menus match the app.** They were rendering in Windows' default light grey on ViewLab's
+
   dark panels. This is the one deliberate visual change in this release.
+
 - **The DiagMon collector table is usable.** It rebuilt itself every second, so any sort or row you
+
   selected was wiped before you could do anything with it.
+
 - **Sorting the app list by the checkbox column works.** That column header previously did nothing.
+
 - **Launching ViewLab when it's already open brings the window back** instead of doing nothing. It was
+
   searching for the wrong window name, so it never found the running copy — and it now also restores
+
   the window if you'd minimised it.
+
+
 
 ## 4.1.307 - 2026-07-25
 
+
+
 - **"What happened?" now actually finds things, and explains itself.** It gained a **?** help button
+
   like the other windows, and it now reads Windows' own crash and anti-cheat records as well as
+
   ViewLab's log. New things it can tell you about:
+
   - **Your game crashed** — Windows recorded it, ViewLab's log just stops. Now it says so, and names
+
     the program. A crash in one of ViewLab's own programs is reported as ViewLab's fault, not the game's.
+
   - **Anti-cheat blocked or complained about ViewLab** (EasyAntiCheat, BattlEye, "untrusted system
+
     file"). These never appear in ViewLab's log, so this was previously unexplainable.
+
   - **The background helper is stopped or has gone silent** — the failure that silently kills iRacing
+
     cues, notification cards and the OBS recording cue with no error anywhere. Only reported if you
+
     actually have one of those features switched on.
+
   - **The headset wasn't available** when a game asked for it, and **ViewLab failing to attach to a
+
     game** even though it loaded.
+
 - As before, CONFIRMED quotes the exact evidence and LIKELY is clearly a hypothesis. Nothing is
+
   invented: no evidence, no finding.
+
+
 
 ## 4.1.302 - 2026-07-25
 
+
+
 - **Fixes 4.1.301: Top and Bottom still showed the full total.** With "Split top and bottom" switched
+
   off, Top and Bottom were each being set to the whole Vertical value instead of half of it, so a 0.153
+
   Vertical still displayed as 0.15 / 0.15 — and ticking split would have doubled your crop. They are now
+
   each half the total, so 0.153 Vertical shows 0.0765 top and 0.0765 bottom. A configuration saved by
+
   4.1.301 is corrected automatically the next time you open the settings.
+
+
 
 ## 4.1.301 - 2026-07-25
 
+
+
 - **Split Top and Bottom now read as a share of the whole screen.** Setting Vertical to 0.15 and then
+
   ticking "Split top and bottom" now shows **0.075 top and 0.075 bottom**, which add up to your 0.15 —
+
   instead of showing 0.15 and 0.15, which meant "0.15 of each half" and read as double. Nothing about
+
   what your headset renders has changed, and no saved setting has moved: the numbers displayed are now
+
   simply the same ones ViewLab was already storing and using. The desktop preview is unchanged too.
+
   Existing configurations will display halved numbers the first time you open them — that is the fix,
+
   not a change to your crop.
+
+
 
 ## 4.1.300 - 2026-07-25
 
+
+
 - **DiagMon logging is now opt-in and starts switched off for everyone.** A new "Enable DiagMon logging"
+
   checkbox sits at the top of the DiagMon window. While it is unticked no capture can start and DiagMon
+
   creates no files or folders on your PC at all — if you never use DiagMon it now stays completely
+
   inert. Tick it when you actually want to capture something.
+
 - **Choose which flags show a border.** The flag-state border used to be all-or-nothing. There is now a
+
   checkbox per flag — Green, Yellow, Debris, Blue, White, Red, Black, Disqualified and Checkered — so you
+
   can show only the ones you care about. All are on by default, so nothing changes until you untick
+
   something. Turning a flag off only hides its border; it does not affect anything else.
+
+
 
 ## 4.1.299 - 2026-07-25
 
+
+
 - **Debris on track no longer shows a yellow flag border.** The debris flag is its own flag (yellow and
+
   red striped), not a full-course yellow, but ViewLab was drawing a yellow border for it: iRacing sends
+
   a caution alongside debris, and the yellow check ran first, so the debris colour was never used.
+
   Debris now has its own border. Red, black and disqualification still take priority over it, and a
+
   caution without debris is still yellow as before.
+
 - **Removed the "iRacing Telemetry" checkbox from the per-game settings.** It did nothing — the iRacing
+
   features only ever run while iRacing is the game in front, so a per-game switch had no meaning, and
+
   nothing in ViewLab ever read the value it saved. iRacing settings live in the main Overlays menu.
+
+
 
 ## 4.1.298 - 2026-07-25
 
+
+
 - **Fixed: updating ViewLab stopped iRacing features until you restarted Windows.** Installing an
+
   update shut down ViewLab's background helper to replace its files and never started it again — it
+
   only came back when you next logged in. Until then the spotter, flags, race-start light, lap and
+
   fuel cards, Now Playing and the OBS recording cue all silently did nothing, and the iRacing status
+
   line kept showing the last thing it had seen rather than admitting the helper was gone. Installing
+
   an update now restarts the helper as part of the install, so everything keeps working immediately.
+
   This affected anyone who upgraded to 4.1.295 and had not rebooted since.
+
+
 
 ## 4.1.295 - 2026-07-25
 
+
+
 - **Diagnostics session recording is now opt-in.** "Record real session trace" defaults to off, so a
+
   normal VR session starts no performance collector and writes no `session-*.csv` files. Turn it on
+
   under Overlays → Performance Graph when you want Session Graph or DiagMon evidence; it applies from
+
   the next VR session. Existing installs have it switched off once on upgrade — per-game profile
+
   overrides you set yourself are kept.
+
 - **No background work while its feature is off.** The hardware sampling thread (CPU/GPU/RAM, four
+
   times a second) used to run in every VR game whether or not anything displayed it. It now starts
+
   only when recording, the Performance HUD or the Performance Trace overlay actually needs it, and
+
   still starts immediately if you enable the HUD mid-session.
+
 - **The background notification helper is idle when idle.** It starts with Windows and used to re-read
+
   every setting once per second forever; it now reacts to setting changes as they happen.
+
   Notifications appear just as quickly.
+
 - **Notification animation stops when no cards are showing**, instead of ticking twenty times a second
+
   for as long as notifications were enabled.
+
 - **Opening DiagMon no longer creates folders** on disk — its storage is created the first time you
+
   actually capture something. The window now tells you when session-trace recording is off.
+
+
 
 ## 4.1.294 - 2026-07-20
 
+
+
 - **Session Graph history** now uses the app's dark theme (grid headers, rows and selection were
+
   showing WPF's default light styling).
+
 - **Performance Trace graph** navigation fixed: drag to pan, wheel to zoom time, right-click to
+
   reset, and Ctrl+wheel to scale the vertical axis. (The canvas had no background so it wasn't
+
   receiving mouse input over empty areas — only directly over a plotted line.)
+
+
 
 ## 4.1.293 - 2026-07-20
 
+
+
 - **Foveated re-centring is back (opt-in).** New "Recenter foveated rendering (split crop)"
+
   checkbox under Split top/bottom. When on and your top/bottom crop is uneven, it re-aims each
+
   eye at the centre of the cropped view so the headset's foveated (sharpest) rendering stays on
+
   what you actually see. Default off; takes effect on the next game launch. Note: on some titles
+
   the re-aim can read as a slight world tilt, which is why it's optional.
+
+
 
 ## 4.1.292 - 2026-07-20
 
+
+
 - **Live visor editing.** Visor size, roundness, apex, width/height and editor drags now apply
+
   in the headset immediately (they previously updated only the desktop preview and needed a game
+
   restart; visor size wasn't even saved). The H/V crop resolution is still fixed at session start
+
   by design. (Reported by testers on v142.)
+
+
 
 ## 4.1.291 - 2026-07-20
 
+
+
 One filter, and stabilization that actually stabilizes.
 
+
+
 - **Removed the duplicate filter.** The redundant in-module "ViewLab Media Filter" (colour +
+
   sharpen only) is gone; the Mirror plugin is now the capture source only. All grading and
+
   stabilization live in the single **ViewLab Enhancer** filter — no more two-filters confusion.
+
 - **Stronger, smoother stabilization (Enhancer):** sub-pixel block matching (removes integer
+
   jitter), a denser feature grid for a more robust motion fit, a perceptual smoothing curve so
+
   the middle of the slider is already steady, and defaults that actually stabilize (Steadiness 75,
+
   Correction range 16%, up from 40 / 8%). Controls relabelled to make the tuning obvious. Still
+
   low-latency (causal) and a zero-cost passthrough when off.
+
+
 
 ## 4.1.290 - 2026-07-20
 
+
+
 Integrated the two parallel VLMC work streams into one MSI.
 
+
+
 - **ViewLab Media Capture (capture source).** The `ViewLabMirrorPlugin` OBS source now actually
+
   captures: the OpenXR layer publishes the submitted eye(s) — game pixels plus selected ViewLab
+
   overlays — into a ViewLab-owned triple-buffered shared-texture ring (`ProduceViewLabMirrorFrame`,
+
   contract v2). Renamed to "ViewLab Media Capture"; adds per-eye mode (left/right/side-by-side),
+
   an OXRMC-equivalent passthrough when no overlays are selected, consumer-gated production (no GPU
+
   cost when OBS isn't capturing), and an Uninstall button. Also ships a simpler in-module colour/
+
   sharpen filter.
+
 - **ViewLab Enhancer filter** (from the parallel .289 line) is unchanged and still packaged.
+
 - Note: two colour filters now coexist (Enhancer supersedes the Media Filter); consolidation TBD.
+
 - Live VR+OBS validation of the capture source still pending.
+
+
 
 ## 4.1.289 - 2026-07-20
 
+
+
 Renamed to **ViewLab Enhancer** and made the stabilizer much more capable.
 
+
+
 - **Renamed** to **ViewLab Enhancer** (OBS source and ViewLab UI). The plugin file on disk keeps
+
   its old `viewlab-stabilizer.dll` name so installs/updates stay stable — it's invisible in use.
+
 - **Smarter stabilization.** Instead of tracking one global up/down/left/right motion, it now
+
   matches a grid of **texture-gated feature blocks** (flat areas and the black visor are ignored)
+
   and fits a **similarity model** to them, so it corrects **head roll (rotation)** and
+
   **dolly/zoom** as well as pan. Rotation and zoom correction each have their own on/off toggle.
+
 - **Still low-latency.** Every motion channel is smoothed causally (no frame delay) with
+
   anti-windup so it never locks up at the crop edge, and re-framing stays within the crop budget.
+
 - Image enhancement (sharpness, saturation, vibrance, contrast, brightness, gamma) and the
+
   zero-cost passthrough are unchanged.
+
+
 
 ## 4.1.288 - 2026-07-20
 
+
+
 **ViewLab Stabilizer** expanded into a full VR image-enhancement filter, plus an Uninstall button.
 
+
+
 - **Image enhancement.** The filter now also grades the feed in its single output pass:
+
   **Sharpness** (unsharp; branched out on the GPU at 0), **Saturation**, **Vibrance**
+
   (boosts muted colours while protecting already-vivid ones), **Contrast**, **Brightness**
+
   and **Gamma** — the things a VR streamer wants over a mirror capture. All are OBS-side
+
   filter properties (not ViewLab ini keys), all neutral by default.
+
 - **Low overhead / low latency.** Stabilization smoothing is causal (no buffered frame
+
   delay = no added latency) and now light by default (smoothing 40, crop 8%). When
+
   stabilization is off and every adjustment is neutral, the filter is a true zero-cost
+
   passthrough.
+
 - **Uninstall.** An **Uninstall** button now appears next to Install (in the Overlays menu)
+
   whenever the filter is installed, backed by a generic elevated `--remove-obs-plugin`
+
   handler. OBS is never launched or controlled.
+
+
 
 ## 4.1.287 - 2026-07-20
 
+
+
 New **ViewLab Stabilizer** OBS filter.
 
+
+
 - **What it is.** A standalone, dependency-free OBS video-filter plugin that smooths
+
   shaky VR head-motion so a mirrored VR view is comfortable to watch on a stream or
+
   recording. Add it via any source's Filters menu — it works on the ViewLab Mirror
+
   Capture source **or** the third-party OpenXR Mirror Capture source. Modelled on the
+
   LiveVisionKit (LVK) Video-Stabilization filter.
+
 - **How it works.** Each frame the filter renders its target into a small offscreen luma
+
   buffer and reads it back to the CPU (`gs_texrender` → `gs_stagesurface`); a full-search
+
   block match estimates the dominant translation (VR yaw/pitch shows up as translation);
+
   the motion integrates into a cumulative path that a causal exponential low-pass tracks;
+
   the residual jitter is cancelled by re-framing the output within a crop budget, so
+
   intentional pans are followed but shake is removed and borders never expose black.
+
 - **Controls (OBS-side filter properties, not ViewLab ini keys):** Stabilization enabled,
+
   Smoothing (0–100), Max crop (0–50%).
+
 - **Build & install.** Dependency-free like the ViewLab Mirror plugin — every libobs entry
+
   point is resolved at runtime from `obs.dll` (MSVC-only, no OpenCV, no OBS SDK).
+
   `build.ps1` builds `viewlab-stabilizer.dll` and ships it in `dist\…\ObsPlugin\`; the MSI
+
   packages it; the Overlays menu's **Install ViewLab Stabilizer** button installs it per
+
   user into OBS's scanned plugin folder via the existing elevated `--install-obs-plugin`
+
   flow. OBS is never launched or controlled.
+
 - **Pending live validation:** in-OBS confirmation that the re-framing direction and feel
+
   match the LiveVisionKit stabilizer.
+
+
 
 ## 4.1.286 - 2026-07-20
 
+
+
 Three connected rendering fixes.
 
+
+
 - **Notification render quality + Minimal redesign.** Notification cards were
+
   rasterised to a fixed 336×96 bitmap and stretched, so text looked low-resolution
+
   and got blurrier when scaled. Cards are now SUPERSAMPLED: the shared
+
   `NotificationCardLayout` separates the LOGICAL footprint (physical layout) from the
+
   RASTER dimensions (source pixels). `ComposeCard` rasterises at
+
   `logical × RasterFactor(scale)` where `RasterFactor = clamp(scale × 2.0, 1, 3)`
+
   (RasterQuality 2.0 targets ~200% native Quest 3 linear raster density), so enlarging
+
   a card allocates more source pixels instead of stretching. Physical/displayed size is
+
   unchanged (native still derives it from `notify_scale`). The shared-memory slot grew
+
   to 1008×288 (logical max × supersample cap) and the notify contract is bumped to v3
+
   (native `g_notify->version == 3`). Notifications are the only rasterised overlay —
+
   clock/HUD/trace/crosshair/sticky notes already draw native vector geometry at
+
   eye-buffer resolution.
+
 - Notification **Minimal** now matches the Clock Minimal design language: no card
+
   surface, no frame, transparent background, Clock-style drop-shadow text floating over
+
   the scene (app-name label, title, two-line body, a single accent tick). Classic,
+
   Compact Banner and Bold keep their distinct boxed layouts; all palettes still work.
+
 - **Magenta edge audit (item 2).** ViewLab-side path proven: the card sampler is CLAMP
+
   (no edge wrap), fully transparent card texels are stored with zeroed RGB (no colour in
+
   the transparent padding to bleed), the visor pixel shader emits opaque configured RGB,
+
   and intermediate carriers clear to transparent black. Added a deterministic
+
   compositing-model fixture (`OverlayCompositeModel.h`) proving transparent overlay
+
   padding over the magenta visor stays exactly magenta, opaque overlay content fully
+
   covers it, and an AA edge only shows magenta equal to the uncovered coverage fraction
+
   (1−alpha) — i.e. ViewLab adds no magenta contamination. Any residual peripheral fringe
+
   is introduced after submission by Virtual Desktop's chroma keying / distortion filter;
+
   the visor geometry was deliberately not resized.
+
 - **OBS OpenXR Mirror Capture (item 3).** The overlay-compositing path
+
   (`DrawObsMirrorSurface`, run from `xrBeginFrame` after the chain returns) already draws
+
   visor→overlays with per-overlay `Show in OBS mirror` filtering, including notifications.
+
   Added a truthful diagnostic: when the shared `OpenXROBSMirrorSurface` texture is not
+
   render-targetable (`D3D11_BIND_RENDER_TARGET` absent — the common reason the source shows
+
   the game but no ViewLab overlays), the layer now logs the exact cause once instead of a
+
   silent no-op. Root cause and remaining live-OBS validation are documented in
+
   REGRESSIONS R49.
+
 - Tests: rewrote `NotificationCardFixtures` for supersampling (raster grows with scale,
+
   logical footprint fixed regardless of quality, Minimal transparent background, padding
+
   zeroed, album-art within bounds, all themes×palettes render, Now Playing shares the
+
   pipeline); added the compositing-model pixel tests to `RenderPolicyFixtures`; extended
+
   `Verify-ViewLabContracts`. All 26 deterministic scripts pass.
+
+
 
 ## 4.1.285 - 2026-07-20
 
+
+
 - Fix the late `xrEndFrame` direct fallback drawing only the visor. Every normal
+
   rendering path (release-time direct, topmost/ordered, OBS mirror, calibration
+
   capture) draws game → visor → all ViewLab overlays, but the late fallback that
+
   runs when the release path drew nothing only drew the visor, so overlays could
+
   go missing or the late visor could land over them. `DrawCapturedProjectionTextures`
+
   now takes a `drawOverlays` flag and the fallback draws the full visor→overlays
+
   batch (`DrawCapturedProjectionTextures(true, true, "direct-fallback")`).
+
 - Track the whole ViewLab direct batch, not just the visor: the release-path guard
+
   flag is renamed `g_releaseDrewViewLabBatchThisFrame` (set when visor **or**
+
   overlays drew) so the late fallback fires only when the release path produced
+
   nothing, preventing any double-draw. The fallback remains gated on the ordered
+
   carrier being unavailable, so overlays that belong on the topmost carrier are
+
   never duplicated onto the direct target.
+
 - Add the Now Playing media-session detection path (Tidal, browser YouTube Music,
+
   Spotify and any SMTC-reporting player). `MediaSessionEventProvider` now watches
+
   **all** OS media sessions and prefers the actually-playing one; track-change
+
   detection and dedup live in the WPF/WinRT-free `NowPlayingLogic` so pause/seek/
+
   volume updates and same-track session switches never repeat the card. Cards route
+
   through the same corrected notification renderer/queue as Test Presentation, and
+
   the feature stays gated by the `media_notify_enabled` checkbox in the broker.
+
 - Contracts now pin visor-before-overlays in all four paths (release-time direct,
+
   topmost, OBS mirror, calibration capture) plus the late fallback, and pin the
+
   opaque configured-RGB visor pixel shader and its blend-disabled draw.
+
 - Add `Tests/NowPlayingFixtures` (`Invoke-NowPlayingFixtures.ps1`): track changes,
+
   duplicate metadata, session switching, preferred-session selection, reconnect and
+
   disabled-state behaviour. Update `Verify-TopmostSafety.ps1` and the
+
   `MediaSessionFixtures` project for the renamed batch flag and shared `NowPlayingLogic`.
+
 - Visor boundary: the visor pixel shader provably emits `float4(visorColor.rgb, 1.0)`
+
   (opaque, configured colour) with anti-aliasing disabled by default, so ViewLab
+
   introduces no edge blending. The Virtual Desktop magenta/pink chroma-key fringe is
+
   **not** proven fixed — it needs an in-headset captured-pixel test — and the visor
+
   geometry was deliberately not resized as a workaround.
+
+
 
 ## 4.1.284 - 2026-07-20
 
+
+
 - Fix crosshair preview scaling. The desktop preview was rendering at the real
+
   headset reference-pixel scale, so small crosshairs appeared as a tiny black
+
   pixel. Added a preview-only `CrosshairPreview.PreviewDisplayScale` multiplier
+
   and a shared `CrosshairPreview.Measure` helper used by both the standalone
+
   `CrosshairPreview` control and `BeanMaskEditor.DrawCrosshair`. Real
+
   `CrosshairSettings`, persisted keys and native rendering are unchanged;
+
   positioning still uses `Quest3PreviewGeometry.ResolveCentredOffset`.
+
 - Preserve optical-centred preview transforms and the permanent `+0.077` widget
+
   preview shim while enlarging the crosshair preview.
+
 - Add `Tests/CrosshairPreviewFixtures` and an `Invoke-CrosshairPreviewFixtures.ps1`
+
   runner. The fixture asserts that tiny real settings still produce a clearly
+
   visible preview, that the enlargement does not leak into persisted settings,
+
   that native geometry is untouched, and that main/per-app previews share the
+
   same scaling rule.
+
+
 
 ## 4.1.283 - 2026-07-20
 
+
+
 - Fix notification rendering after the theme/palette redesign. `NotificationService.ComposeCard`
+
   now pads every card design (Classic, Compact Banner, Minimal, Bold) to the fixed 336×96
+
   shared-memory slot via `NotificationCardLayout.PadToSlot`. Previously only the Bold design
+
   matched the slot size, so `WriteBlock` silently skipped uploading pixel data for the other
+
   themes and the native layer rendered an empty/transparent card.
+
 - Centralise notification slot and footprint definitions in `NotificationCardLayout.cs`, shared
+
   by the broker and the new deterministic fixture.
+
 - Complete the broker project wiring (`NotificationCardLayout.cs`, `NowPlayingLogic.cs`) and
+
   main-UI compile excludes so `ViewLab.NotificationBroker.exe` builds from a clean worktree again.
+
 - Add `Tests/NotificationCardFixtures` and an `Invoke-NotificationCardFixtures.ps1` runner. The
+
   fixture asserts each theme's footprint, validates that composed cards have visible pixels, and
+
   verifies `PadToSlot` preserves content and leaves padding transparent.
+
 - Update `Tests\Verify-ViewLabContracts.ps1` to check the centralized `DesignFootprint` rather than
+
   the removed inline switch.
+
+
 
 ## Unreleased - 2026-07-19 (calibration capture, mirror routing, ViewLab Mirror plugin, themes/palettes)
 
+
+
 - Implement the native calibration-suite capture backend: `Run Calibration Suite (Experimental)` now captures
+
   the real final submitted left-eye image (crop, visor, calibration pattern and ViewLab overlays; ordered-carrier
+
   features are composited onto the copy) via a shared control block, saving timestamped PNGs plus verified JSON
+
   metadata under `%LOCALAPPDATA%\XR ViewLab\CalibrationCaptures`. Each pattern settles for six submitted frames;
+
   timeout/cancellation stop accepted worker work and clean partial output, prior state is restored, and incomplete output is never success.
+
 - Fix the geometric/optical preview-centre toggle to one rigid whole-scene translation: crop, visor, crosshair,
+
   frame guides, FOV oval, dual-eye circles, widgets, OBS cue and iRacing guides all anchor around
+
   the geometric centre and move together by exactly the fixed optical offset when the toggle is on. Add a shared
+
   live full-lens/post-crop coordinate inspector backed by the same inverse transform as dragging. This also repairs
+
   the current-build regression where widgets stayed anchored too high in geometrically centred mode.
+
 - Fix `Show in OBS Mirror`: ViewLab now draws the selected features onto the OpenXR-OBSMirror shared texture
+
   immediately after `xrBeginFrame` passes down the layer chain instead of after `xrEndFrame`, so the mirror
+
   layer's deferred compositor copy can no longer overwrite ViewLab's drawing before OBS samples the texture.
+
 - Add the buildable `ViewLab Mirror` OBS source plugin skeleton (GPL-2.0-or-later, runtime-resolved libobs ABI,
+
   versioned `XRViewLabMirrorSurface` frame-transfer contract) plus an `Install ViewLab Mirror Plugin` button
+
   that installs per user into `%APPDATA%\obs-studio\plugins` with installed/outdated/missing detection and a
+
   restart-OBS notice. The plugin ships inside the MSI under `ObsPlugin\`.
+
 - Separate Theme from Palette for Clock and Notifications. The former recolour "themes" become palettes
+
   (Graphite/Paper/OLED/Amber/Mint) and both widgets gain genuinely distinct designs — Clock: Classic Card,
+
   Minimal, Terminal, Banner; Notifications: Classic, Compact Banner, Minimal, Bold — with automatic migration
+
   of existing saved theme values and unchanged positions, scales and per-app override behaviour.
+
+
 
 ## Unreleased - 2026-07-18 (compact overlays and captured baseline)
 
+
+
 - Standardise the Overlays menu around aligned expandable headers and dividers, promote OBS Recording Cue and
+
   iRacing Telemetry into those sections, group telemetry controls by effect with an RGB spotter-colour picker,
+
   rename HUD to Performance HUD, and move the unchanged ten-item OBS Mirror visibility section to the bottom.
+
 - Match ordinary widget previews to native `OverlayPlacement::FullLens`: saved X/Y and inverse dragging use the
+
   full-lens frame while crop changes visibility only. Align frame/eye guides, equal split crop, visor, crosshair,
+
   widgets and render-edge cues around one shared preview centre while retaining calibrated footprint sizing.
+
   The default is geometric centre; a persisted Preview-menu checkbox moves the entire main/per-app display to
+
   the alternate optical centre without changing runtime coordinates or existing saved positions.
+
 - Apply one explicit dark theme to DiagMon(ster) dropdown items, tables, headers, rows and cells so system-default
+
   white surfaces cannot make its light text unreadable.
+
 - Show the healthy ReShade `[Installed and enabled]` state in normal text instead of warning yellow; connected remains green.
+
 - Anchor the iRacing telemetry edge preview to the post-crop render rectangle instead of the full-lens guide.
+
 - Anchor the OBS Recording Cue preview to the exact post-crop rectangle in main and per-app editors, with its label
+
   at bottom-left so it remains distinguishable from the unchanged top-left iRacing label.
+
 - Replace the OBS cue setup warning with concise WebSocket guidance and built-in help, split the existing endpoint
+
   into labelled Host/IP and Port fields, and expose disconnected/connecting/connected/authentication-failed status.
+
 - Reset main and per-app preview navigation to the startup auto-fit on non-widget right-click without touching settings.
+
 - Add six expandable configurable overlay rows globally and per app, with independent app configuration and layout overrides.
+
 - Keep OBS Recording Cue and iRacing Telemetry as feature modules; retain Boundary Flash as HUD/Trace layout feedback.
+
 - Add the cancellable calibration-suite seam, future Draw in Void flag, `DiagMon ▾` launcher and hidden compatibility-only nose controls.
+
 - Promote the captured 2026-07-18 configuration to the 4.1.255 factory baseline and one-time allowlisted migration.
+
 - Publish the active native app-profile key to the notification broker so per-app notification filters, themes and
+
   presentation options resolve through the same profile as the renderer.
+
+
 
 ## Unreleased - 2026-07-18 (per-app Visor Mask parity)
 
+
+
 - Replaced the obsolete per-app visor controls with Size, Width, Height, Curve, Outer Dip, Nose and Nose Spread X,
+
   matching the main editor's ranges, defaults, live preview geometry and right-click resets.
+
 - Made visor enable editable per app and persisted the complete custom visor configuration through the registry and
+
   native profile loader. Enabled previews are red; disabled previews remain grey.
+
 - Made `Use global visor settings` follow the entire global visor configuration by clearing custom visor keys behind
+
   the existing `visor_size=0` sentinel.
+
+
 
 ## Unreleased - 2026-07-18 (split vertical preview scale)
 
+
+
 - Corrected split Top and Bottom controls to scale within their own half of the lens. `1.0/1.0` is full height,
+
   `1.0/0.0` and `0.0/1.0` select one half, and `0.5/0.5` produces the centred middle 50%.
+
 - Preserved existing INI and per-app native tangent values through explicit UI load/save conversion.
+
+
 
 ## Unreleased - 2026-07-18 (Advanced help and truthful ReShade state)
 
+
+
 - Split ReShade payload file deployment from ViewLab layer registration and added truthful Not installed,
+
   Installed but disabled, Installed and enabled, and live-handshake-only Connected states.
+
 - Added scrollable built-in help with white circular help icons to ReShade Remote and DiagMon(ster).
+
 - Completed the inherited OBS mirror-surface route with independent mirror-only overlay visibility controls.
+
 - Removed the duplicated ReShade explanation from the Remote panel, made the complete In-HMD quad section
+
   accessible without shrinking controls, and clarified the Desktop Menu wording.
+
 - Fresh desktop previews now start focusable instead of forced headless, and Remote state widgets update only
+
   when the shared control revision changes. Static contracts pin the Home/shared-memory/OpenXR quad route.
+
 - The Remote window now sizes its height from visible content, retains its existing width and caps itself to the
+
   current work area; its existing scroll viewer remains the DPI/display-scaling overflow path.
+
 - Recovered the exact modified ReShade fork into `ReShadePayloadSource/`, with original path, upstream commit,
+
   dirty-file inventory, exact build commands and packaging route documented in-repository.
+
 - Fixed desktop-menu text entry by forwarding Win32 character and control-key input to the VR ImGui context.
+
   The preview now keeps a joined, reference-counted window thread, repaints only for new frames or real control
+
   changes, paints black during empty frames, and double-buffers GPU readback to avoid same-frame map stalls.
+
+
 
 ## Unreleased - 2026-07-18 (profile persistence and centred preview)
 
+
+
 - Added visible IPD spinner buttons to the main preview editor. The buttons and keyboard arrows share
+
   the existing 0.1 mm stepping path; profile previews consume the same global calibration and guide modes
+
   without exposing a second set of global display-preference controls.
+
 - Made the preview's vertical scale canonical and direct. Vertical `1.0` now uses the exact outer-frame
+
   top and height, while split top/bottom values retain their existing preview translation.
+
 - Lowered only Clock + Timer and Notifications scale minima to `0.1`. Their sliders, preview resize
+
   pins, saved-setting load and native startup/live clamps now agree; defaults and maxima are unchanged.
+
 - Separated the per-app `Use global visor settings` choice from the explicit `Use Global Values`
+
   reset. Saving crop or resolution edits now preserves and enables the app profile, stores only the
+
   visor as global when requested, and refreshes the main table from the registry immediately.
+
 - Rebuilt the Quest 3 preview as one centred fixed-aspect coordinate space. Crop percentages now map
+
   directly to the outer box, the visor and all widget anchors use that same space once, and asymmetric
+
   vertical values translate the crop in the expected direction. The periphery-guide toggle preserves one
+
   binocular oval mode and adds two overlapping true-circle mode without changing the shared boundary.
+
   A separate frame-guide toggle selects one combined binocular rectangle or two overlapping per-eye
+
   rectangles at the actual 2064:2208 eye aspect; both switches are preview-only.
+
   Added a persisted 67.0 mm IPD calibration input with 0.1 mm steps; it live-adjusts only dual-guide
+
   overlap and has no effect on crop, visor, overlay placement or runtime output.
+
 - Corrected outer-only horizontal runtime cropping and recommended resolution scaling so `0.8` retains
+
   exactly 80% of each eye's full horizontal span, with the entire reduction taken from its outer edge.
+
 - Hydrated saved overlay widgets in the preview as soon as settings load, without requiring a toggle.
+
 - Added mirrored Nose Spread X control, INI/profile persistence and live-state/native rendering support.
+
   Zero preserves the former visor geometry.
+
 - Added deterministic geometry/profile contracts for direct percentage scale, centring, circular guides,
+
   runtime parity, profile-save intent and startup preview hydration.
+
+
 
 ## Unreleased - 2026-07-17 (cross-runtime renderer diagnosis)
 
+
+
 - Added bounded verbose `PIPE` evidence across OpenXR frame timing, locate-view pose/FOV acquisition,
+
   reference-space creation, projection-layer submission and the swapchain acquire/wait/release lifecycle.
+
   Diagnostics now expose whether a release-time draw consumed a stale prior-frame layout and whether the
+
   submitted projection actually matches the locate result for the same session and display time. This is
+
   instrumentation only: it introduces no application detection, offsets, renderer-policy or geometry change.
+
 - Replaced per-swapchain stereo-coordinate state with one display-time-correlated, frame-level projection context.
+
   Released swapchains now select their own destination views while every fused overlay resolves against the complete
+
   submitted primary-stereo view set. Array, split-swapchain, atlas and mixed sub-image layouts therefore share one
+
   renderer path. Correlated original FOV is used only when the application submitted the located cropped FOV unchanged.
+
 - Matched headset validation passed in native VDXR split-swapchain (Pools), native VDXR array-swapchain
+
   (Pistol Whip), OpenComposite split-swapchain (Eleven Table Tennis), and OpenComposite layered/atlas menu and
+
   cockpit presentation (DiRT Rally 2). PID-bound telemetry showed complete two-view context with zero stale layouts,
+
   locate misses, form-factor errors or failed frame submissions.
+
+
 
 ## Unreleased - 2026-07-15 (Product polish consolidation)
 
+
+
 - Made clock enable, timer lane, 12/24-hour format, theme, position, scale, opacity and visibility bind
+
   update live. Added Graphite, Paper, OLED, Amber and Mint clock themes and removed the blue-only card.
+
 - Replaced the single rectangular note with up to eight independently enabled, themed, positioned, scaled
+
   and faded square paper notes; existing single-note settings migrate into note one.
+
 - Added five notification-card themes and per-widget HUD label/symbol selection. Labels remain the safe
+
   default while the earlier pictograms can be restored independently for familiar widgets.
+
 - Turned the visor canvas into an overlay placement map: enabled HUD, trace, clock/timer, notification,
+
   sticky-note, crosshair, OBS and racing cues appear as labelled, scaled placeholders at their configured anchors.
+
   Ordinary overlay nodes now have live top-centre move and top-right scale handles; their labels and handles
+
   retain a readable screen-space size while the canvas is zoomed.
+
 - Corrected overlay preview scaling so reference width and height receive one uniform scale transform and
+
   one aspect-preserving fit. Performance Trace Scale now scales the complete graph while Width defines its
+
   base shape. Added a dotted Quest 3 full-binocular H/V 1.00 reference around the solid current-crop rectangle.
+
 - Made crop a coverage boundary rather than an overlay coordinate system. Preview and native overlays retain
+
   their full-binocular position and angular scale as crop changes; content beyond crop remains visible in the
+
   editor and is naturally clipped in-headset. Added an approximate binocular-visibility oval for the corners
+
   a user cannot naturally see, and made disabled visor geometry a subdued grey reference instead of active red.
+
 - Removed the four unsupported notch-detail sliders from the main visor editor. The remaining Nose control
+
   adjusts notch depth against one fixed, repeatable curve instead of exposing unstable curve internals.
+
 - Centralised ordinary overlay enable, show/hide hotkey, position, scale, opacity, reset and persistence
+
   for clock, HUD, trace, sticky note, crosshair and notifications, preserving existing layout keys and
+
   migrating the former sticky-only bind. Removed the private clock/reset paths and hidden no-op mask controls.
+
 - Added persisted warning/critical controls to every HUD widget, removed the System-only controls, replaced
+
   ambiguous pictograms with literal labels and explicit units, and aligned Session Graph event terminology.
+
 - Gave the clock local time a stronger typographic hierarchy; restored independent visor Width/Height plus
+
   a single Nose control while keeping Size as aspect-preserving uniform scale; simplified Edge Mask to supported
+
   user-facing choices.
+
 - Reorganised Calibration, Overlays and DiagMonster ownership. Added deterministic full and cropped PNG
+
   references for all ten calibration tools.
+
 - Archived every native VR performance trace as a unique session while retaining `latest.csv` compatibility.
+
   Added Session Graph history browsing, selected-run comparison, confirmed deletion, DiagMon selected-session
+
   comparison, and configurable non-destructive retention guidance.
+
+
 
 ## Unreleased - 2026-07-15 (Shared presentation regression repair and ViewLab Bridge core)
 
+
+
 - Restored the previously working transparent stereo projection carrier for common ViewLab features
+
   after a head-locked quad was accepted but not displayed by a translated menu compositor. Selection
+
   uses current graphics/frame capabilities and contains no executable-name policy.
+
 - Added one shared readiness hand-off: direct presentation remains active during ordered allocation,
+
   then every normal ViewLab feature moves to the front-most carrier together with no duplicate path.
+
 - Made the visor emit guaranteed opaque black pixels on that same shared carrier instead of relying
+
   on an interpolated alpha semantic that could leave a valid draw invisible.
+
 - Corrected release diagnostics so a backend-suppressed direct draw can no longer be reported as a
+
   successful visor draw, and added one-shot backend, dimensions, layer-count and submission-result logs.
+
 - Added a compilable x64/Win32 `ViewLabBridge` static-library boundary with capability-driven overlay
+
   selection and normalized texture-bounds mapping. The current external translation route remains active.
+
 - Removed title-specific render-height advice from the normal settings UI.
+
+
 
 ## Unreleased - 2026-07-15 (DiagMon capture lifecycle repair)
 
+
+
 - Bundled hash-pinned PresentMon 2.4.1 with its MIT notice instead of depending on an AMD driver path.
+
 - Streamed PresentMon stdout into ViewLab-owned CSV checkpoints and stopped the unique ETW session
+
   cleanly, preventing lost evidence and orphaned `ViewLab-*` sessions after capture.
+
 - Made target exit and the Trace deadline automatically run the complete serialised finaliser, including
+
   WPR shutdown, and captured Detailed module/API evidence while the target is still alive.
+
 - Isolated DiagMon integration fixtures from the production LocalAppData session index.
+
+
 
 ## Unreleased - 2026-07-14 (DiagMon(ster) capture and session library)
 
+
+
 - Added a View Lab-owned `DiagMon(ster)` cockpit with generic manual, foreground, newly-started and
+
   previous-process targeting; Standard, Detailed and explicitly bounded Trace modes; elapsed status;
+
   per-collector health; clean stop/finalisation; and interrupted-session recovery.
+
 - Added portable timestamped session bundles, sortable/filterable history, validation and session-type
+
   classification, tags/notes, robust comparable-history baselines, conservative factual summaries,
+
   raw evidence retention, explicit deletion, and context-bounded ZIP exports for external AI analysis.
+
 - Ported the useful legacy PresentMon, process, Windows counter, event, module and configuration capture
+
   behaviour without a runtime dependency on the DiagMon prototype. `AllowsTearing` is explicitly not
+
   interpreted as dropped-frame evidence; unavailable collectors remain visible as missing or failed.
+
+
 
 ## Unreleased - 2026-07-14 (Interpretable completed-session graph)
 
+
+
 - Replaced the full-session polyline with labelled time/latency axes, a complete selectable legend,
+
   robust automatic scaling, display-budget guides and min/max-per-pixel downsampling that retains spikes.
+
 - Added mouse-wheel zoom, drag pan, reset, exact timestamp/value hover inspection, session/marker/alarm/
+
   estimated-cadence event lines and summary statistics (average, median, P95, P99 and maximum).
+
 - Extended the durable trace format additively to schema 2 with a UTC/QPC anchor, GPU utilisation and
+
   the existing HUD alarm masks. Schema 1 sessions remain readable; inferred cadence misses are labelled
+
   estimates until the PresentMon migration supplies measured dropped-presentation evidence.
+
+
 
 ## Unreleased - 2026-07-14 (HUD alarm and last-session trace reliability)
 
+
+
 - Replaced every HUD symbol's update-count alarm latch with one tested 750 ms time-based entry and
+
   recovery policy whose post-recovery hold cannot extend itself indefinitely.
+
 - Made GPU headroom use 90% warning and 98% critical defaults, so a brief 90% excursion during flat
+
   target-rate delivery does not appear as a critical alarm-only incident.
+
 - Made trace persistence independent of orderly game shutdown: the bounded telemetry worker checkpoints
+
   new samples and markers every second, flushes them to disk, and tolerates a partial final record after
+
   abrupt process exit. End/destroy callbacks remain final-flush optimisations.
+
+
 
 ## Unreleased - 2026-07-14 (Music track-change card completion)
 
+
+
 - Completed the opt-in Windows Now Playing (SMTC) provider for brief title/artist/artwork cards with
+
   no permanent controls and deduplication across pause, seek and volume changes.
+
 - Corrected the provider lifecycle to unsubscribe the exact session-change handler on stop, allowing
+
   clean broker reconfiguration without retained duplicate callbacks.
+
+
 
 ## Unreleased - 2026-07-14 (OBS recording indicator)
 
+
+
 - Added an optional broker-side OBS WebSocket v5 connection that authenticates locally and queries
+
   `GetRecordStatus`; merely finding an OBS process does not light the cue.
+
 - Added subtle adjustable red visor corners while recording is active. Capture exclusion is not
+
   claimed: the cue is drawn into submitted eye textures and a real OBS capture-path test is pending.
+
+
 
 ## Unreleased - 2026-07-14 (Sticky note visor widget)
 
+
+
 - Added one short native visor note with bounded four-line word wrapping, shared-binocular position,
+
   angular size and opacity controls. It remains independent of notification cards.
+
 - Added an F6–F12 configurable rising-edge show/hide bind (F7 default). The note starts visible when
+
   enabled and settings are applied at the next OpenXR session.
+
+
 
 ## Unreleased - 2026-07-14 (Real performance trace markers)
 
+
+
 - Added an F6–F12 configurable marker bind (F8 by default). Each rising edge receives an exact QPC
+
   timestamp and sequence number in the native performance sample stream, plus a brief numbered visor
+
   confirmation and a numbered line on the live trace.
+
 - Added a bounded native session recorder that atomically saves the real trace at OpenXR session end,
+
   and a post-session graph that draws and navigates those same numbered marker events. Generic history
+
   and notification storage are not involved.
+
+
 
 ## Unreleased - 2026-07-14 (Network HUD expansion)
 
+
+
 - Added optional PING, LOSS, JIT and NET widgets to the existing modular HUD. A bounded worker sends
+
   one Windows ICMP echo per second to a configurable IPv4 target and publishes rolling 20-probe loss,
+
   successful-probe jitter, latency and stable/unstable/unreachable state outside the render thread.
+
 - Kept all network widgets off by default and labels explicit: these values describe the configured
+
   probe path, not private game-server telemetry. Three consecutive misses produce an `OFF` warning.
+
+
 
 ## Unreleased - 2026-07-14 (Clock and VR session timer)
 
+
+
 - Added a compact dedicated visor card with current 24-hour local time and elapsed OpenXR-session
+
   time, rendered through the same binocular Direct/Topmost overlay path as established overlays.
+
 - Added position, scale and opacity settings; elapsed duration uses monotonic time and resets for
+
   every successfully created OpenXR session.
+
 - Removed the isolated generic technical-history experiment, including persistence, broker hooks,
+
   settings, fixtures and canonical documentation. Live notifications and racing cues are unchanged.
+
 - Retained the atomic Topmost failure latch and reusable invariant-culture right-click slider reset
+
   helper while removing the experimental surface.
+
+
 
 ## 4.1.211
 
+
+
 - Prevent visibility-mask filtering from returning an empty eye mesh. Indivisible one-triangle
+
   runtime masks now pass through unchanged, and unfamiliar topology fails open to the runtime data.
+
+
 
 > Live state: `STATE.md`. Architecture: `docs/ARCHITECTURE.md`. This file is append-only release history.
 
+
+
 ## 4.1.210 - 2026-07-13 (4.1.209 Pistol Whip presentation repair)
 
+
+
 - Restored the direct eye-texture backend for projection-only applications. Automatic Topmost now
+
   arms only after a distinct application compositor layer is observed, retains its one-attempt and
+
   fail-closed safety contract, and suppresses duplicates during the backend transition.
+
 - Kept literal-pixel calibration on the submitted game texture and corrected the 64 px grid to use
+
   the proven explicit constant-colour shader.
+
 - Made every graph mode select or fall back to a compatible useful channel, corrected Alarm-only
+
   trace transitions, and made the twelve HUD widgets one proportional single row.
+
 - Moved notification fade/slide evaluation to native render cadence and removed doubled fade alpha.
+
 - Made racing presentation tests explicit temporary overrides, so they work even when the production
+
   feature is disabled without enabling or persisting it.
+
+
 
 ## Unreleased - 2026-07-13 (Automatic topmost presentation)
 
+
+
 - Made the repaired topmost-capable backend the normal automatic policy and removed its experimental
+
   checkbox from ordinary settings. `overlay_force_direct=1` remains a session-start diagnostic escape.
+
 - Confirmed common-scene parity for visor, calibration, HUD, Trace, crosshair, notifications, lap
+
   cards, spotter glow and flag border; all use the same renderer/coordinates in both backends.
+
 - Suppressed direct visor drawing once Topmost is armed, including captured-projection fallback, so
+
   no frame receives duplicate direct and composition-layer masks.
+
 - Preserved first-frame direct presentation, one allocation attempt/session, stable capacity,
+
   device-loss latch, bounded failure and immediate next-frame direct fallback.
+
+
 
 ## Unreleased - 2026-07-13 (Performance Trace visibility)
 
+
+
 - Replaced the ambiguous graph checkbox with explicit Off, Always visible and Alarm only modes,
+
   retaining the legacy enable key solely for migration.
+
 - Alarm-only keeps the fixed 600-sample history running while hidden, appears only after existing
+
   sustained alarm confirmation, extends one hold during repeated trouble, then fades over 500 ms.
+
 - Emphasised graph channels responsible for active VR/frame or APP alarms without changing channel
+
   values, units, stereo placement or normal always-visible behaviour.
+
+
 
 ## Unreleased - 2026-07-13 (Racing attention policy)
 
+
+
 - Added a deliberately small four-channel policy: spatial spotter and safety flag cues are immediate
+
   and coexist; performance alarms remain independent; transient cards stay in their compact area.
+
 - Desktop cards wait off-screen during active spotter or safety-flag states, then present normally if
+
   the state clears within five seconds or are discarded as stale. Lap cards are not self-delayed.
+
 - Kept queue size, wait time and expiry bounded; no racing feature enables global notifications and
+
   no notification body is added to diagnostics.
+
+
 
 ## Unreleased - 2026-07-13 (iRacing provider correctness)
 
+
+
 - Replaced the prototype poller with one cancellation-bound, tick-aware worker using validated SDK
+
   header, variable-table, type/count, buffer-length and offset reads.
+
 - Corrected all official `CarLeftRight` states, including distinct two-cars-left and two-cars-right;
+
   inactive, stale, disconnect, stop and session reset now clear cues authoritatively.
+
 - Added bounded reconnects, 750 ms stale detection, duplicate-tick/event suppression, session
+
   identity/reset handling and safety-prioritised official flag mapping.
+
 - Expanded lap events with validity, personal-best, previous-best delta and session identity without
+
   fabricating unavailable session-best data.
+
 - Added a real named-shared-memory fixture covering enums, stale and repeated ticks, reconnect,
+
   quick restart, invalid values/offsets, flags, laps, duplicates and session changes.
+
 - Moved the single provider worker into the independent installed broker and added a generation-safe
+
   generic racing-state mapping, so telemetry and cues survive settings-window exit.
+
 - Implemented configurable side-correct peripheral spotter glow, safety-prioritised flag border and
+
   lap-result cards through the existing textured-card renderer without enabling desktop notifications.
+
 - Routed every UI simulation through the same broker, generic event, mapping and native consumer as
+
   live telemetry; removed the settings-owned duplicate worker and stale scaffold wording.
+
+
 
 ## Unreleased - 2026-07-13 (Packaged Windows notification collection)
 
+
+
 - Added a signed package-with-external-location identity and dedicated medium-integrity notification
+
   broker with the required `userNotificationListener` capability and global consent flow.
+
 - Moved collection, filtering, privacy shaping, card composition, expiry and shared-memory publishing
+
   out of the settings window; collection now survives settings exit and never enters the game thread.
+
 - Added source/notification-ID deduplication, authoritative removal, stale-history baselining, bounded
+
   safety polling and a five-failure latch that requires an explicit access retry.
+
 - Changed the ordinary WPF interface to `asInvoker`; machine-wide OpenXR registration now uses a
+
   narrow elevated self-command only when the x64 or Win32 registry state needs changing.
+
 - Extended MSI install, upgrade and uninstall handling for the broker, signed identity package,
+
   trusted signer certificate and logon startup.
+
 - Added a disposable separately packaged Windows-notification fixture. Installed build 4.1.202
+
   received its real toast through Windows and published it into the production ViewLab card queue.
+
+
 
 ## Unreleased - 2026-07-13 (Hardware telemetry platform)
 
+
+
 - Expanded the HUD from four fixed choices to twelve functional widgets: CPU, peak logical CPU,
+
   reported CPU clock, GPU 3D, RAM, commit, VRAM budget, SYS headroom, APP, VR, FPS and frame interval.
+
 - Moved Windows/PDH/DXGI hardware sampling to one bounded worker. The render thread consumes only a
+
   non-blocking immutable snapshot; provider failure cannot disable rendering.
+
 - Added bottleneck-aware SYS, inverse configurable thresholds, provider/unit metadata, persisted
+
   ordering, default restore, gap-free packing and configurable multi-row wrapping.
+
 - Added a versioned telemetry configuration mapping without changing the 208-byte overlay contract.
+
+
 
 ## Unreleased - 2026-07-12 (Overlays: boundary flash, crosshair, notifications, iRacing scaffold)
 
+
+
 - Redesigned Performance HUD as ordered modular CPU/GPU/APP/VR widgets with independent enables,
+
   gap-free packing, 0.15–3.0 whole-widget scale, sustained alarm hysteresis, and live persistence.
+
 - Replaced unstable SYS timing with APP workload: application-side wall time from `xrBeginFrame`
+
   return to `xrEndFrame` entry, expressed against the cadence-aware budget.
+
 - Reworked VR classification against the runtime's current `predictedDisplayPeriod`, including
+
   on-target, warning, critical, stable-reprojection, unstable, and unavailable states.
+
 - Replaced the trace with a bounded channel graph for frame interval, FPS, budget deviation, APP
+
   work, wait duration, submit duration, and predicted display period in unit-safe modes.
 
+
+
 - Safety-critical: stopped Topmost from recreating large compositor swapchains for projection-
+
   rectangle changes and retrying allocation every frame after failure. It now gets one stable
+
   allocation attempt per session and permanently falls back to direct rendering on any failure.
+
 - Added a session-wide D3D device-removal gate, deferred failed-resource teardown to normal session
+
   shutdown, used the runtime texture's legal RTV format, and corrected premultiplied-alpha submission.
 
+
+
 - Fixed Split Top/Bottom mode changes not being persisted by the checkbox event. Turning split off
+
   now immediately writes `split_mode=0` and the centred normal-vertical tangents, preventing an old
+
   asymmetric profile from returning on the next game launch.
+
 - Fixed pale Topmost Visor Overlay colours by using the runtime swapchain texture's legal typed RTV
+
   format and submitting ViewLab's already alpha-blended target as premultiplied; the standard direct
+
   path is unchanged.
+
 - Reclassified calibration geometry by purpose: pixel rulers/patterns use the complete submitted
+
   eye rectangle and never scale to crop-overlap bounds; the 64 px grid keeps exact spacing but is
+
   centred on the fused crosshair; radial spokes and true circular rings are constructed in shared
+
   tangent space. Edge probes once again touch the submitted texture bounds.
+
 - Added right-click zero reset to each crosshair offset slider and documented all ten calibration
+
   patterns in `docs/CALIBRATION.md`.
+
 - System-wide overlay-coordinate repair: fused overlays now use shared tangent/angular positions
+
   projected independently through each eye. Crosshair returns to shared tangent `(0,0)` and uses
+
   per-axis pixels-per-tangent for crop-invariant angular size; diagnostics include shared position,
+
   per-eye pixels/size, tangents, rectangle, and zero angular disparity. HUD base size/spacing and
+
   notification card dimensions are likewise angular rather than cropped-pixel-relative.
+
 - Boundary flash is inset beyond half its stroke and now renders as a complete inner outline inside
+
   each submitted eye rectangle. The combined visor preview shows one crosshair at its visual centre.
+
   Pixel calibration patterns remain deliberately per-eye texture diagnostics.
 
+
+
 - Global visor tuning is now always live through the existing generation-stamped shared-memory
+
   snapshot; the redundant on/off checkbox and config key are removed. Unchanged frames do no INI
+
   parsing, and per-app profile overrides still take precedence.
+
 - Both crosshair previews are reduced to half their former visual scale. The binocular visor editor
+
   now shows one left-eye reference crosshair instead of duplicating it in both preview eyes.
 
+
+
 - Follow-up calibration: crosshair centre now exactly matches the radial zone-plate/spoke centre
+
   (submitted eye-rectangle midpoint) instead of tangent zero, which is displaced on asymmetric FOVs.
+
   VR frame warnings now use a rolling cadence median and cannot turn amber from isolated miss counts;
+
   stable 120 Hz 8.2/8.3 ms and 90 Hz 11.1/11.2 ms remain green.
 
+
+
 - Crosshair visibility repair: flat overlay colour/alpha now comes from an explicit constant-buffer
+
   pixel shader instead of the VDXR-broken interpolated vertex colour path. Added resolved per-eye
+
   geometry/draw logs, an outlined built-in default, a live Overlays preview, and matching binocular
+
   visor-preview crosshairs.
+
 - Notification status now distinguishes exact access denial, unsupported deployment, listener
+
   initialization, and internal bridge failure with the WinRT access enum/HRESULT retained. Added a
+
   synthetic Test Notification that exercises composition, shared memory, texture upload, stereo
+
   placement, animation, stacking and expiry without Windows notification permission.
+
 - Replaced the iRacing placeholder with an optional background SDK shared-memory provider for
+
   `CarLeftRight`, `LapCompleted`, `LapLastLapTime`, and `SessionFlags`; it publishes generic events,
+
   reports connection/update/raw/normalized diagnostics, and includes left/right/both/lap/yellow/
+
   blue/clear simulations. No RaceLab/Garage61 dependency and no native iRacing coupling.
+
 - VR frame-time colour now uses full-precision rolling samples, sustained 105%/115% entry bands,
+
   miss counts, consecutive confirmation and lower exit thresholds. The one-decimal label is display
+
   only; stable 120 Hz 8.3–8.4 ms timing remains green.
 
+
+
 - **Packaging correctness repair.** The 4.1.169 MSI was correctly named/versioned but harvested
+
   the stale 4.1.168 app from the former `net8.0-windows` publish directory after the project moved
+
   to `net8.0-windows10.0.19041.0`. WiX now points at the current output, and `build.ps1` derives and
+
   checks that path, removes generated outputs before building, extracts the finished MSI, and
+
   rejects version, hash, native-payload, or compiled-Overlays marker mismatches.
 
+
+
 - **Render-boundary flash.** Dragging any HUD or frame-trace position/size/width/height/scale
+
   control now paints the exact cropped render boundary in both eyes in a fixed cyan-white outline
+
   at constant screen-space thickness. It holds for the whole drag and fades out over ~500 ms after
+
   release (fade timer lives in the native layer so it survives the UI closing mid-drag). Only those
+
   layout controls trigger it — telemetry, colour, opacity, and threshold controls do not.
+
 - **Static Counter-Strike crosshair.** Optional crosshair rendered at ViewLab's calibrated stereo
+
   centre (tangent 0,0 in both eyes → zero disparity). Manual controls for size, gap (incl.
+
   negative), thickness, centre dot, outline, outline thickness, alpha, colour, T-style, and an
+
   overall ViewLab VR scale. Imports legacy `cl_crosshair*` console configs and CS2/CS:GO
+
   `CSGO-…` share codes (base-58, community layout) into the same settings, and exports the current
+
   settings as a legacy `cl_*` config to the clipboard. Dynamic spread/recoil/weapon/movement
+
   behaviour is parsed-and-ignored; the crosshair is always static. Spans are pixel-snapped for
+
   sharp edges at any eye-buffer resolution.
+
 - **Windows desktop notification bridge.** Supported Windows notifications are mirrored into the
+
   visor as compact cards that slide in at the bottom-right of the cropped region, hold ~3 s, then
+
   fade and slide away; multiple cards stack upward and expire independently, in both eyes, inside a
+
   safe margin. Collection (WinRT `UserNotificationListener`), image decode, card compositing, and
+
   the whole queue/animation run in the settings-app process, entirely off the game's render thread;
+
   each card is pre-composited to an RGBA bitmap and drawn by the native layer as a single textured
+
   quad (new textured D3D11 pipeline). Live settings: enable, position X/Y, scale, opacity,
+
   duration, max visible, app allow/blocklist, message privacy (full / title-only / app-only), show
+
   app icon, show image/thumbnail. Alarm-only HUD state never suppresses notifications.
+
 - **iRacing integration scaffold (not active).** A clearly-labelled future section with enable,
+
   lap-time popup, peripheral spotter glow, and flag-state border toggles, plus a generic
+
   `IViewLabEventProvider` / `ViewLabEvent` seam so a later telemetry provider can publish
+
   renderer-agnostic events without coupling the visor renderer to iRacing. No telemetry is read.
+
 - Live-state shared-memory contract bumped to version 4 (208 bytes); a new
+
   `Local\XRViewLabNotifications` mapping carries pre-composited notification cards. UI target
+
   framework raised to `net8.0-windows10.0.19041.0` for the WinRT notification APIs.
+
+
 
 ## Unreleased - 2026-07-12 (Stereo HUD refinement, 4.1.168)
 
+
+
 - The performance HUD now draws in BOTH eyes from a single per-frame snapshot. Every element is
+
   anchored at a shared tangent-space point inside the binocular overlap of the cropped per-eye
+
   FOVs, so it fuses cleanly with zero angular disparity, no double image, and no opposite-lens-edge
+
   hugging, while staying positioned relative to the final cropped tangent bounds.
+
 - HUD scale fixed: the fixed 112 px ceiling that froze growth mid-slider is removed; the 0.5-3.0
+
   UI range now maps smoothly onto the rendered size relative to the eye resolution (native config
+
   clamp also raised from 2.0 to 3.0 to match the UI, and the anchor clamp widened to the full 0-1
+
   slider range).
+
 - Replaced the seven-segment digits with a compact 5x7 pixel HUD font with a dedicated
+
   decimal-point glyph, integer pixel scaling, and run-merged rows: values are legible at small
+
   sizes, carry no unit suffixes, and 13.3 can no longer render as 133.
+
 - The fourth (headset) indicator now shows the real VR frame time in ms with one decimal
+
   (e.g. 8.3 / 11.1 / 13.9). It is measured as the QPC interval between successive xrWaitFrame
+
   returns; its budget is predictedDisplayPeriod x cadence multiple, where the multiple (1-4) is
+
   detected from a rolling interval median confirmed over 20 consecutive frames - so ASW/SSW/
+
   reprojection half-rate modes (72->36, 80->40, 90->45, 120->60) get the correct doubled budget,
+
   nothing is hardcoded, and a single slow frame can never flip the cadence. Ring fill and colour
+
   compare frame time against that effective budget (amber >=85%, red over budget).
+
 - Frame-pacing trace gained live X/Y/height/width/history-length/sensitivity controls (sensitivity
+
   is now a continuous +/-0.5-8 ms slider). Newest samples stay on the right; the baseline is the
+
   effective cadence budget, correct under half-rate reprojection. History extends to 600 samples.
+
 - New alarm-only mode (live checkbox): each of the four indicators hides independently while
+
   green/amber and appears only in its red state, using the smoothed values with hysteresis plus a
+
   configurable post-recovery hold (hud_alarm_hold_ms, default 1500 ms). The pacing trace is
+
   never hidden and telemetry keeps updating.
+
 - Live-state shared-memory contract bumped to version 3 (120 bytes) carrying the trace and alarm
+
   controls.
+
+
 
 ## Unreleased - 2026-07-12 (Native Performance HUD)
 
+
+
 - Added live HUD X/Y/scale/safe-margin/clamp controls. HUD bounds now derive from and clamp to
+
   the current submitted cropped eye rectangle, including at aggressive vertical tangents.
+
 - Fixed the shared live-state contract so calibration, HUD, and live visor-enable changes reach
+
   the locked render path on the next frame. The mask editor now uses a zoom-compensated preview
+
   pen, preserving readable curve thickness at every zoom.
 
+
+
 - Added an optional, default-off four-icon CPU/GPU/SYS/VR HUD drawn directly into the submitted
+
   left-eye texture after the visor. Its normalized `XrRect2Di` anchor keeps the complete indicators
+
   and pacing trace inside the cropped rendered region; no OpenXR overlay layer is created.
+
 - CPU now reports total system utilisation from `GetSystemTimes`. GPU groups Windows GPU Engine
+
   samples by adapter and engine, selects the D3D11 render adapter, and reports its busiest 3D engine
+
   without summing unrelated engines into impossible values.
+
 - SYS reports actual frame work divided by the OpenXR runtime's `predictedDisplayPeriod`; VR reports
+
   the percentage of over-budget frames in a 60-frame window. All percentages are smoothed lightly
+
   and clamped to 0–100.
+
 - Added a 120-sample frame-pacing line beneath the indicators. It scrolls left, plots deviation from
+
   the runtime target interval, marks missed-budget segments red, and has live ±1/±2/±4 ms sensitivity.
+
 - Preview control pins now retain constant screen-pixel size, outline, hover, and hit tolerance at
+
   every zoom level.
+
+
 
 ## Unreleased - 2026-07-12 (Draw in the Void Shelved + Render-Path Cleanup)
 
+
+
 - Shelved the Draw in the Void concept after VDXR confirmed that it PC-composes OpenXR layers into
+
   one reduced-FOV encoded stream. The unsupported test quad, its swapchain/reference-space code,
+
   UI checkbox, live-state flag, and default INI key are removed.
+
 - With the settings app closed, the render path now attempts to reconnect the optional live-state
+
   shared-memory mapping at most once per second instead of calling `OpenFileMappingW` every
+
   submitted frame. Existing live visor and calibration updates remain generation-checked at the
+
   `xrEndFrame` safe point.
+
+
 
 ## Unreleased - 2026-07-12 (Ten-pattern Calibration Suite)
 
+
+
 - Promoted the hidden calibration grid into a Calibration dropdown with ten independently
+
   default-off, submitted-texture diagnostics: grid, pixel ruler, repeated 1/2/4 px gratings,
+
   colour/grey bars, frame beacon, edge probes, checkerboards, radial zone plate, clipping steps,
+
   and a frame-serial motion strip.
+
 - Temporal diagnostics are driven once per submitted projection frame, so both eyes receive the
+
   same beacon and motion state; they never depend on a two-release-per-frame assumption.
+
+
 
 ## Unreleased - 2026-07-11 (Calibration Grid, hidden)
 
+
+
 - Added `calibration_grid` (ini-only, default 0, no UI): draws a uniform 64 px reference grid
+
   into the eye images at `xrReleaseSwapchainImage`. Because the grid is exactly uniform in the
+
   submitted texture, any spacing or contrast distortion seen in the headset is introduced
+
   downstream of ViewLab (used to characterise VD fixed foveated encoding).
+
+
 
 ## Unreleased - 2026-07-12 (Binocular WYSIWYG Preview)
 
+
+
 - The visor preview is now binocular and one-to-one: the canvas represents the full uncropped
+
   binocular render (fixed 2:1 reference), and the Vertical/Horizontal crop values map directly
+
   to the inner render rect — Vertical 0.2 visibly occupies 20% of the reference height. A faint
+
   outline marks the post-crop rect; the visor mask is drawn inside it.
+
 - Hidden the inner-eye notch controls (Inner low, Bridge, Rise, Peak X, Steep) and their preview
+
   pins in both the main window and the per-app profile popup. The notch looks correct with one
+
   eye closed but turns translucent under binocular fusion. Config keys, saved values, per-app
+
   plumbing, and native geometry are unchanged — UI visibility only.
+
+
 
 ## Unreleased - 2026-07-12 (Installer Registry Safety)
 
+
+
 - Removed the MSI's `CleanupApiLayerRegistry` custom action entirely. Installing or upgrading
+
   ViewLab now never enumerates, cleans, recreates, or otherwise alters third-party values under
+
   the shared OpenXR implicit-layer registry key; WiX manages only ViewLab's own registrations.
+
+
 
 ## Unreleased - 2026-07-12 (Fixed-Foveation Visor Coverage)
 
+
+
 - Restored the unified visor Size control (`0.05..1.0`, default `1.0`). It shrinks only the
+
   exposed aperture, leaving ViewLab crop tangents, submitted FOV, and render resolution intact.
+
 - Curve `0` now emits an exact rectangular aperture, including the open-inner per-eye geometry.
+
 - Extended Peak X from `0..1` to `-0.5..1`; values left of zero move the mirrored per-eye peak
+
   twice as far from the binocular centre as the old minimum. Existing per-app Peak X values keep
+
   their legacy encoding and meaning.
+
+
 
 ## Unreleased - 2026-07-12 (Visor Shape Range Pass)
 
+
+
 - Replaced the Curve-zero geometry branch with a continuous near-square curve shoulder, so the
+
   first slider movement no longer jumps shape or disables Inner low.
+
 - Expanded Size minimum to `0.1`, Inner low maximum to `0.666`, Rise to `-0.5..1`, Peak X to
+
   `-1..2`, and Steep to `-1..2`. Bridge handle response is strengthened at both ends; all defaults
+
   retain their previous geometry.
+
 - Moved the ReShade Remote entry beside Edge Masks above the visor controls, and added draggable
+
   preview pins for every visor shape slider.
+
 - Removed redundant Applications/Render Options sub-headers to align responsive dual/triple-column
+
   cards, and restored the beta-testers credit in triple-column mode.
+
 - Shortened the app-list instruction, removed the redundant combined render-height readout, and
+
   moved the triple-column beta-testers credit directly below the right-column card.
+
 - Retuned responsive client-width cutovers to 280px (mini), 720px (two columns), and 1200px
+
   (three columns), preventing squeezed multi-column layouts during resize.
+
 - The PowerUp/per-app profile popup now has a themed, reserved-column scrollbar that cannot overlap
+
   visor controls.
+
 - Added a prominent "WARNING — DO NOT USE" banner to the experimental ReShade Remote.
+
 - Global visor size/shape controls now update live after the UI commits a visor-only revision;
+
   crop/FOV/resolution and per-app profiles deliberately remain restart-required.
+
 - Forefront discovery now targets `Forefront_Internal.exe`, and the native layer emits a precise
+
   Forefront process-entry diagnostic to distinguish loader, instance-chain, and crop-hook failures.
+
+
 
 ## Unreleased - 2026-07-11 (Experimental Crop-Fix Purge)
 
+
+
 - Removed all experimental crop-fix and edge-smear diagnostic code from the native layer:
+
   crop experiment modes (visibility-mask passthrough / disable hidden-area culling / crop-aware
+
   mask mapping / edge-source probe), the black edge-guard frame (`edge_smear_fix`/
+
   `edge_smear_pixels`), the edge-guard/probe draw paths, and all crop-contract diagnostic
+
   logging and snapshot machinery. Config keys are ignored if present.
+
 - Removed the "EXPERIMENTAL CROP FIXES" checkbox group from the UI.
+
 - Root cause of the edge smear is documented in `docs/FIXED_FOVEATION.md` (Virtual Desktop
+
   fixed foveated encoding; not fixable in ViewLab). Full record: `docs/EDGE_SMEAR_INVESTIGATION.md`.
+
+
 
 ## Unreleased - 2026-07-11 (Crop Resolution A/B)
 
+
+
 - Added hidden default-off `crop_boundary_full_resolution_experiment`. It preserves ViewLab's
+
   cropped FOV while returning the runtime's original recommended swapchain dimensions for an
+
   isolated Virtual Desktop boundary-smear comparison.
+
+
 
 ## Unreleased - 2026-07-11 (Crop Boundary Diagnostics)
 
+
+
 - Added rate-limited OpenXR crop-contract diagnostics. They compare each submitted primary-stereo
+
   projection frame with its exact same-session, same-display-time `xrLocateViews` snapshot and
+
   log FOV and sub-image bounds without modifying rendering behaviour.
+
+
 
 ## Unreleased - 2026-07-11 (Visor Curve Fidelity)
 
+
+
 - Increased the fixed native visor curve tessellation from 96 to 512 segments. This removes the
+
   long straight chords that made curved mask edges appear blocky in headset, without restoring
+
   the removed HD or anti-aliasing controls.
+
+
 
 ## 4.1.123 - 2026-07-11 (ReShade Remote: Robust Install + Live Controls)
 
+
+
 - Rebuilt the bundled `ReShadePayload/ReShade64.dll` from `ReshadeAI/reshade` source so the
+
   `heartbeat` field is incremented every frame; `ReShadeRemote` can now detect that ReShade is
+
   running and enable controls.
+
 - ReShade Remote controls are no longer disabled when the game is not running. They can be used
+
   before launch, and settings take effect when the game opens the shared-memory control block.
+
 - `Install component` now waits for the elevated installer and reports a clear error if the
+
   `ReShade64.dll` is locked by a running game, instead of silently doing nothing.
+
 - `ReShadeRemote` status now distinguishes `Not installed`, `Ready`, and `Connected` instead of
+
   the previous "controls locked until heartbeat" behavior.
+
+
 
 ## 4.1.122 - 2026-07-11 (UI Cleanup: Baked-in Options, Removed Broken Features)
 
+
+
 - Removed the visor mask size slider from the main window and per-app profile editor. The mask
+
   is now hardcoded to maximum corner coverage: it always extends to the full edges of the
+
   cropped view and only rounds the corners. Crop values (vertical/horizontal render height)
+
   continue to control the full render dimensions from the center.
+
 - `mask_size`/`visor_size` is deprecated and no longer affects geometry. The geometry builders
+
   now use `mask_width_scale`/`mask_height_scale` fixed at 1.0 so the opening always fills the
+
   crop bounding box.
+
 - Removed experimental LOD pop-in fix and edge-smear fix: the UI checkboxes and their native code
+
   paths are gone, and the config keys are ignored.
+
 - Removed HD visor and anti-aliasing checkboxes: their code paths are disabled and config keys
+
   ignored.
+
 - `foveated_center_compensation`, `stencil_outer_edges_only`, and `crop_outer_edges_only` are now
+
   permanently enabled. Their UI checkboxes are removed and the config keys are ignored.
+
+
 
 ## 4.1.113 - 2026-07-11 (Headset Regression Fixes)
 
+
+
 - Fixed `Crop outer edges only`: the native FOV crop now scales only the outer edge when enabled
+
   and both horizontal edges when disabled, matching the checkbox and recommended render width.
+
 - Fixed the enabled-but-invisible visor state: legacy `mask_size=1` now recovers to the safe
+
   visible opening `0.82`, and Size can no longer be set to a borderless full opening in the UI.
+
 - Fixed ReShade Remote deployment command quoting and made the panel report whether the bundled
+
   custom payload is actually installed instead of implying that any stock ReShade layer can connect.
 
+
+
 - Fixed upgrades so they preserve visor settings and per-app tuning. The earlier per-version
+
   reset design would have erased those settings after every MSI update and has been removed.
+
 - Removed user-profile backup/reset work from installer VBScript; it now performs only machine-safe
+
   stale OpenXR layer registry cleanup.
+
 - Fixed the per-machine Start Menu shortcut component key path by moving it from HKCU to HKLM.
+
 - Retired the legacy `visibility_mask_visor` hidden-mesh reshaper; the key is logged and ignored
+
   so it cannot diverge from Direct C visor geometry.
+
 - Aligned native missing-key defaults for `mask_corner` and `mask_rounded` with the bundled ini.
+
 - Removed unsafe mid-frame config hot reload; settings now apply on game restart as the UI states.
+
 - Serialized D3D11 draw hooks with renderer/session teardown to prevent concurrent state use and
+
   release during game shutdown or swapchain changes.
+
+
 
 ## 4.1.109 - 2026-07-10 (Bug Scan Fix Pass)
 
+
+
 - Fixed the remaining preview pin-drag breakage by making the apex drag inverse match the rendered
+
   centre-origin pin position.
+
 - Fixed safe config/install consistency: `mask_size` now falls back directly to `0.82`, the default
+
   ini is packaged into publish/MSI output, and build output copies freshly-built native DLLs after
+
   MSBuild completes.
+
 - Fixed Edge Masks "Both" wiring to the DLL keys and disabled unsupported one-sided controls.
+
 - Implemented native `crop_outer_edges_only` reading/logging and restored recommended image-size
+
   scaling when `fovMutable` reporting is unavailable.
+
 - Split late fallback draw flags for edge guard vs Direct C visor, broadened D3D11 RTV/viewport
+
   state restore, and added open-inner vertical AA feathering.
+
 - Tightened per-app visor profile semantics: global mode saves as global, unsupported per-app
+
   visor enable is not written, bridge-width missing fallback is `0.5`, and the curve reset matches
+
   default config.
+
+
 
 ## 4.1.110 - 2026-07-10 (Bug Scan — documented findings)
 
+
+
 - Finalized comprehensive bug scan (`docs/BUG_SCAN_2026-07-10.md`) covering 43 new findings
+
   across native layer, UI, build/installer, and documentation.
+
 - Cross-referenced and aligned all seven canonical memory files (STATE.md, CHANGELOG.md,
+
   docs/ARCHITECTURE.md, docs/CONFIG.md, docs/DECISIONS.md, docs/REGRESSIONS.md,
+
   docs/BUG_AUDIT.md).
+
 - `Tests/Verify-ViewLabContracts.ps1` passes.
+
+
 
 ## 4.1.107 - 2026-07-10 (Full Bug-Fix Bundle)
 
+
+
 - Implemented preview pin dragging via mouse capture/release/lost-capture handling.
+
 - Implemented native `visor_antialiasing` and `visor_hd`: D3D11 visor vertices now carry alpha,
+
   AA adds feathered aperture strips with SRC_ALPHA blending, and HD doubles curve tessellation.
+
 - Completed per-app shape plumbing for bridge rise, peak X, and steepness; reset/delete now covers
+
   all visor override keys.
+
 - Reconciled installer policy: MSI backs up then intentionally resets visor settings to safe
+
   defaults, with complete bundled ini defaults and contract coverage.
+
 - Restored Pass 4 robustness: cached RTVs are used by release and late paths, late `xrEndFrame`
+
   drawing is fallback-only, and original-FOV edge-smear diagnostics are back.
+
+
 
 ## 4.1.105 - 2026-07-10 (Pass 1: Visor Shape Rewrite)
 
+
+
 - **Rewrote apex-y, inner-low, and all four bridge controls natively** (clean rewrite on the v4.1.55
+
   baseline, formula-identical to the UI preview). Root cause of the old "divot on top of the lens" bug
+
   found and fixed: the old native code anchored the nose bridge to NDC `y1` (top) instead of `y0`
+
   (bottom) — UI y-down vs NDC y-up — and emitted bare points into a triangle list (garbage geometry).
+
   New `BuildNoseBridgeCurve` fills real band-clamped trapezoids: the divot is structurally bottom-only.
+
 - **Native shape now follows the stencil checkbox like the preview**: ON = per-eye open-inner arch,
+
   OFF = closed bean (now apex-aware). Geometric curve exponent `32*(2/32)^curve` everywhere.
+
 - Config plumbing for all six shape keys (ini + per-app registry), config log extended.
+
 - Rewrote `Tests/Verify-ViewLabContracts.ps1` for the new design; all contracts pass.
+
+
 
 ## 4.1.103 - 2026-07-10 (Inner-Edge Stenciling, Part 2)
 
+
+
 - **Gated the projected partner-eye boundary behind the stencil checkbox.** The D3D11 visor draw
+
   unconditionally added `BuildProjectedPartnerVisorVerts`, which blacks out the inner-eye band the
+
   cropped partner eye can no longer render. At aggressive horizontal outer crop this filled the whole
+
   nose-side region black (with its own curve, ignoring apex-y) — the inner-edge stenciling still
+
   visible after 4.1.102's visibility-mask fix. It now draws only when "Stencil outer edges only" is
+
   unchecked.
+
+
 
 ## 4.1.102 - 2026-07-10 (Stencil Outer Edges Fix)
 
+
+
 - **Fixed "Stencil outer edges only" doing nothing / inner edges being stenciled.** Two long-standing
+
   bugs: (1) the UI checkbox writes `stencil_outer_edges_only` but the DLL only read
+
   `outer_edge_visibility_mask_only` — the checkbox was wired to nothing; the DLL now reads the UI key
+
   (legacy key as fallback). (2) the outer-edge visibility-mask filter was skipped entirely whenever the
+
   native visor was active, so Virtual Desktop's FOV stencil passed through unfiltered and the game
+
   stenciled the inner/top/bottom edges itself (with VD's curve, not the user's apex-y curve). The filter
+
   now runs regardless of visor state; only the legacy visibility-mask reshaper stays gated on visor-off.
+
 - Native DLL is the v4.1.55 baseline (no inner-low/bridge code) plus the FreeLibrary crash fix.
+
 - Versions 4.1.92-4.1.101 were local debugging builds during this investigation; none were released.
+
+
 
 ## 4.1.93 - 2026-07-10 (Inner-low Rendering Fix Retry)
 
+
+
 - **Re-applied inner-low nose bridge rendering fixes**: removed 0.5x multiplier and lowered threshold from
+
   0.0001 to 0.0. Native DLL now renders inner-low at full strength with no dead zone. This should fix the
+
   barely-visible issue at higher horizontal crop values.
+
 - Investigating: stencil mode may be affected by geometry sizing at lower crop values. Report results.
+
 - `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
+
 
 ## 4.1.92 - 2026-07-10 (Reverted: Stencil Issue)
 
+
+
 - **Fixed inner-low nose bridge not rendering in HMD visor**: native DLL had the same bugs as the UI code
+
   previously had. Threshold was 0.0001 (blocking render at small values), now 0.0. Removed 0.5x multiplier
+
   that was halving the visual effect. Inner-low now renders at full strength in the headset, visible in both
+
   stencil modes. This fixes the missing bottom eyelid/nose divot that users see in-HMD.
+
 - `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
+
 
 ## 4.1.91 - 2026-07-10 (UI Quality Controls + Agent Safety)
 
+
+
 - **Added HD visor quality checkbox** (`visor_hd`): optional 2x supersampling of visor geometry. When enabled,
+
   renders the visor mask at 2x internal resolution before downsampling, reducing pixelation at the edges.
+
   Configurable via checkbox under the visor section in the UI; stored in INI file and applied at runtime.
+
 - **Added anti-aliasing quality checkbox** (`visor_antialiasing`): toggle for 8-pass jittered anti-aliasing
+
   of visor edges. When enabled (default), uses 4x jitter pattern for smooth edges; when disabled, renders
+
   single-pass solid edges for performance. Both visual paths verified in previous builds to work correctly.
+
 - **Fixed agent configuration bubble**: removed project-local `.claude/` directory that was creating isolated
+
   agent workspaces. Updated `.gitignore` and `agents.md` with explicit safety rules preventing future local
+
   bubbles. All AI agents now work with the user's global `~/.claude/` directory, allowing other models to
+
   access the same shared project context without isolation.
+
 - Full UI plumbing: `VisorHDCheck` and `VisorAntiAliasingCheck` checkboxes in `MainWindow.xaml`, read/write
+
   in `MainWindow.cs` with INI persistence, native-layer globals in `dllmain.cpp` read at initialization.
+
 - `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
+
 
 ## 4.1.90 - 2026-07-10 (Feature Fixes)
 
+
+
 - **Fixed inner-low (nose bridge) slider visibility**: removed 0.5x scaling multiplier that was
+
   reducing the visual effect. Inner-low now renders at full strength matching the slider range
+
   (0-0.333), with the nose bridge divot clearly visible in the mask preview as you adjust the control.
+
 - **Fixed pin dragging for bridge control**: the inner bridge pin can now be dragged at all
+
   inner-low values. Previously required InnerLowerY > 0.0001, preventing adjustment when slider
+
   was at minimum. Now works smoothly from 0 upward.
+
 - **Lowered rendering threshold**: changed visibility gate from 0.0001 to 0.0, so inner-low geometry
+
   renders even at minimum slider positions instead of appearing only above a small dead zone.
+
 - `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
+
 
 ## 4.1.89 - 2026-07-10 (Hotfix)
 
+
+
 - **REVERTED 4.1.88 bad defaults** that broke Pistol Whip at startup: commit a02f6de applied the user's
+
   current settings as hardcoded defaults, including `mask_size=1` (invisible mask) and incorrect render
+
   crop values (0.2 vertical instead of 0.18, etc.). These were never tested and caused immediate crashes.
+
   Reverted to original good defaults: render crop 0.18/0.09 vertical, 0.80 horizontal, mask_size=0.82,
+
   foveated_center_compensation=0. Per-app profiles remain unaffected. Users with 4.1.88 should update.
+
 - **Fixed critical D3D11 initialization crash**: `FreeLibrary(dxcLib)` was being called at line 811 in
+
   `InitD3D11MaskRenderer()`, BEFORE shader blob pointers were used to create vertex/pixel shaders and
+
   input layouts (lines 814, 823, 836). This caused 0xC0000005 access violations when reading freed DLL
+
   memory. Moved `FreeLibrary` to after all blob usage completes, and added it to all error paths. This
+
   was causing Pistol Whip (and other games) to crash immediately at startup.
+
 - **Updated build.ps1** to automatically deploy native DLLs (`XR_APILAYER_cooooked_xrviewlab.dll` x64/Win32)
+
   to publish directory and dist folder on every build, ensuring users get updated binaries with each
+
   release without manual intervention.
+
 - Known issues NOT yet fixed: pin dragging in mask preview (Focusable="True" added but not fully
+
   functional), inner-low (nose bridge) slider not producing visible change in lens preview (may need
+
   exaggerated slider ranges or stencil-mode logic fix), edge-smear-fix logic still needs investigation.
+
 - `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
+
 
 ## 4.1.88 - 2026-07-10
 
+
+
 - **Removed non-functional "Curve Exp" and "Inner X" sliders** from the UI and all internal plumbing. Both were experimental controls that had no real effect on the mask geometry; they were confusing and dead code. Removed `MaskInnerBridgeCurveExpKey` and `MaskInnerStartXKey` constants from `MainWindow.cs`, corresponding handler methods, XML rows in `MainWindow.xaml`, and native-layer global variables + reads in `dllmain.cpp`. Removed `_innerBridgeCurveExp` and `_innerStartX` fields and enum entries from `BeanMaskEditor.cs`, plus all related drag detection and pin drawing.
+
 - **Fixed pin dragging in the mask preview** by adding `Focusable="True"` to the `BeanMaskEditor` element in `MainWindow.xaml`, allowing the canvas to capture mouse events for dragging the visible pins.
+
 - **Included ReShadePayload in published builds**: added post-publish copy logic to `build.ps1` to copy the `ReShadePayload` directory to the output folder after `dotnet publish`, so the component is available in development/testing and included in the MSI.
+
 - **Set user's current application settings as defaults** for all fresh installs: captured the user's existing render/mask configuration (render crop 0.2 vertical / 0.8 horizontal, foveated center on, crop outer edges on, and 8 mask slider positions) and applied them as fallback defaults in `MainWindow.cs`, `xr-viewlab.ini`, and `dllmain.cpp`, while preserving per-app profiles. New installs and updates now reflect these preferences.
+
 - **Published GitHub release v4.1.88** with the updated MSI installer for public distribution to users.
+
 - `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
+
 
 ## 4.1.68 - 2026-07-09
 
+
+
 - **Fixed blocky/pixelated visor mask edges**: the mask draws opaque hard-edged triangles directly
+
   into the eye texture with no antialiasing (blend was disabled, pixel shader wrote solid alpha=1).
+
   Because the eye swapchain is single-sample (no MSAA available on submitted VR swapchains) and the
+
   runtime's lens-distortion warp then resamples that already-aliased edge, the hard edge reads as a
+
   blocky/quantized black-grey-white stairstep once magnified through the lens, not a clean line.
+
   Fixed by supersampling: the mask now draws 4 jittered passes (a standard 2x2 rotated-grid pattern,
+
   offset by fractions of a texel) alpha-blended at 1/4 opacity each, so interior pixels (covered by
+
   every pass) accumulate back to fully opaque black while boundary pixels (covered by only some
+
   passes) land at a smoothly-varying fractional alpha — an analytic antialiased edge, not a blur, and
+
   the underlying shape/tessellation is unchanged. New `JitterCB` constant buffer (bound to both VS/PS,
+
   16 bytes: jitter offset + alpha) drives both the offset and per-pass opacity; blend state changed
+
   from disabled to standard SRC_ALPHA/INV_SRC_ALPHA. The historical/hidden Technique A quad-cutout
+
   path (`RenderVisorCutout`) shares the same shaders and was updated to bind a neutral single-pass
+
   buffer (offset=0, alpha=1) so it keeps its old opaque behavior instead of silently going transparent.
+
 - **Reworked the inner-low (NRI) nose-bridge curve into two connected segments**, replacing the
+
   single quarter-superellipse from 4.1.66/67. The old curve necessarily ended in a sharp corner
+
   jammed against the nose edge — there was no way to make it read as a flat nose bridge rather than a
+
   point, however the easing was tuned. New `BuildNoseBridgeCurve` (dllmain.cpp) /
+
   `AddNoseBridgeCurve` (UI) build two quarter-superellipse segments joined at a control-adjustable
+
   junction point J: segment A rises from the crescent's bottom pinch point to J, segment B continues
+
   from J to the nose edge. By construction both segments always meet with a purely vertical tangent
+
   at J (C1-continuous, no kink, regardless of where J sits) and segment B always ends with a purely
+
   horizontal tangent at the nose edge (a flat landing, never a point). Verified numerically before
+
   building: bridgeWidth=0.5 rises quickly to the midpoint then plateaus into a long flat bridge for
+
   the second half; bridgeWidth=0.8 produces a very early junction and a long, gently-rising flat
+
   bridge across most of the span; both match the requested "flat, rise, flat bridge" shape with no
+
   spatial overlap or sharp point.
+
 - **New UI control: Bridge**. A slider (0..1, default 0.5) plus a third draggable preview pin
+
   (light blue) in both the main window and the per-app profile window, gated the same way "Inner low"
+
   is (enabled only when open-inner/stencil mode is active). Full plumbing: `mask_inner_bridge_width`
+
   ini key, per-app registry DWORD (same millis encoding as the other shape values),
+
   `AppProfile.VisorInnerBridgeWidth`, `ProfileWindow` global/local values and Use-Global/Reset
+
   handling, config-log and verbose edge-smear-contract log lines. UI preview and DLL runtime use the
+
   identical two-segment formula (kept in sync the same way Curve/Apex-Y/Inner-low already are).
+
 - Verified live: DiRT Rally 2 and Pistol Whip both launch and draw the visor successfully
+
   (`OK draw executed`, both eyes) through the new 4-pass jittered/blended pipeline with curve at max,
+
   inner-low maxed, and bridge width swept across 0.0 / 0.5 / 1.0 — no crash, no new WER events at any
+
   setting. New curve/bridge math independently checked numerically before building (see above).
+
 - Still needs in-headset confirmation that the mask edge actually reads as smooth (not blocky) and
+
   that the nose-bridge shape looks like a natural flat bridge rather than a point — the verification
+
   above proves the pipeline runs and the math is correct, not the final visual result.
+
 - `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
+
 
 ## 4.1.67 - 2026-07-09
 
+
+
 - **Widened the Curve slider back out**: 4.1.66's recalibration (linear, max = exp 7) turned out too
+
   conservative — user reports max slider only reaches ~50% of the expected curvature and lemon/banana
+
   mode is no longer reachable at all. Replaced the linear map with a **geometric** interpolation between
+
   exp=32 (flat, curve=0) and exp=2 (the original full lemon/banana extreme, curve=1 — restored as the
+
   true ceiling). This lands the old "already looks maxed" point (~exp 7-8) at curve=0.5 instead of
+
   curve=0.833, so 0-50% covers what the slider used to cover and 50-100% adds back the headroom up to
+
   the extreme shape. `VisorCurveExponent()` (DLL) / `BeanMaskEditor.CurveExponent` (UI) both updated
+
   identically.
+
 - **Fixed the inner-low (NRI) nose-bridge curve construction**: the left-eye lower-centre boundary was
+
   rising almost straight up near the bottom-center pinch point and only curving toward the nose edge
+
   right at the top of the band — "up, then right" — instead of hugging the bottom near the nose edge
+
   first and rising only near the end — "right, then up". Root cause: the old parametrization used
+
   ease-out easing on X (`1-(1-u)^2`) combined with linear Y, which puts the *slow* phase (near-zero
+
   dx/du) right at the bottom-center start point. Replaced with a genuine quarter-superellipse corner
+
   (`x = cx + (innerX-cx)*sin(t)^(2/exp)`, `y = y0 + (bandTopY-y0)*(1-cos(t)^(2/exp))`) that has
+
   dy/dt=0 and maximal dx/dt at the start (moves toward the nose edge first, while stayed pinned near
+
   y0) and dx/dt=0 / maximal dy/dt at the end (finishes by rising to bandTopY) — a proper "hug the
+
   bottom, then rise" nose-bridge silhouette instead of a vertical spike that darted sideways at the
+
   top. Uses the same superellipse exponent as the outer curve, and the mirrored-eye case now falls out
+
   of the same formula (`innerX - cx` carries the sign) instead of a duplicated branch. Fixed
+
   identically in `BuildOpenInnerEyeVisorVerts` (dllmain.cpp) and `BeanMaskEditor.AddOpenInnerHalf`
+
   (UI preview) so they stay geometrically identical.
+
 - Verified live: DiRT Rally 2 launched and ran stable with curve pushed to slider max (exp=2, full
+
   lemon) and inner-low active; visor drew every frame (780 verts, no FAILs), no crash. New exponent
+
   and nose-bridge math independently checked numerically (curve 0/0.5/1.0 -> exp 32/8/2; nose-bridge
+
   corner reaches ~95% of the way to the nose edge while y has moved <5% of the band, confirming
+
   "right first, then up").
+
 - Still needs in-headset confirmation of how the new curve range and nose-bridge shape actually look —
+
   the build/log verification above proves the math and draw path, not the visual result.
+
 - `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
+
 
 ## 4.1.66 - 2026-07-09
 
+
+
 - **Fixed Pistol Whip (and any game without d3dcompiler_47 resident) crashing at launch**: the D3D11
+
   mask renderer init called `FreeLibrary(d3dcompiler)` *before* using the `ID3DBlob`s the compiler
+
   had allocated. Blob methods are virtual calls into d3dcompiler code, so in processes where our
+
   `LoadLibrary` held the only reference the module unloaded and the next blob call was an access
+
   violation (WER: `0xc0000005` at `InitD3D11MaskRenderer+0x29D`, dllmain.cpp:784, ~6 crash reports
+
   on 2026-07-09). d3dcompiler is now freed only after every blob is released, on all paths.
+
   Verified live: Pistol Whip previously died right after "initializing direct-write renderer";
+
   it now logs "initialized" and runs. Standalone repro confirmed old order dies with 0xc0000005,
+
   new order succeeds. This ran unconditionally at `xrCreateSession`, which is why no UI toggle
+
   affected it.
+
 - **Fixed the visor mask being vertically inverted in-headset**: the native builders copied
+
   `BeanMaskEditor` math verbatim, but the preview canvas is y-DOWN (WPF) while the native geometry
+
   is built in y-UP D3D NDC. Apex Y moved the wrong way, "Inner low" drew at the top, and the curve
+
   bent downward when the UI showed upward. Added `ApexYFromConfigNdc()` which performs the UI→NDC
+
   sign flip exactly once (used by the closed-bean, open-inner, and projected-partner builders), and
+
   re-anchored the inner-low band to the visual bottom (`y0` side in NDC). The UI preview is
+
   unchanged — it was correct.
+
 - **Recalibrated the Curve slider**: the old slider→superellipse mapping (`exp = 32 − 30·curve`)
+
   reached full visual strength around 5/6 of the slider (and apex-Y's asymmetric vertical ranges
+
   made high curves even more extreme). Slider 1.0 now maps to `exp = 7` — what ~5/6 used to
+
   produce — via shared helpers `VisorCurveExponent()` (DLL) and `BeanMaskEditor.CurveExponent`
+
   (UI preview), so preview and runtime stay identical and strength scales progressively.
+
 - Logging cleanup: "hook installed/captured" lines now log once per process instead of on every
+
   `xrGetInstanceProcAddr` resolution (was ~3 duplicate blocks per launch). Audited hot paths:
+
   per-frame detail remains verbose-only (`ViewLab.verbose.log`), DIAG lines remain one-shot,
+
   edge-smear contract logging remains verbose-gated + rate-limited. No new always-on logs added.
+
 - `Tests/Verify-ViewLabContracts.ps1` passes; x64/Win32/WPF build with 0 warnings.
+
 - Note: still needs in-headset confirmation that "Inner low" appears at the bottom, Apex Y moves
+
   the expected direction, and the recalibrated curve range feels right.
+
+
 
 ## 4.1.65 - 2026-07-08
 
+
+
 - Fixed a live regression of the 4.1.46 "invisible mask" bug: the UI derived the visor opening from
+
   the hidden legacy `mask_vertical`/`mask_horizontal` boxes at load and after every save, which
+
   clamps to `1.0` (full opening = invisible mask) whenever those keys are missing or stale.
+
   `mask_size` is now the single source of truth in the UI and its missing-key fallback is `0.82`,
+
   matching the DLL.
+
 - Retargeted the misleading "no in-HMD rounded mask will be visible" warning: it now fires only for
+
   the legacy `visibility_mask_visor` path when the runtime truly never calls
+
   `xrGetVisibilityMaskKHR`, instead of firing for every native Direct C visor session.
+
 - Removed dead legacy config reads from the DLL (`mask_vertical`, `mask_horizontal`, `mask_rounded`,
+
   `mask_offset_y`, `mask_*_bias`, `mask_*_curve` in both ini and per-app registry) — they fed no
+
   render path. `mask_corner`, `visor_size`, `mask_outer_apex_y`, and `mask_inner_lower_y` remain the
+
   live shape keys.
+
 - Removed the fossil ReShade ini keys (`reshade_hmd_menu`, `reshade_desktop_duplicate`,
+
   `reshade_3d_menu`) and the unused `reshade_xr_*`/`reshade_vr_*` UI constants; nothing read or
+
   wrote them. Added `verbose_logging=0` to the default ini.
+
 - Hot-path cleanup: the Direct C `xrReleaseSwapchainImage` draw now uses fixed stack buffers instead
+
   of per-frame `std::vector` copies and takes the swapchain mutex once instead of twice; the late
+
   `xrEndFrame` fallback pass and the per-frame flag reset were merged into one locked map pass;
+
   config reload resolves the ini path once instead of ~30 filesystem stats per reload.
+
 - Vertical/horizontal tangent crop, `edge_smear_fix` mitigations, and the disabled full-FOV LOD path
+
   are unchanged. `Tests/Verify-ViewLabContracts.ps1` passes.
+
+
 
 ## 4.1.64 - 2026-07-08
 
+
+
 - Finished the Apex Y / Inner low implementation pass:
+
   the main window, per-app profile popup, draggable preview pins, INI/registry persistence, and Direct C
+
   native geometry now use the same shape values.
+
 - Made Direct C choose the same visor shape mode as the preview: closed bean when full stenciling is
+
   selected, open-inner single-eye geometry when `Stencil outer edges only` is enabled.
+
 - Extended `edge_smear_fix` with four gated compositor-contract mitigations:
+
   exact submitted-FOV matching, legal `subImage.imageRect` bounds correction, 4-pixel recommended-size
+
   alignment, and FOV-weighted recommended image scaling when original runtime FOV is known.
+
 - Expanded verbose edge-smear diagnostics with original runtime FOV before ViewLab crop.
+
 - Cleaned corrupted ReShade Remote glyph labels to ASCII and kept the Advanced popout status-driven.
+
 - Added `Tests/Verify-ViewLabContracts.ps1` for UI/DLL settings-contract checks.
+
 - Added `AUDIT_2026-07-08.md` with feature verification, headset test checklist, known limits, and
+
   optimization/future-work notes.
+
 - Full installer build passed: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.64.msi`.
+
+
 
 ## 4.1.63 - 2026-07-08
 
+
+
 - Removed the obsolete `Technique C direct write` subtext under the `Visor mask` checkbox.
+
 - Added experimental visor shape controls:
+
   `Apex Y` moves the outer curve's maximum point up/down, and `Inner low` adds a bottom-only inner-eye
+
   stencil curve for a mask-like lower nose/bridge shape.
+
 - Added draggable preview pins for those two controls in the visor mask preview. The main window and
+
   per-app profile popup both sync pins, sliders, config, registry profile values, and the native Direct C
+
   geometry.
+
 - Added native config/profile keys `mask_outer_apex_y` and `mask_inner_lower_y`, and logged both values in
+
   the DLL config line and verbose edge-smear contract diagnostics.
+
 - Expanded Edge Masks hover text to state explicitly that visual masks replace render cropping on that
+
   axis, so GPU pixel savings are reduced or removed.
+
+
 
 ## 4.1.62 - 2026-07-08
 
+
+
 - Gated the Technique C late `xrEndFrame` draw so it only runs as a fallback when the legal
+
   release-time draw did not cover the swapchain this frame. This avoids double-drawing opaque visor
+
   borders with previous-frame and current-frame layout data.
+
 - Reused cached swapchain RTVs for the late Technique C fallback draw instead of creating render-target
+
   views every frame.
+
 - Expanded verbose edge-smear contract diagnostics to emit a rate-limited baseline even when
+
   `edge_smear_fix=0`, and added release/late-draw provenance plus render scale.
+
 - Fixed per-app visor reset/save stale state: reset now deletes `visor_size`, `visor_width`, and
+
   `visor_height`, and saving with `Use global visor settings` checked stores `visor_size=0`.
+
+
 
 ## 4.1.61 - 2026-07-08
 
+
+
 - Temporarily removed visor Techniques A/B from the user-facing selector and force `visor_technique=c` in
+
   the UI/DLL config path. The checkbox remains the enable/disable control; Direct C is the only active
+
   product path for this build.
+
 - Updated the visor mask preview so `Stencil outer edges only` displays a single-eye open-inner shape:
+
   curved outer edge, open/flat inner side, matching the Direct C left-eye geometry model instead of a
+
   closed oval.
+
 - Hid stale per-app visor X/Y offset controls alongside the already-hidden width/height controls. Size
+
   and Curve are the intended visor controls.
+
 - Bundled the verified custom ReShade OpenXR payload (`ReShade64.dll` + `ReShade64_XR.json`) and compact
+
   reference docs from the newer ReShade AIO work into `ReShadePayload`.
+
 - Reworked ReShade Remote as `Advanced: ReShade Remote`, added clear status states, disabled controls
+
   until the heartbeat is live, and added an elevated install button that copies the payload to
+
   `C:\ProgramData\ReShade` and registers the ReShade OpenXR implicit layer.
+
+
 
 ## 4.1.60 - 2026-07-08
 
+
+
 - Refocused visor UI around Direct C as the practical primary path: renamed the enable checkbox to
+
   `Visor mask`, removed the redundant `Off` technique option, and mapped old `visor_technique=off` values
+
   back to Direct C so the checkbox remains the only off switch.
+
 - Removed visible manual visor Width/Height controls from the main window and per-app popup. The UI writes
+
   neutral width/height scale and the DLL ignores stale width/height profile values, so visor sizing follows
+
   the render crop plus Size/Curve.
+
 - Added verbose-only, rate-limited edge-smear contract diagnostics comparing located FOV, submitted FOV,
+
   `imageRect`, swapchain size, recommended size, crop settings, visibility-mask state, and visor state.
+
 - ReShade Remote now shows setup/verification text for the required custom ReShade shared-memory
+
   component and warns when no bundled `ReShadePayload` exists.
+
 - Full installer build passed: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.60.msi`.
+
+
 
 ## 4.1.59 - 2026-07-08
 
+
+
 - Corrected the Edge Masks popup wiring: only the two "Both sides" controls map to the real DLL keys
+
   (`horizontal_visual_mask_only` and `visual_mask_only`).
+
 - Disabled the one-sided Edge Masks controls until there is a real one-sided runtime path, and stopped
+
   old one-sided legacy keys from enabling the broad both-sides mask.
+
 - Full installer build passed: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.59.msi`.
+
+
 
 ## 4.1.58 - 2026-07-08
 
+
+
 - Wired previously UI-only render options into the DLL path:
+
   `crop_outer_edges_only`, `visual_mask_only`, and `horizontal_visual_mask_only` now have real runtime
+
   effects, with legacy Edge Masks popup keys still read as fallbacks.
+
 - Fixed another settings contract mismatch: `mask_rounded` now saves whether the visor curve is rounded,
+
   not whether the visor is enabled.
+
 - Aligned visor defaults across UI, DLL, and `xr-viewlab.ini` (`mask_size=0.82`, `mask_corner=0.5`,
+
   width/height scale `1.0`).
+
 - Optimized `xrEndFrame` edge-smear and visor-layer metadata patching to use fixed stack buffers instead
+
   of per-frame heap vectors, with safe one-shot overflow diagnostics.
+
 - Demoted edge-smear FOV comparison logs to verbose-only and reduced their rate.
+
 - Full installer build passed: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.58.msi`.
+
+
 
 ## 4.1.57 - 2026-07-08
 
+
+
 - Updated `edge_smear_fix` to preserve the runtime's original OpenXR visibility mask instead of applying
+
   ViewLab's legacy outer-edge-only visibility-mask filter. This makes the mask-off path match the visor
+
   path's boundary handling instead of leaving the rectangular VD crop edge exposed.
+
 - Fixed the UI/DLL key mismatch for the stencil checkbox: the UI now writes
+
   `outer_edge_visibility_mask_only` while preserving the old `stencil_outer_edges_only` key.
+
 - Full installer build passed: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.57.msi`.
+
+
 
 ## 4.1.56 - 2026-07-08
 
+
+
 - Replaced the non-working edge-smear pixel guard-band experiment with an `xrEndFrame` projection-FOV
+
   patch: when `edge_smear_fix=1`, submitted `XrCompositionLayerProjectionView.fov` is clamped to the
+
   cropped FOV returned from `xrLocateViews`.
+
 - Full installer build passed: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.56.msi`.
+
+
 
 ## 4.1.55 - 2026-07-02
 
+
+
 - Optimized release-time D3D11 visor/edge drawing by caching runtime swapchain render-target views instead
+
   of creating an RTV for every eye draw.
+
 - Removed heap allocations from the high-segment visor geometry builders by switching their fixed-size
+
   curve buffers to stack arrays.
+
 - Verified the x64 native OpenXR layer build before the full installer build.
+
 - Full installer build passed: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.55.msi`.
+
+
 
 ## 4.1.54 - 2026-07-02
 
+
+
 - Preserved the real vertical/horizontal tangent crop path. The LOD-pop-in experiment is now
+
   diagnostic-only and no longer bypasses cropped FOV, avoiding the stretch-over-lens failure.
+
 - Reworked the edge-smear experiment to draw black guard pixels into projection texture edges instead of
+
   changing submitted `imageRect` metadata.
+
 - Technique A remains a real OpenXR composition-layer path, now drawing the same open-inner left/right
+
   visor artwork into a BOTH-eye alpha quad for VDXR compatibility.
+
 - Technique B is narrowed to D3D11 colour non-MSAA swapchains and bypasses unsupported swapchains instead
+
   of intercepting them.
+
 - Technique C now draws at release and late `xrEndFrame`, with higher-segment open-inner geometry and a
+
   projected partner-eye boundary for aggressive horizontal crop convergence.
+
 - Removed visible X/Y visor sliders from the main UI and made the DLL ignore stale X/Y profile biases.
+
   Size, Width, Height, and Curve are the active shape controls.
+
 - Full installer build passed: `F:\AI-Projects\ViewLab\dist\ViewLab-4.1.54.msi`.
+
+
 
 ## 4.1.47 — 2026-07-01
 
+
+
 - Removed the debug test quad entirely (it proved layer submission; done).
+
 - Technique A reworked to a single BOTH-eye head-locked quad (per-eye LEFT/RIGHT quads were not rendering
+
   on VDXR; the BOTH-eye quad did), FOV-sized, alpha-cutout (black ring, transparent hole).
+
 - Technique C: added `context->Flush()` after the eye-texture draw so a streaming runtime's encoder
+
   (VDXR) sees the write; C remains unreliable on streaming runtimes (A is primary).
+
+
 
 ## 4.1.46 — 2026-07-01
 
+
+
 - FIX (root cause of "no mask"): `visorSize` fallback for a missing `mask_size` was the legacy
+
   OpeningFromMask formula, which clamps to 1.0 for cropped views = full opening = invisible border.
+
   Fallback is now a visible 0.82. This is why neither technique showed a mask despite drawing correctly.
+
+
 
 ## 4.1.45 — 2026-07-01
 
+
+
 - Added a UI **Technique** selector (radio: Quad (A) / Direct (C) / Off) in Render Options, writing
+
   `visor_technique`. Verified in-app (round-trips a↔c↔off to the ini). No more hand-editing the ini.
+
+
 
 ## 4.1.44 — 2026-07-01
 
+
+
 - Implemented technique A (quad overlay) alongside technique C, selectable via `visor_technique`.
+
 - Shared `CreateHeadLockedRgbaLayer` helper for the head-locked VIEW-space RGBA swapchain.
+
+
 
 ## 4.1.43 — 2026-07-01
 
+
+
 - Visor ENABLE made global-only: per-app profiles no longer carry/override `mask_enabled` (they still
+
   tune shape). Fixes stale per-app `mask_enabled=0` silently overriding the global toggle. Per-app enable
+
   checkbox disabled in the profile popup.
+
+
 
 ## 4.1.42 — 2026-07-01
 
+
+
 - Added a DEBUG head-locked blue test quad (`test_quad` config, default off): our own
+
   `XrCompositionLayerQuad` in a `VIEW` reference space at (0,0,−1), 0.4 m, cleared solid blue. Independent
+
   of the game textures and of `mask_enabled`. Purpose: prove OpenXR layer submission reaches the headset.
+
 - Captured `xrCreateReferenceSpace` for the quad's head-locked space.
+
+
 
 ## 4.1.41 — 2026-07-01
 
+
+
 - Removed the gate that disabled the native D3D11 visor whenever the game called
+
   `xrGetVisibilityMaskKHR` (this was why Unity/Pistol Whip never drew).
+
 - Moved the visor draw from `xrEndFrame` to `xrReleaseSwapchainImage` — the lifecycle-correct point where
+
   the app has finished rendering the eye and the runtime has not yet consumed it. `xrEndFrame` now only
+
   captures the per-eye layout (imageRect + array slice) for the next frame's release-time draw.
+
 - Made the visibility-mask mesh-reshape optional (`visibility_mask_visor`, default off); it never
+
   suppresses the D3D11 path. Outer-edge visibility-mask filtering preserved.
+
 - Installed `xrReleaseSwapchainImage` hook (was only captured before).
+
+
 
 ## 4.1.40 — 2026-07-01
 
+
+
 - Main window: removed the large blank gap below VIEWLAB ENABLED. Col 0 is now a single top-aligned
+
   `LeftColumnPanel` StackPanel, mirroring cols 2/4, so the tall RowSpan side panels can't inject overflow
+
   between the left cards.
+
 - App Profile popup: content wrapped in a vertical `ScrollViewer`; bean editor restored in the visual
+
   tree; visor sliders interactive when "Use global" is unchecked; opens without crashing.
+
 - Typeless-safe RTV format for the eye-texture write (use app-requested swapchain format mapped to non-SRGB).
+
 - Added extensive one-shot `DIAG` logging across the whole D3D11 mask path.
+
+
 
 ## 4.1.39 — 2026-06-30/07-01
 
+
+
 - Removed the old ViewLab-owned `XrCompositionLayerProjection` "orb" visor renderer.
+
 - Implemented native D3D11 direct-write of the kidney/superellipse visor border into the game's existing
+
   eye textures; added swapchain tracking hooks (create/enumerate-images/acquire/destroy).
+
 - Restored the ProfileWindow bean editor and interactive per-app visor sliders.
+
+
 
 ## 4.1.7 — 2026-06-25
 
+
+
 - Removed stale `OpenVRBridge/`, `ReShadePayload/` binaries, and `ReshadeAI/` agent files from repo.
+
 - Fixed installer `Product.wxs` to not reference deleted ReShadePayload files.
+
 - Created `SOURCE_BACKUP.md` consolidating all backup sources and rebuild instructions.
+
 - Published GitHub release v4.1.7 with MSI.
+
+
 
 ## 4.1.0 — 2026-06-25
 
+
+
 ### UI
 
+
+
 - Responsive layout: four window-width scale modes — see Layout Modes below.
+
 - Triple-column mode: left = render sliders, middle = applications table, right = Render Options + ReShade MENU sections.
+
 - Right column uses an independent StackPanel (not shared Grid rows), eliminating the ghost height gap that previously appeared below Render Options.
+
 - VIEWLAB ENABLED / VIEWLAB DISABLED badge replaces the checkbox. Animated red/green border, background, and text colour transition (0.25 s).
+
 - Visual Masks moved into a non-layout-participating Popup flyout behind a "Visual Masks ▾" button. Popup has no measured parent so it never reserves blank space when closed.
+
 - Removed "RENDER" section subheader.
+
 - Removed "Horizontal visual mask" and "Vertical visual mask" inline subheaders from the main card.
+
 - OpenXR and OpenVR ReShade MENU sections retain their titles but all entries replaced with "Coming soon" stubs.
+
 - Install ReShade button and "ReShade Available" pill badge removed.
+
+
 
 ### Applications table
 
+
+
 - XR type column added (OpenXR / OpenVR, detected via OpenComposite_ display-name prefix).
+
 - Junk-app blacklist: steam, steamvr, steamtours, racelab_vr, vrmonitor, vrserver, vrdashboard, openvr_overlay, xr_composition_layer_override, pivotpoint and variants filtered from the app list.
+
+
 
 ### Settings
 
+
+
 - Sliders and value boxes auto-save on change; Save button removed.
+
 - Settings write via `WritePrivateProfileString` unchanged; INI path unchanged.
+
+
 
 ### Layout Modes
 
+
+
 | Mode | Width | Content |
+
 |------|-------|---------|
+
 | **Mini** | < 360 px | Single column, sliders compress to full width, footer items equally spaced |
+
 | **Small** | 360–599 px | Single column, sliders full width with labels and hints |
+
 | **Medium** | 600–899 px | Two columns — left: render sliders + options; right: applications table + ReShade menus |
+
 | **Large** | ≥ 900 px | Three columns — left: render sliders; middle: applications table; right: Render Options + ReShade menus |
+
+
 
 ### Build
 
+
+
 - Version bumped to 4.1.0 in AssemblyInfo.cs and Product.wxs.
+
+
 
 ---
 
+
+
 ## 4.0.x and earlier
 
+
+
 See git history.
+
 # Unreleased
+
+
 
 - Fixed asymmetric top/bottom cropping tilting or folding the game world by retiring the pose-rotation compensation path; crop now changes FOV tangents without modifying eye orientation.
+
 - Repaired the systemic stereo regression introduced by normalized per-eye overlay placement: every migrated overlay now starts from shared binocular tangent-space bounds and projects independently into each eye; HUD is binocular again and calibration plates use the same shared render-area bounds.
+
 - Added disabled-by-default `Topmost Visor Overlays`, submitting the existing visor scene in a transparent final OpenXR projection layer with automatic normal-renderer fallback.
+
 - Unified eye-texture overlays behind Render Area, Full Lens, and Lens Pinned coordinate modes.
+
 - Made Performance HUD and Performance Trace independent, left-eye-only controls and removed repeated OpenComposite projection-layer draws.
+
 - Added normalized crosshair X/Y calibration and reset controls; zero remains the resolved full-lens centre.
+
 # Unreleased
 
+
+
 - DynLOD now reflects iRacing's verified `World Max >= Cars Min` constraint and includes an automated launch, normalization diff and graceful-close test harness.
+
 - Fixed racing presentation tests and the rhythm shift light disappearing on runtimes that accept but do not
+
   visibly composite ViewLab's separate projection overlay layer; direct eye-texture presentation is now the
+
   safe default for this configuration.
+
+
+
+### VLXR0.5.5 — 2026-10-03
+
+Restore measured PC interval p50/p99/max; add raw stats/diagnostics window; black text on white stats tabs and graphics/sharpening dropdowns. Recognise portable VLXR runtime and permanent coloured tray. Godlike launched but207Hz performance remains unmet.
+
+
+
+### VLXR0.5.7 — 2026-10-03
+
+Graphics dropdown now reaches runtime: preset density independent of stream size, portable config shared by registered runtime and Streamer. Explicit black item templates fix graphics/sharpening dropdowns. Cropped game resolution getter used in overlay. New runtime awaits user's nextlaunch.
+
+
+
+## 4.1.422 — 2026-10-12
+
+- Package the existing AI settings command connection and native acknowledgement so the installed settings app exposes status, read and validated write requests. Running games need to load the new layer before live acknowledgement is available.
+
+- Repair a malformed newline in the xrLocateViews contract regex; intended hook validation remains intact.
+
+## 4.1.424 — 2026-10-12
+
+- External overlay updates refresh cached app profiles and open editors. Opening, editing, saving or cancelling a stale profile no longer republishes its old overlay values over newer saved changes; unrelated unsaved edits are preserved.
+
+- AI wait verification requires matching effective native values. Sticky-note status includes resolved content, placement, enable and hotkey visibility; unsupported/missing values no longer count as successful application. This confirms effective state, not headset pixels.
+
+
+
+## Practice incident flash — 2026-10-12
+
+SDK PlayerIncidents report byte 2 plus penalty byte 0x0200 and a rising PlayerCarMyIncidentCount produces a single 650 ms amber border. A missing counter uses a report edge; initial/reconnect samples establish a baseline. Ongoing report 3, zero-x and other incidents do not trigger. Safety flags and pit-limiter warning take precedence over practice feedback. Replay/missing driving evidence disables it. Uses existing border and provider worker, no added render work. Independent visibility key iracing_flag_show_off_track_award (default on) requires existing master iRacing/border enable. Source: https://github.com/kutu/pyirsdk/blob/master/irsdk.py (IncidentFlags), https://irsdk-node.bengsfort.dev/Common-Patterns/. Deterministic fixtures are not a captured live 1x or headset validation.
+
+
+
+## Location coaching milestone — 2026-10-12
+
+PracticeCues.cs validates bounded version-1 JSON (exact SDK track/layout/car strings, provenance, at most 512 sections; positions LapDistPct [0,1), forward end within quarter lap, lead metres 0–2000 OR seconds 0–20, duration 0.25–30 seconds). Practice pack editor/import under iRacing persists managed practice-pack.json. No advice/coordinates shipped. iracing_coaching defaults off; iracing_practice_file points to managed JSON. Separate iracing_coaching_fade_in_ms (0–2000, default 150) and iracing_coaching_fade_out_ms (0–3000, default 150) sliders use existing overlay interaction/reset style; broker polls settings, provider publishes fixed 304-byte Local\XRViewLabPracticeCue v1, native smooth envelope uses uptime independently of duration/lead. Once per passage; wrap rearms, jumps/tow/replay/pits/stale/mismatch suppress. Fresh heartbeat required (750 ms); no renderer imports/track search. Pixel sticky renderer reused with one bounded additional card; existing sticky settings untouched. Fixtures and compile are development evidence, not headset validation. Documentation will be expanded with reference/name extensions in following isolated milestones.
+
+
+
+## Exact section names and native fade — 2026-10-12
+
+Independent iracing_section_names toggle (default off) composes imported section.Name with optional coaching in the compact sticky cue, using the same approach/end/duration/passages. Practice JSON now also requires positive numeric TrackId and CarId; matching requires both IDs AND all exact strings. Empty TrackConfigName is allowed and must match exactly (observed track 249 has empty SDK configuration string). No verified Nordschleife section-position map is available: unsupported/missing maps are explicit in provider diagnostics; no coordinates or coaching invented. Native practice wrapping is cached on text change instead of allocated per frame. PracticeCueEnvelope.h fixture covers fade start/midpoints/end and stale heartbeat. Repeated identical note after a fade restarts its independent envelope correctly.
+
+
+
+## Garage 61 reference gear — 2026-10-12
+
+iracing_reference_gear (off), iracing_reference_gear_lead_m (0–500 m, default 100), iracing_reference_file (binding JSON) activate independent upcoming reference gears in the compact sticky card. Actual Garage 61 CSV headers Speed/LapDistPct/Gear/Brake/Throttle/PositionType parsed invariantly. Binding requires version 1, verified positive TrackId/CarId, exact SDK track/layout/car strings, source provenance, explicit SpeedUnit (m/s, km/h, mph), sibling CSV filename and SHA256. Full forward on-track coverage >=100 samples, first <=.002, last >=.998, maximum gap .002, valid pedals/gears/speed, bounded 50 MB/250000 samples. UI imports JSON+CSV into LocalAppData/XR ViewLab/References/<hash>; no API required. Missing/mismatch/session identity change blocks guidance, never fallback. Reference gear is floor sample at upcoming distance, never claimed optimal. Worker binary-search/interpolation, renderer gets compact text only. config/practice-reference contains user-selected Toni Mustang/Nordschleife 6:23.831 CSV copied from supplied Documents file (original preserved) and explicit verified binding, available to import; no live setting changed. SI units cross-check: 23030 samples at 60 Hz = 383.833 s vs supplied 383.831 lap; integrated speed ~20683.94 m. This is empirical unit verification, not metadata inside CSV. Official Garage61 OpenAPI https://garage61.net/api/openapi/v1.json confirms PositionType 3=on track but does not declare speed units. Exact-match/wrong-track/wrong-layout/wrong-car/unverified/import/interpolation fixtures use real supplied data. Blank SDK layout parser fixed to preserve empty value; driver identity reads only the DriverInfo list entry (not radio CarIdx). Native headset behavior unvalidated.
+
+
+
+## Reference speed card — 2026-10-12
+
+iracing_reference_speed defaults off. Independent fixed-map speed sticky card: CURRENT/REF km/h at same LapDistPct, MATCH green +/-3 km/h; FAST amber >3 to <10, red >=10; SLOW blue below -3. Relative reference comparison, not safe-speed/optimal-speed advice. Own horizontal/vertical position iracing_reference_speed_x/y [0,1] defaults .78/.62, scale .1–2.5 default .8; saved/live via broker. Background binary lookup/interpolation and capped 150 ms publication; fixed 304-byte Local/XRViewLabReferenceSpeed same contract as practice, heartbeat 750 ms. Native fixed text storage/wrapping performs no per-frame allocation or CSV IO. Exact binding plus position guard hides speed/gear on mismatch, pits/replay, stale session time, jump/tow, missing track length and first baseline; no other reference fallback. PositionType!=3 is retained as ineligible, zero gear during shifts suppresses gear hints. CSV pedal epsilon 1e-6 accepts float roundoff only, clamps to [0,1]. Toni binding+CSV included in MSI; import selects reference.json in installed app directory and copies immutable hash-bound pair to managed user References folder. Independent toggles remain off; no live settings or installed binaries changed. Supplied target tested, neutral and pit sample semantics covered.
+
+# 2026-10-14 — saved replay launcher (validation in progress)
+
+
+
+Concurrent desktop use: forcibly reacquire UI focus before every action rather than aborting on the first focus loss. Eight immediate attempts remain bounded and existing simulator protection remains mandatory. User requested forced focus explicitly.
+
+
+
+Graceful close can additionally require an exact PID and UTC process start time. The performance lab passes both after its settled-load ownership check, preserving a session that replaced the original during a wait.
+
+
+
+The approved iRacing launcher accepts `-Mode Launch -ReplayName <name>` and selects a saved replay through the iRacing UI using the supplied coordinates. It preserves existing-session, layout and focus checks, adds current passive VLXR readiness diagnostics, fingerprints the source replay, and rejects replay Cycle/Close requests. Recentring is omitted at the user's request. Live replay selection and streaming validation are pending.
+
+
+
+
+
+- LFE spectrogram: actual selectable Windows PCM capture, soft transparent frequency haze, Hz range, live visual tuning and optional synchronized peripheral copies. Automatically prefers CABLE-B Output; VoiceMeeter A5 and playback taps are selectable. Routing and playback are unchanged.
+
+- LFE peripheral placement now reaches the outer lens edges instead of being confined to the shared binocular overlap. Mirrored displays belong to their corresponding outer eye, avoiding an extra copy near the opposite nasal edge.
+
+## 20 October 2026 — colour profile tab memory
+
+Fixed the headset COLOUR profile selector losing edits on switching. Before selection, the outgoing tab is saved; delayed/close saves also persist its ten COLOUR controls under the current game's indexed colour_preset_<slot>_* registry values. Per-game saved values override global INI templates at load and live template publication. Existing current colours without a selected slot belong to tab 1. Gains, calibration and menu placement remain shared and are not stored in the slots. The executable production-function fixture Tests/Verify-ColourProfileMemory.ps1 checks rapid switching, all three tabs, restart, template refresh, migration and calibration isolation. Live headset validation remains pending; the running simulator is left intact.
