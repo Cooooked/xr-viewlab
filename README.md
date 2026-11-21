@@ -1,5 +1,13 @@
 # ViewLab
 
+<p align="center">
+  <a href="https://cooooked.github.io/ViewLab/">
+    <img src="assets/brand/viewlab-logo-dark.svg" alt="ViewLab" width="360">
+  </a>
+</p>
+
+**Official site:** <https://cooooked.github.io/ViewLab/>
+
 ViewLab is an OpenXR API layer plus a Windows settings app for tuning what your VR headset renders,
 drawing overlays inside the headset, and getting a clean capture of the result into OBS.
 
